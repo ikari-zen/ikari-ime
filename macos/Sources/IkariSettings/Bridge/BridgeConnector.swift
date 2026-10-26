@@ -1,6 +1,7 @@
 // 殻のソケットへのつなぎ方（ADR 0005 §6.3）と、つながらないときの再試行の方針。
 import Foundation
 import IkariBridge
+import IkariXPC
 
 /// 輸送を作る。本物は Unix ドメインソケット、`--fake-bridge` とテストはメモリ上の対。
 protocol BridgeConnecting: Sendable {
@@ -13,14 +14,25 @@ enum SocketConnectError: Error, Equatable {
     /// 殻が待っていない（ソケットがない、または接続を断られた）
     case notListening
     case io(Int32)
+    /// つないだ相手の署名が殻の要件に合わない（何も送らずに切った）
+    case untrustedPeer
 }
 
 /// 殻が `~/Library/Application Support/ikari-ime/run/bridge.sock` で待つ（docs/phase2-contract.md §5.1）。
 struct SocketConnector: BridgeConnecting {
     var socketPath: String
+    /// つないだソケットの相手（殻）が正しいか。既定は `LOCAL_PEERTOKEN` の audit token で署名要件を確かめる。
+    /// テストで署名の合否を差し替えるために注入できる。
+    var peerValidator: @Sendable (Int32) -> Bool
 
-    init(socketPath: String = SocketConnector.defaultSocketPath()) {
+    init(
+        socketPath: String = SocketConnector.defaultSocketPath(),
+        signing: SigningMode = BuildSigning.current(),
+        peerValidator: (@Sendable (Int32) -> Bool)? = nil
+    ) {
         self.socketPath = socketPath
+        let requirement = SigningRequirements.bridgeShell(mode: signing)
+        self.peerValidator = peerValidator ?? { PeerSignature.satisfies(requirement: requirement, descriptor: $0) }
     }
 
     static func defaultSocketPath(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> String {
@@ -52,6 +64,11 @@ struct SocketConnector: BridgeConnecting {
             Darwin.close(descriptor)
             if code == ENOENT || code == ECONNREFUSED { throw SocketConnectError.notListening }
             throw SocketConnectError.io(code)
+        }
+        // データを送る前に相手を確かめる。合わなければ何も送らずに切る
+        guard peerValidator(descriptor) else {
+            Darwin.close(descriptor)
+            throw SocketConnectError.untrustedPeer
         }
         return FileDescriptorTransport(descriptor: descriptor)
     }

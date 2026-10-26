@@ -1,6 +1,7 @@
 import Foundation
 import IkariBridge
 import IkariProto
+import IkariXPC
 import Testing
 
 @testable import IkariSettings
@@ -169,5 +170,54 @@ import Testing
     @Test func aTooLongPathIsRejected() {
         let connector = SocketConnector(socketPath: "/" + String(repeating: "a", count: 200))
         #expect(throws: SocketConnectError.pathTooLong) { _ = try connector.makeTransport() }
+    }
+
+    @Test func anUntrustedPeerIsCutWithoutSendingAnything() throws {
+        let path = "/tmp/ikari-t\(getpid())-\(UInt32.random(in: 0...99999)).sock"
+        let listener = try makeListener(path: path)
+        defer { Darwin.close(listener); unlink(path) }
+        let connector = SocketConnector(socketPath: path, peerValidator: { _ in false })
+        #expect(throws: SocketConnectError.untrustedPeer) { _ = try connector.makeTransport() }
+        // 殻側から見ると、何も受け取らずに閉じられている（EOF）
+        let accepted = accept(listener, nil, nil)
+        #expect(accepted >= 0)
+        defer { Darwin.close(accepted) }
+        var byte: UInt8 = 0
+        #expect(read(accepted, &byte, 1) == 0)
+    }
+
+    @Test func aTrustedPeerGetsATransport() throws {
+        let path = "/tmp/ikari-t\(getpid())-\(UInt32.random(in: 0...99999)).sock"
+        let listener = try makeListener(path: path)
+        defer { Darwin.close(listener); unlink(path) }
+        let connector = SocketConnector(socketPath: path, peerValidator: { _ in true })
+        let transport = try connector.makeTransport()
+        transport.close()
+    }
+
+    @Test func theRealCheckRejectsAPeerThatIsNotTheShell() throws {
+        // テストの実行ファイルは殻ではないので、既定の確認は必ず断る
+        let path = "/tmp/ikari-t\(getpid())-\(UInt32.random(in: 0...99999)).sock"
+        let listener = try makeListener(path: path)
+        defer { Darwin.close(listener); unlink(path) }
+        let connector = SocketConnector(socketPath: path, signing: .team)
+        #expect(throws: SocketConnectError.untrustedPeer) { _ = try connector.makeTransport() }
+    }
+
+    private func makeListener(path: String) throws -> Int32 {
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        let bytes = Array(path.utf8)
+        withUnsafeMutableBytes(of: &address.sun_path) { raw in
+            raw.copyBytes(from: bytes)
+            raw[bytes.count] = 0
+        }
+        let length = socklen_t(MemoryLayout<sockaddr_un>.size)
+        let rc = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.bind(fd, $0, length) }
+        }
+        guard rc == 0, listen(fd, 1) == 0 else { Darwin.close(fd); throw SocketConnectError.io(errno) }
+        return fd
     }
 }
