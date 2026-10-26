@@ -8,6 +8,7 @@
 //!   （読み、表記、問題の行）が入るので、ログには `DataIssueKind` の名前だけを書く（NFR-19）。
 
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, MutexGuard};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -15,7 +16,8 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use ikari_core::user::{
     EXPORT_SCHEMA, ExportIssue, ExportIssueKind, ImportSummary, LayerSel, MAX_LEARNING_ROWS,
     Profile, ProfileWeight, UserDataError, UserDictEntry, UserDictionary, UserDir, check_export,
-    export_text, format_utc, import_text, pos_options, validate_export, verb_conj_types,
+    create_private_dir_all, create_private_new, export_text, format_utc, import_text, pos_options,
+    validate_export, verb_conj_types,
 };
 use ikari_proto::v1 as pb;
 use ikari_proto::v1::{DataIssueKind, ErrorCode, envelope};
@@ -29,7 +31,7 @@ const NO_DATA_DIR: Fail = Fail::new(ErrorCode::EngineNotReady, "no data director
 /// ユーザー辞書のセクション名（エクスポートのセクションと同じ）
 const USER_DICT_SECTION: &str = "user_dict";
 /// バックアップを置くディレクトリ（データのディレクトリの下）
-const BACKUP_DIR_NAME: &str = "backups";
+pub(crate) const BACKUP_DIR_NAME: &str = "backups";
 /// バックアップのファイル名: `before-{import,reset}-<UTC>[-<n>].tsv`（`n` は同じ秒に重なったとき）
 const BACKUP_PREFIX: &str = "before-";
 const BACKUP_SUFFIX: &str = ".tsv";
@@ -572,10 +574,12 @@ impl Inner {
         {
             return Ok(None);
         }
-        fs::create_dir_all(&backups)?;
+        create_private_dir_all(&backups)?;
         let path = unique_backup_path(&backups, kind, &utc_stamp());
         let tmp = path.with_extension("tsv.tmp");
-        let written = fs::write(&tmp, text.as_bytes()).and_then(|()| fs::rename(&tmp, &path));
+        let written = create_private_new(&tmp)
+            .and_then(|mut f| f.write_all(text.as_bytes()).and_then(|()| f.sync_all()))
+            .and_then(|()| fs::rename(&tmp, &path));
         if let Err(e) = written {
             let _ = fs::remove_file(&tmp);
             return Err(e.into());

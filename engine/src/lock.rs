@@ -4,6 +4,7 @@
 
 use std::fmt;
 use std::fs::{File, OpenOptions, TryLockError};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 
 use ikari_core::user::UserDir;
@@ -38,6 +39,7 @@ impl EngineLock {
         let file = OpenOptions::new()
             .create(true)
             .truncate(false)
+            .mode(ikari_core::user::PRIVATE_FILE_MODE)
             .write(true)
             .open(&path)
             .map_err(|e| LockError::Io(format!("{}: {e}", path.display())))?;
@@ -61,6 +63,16 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn lock_file_is_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = temp_dir("mode");
+        let _lock = EngineLock::acquire(&dir).unwrap();
+        let path = UserDir::new(&dir).engine_lock();
+        let mode = std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
     }
 
     #[test]

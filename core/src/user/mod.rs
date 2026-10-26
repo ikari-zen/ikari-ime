@@ -31,6 +31,9 @@ pub use transfer::{
     EXPORT_SCHEMA, ExportIssue, ExportIssueKind, ImportSummary, check_export, export_text,
     import_text, validate_export,
 };
-pub use util::{fnv1a64, fnv1a64_continue, normalize_reading, today_unix_day};
+pub use util::{
+    PRIVATE_DIR_MODE, PRIVATE_FILE_MODE, create_private_dir_all, create_private_new, fnv1a64,
+    fnv1a64_continue, normalize_reading, tighten_files, today_unix_day,
+};
 
 pub use crate::ranker::LearningRanker;

@@ -15,6 +15,7 @@
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufWriter, Write};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, TrySendError, sync_channel};
@@ -112,7 +113,9 @@ impl EngineLog {
 
     fn open_with(data_dir: &Path, policy: Policy, capacity: usize) -> EngineLog {
         let dir = data_dir.join(LOG_DIR_NAME);
-        let Ok(writer) = fs::create_dir_all(&dir).and_then(|()| Writer::open(&dir, policy)) else {
+        let Ok(writer) = ikari_core::user::create_private_dir_all(&dir)
+            .and_then(|()| Writer::open(&dir, policy))
+        else {
             return EngineLog::disabled();
         };
         let (tx, rx) = sync_channel(capacity);
@@ -469,7 +472,11 @@ fn format_line(out: &mut String, line: &LogLine) {
 }
 
 fn open_append(path: &Path) -> io::Result<(File, u64)> {
-    let file = OpenOptions::new().create(true).append(true).open(path)?;
+    let file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(ikari_core::user::PRIVATE_FILE_MODE)
+        .open(path)?;
     let size = file.metadata().map(|m| m.len()).unwrap_or(0);
     Ok((file, size))
 }
@@ -484,7 +491,10 @@ fn gzip(src: &Path) -> io::Result<()> {
     let partial = PathBuf::from(partial);
     let written = (|| {
         let mut input = File::open(src)?;
-        let mut encoder = GzEncoder::new(File::create(&partial)?, Compression::default());
+        let mut encoder = GzEncoder::new(
+            ikari_core::user::create_private_new(&partial)?,
+            Compression::default(),
+        );
         io::copy(&mut input, &mut encoder)?;
         encoder.finish()?;
         fs::rename(&partial, &gz)
@@ -590,6 +600,20 @@ mod tests {
             .read_to_string(&mut text)
             .unwrap();
         text
+    }
+
+    #[test]
+    fn log_dir_and_file_are_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = temp_dir("private");
+        let log = EngineLog::open(&dir);
+        log.record("convert", 1, "ready", None);
+        log.flush_for_test();
+        let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&dir.join(LOG_DIR_NAME)), 0o700);
+        assert_eq!(mode(&log_path(&dir)), 0o600);
+        drop(log);
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

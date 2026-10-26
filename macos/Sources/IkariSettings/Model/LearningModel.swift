@@ -213,6 +213,9 @@ final class LearningModel {
             }
             do {
                 try reply.content.write(to: destination, options: .atomic)
+                // 学習データには確定文字列が入るので、本人だけが読めるようにする
+                try FileManager.default.setAttributes(
+                    [.posixPermissions: 0o600], ofItemAtPath: destination.path)
             } catch {
                 message = "ファイルを書き込めませんでした"
                 return
