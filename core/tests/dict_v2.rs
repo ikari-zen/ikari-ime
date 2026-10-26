@@ -517,6 +517,25 @@ fn broken_vectors_files_never_panic() {
     }
 }
 
+/// 短い vectors.bin は Err になる（mmap の範囲外を読んで SIGBUS や panic にならない。Issue #41）。
+#[test]
+fn truncated_vectors_files_are_errors() {
+    let fx = Fixture::new();
+    let dict_id = fx.with_vectors(3);
+    let bytes = fs::read(fx.path().join(VECTORS_FILE_NAME)).unwrap();
+    let scratch = fx.path().join("truncated.bin");
+    assert!(open_vectors(&fx.path().join("nope.bin"), dict_id).is_err());
+    // 末尾の詰め物（アラインメント）は使わないので、使う長さ（meta の終わり）より短いものを調べる
+    let used = ikari_dict_format::parse_vectors_layout(&bytes)
+        .unwrap()
+        .meta
+        .end;
+    for len in 0..used {
+        fs::write(&scratch, &bytes[..len]).unwrap();
+        assert!(open_vectors(&scratch, dict_id).is_err(), "len {len}");
+    }
+}
+
 #[test]
 fn corrupt_v2_dictionary_headers_never_panic() {
     let fx = Fixture::new();
