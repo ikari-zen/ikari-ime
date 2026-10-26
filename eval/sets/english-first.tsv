@@ -1,0 +1,52 @@
+# english-first（ADR 0020 の下書き。B32）: 英字の表記が1位に来る型と、規則で守るもの。期待はユーザーの確認待ち（docs/tasks.md A2）
+# kind: 外来語 / 略語の語読み / ローマ字 / 結ばれない組 = 規則でカタカナを1位にする型。文字の名前 / 単位 / 語彙集 latin = 英字のまま（Q2 の回答で決まるものは注記に書いた）。守り = 規則で崩れてはいけない語
+# split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev。
+id	kind	tags	profile	context	reading	expected	note	split	source
+ef-hallucination-01	外来語				はるしねーしょん	ハルシネーション	ユーザーの報告（2026-10-15）。Core に Hallucination 5000、ハルシネーション 15000	dev	adr0020-draft
+ef-hallucination-02	外来語			LLMの	はるしねーしょんがおきる	ハルシネーションが起きる	文の中の1語	dev	adr0020-draft
+ef-hallucination-03	外来語			生成AIは	はるしねーしょんをおこす	ハルシネーションを起こす	文の中の1語	test	adr0020-draft
+ef-instagram-01	外来語				いんすたぐらむ	インスタグラム	Core	dev	adr0020-draft
+ef-google-01	外来語				ぐーぐる	グーグル	Core。英字の方が一般に多く書かれる語（Q4）	dev	adr0020-draft
+ef-google-02	外来語			それは	ぐーぐるでしらべた	グーグルで調べた	文の中	dev	adr0020-draft
+ef-twitter-01	外来語				ついったー	ツイッター	Core。英字の方が一般に多く書かれる語（Q4）	dev	adr0020-draft
+ef-netflix-01	外来語				ねっとふりっくす	ネットフリックス	Core	dev	adr0020-draft
+ef-iphone-01	外来語				あいふぉーん	アイフォーン	Core。英字の方が一般に多く書かれる語（Q4）	dev	adr0020-draft
+ef-tiktok-01	外来語				てぃっくとっく	ティックトック	small	test	adr0020-draft
+ef-adobe-01	外来語				あどび	アドビ	small	dev	adr0020-draft
+ef-glamping-01	外来語				ぐらんぴんぐ	グランピング	Core	dev	adr0020-draft
+ef-turing-01	外来語				ちゅーりんぐましん	チューリングマシン	Core。複数語の英字	dev	adr0020-draft
+ef-nasdaq-01	略語の語読み				なすだっく	ナスダック	単語として読む略語（ユーザー決定で対象）	dev	adr0020-draft
+ef-jica-01	略語の語読み				じゃいか	ジャイカ	単語として読む略語（ユーザー決定で対象）	dev	adr0020-draft
+ef-jal-01	略語の語読み				じゃる	ジャル	単語として読む略語（ユーザー決定で対象）	dev	adr0020-draft
+ef-nisa-01	略語の語読み				にーさ	ニーサ	単語として読む略語	dev	adr0020-draft
+ef-toeic-01	略語の語読み				とーいっく	トーイック	単語として読む略語	dev	adr0020-draft
+ef-unesco-01	略語の語読み				ゆねすこ	ユネスコ	単語として読む略語	dev	adr0020-draft
+ef-pos-01	略語の語読み				ぽす	ポス	単語として読む略語	dev	adr0020-draft
+ef-tako-01	ローマ字				たこ	タコ|蛸	ローマ字の日本語 TAKO。規則ではカタカナが1位（S-P では 蛸）。期待は確認が要る	dev	adr0020-draft
+ef-yoko-01	ローマ字				ようこ	ヨウコ|陽子	ローマ字の人名 YOKO。期待は確認が要る	dev	adr0020-draft
+ef-gmail-01	結ばれない組				じーめーる	ジーメール	正規化表記で結ばれない組（ユーザー決定で対象）	dev	adr0020-draft
+ef-chatgpt-01	結ばれない組				ちゃっとじーぴーてぃー	チャットジーピーティー	文字の名前を一部に含む。ユーザー決定で対象。期待は Q2 の回答で決まる	dev	adr0020-draft
+ef-sdgs-01	文字の名前を一部に含む				えすでぃーじーず	エスディージーズ|SDGs	期待は Q2 の回答で決まる	dev	adr0020-draft
+ef-cdrom-01	文字の名前を一部に含む				しーでぃーろむ	シーディーロム|CD-ROM	期待は Q2 の回答で決まる	dev	adr0020-draft
+ef-covid-01	数字を含む				こびっどじゅうきゅう	COVID-19|コビッドジュウキュウ	期待は Q2 の回答で決まる	dev	adr0020-draft
+ef-url-01	文字の名前				ゆーあーるえる	URL	文字の名前の読み。期待は Q2 の回答で決まる（推奨は英字のまま）	dev	adr0020-draft
+ef-abc-01	文字の名前				えーびーしー	ABC	文字の名前の読み。期待は Q2 の回答で決まる	test	adr0020-draft
+ef-pc-01	文字の名前				ぴーしー	PC	文字の名前の読み	test	adr0020-draft
+ef-ai-01	文字の名前				えーあい	AI	文字の名前の読み	dev	adr0020-draft
+ef-gdp-01	文字の名前				じーでぃーぴー	GDP	文字の名前の読み	test	adr0020-draft
+ef-kmh-01	単位				きろめーとるまいじ	km/h	単位（品詞 助数詞可能）。期待は Q2 の回答で決まる（推奨は英字のまま）	dev	adr0020-draft
+ef-ms-01	単位				めーとるまいびょう	m/s	単位	dev	adr0020-draft
+ef-mysql-01	語彙集 latin				まいえすきゅーえる	MySQL	語彙集の形 latin（英字だけを出すと決めた語）。規則の対象外	dev	adr0020-draft
+ef-aws-01	語彙集 latin				えーだぶりゅーえす	AWS	語彙集の形 latin	test	adr0020-draft
+ef-nginx-01	語彙集 latin				えんじんえっくす	nginx	語彙集の形 latin	dev	adr0020-draft
+ef-linux-01	語彙集 kana				りなっくす	リナックス	語彙集の形 kana（今もカタカナが1位）	dev	adr0020-draft
+ef-docker-01	語彙集 kana				どっかー	ドッカー	語彙集の形 kana	dev	adr0020-draft
+ef-linux-02	語彙集 kana			Kubernetesのクラスタで	りなっくすのせってい	リナックスの設定	英字の左文脈。LM が英字を1位に戻す型（ADR 0021 §2.3）	test	adr0020-draft
+ef-xray-01	混ざった表記				えっくすせん	エックス線|X線	混ざった表記。期待は Q3 の回答で決まる	test	adr0020-draft
+ef-tshirt-01	混ざった表記				てぃーしゃつ	ティーシャツ|Tシャツ	混ざった表記（今もカタカナが1位）	dev	adr0020-draft
+ef-wowow-01	略語の語読み			当初は	わうわうがせいさくにかたんする	ワウワウが制作に加担する|WOWOWが制作に加担する	AJIMEE の 2111 と同じ型。期待は確認が要る	dev	adr0020-draft
+ef-guard-excel-01	守り				えくせる	エクセル	今もカタカナが1位	dev	adr0020-draft
+ef-guard-python-01	守り				ぱいそん	パイソン	今もカタカナが1位（語彙集）	dev	adr0020-draft
+ef-guard-home-01	守り				ほーむ	ホーム	日常の語	dev	adr0020-draft
+ef-guard-business-01	守り				びじねす	ビジネス	日常の語	dev	adr0020-draft
+ef-guard-sonomama-01	守り				そのままひがしほうこうに	そのまま東方向に	日常の語（S 案の試作で崩れた型）	dev	adr0020-draft

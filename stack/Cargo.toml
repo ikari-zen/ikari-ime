@@ -1,0 +1,15 @@
+[package]
+name = "ikari-stack"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+# zenz（llama.cpp）を使う。cmake が必要（ADR 0002 §13.2）
+lm = ["dep:ikari-lm", "ikari-lm/llama"]
+lm-metal = ["lm", "ikari-lm/metal"]
+
+[dependencies]
+ikari-core.workspace = true
+ikari-lm = { workspace = true, optional = true }

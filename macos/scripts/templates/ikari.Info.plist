@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- ikari.app の Info.plist のテンプレート（ADR 0004 §6.1）。
+     版（CFBundleShortVersionString、CFBundleVersion）と IkariSigningMode は build.sh が PlistBuddy で埋める。
+     識別子は docs/phase2-contract.md §1 と揃える。
+     モード（ADR 0026 §5.1、§12）: 日本語は独自の辞書のキー、英語は macOS の標準のキー（com.apple.inputmethod.Roman。
+     英数キーの行き先がこのキーで決まる）。英語の tsInputModeDefaultStateKey は true にする（false だと一覧に出ない）。
+     表示名（InfoPlist.strings）は、TISInputSourceID ではなく、このモードの辞書のキーで引かれる。 -->
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>ja</string>
+    <key>CFBundleExecutable</key>
+    <string>ikari</string>
+    <key>CFBundleIdentifier</key>
+    <string>@IKARI_ID_PREFIX@.inputmethod.ikari</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>ikari</string>
+    <key>CFBundleDisplayName</key>
+    <string>ikari</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.0.0</string>
+    <key>CFBundleVersion</key>
+    <string>0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>26.0</string>
+    <key>LSBackgroundOnly</key>
+    <true/>
+    <key>NSHumanReadableCopyright</key>
+    <string>ikari</string>
+    <key>IkariSigningMode</key>
+    <string>team</string>
+
+    <key>InputMethodConnectionName</key>
+    <string>@IKARI_ID_PREFIX@.inputmethod.ikari_Connection</string>
+    <key>InputMethodServerControllerClass</key>
+    <string>IkariInputController</string>
+    <key>TISIntendedLanguage</key>
+    <string>ja</string>
+    <key>tsInputMethodCharacterRepertoireKey</key>
+    <array>
+        <string>Hira</string>
+        <string>Kana</string>
+        <string>Latn</string>
+    </array>
+    <key>tsInputMethodIconFileKey</key>
+    <string>ikari.pdf</string>
+    <key>tsInputMethodAlternateIconFileKey</key>
+    <string>ikari.pdf</string>
+
+    <key>ComponentInputModeDict</key>
+    <dict>
+        <key>tsInputModeListKey</key>
+        <dict>
+            <key>@IKARI_ID_PREFIX@.inputmethod.ikari.Japanese</key>
+            <dict>
+                <key>TISInputSourceID</key>
+                <string>@IKARI_ID_PREFIX@.inputmethod.ikari.Japanese</string>
+                <key>TISIntendedLanguage</key>
+                <string>ja</string>
+                <key>TISIconIsTemplate</key>
+                <true/>
+                <key>tsInputModeIsVisibleKey</key>
+                <true/>
+                <key>tsInputModeDefaultStateKey</key>
+                <true/>
+                <key>tsInputModePrimaryInScriptKey</key>
+                <true/>
+                <key>tsInputModeScriptKey</key>
+                <string>smJapanese</string>
+                <key>tsInputModeJISKeyboardShortcutKey</key>
+                <integer>1</integer>
+                <key>tsInputModeMenuIconFileKey</key>
+                <string>ikari-japanese.pdf</string>
+                <key>tsInputModePaletteIconFileKey</key>
+                <string>ikari-japanese.pdf</string>
+                <key>tsInputModeAlternateMenuIconFileKey</key>
+                <string>ikari-japanese.pdf</string>
+            </dict>
+            <key>com.apple.inputmethod.Roman</key>
+            <dict>
+                <key>TISInputSourceID</key>
+                <string>@IKARI_ID_PREFIX@.inputmethod.ikari.English</string>
+                <key>TISIntendedLanguage</key>
+                <string>en</string>
+                <key>TISIconIsTemplate</key>
+                <true/>
+                <key>tsInputModeIsVisibleKey</key>
+                <true/>
+                <key>tsInputModeDefaultStateKey</key>
+                <true/>
+                <key>tsInputModePrimaryInScriptKey</key>
+                <false/>
+                <key>tsInputModeScriptKey</key>
+                <string>smRoman</string>
+                <key>tsInputModeJISKeyboardShortcutKey</key>
+                <integer>3</integer>
+                <key>tsInputModeMenuIconFileKey</key>
+                <string>ikari-english.pdf</string>
+                <key>tsInputModePaletteIconFileKey</key>
+                <string>ikari-english.pdf</string>
+                <key>tsInputModeAlternateMenuIconFileKey</key>
+                <string>ikari-english.pdf</string>
+            </dict>
+        </dict>
+        <key>tsVisibleInputModeOrderedArrayKey</key>
+        <array>
+            <string>@IKARI_ID_PREFIX@.inputmethod.ikari.Japanese</string>
+            <string>com.apple.inputmethod.Roman</string>
+        </array>
+    </dict>
+</dict>
+</plist>

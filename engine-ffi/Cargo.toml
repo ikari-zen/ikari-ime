@@ -1,0 +1,19 @@
+[package]
+name = "ikari-engine-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[features]
+default = []
+# llama.cpp を含める。default-members の外に置く（ADR 0004 §3.1）
+lm = ["ikari-engine/lm"]
+lm-metal = ["lm", "ikari-engine/lm-metal"]
+
+[dependencies]
+ikari-engine.workspace = true
+ikari-proto.workspace = true
+prost.workspace = true

@@ -1,0 +1,75 @@
+# 新語（ネットスラング、最近の語）の入力（ADR 0012 の下書き。B20）。正解は一般的な表記。期待はユーザーの確認待ち（eval/sets/REVIEW.md の ADR 0012 の節）
+# kind: 新語 = SudachiDict Core にない語（Full にはある）、Core = Core に入っている最近の語、IT = IT の語（1位は読みのカタカナ。略語などは英字。B20-3、2026-10-14）、守り = 新語の辞書や語彙集で崩れてはいけない一般の語
+# split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev。調整は dev だけで行う。
+id	kind	tags	profile	context	reading	expected	note	split	source
+nw-numaru-01	新語	動詞,full			ぬまる	沼る	ユーザーの報告（2026-10-14）。Core にない。Full の notcore にある	dev	adr0012-draft
+nw-numaru-02	新語	動詞,full			ぬまった	沼った	沼る の連用形（促音便）+ た	dev	adr0012-draft
+nw-numaru-03	新語	動詞,full			ぬまってる	沼ってる	沼る + てる	dev	adr0012-draft
+nw-numaru-04	新語	動詞,full			ぬまりそう	沼りそう	沼る の連用形 + そう	dev	adr0012-draft
+nw-numaru-05	新語	動詞,full			ぬまらない	沼らない	沼る の未然形 + ない	dev	adr0012-draft
+nw-numaru-06	新語	動詞,full			しゅみにぬまる	趣味に沼る	名詞 + に + 沼る	dev	adr0012-draft
+nw-numaru-07	新語	動詞,full		このゲームに	ぬまった	沼った	文脈あり	test	adr0012-draft
+nw-mero-01	新語	形容詞,full			めろい	メロい	Core にない。Full にある	test	adr0012-draft
+nw-mero-02	新語	形容詞,full			めろかった	メロかった	メロい の連用形（促音便）+ た	dev	adr0012-draft
+nw-mero-03	新語	形容詞,full		あの笑顔は	めろい	メロい	文脈あり	dev	adr0012-draft
+nw-chiru-01	新語	形容詞,full			ちるい	チルい	Core にない。Full にある	dev	adr0012-draft
+nw-inkya-01	新語	名詞,full			いんきゃ	陰キャ	Core にない。Full にある	dev	adr0012-draft
+nw-youkya-01	新語	名詞,full			ようきゃ	陽キャ	Core にない。Full にある	dev	adr0012-draft
+nw-oyagacha-01	新語	名詞,full			おやがちゃ	親ガチャ	Core にない。Full にある（Core では 親が茶 が1位）	dev	adr0012-draft
+nw-kuroreki-01	新語	名詞,full			くろれきし	黒歴史	Full にある。Core でも分割で1位	dev	adr0012-draft
+nw-oshihen-01	新語	名詞,full			おしへん	推し変	Full にある	test	adr0012-draft
+nw-doutan-01	新語	名詞,full			どうたん	同担	Full にある。同担拒否 の 同担	dev	adr0012-draft
+nw-wanchan-01	新語	名詞,full			わんちゃん	ワンチャン|ワンちゃん	Full にある（ワンチャンス の略）。犬の ワンちゃん も自然なので別解	dev	adr0012-draft
+nw-pien-01	新語	感動詞,full			ぴえん	ぴえん	Full にある（感動詞）。Core では ぴ円 が1位	test	adr0012-draft
+nw-emoi-01	Core	形容詞,core			えもい	エモい	Core にある（コスト 10000）	dev	adr0012-draft
+nw-emoi-02	Core	形容詞,core			えもかった	エモかった	エモい の連用形 + た	dev	adr0012-draft
+nw-bazuru-01	Core	動詞,core			ばずった	バズった	Core にある	dev	adr0012-draft
+nw-guguru-01	Core	動詞,core			ぐぐって	ググって	small にある	dev	adr0012-draft
+nw-disuru-01	Core	動詞,core			でぃすられた	ディスられた	small にある	dev	adr0012-draft
+nw-baeru-01	Core	動詞,core			ばえる	映える	small にある（読み バエル）	dev	adr0012-draft
+nw-oshikatsu-01	Core	名詞,core			おしかつ	推し活	Core にある（コスト 17000）	dev	adr0012-draft
+nw-kaeruka-01	Core	名詞,core			かえるかげんしょう	蛙化現象	Core にある	dev	adr0012-draft
+nw-taipa-01	Core	名詞,core			たいぱ	タイパ	Core にある	dev	adr0012-draft
+nw-cospa-01	Core	名詞,core			こすぱ	コスパ	Core にある	dev	adr0012-draft
+nw-subsc-01	Core	名詞,core			さぶすく	サブスク	Core にある	dev	adr0012-draft
+nw-yamiochi-01	Core	名詞,core			やみおち	闇落ち	Core にある	dev	adr0012-draft
+nw-seiseiai-01	Core	名詞,core			せいせいえーあい	生成AI|生成エーアイ	Core にある	dev	adr0012-draft
+nw-gakuchika-01	Core	名詞,core			がくちか	ガクチカ	Core にある	test	adr0012-draft
+nw-lookism-01	Core	名詞,core			るっきずむ	ルッキズム	Core にある	dev	adr0012-draft
+nw-reskill-01	Core	名詞,core			りすきりんぐ	リスキリング	Core にある	dev	adr0012-draft
+nw-jidori-01	Core	名詞,core			じどり	自撮り	Core にある。地鶏 も自然なので確認	test	adr0012-draft
+nw-guard-01	守り	名詞,guard			ぬま	沼	新語の辞書で一般の語が崩れないこと	dev	adr0012-draft
+nw-guard-02	守り	名詞,guard			めろん	メロン	同上	dev	adr0012-draft
+nw-guard-03	守り	名詞,guard			いんき	陰気	同上	dev	adr0012-draft
+nw-guard-04	守り	名詞,guard			ようき	容器|陽気	同上。どちらも自然	dev	adr0012-draft
+nw-guard-05	守り	動詞,guard			かえる	帰る|変える	同上	dev	adr0012-draft
+nw-guard-06	守り	名詞,guard		地場産業の	しんこう	振興	Full で文脈の 地場産業 が1語の固有名詞になり、話題の手がかりが消えた（ext-shinkou-3-05 と同じ）	dev	adr0012-draft
+nw-guard-07	守り	名詞,guard		少年マンガの	しゅうかん	週刊	Full で文脈の 少年マンガ が1語の固有名詞になった（ext-shuukan-3-01 と同じ）	test	adr0012-draft
+nw-guard-08	守り	名詞,guard		コインロッカーに	こうか	硬貨	Full で文脈の コインロッカー が固有名詞になった（ext-kouka-3-07 と同じ）	dev	adr0012-draft
+it-k8s-01	IT	IT,英字			くばねてぃす	クバネティス	ユーザーの要望（2026-10-14）。どの辞書にもない（Sudachi Full、jawiki、nico-pixiv、Mozc UT）。Wikipedia の冒頭には クバネティス/クバネテス/クーべネティス。B20-3（2026-10-14）: 1位は読みのカタカナ、2位に Kubernetes（2位は語彙集の検査で確かめる。ADR 0012 §4.3）	test	adr0012-draft
+it-k8s-02	IT	IT,英字			くばねてぃすのくらすたー	クバネティスのクラスター	文の中。B20-3（2026-10-14）: 1位は読みのカタカナ、2位に Kubernetesのクラスター（2位は語彙集の検査で確かめる。ADR 0012 §4.3）	dev	adr0012-draft
+it-linux-01	IT	IT,英字			りなっくす	リナックス	ユーザーの要望。Core にある（コスト 2800、ascii_other +3000）。今は リナックス が1位。B20-3（2026-10-14）: 1位は読みのカタカナ、2位に Linux（2位は語彙集の検査で確かめる。ADR 0012 §4.3）	test	adr0012-draft
+it-linux-02	IT	IT,英字			りなっくすのかーねる	リナックスのカーネル	文の中。今は リナックスのカーネル が1位。B20-3（2026-10-14）: 1位は読みのカタカナ、2位に Linuxのカーネル（2位は語彙集の検査で確かめる。ADR 0012 §4.3）	dev	adr0012-draft
+it-liferay-01	IT	IT,英字			らいふれい	ライフレイ	ユーザーの要望。Full の notcore にある（固有名詞）。今は ライフ礼。B20-3（2026-10-14）: 1位は読みのカタカナ、2位に Liferay（2位は語彙集の検査で確かめる。ADR 0012 §4.3）	dev	adr0012-draft
+it-github-01	IT	IT,英字			ぎっとはぶ	ギットハブ	Full の notcore にある（固有名詞）。今は 斬っとハブ。B20-3（2026-10-14）: 1位は読みのカタカナ、2位に GitHub（2位は語彙集の検査で確かめる。ADR 0012 §4.3）	dev	adr0012-draft
+it-gitlab-01	IT	IT,英字			ぎっとらぶ	ギットラブ	Sudachi にない。jawiki にある。B20-3（2026-10-14）: 1位は読みのカタカナ、2位に GitLab（2位は語彙集の検査で確かめる。ADR 0012 §4.3）	test	adr0012-draft
+it-git-01	IT	IT,英字			ぎっと	ギット	Full に git（ギット、小文字）。small の GIT は読みが ジーアイティー。B20-3（2026-10-14）: 1位は読みのカタカナ、2位に Git（2位は語彙集の検査で確かめる。ADR 0012 §4.3）	dev	adr0012-draft
+it-docker-01	IT	IT,英字			どっかー	ドッカー	Core にある。今も1位。B20-3（2026-10-14）: 1位は読みのカタカナ、2位に Docker（2位は語彙集の検査で確かめる。ADR 0012 §4.3）	dev	adr0012-draft
+it-docker-02	IT	IT,英字			どっかーのいめーじ	ドッカーのイメージ	文の中。B20-3（2026-10-14）: 1位は読みのカタカナ、2位に Dockerのイメージ（2位は語彙集の検査で確かめる。ADR 0012 §4.3）	dev	adr0012-draft
+it-python-01	IT	IT,英字			ぱいそん	パイソン	Core にある。今は パイソン が1位。B20-3（2026-10-14）: 1位は読みのカタカナ、2位に Python（2位は語彙集の検査で確かめる。ADR 0012 §4.3）	dev	adr0012-draft
+it-js-01	IT	IT,英字			じゃばすくりぷと	ジャバスクリプト	Full の notcore にある。B20-3（2026-10-14）: 1位は読みのカタカナ、2位に JavaScript（2位は語彙集の検査で確かめる。ADR 0012 §4.3）	dev	adr0012-draft
+it-ts-01	IT	IT,英字			たいぷすくりぷと	タイプスクリプト	Full の notcore にある。B20-3（2026-10-14）: 1位は読みのカタカナ、2位に TypeScript（2位は語彙集の検査で確かめる。ADR 0012 §4.3）	dev	adr0012-draft
+it-mysql-01	IT	IT,英字			まいえすきゅーえる	マイエスキューエル	Full の notcore にある。B20-3: 文字の名前を読みに含むので英字だけ（B32 でカタカナ1位に改めた。ADR 0020 §13）	test	adr0012-draft
+it-ubuntu-01	IT	IT,英字			うぶんとぅ	ウブントゥ	Core にある。B20-3（2026-10-14）: 1位は読みのカタカナ、2位に Ubuntu（2位は語彙集の検査で確かめる。ADR 0012 §4.3）	dev	adr0012-draft
+it-slack-01	IT	IT,英字			すらっく	スラック	Core にある。一般語の スラック（たるみ）もあるので別解。B20-3（2026-10-14）: 1位は読みのカタカナ、2位に Slack（2位は語彙集の検査で確かめる。ADR 0012 §4.3）	dev	adr0012-draft
+it-json-01	IT	IT,英字			じぇいそん	ジェイソン	Full の notcore にある。人名の ジェイソン と競合。確認。B20-3（2026-10-14）: 1位は読みのカタカナ、2位に JSON（2位は語彙集の検査で確かめる。ADR 0012 §4.3）	test	adr0012-draft
+it-yaml-01	IT	IT,英字			やむる	ヤムル	Full の notcore にある。jawiki は読みを やめる にしている（誤り）。B20-3（2026-10-14）: 1位は読みのカタカナ、2位に YAML（2位は語彙集の検査で確かめる。ADR 0012 §4.3）	test	adr0012-draft
+it-kotlin-01	IT	IT,英字			ことりん	コトリン	Full の notcore にある。B20-3（2026-10-14）: 1位は読みのカタカナ、2位に Kotlin（2位は語彙集の検査で確かめる。ADR 0012 §4.3）	dev	adr0012-draft
+it-terraform-01	IT	IT,英字			てらふぉーむ	テラフォーム	Sudachi にない。Wikidata の別名に テラフォーム。一般語の テラフォーミング と違う。B20-3（2026-10-14）: 1位は読みのカタカナ、2位に Terraform（2位は語彙集の検査で確かめる。ADR 0012 §4.3）	dev	adr0012-draft
+it-ansible-01	IT	IT,英字			あんしぶる	アンシブル	Sudachi にない。jawiki にある。B20-3（2026-10-14）: 1位は読みのカタカナ、2位に Ansible（2位は語彙集の検査で確かめる。ADR 0012 §4.3）	dev	adr0012-draft
+it-grafana-01	IT	IT,英字			ぐらふぁな	グラファナ	Sudachi にない。jawiki にある。B20-3（2026-10-14）: 1位は読みのカタカナ、2位に Grafana（2位は語彙集の検査で確かめる。ADR 0012 §4.3）	dev	adr0012-draft
+it-jenkins-01	IT	IT,英字			じぇんきんす	ジェンキンス	Core にある（人名の扱い）。B20-3（2026-10-14）: 1位は読みのカタカナ、2位に Jenkins（2位は語彙集の検査で確かめる。ADR 0012 §4.3）	dev	adr0012-draft
+it-nginx-01	IT	IT,英字			えんじんえっくす	エンジンエックス	Full の notcore にある（小文字。ascii_lower +10000）。B20-3: 文字の名前を読みに含むので英字だけ（B32 でカタカナ1位に改めた。ADR 0020 §13）	dev	adr0012-draft
+it-guard-01	守り	IT,guard			りなっくす	リナックス	パックを入れても、一般のカタカナの語が1位のまま（B20-3）	test	adr0012-draft
+it-guard-02	守り	IT,guard			びじねす	ビジネス	英字を一律に上げると Business（small にある）が勝つ。英字を上げる範囲を IT の語に限る理由	dev	adr0012-draft
+it-guard-03	守り	IT,guard			ほーむらん	ホームラン	同上（Core に home run がある）	dev	adr0012-draft

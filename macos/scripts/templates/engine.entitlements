@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- エンジンの entitlement（ADR 0004 §8.2、§15.1-7）。
+     App Sandbox を有効にし、ネットワーク（com.apple.security.network.*）は付けない。
+     ファイルは ~/Library/Application Support/ikari-ime/ の読み書きだけを一時例外で許す。
+     build.sh は署名のあとに、app-sandbox があり network.* がないことを検査する。 -->
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <key>com.apple.security.temporary-exception.files.home-relative-path.read-write</key>
+    <array>
+        <string>/Library/Application Support/ikari-ime/</string>
+    </array>
+</dict>
+</plist>

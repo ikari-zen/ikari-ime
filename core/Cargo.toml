@@ -1,0 +1,16 @@
+[package]
+name = "ikari-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+ikari-dict-format.workspace = true
+ikari-input.workspace = true
+fst.workspace = true
+memmap2.workspace = true
+jiff.workspace = true
+
+[dev-dependencies]
+ikari-dict-builder.workspace = true
+tempfile.workspace = true

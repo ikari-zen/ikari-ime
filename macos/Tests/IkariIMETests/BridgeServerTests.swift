@@ -1,0 +1,331 @@
+// IkariIME の BridgeServer と SettingsStore の試験（ADR 0005 §6.3、§7）。
+// 実際の Unix ソケットで、設定アプリ役のクライアントをつなぐ。署名の確認は `peerValidator` で差し替える以外は本物
+// （`realPeerCheckSeesThisProcess` は本物の `LOCAL_PEERTOKEN` と SecCode を使う）。
+//
+// このディレクトリは Package.swift にテストターゲットが宣言されて初めて動く（契約ファイルなのでレーン S3 は変えない）:
+//   .testTarget(name: "IkariIMETests", dependencies: ["IkariIME", "IkariBridge", "IkariProto", "IkariShellCore", "IkariXPC"])
+// IkariIME の定義 IKARI_HAS_BRIDGE と、IkariIME の IkariBridge・IkariProto への依存も要る。
+import Darwin
+import Foundation
+import Security
+import IkariBridge
+import IkariProto
+import IkariShellCore
+import IkariXPC
+import Testing
+
+@testable import IkariIME
+
+private final class StubEngine: EngineClient, @unchecked Sendable {
+    let lock = NSLock()
+    var relayed: [Data] = []
+    func hello(shellVersion: String, timeout: Duration) throws -> EngineHello { EngineHello(engineVersion: "t", dictLabel: "t", lm: .ready) }
+    func beginSession(_ session: SessionInfo) {}
+    func endSession(sessionID: UInt64) {}
+    func prefetch(_ request: ConversionRequest) {}
+    func convert(_ request: ConversionRequest, timeout: Duration) throws -> ConversionPage { throw EngineClientError.unavailable }
+    func page(conversionID: UInt64, index: Int, timeout: Duration) throws -> ConversionPage { throw EngineClientError.unavailable }
+    func commit(conversionID: UInt64, candidateIndex: Int) {}
+    func commitText(sessionID: UInt64, reading: String, surface: String) {}
+    func cancel(conversionID: UInt64) {}
+    func segmentPage(conversionID: UInt64, layoutRev: UInt32, segment: Int, index: Int, left: [SegmentChoiceValue], timeout: Duration) throws -> SegmentPage { throw EngineClientError.unavailable }
+    func resize(conversionID: UInt64, layoutRev: UInt32, segment: Int, delta: Int, left: [SegmentChoiceValue], timeout: Duration) throws -> SegmentLayoutInfo { throw EngineClientError.unavailable }
+    func commitSegments(conversionID: UInt64, layoutRev: UInt32, choices: [SegmentChoiceValue]) {}
+    func reconvert(_ request: ReconvertRequest, timeout: Duration) throws -> SegmentLayoutInfo { throw EngineClientError.unavailable }
+    func shutdown(reason: EngineShutdownReason) {}
+    func relay(_ request: Data, timeout: Duration) throws -> Data {
+        lock.withLock { relayed.append(request) }
+        var reply = Ikari_Engine_V1_Envelope()
+        var profile = Ikari_Engine_V1_ProfileReply()
+        var d = Ikari_Engine_V1_ProfileDomainState()
+        d.id = "it"
+        d.name = "IT"
+        d.weight = .profileWeightOften
+        profile.domains = [d]
+        reply.profileReply = profile
+        return try reply.serializedData()
+    }
+}
+
+private func connectClient(_ path: String) throws -> FileDescriptorTransport {
+    let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+    var address = sockaddr_un()
+    address.sun_family = sa_family_t(AF_UNIX)
+    let bytes = Array(path.utf8CString)
+    withUnsafeMutableBytes(of: &address.sun_path) { raw in
+        for (i, b) in bytes.enumerated() { raw[i] = UInt8(bitPattern: b) }
+    }
+    let rc = withUnsafePointer(to: &address) {
+        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+    }
+    guard rc == 0 else { throw BridgeTransportError.io(errno) }
+    return FileDescriptorTransport(descriptor: fd)
+}
+
+/// 返事を待つ上限。閉じられたときは待たずに戻るので、長くしても遅くならない（負荷が高くても落ちないように）
+private let replyTimeoutSeconds: Double = 15
+
+private func recv(_ t: FileDescriptorTransport, seconds: Double = replyTimeoutSeconds) -> Frame? {
+    let sem = DispatchSemaphore(value: 0)
+    nonisolated(unsafe) var result: Frame?
+    Thread { result = try? t.receive(); sem.signal() }.start()
+    if sem.wait(timeout: .now() + seconds) == .timedOut { t.close(); return nil }
+    return result
+}
+
+private func helloFrame(version: UInt32 = 1) -> Frame {
+    var hello = Ikari_Bridge_V1_BridgeHello()
+    hello.bridgeVersion = version
+    hello.appVersion = "t"
+    var f = Frame()
+    f.requestID = 1
+    f.hello = hello
+    return f
+}
+
+private struct Rig {
+    let dir: URL
+    let store: SettingsStore
+    let engine = StubEngine()
+    let server: BridgeServer
+    var settingsFile: URL { dir.appendingPathComponent("settings.tsv") }
+
+    init(validator: (@Sendable (Int32) -> Bool)? = { _ in true }, initial: String = "# note\nengine.lm\ton\n") throws {
+        dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("ikari-bridge-\(UUID().uuidString.prefix(6))")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try initial.write(to: dir.appendingPathComponent("settings.tsv"), atomically: true, encoding: .utf8)
+        store = SettingsStore(fileURL: dir.appendingPathComponent("settings.tsv"), loadKeymap: { _ in Keymap() })
+        server = BridgeServer(
+            directory: dir, store: store, engine: engine, signing: .adhoc, shellVersion: "t", peerValidator: validator)
+        #expect(server.start())
+        let server = server
+        store.onChange = { _, _ in server.notifySettingsChanged() }
+    }
+}
+
+@Suite(.serialized) struct BridgeServerTests {
+    @Test func permissionsAndHandshake() throws {
+        let rig = try Rig()
+        defer { rig.server.stop() }
+        let runDir = rig.dir.appendingPathComponent("run").path
+        let dirMode = try FileManager.default.attributesOfItem(atPath: runDir)[.posixPermissions] as? Int
+        let sockMode = try FileManager.default.attributesOfItem(atPath: rig.server.socketPath)[.posixPermissions] as? Int
+        #expect(dirMode == 0o700)
+        #expect(sockMode == 0o600)
+
+        let c = try connectClient(rig.server.socketPath)
+        try c.send(helloFrame())
+        let reply = try #require(recv(c))
+        guard case .helloReply(let r)? = reply.body else { Issue.record("no hello reply"); return }
+        #expect(r.bridgeVersion == 1 && r.shellVersion == "t")
+        c.close()
+    }
+
+    @Test func versionMismatchIsRefusedAndClosed() throws {
+        let rig = try Rig()
+        defer { rig.server.stop() }
+        let c = try connectClient(rig.server.socketPath)
+        try c.send(helloFrame(version: 99))
+        let reply = try #require(recv(c))
+        guard case .error(let e)? = reply.body else { Issue.record("no error"); return }
+        #expect(e.code == .versionMismatch)
+        #expect(recv(c) == nil)  // 閉じられた
+    }
+
+    @Test func settingsGetAndUpdateKeepComments() throws {
+        let rig = try Rig()
+        defer { rig.server.stop() }
+        let c = try connectClient(rig.server.socketPath)
+        try c.send(helloFrame()); _ = recv(c)
+
+        var get = Frame(); get.requestID = 7; get.getSettings = Ikari_Bridge_V1_GetSettings()
+        try c.send(get)
+        let snap = try #require(recv(c))
+        #expect(snap.requestID == 7)
+        guard case .settings(let s)? = snap.body else { Issue.record("no snapshot"); return }
+        #expect(s.effective.contains { $0.key == "paging.size" && $0.value == "3" })
+
+        var update = Ikari_Bridge_V1_UpdateSettings()
+        var e = Ikari_Bridge_V1_SettingEntry(); e.key = "paging.size"; e.value = "4"
+        update.set = [e]
+        var f = Frame(); f.requestID = 8; f.updateSettings = update
+        try c.send(f)
+        // 返事と settings_changed の通知が来る（順は問わない）
+        var gotSnapshot = false, gotEvent = false
+        for _ in 0..<2 {
+            let frame = try #require(recv(c))
+            switch frame.body {
+            case .settings(let s2)?:
+                gotSnapshot = frame.requestID == 8 && s2.effective.contains { $0.key == "paging.size" && $0.value == "4" }
+            case .event(let ev)?:
+                if case .settingsChanged? = ev.kind { gotEvent = true }
+            default: break
+            }
+        }
+        #expect(gotSnapshot && gotEvent)
+        let text = try String(contentsOf: rig.settingsFile, encoding: .utf8)
+        #expect(text == "# note\nengine.lm\ton\npaging.size\t4\n")
+        c.close()
+    }
+
+    @Test func invalidSettingIsRejectedWithTheKeyOnlyAndNothingIsWritten() throws {
+        let rig = try Rig()
+        defer { rig.server.stop() }
+        let c = try connectClient(rig.server.socketPath)
+        try c.send(helloFrame()); _ = recv(c)
+        var update = Ikari_Bridge_V1_UpdateSettings()
+        var e = Ikari_Bridge_V1_SettingEntry(); e.key = "paging.size"; e.value = "99"
+        update.set = [e]
+        var f = Frame(); f.requestID = 9; f.updateSettings = update
+        try c.send(f)
+        let reply = try #require(recv(c))
+        guard case .error(let err)? = reply.body else { Issue.record("no error"); return }
+        #expect(err.code == .invalidSetting && err.key == "paging.size")
+        #expect(try String(contentsOf: rig.settingsFile, encoding: .utf8) == "# note\nengine.lm\ton\n")
+        c.close()
+    }
+
+    @Test func engineRelayAllowsAdminAndRefusesCommit() throws {
+        let rig = try Rig()
+        defer { rig.server.stop() }
+        let c = try connectClient(rig.server.socketPath)
+        try c.send(helloFrame()); _ = recv(c)
+
+        var env = Ikari_Engine_V1_Envelope(); env.schemaVersion = 1; env.getProfile = Ikari_Engine_V1_ProfileGet()
+        var f = Frame(); f.requestID = 21; f.engine = env
+        try c.send(f)
+        let reply = try #require(recv(c))
+        #expect(reply.requestID == 21)
+        guard case .engine(let out)? = reply.body, case .profileReply(let p)? = out.body else { Issue.record("no relay reply"); return }
+        #expect(p.domains.first?.id == "it")
+
+        var bad = Ikari_Engine_V1_Envelope(); bad.schemaVersion = 1
+        var commit = Ikari_Engine_V1_Commit(); commit.conversionID = 1; bad.commit = commit
+        var g = Frame(); g.requestID = 22; g.engine = bad
+        try c.send(g)
+        let refused = try #require(recv(c))
+        guard case .error(let e)? = refused.body else { Issue.record("no error"); return }
+        #expect(e.code == .notAllowed && refused.requestID == 22)
+        #expect(rig.engine.relayed.count == 1)  // Commit は流れていない
+        c.close()
+    }
+
+    @Test func secondConnectionIsRejectedWhileOneIsActive() throws {
+        let rig = try Rig()
+        defer { rig.server.stop() }
+        let first = try connectClient(rig.server.socketPath)
+        try first.send(helloFrame()); _ = recv(first)
+        let second = try connectClient(rig.server.socketPath)
+        try? second.send(helloFrame())
+        #expect(recv(second) == nil)
+        // 最初の接続は生きている
+        var get = Frame(); get.requestID = 3; get.getSettings = Ikari_Bridge_V1_GetSettings()
+        try first.send(get)
+        #expect(recv(first) != nil)
+        first.close()
+    }
+
+    @Test func aRejectedPeerIsClosedBeforeAnyFrame() throws {
+        let rig = try Rig(validator: { _ in false })
+        defer { rig.server.stop() }
+        let c = try connectClient(rig.server.socketPath)
+        try? c.send(helloFrame())
+        #expect(recv(c) == nil)
+    }
+
+    @Test func reconnectsAfterTheClientLeaves() throws {
+        let rig = try Rig()
+        defer { rig.server.stop() }
+        let a = try connectClient(rig.server.socketPath)
+        try a.send(helloFrame()); _ = recv(a)
+        a.close()
+        // サーバーが前の接続を片づけるまでは断られる。固定の時間は待たず、つながるまで繰り返す
+        var reply: Frame?
+        let deadline = Date().addingTimeInterval(replyTimeoutSeconds)
+        while reply == nil && Date() < deadline {
+            let b = try connectClient(rig.server.socketPath)
+            try? b.send(helloFrame())
+            reply = recv(b, seconds: 2)
+            b.close()
+            if reply == nil { Thread.sleep(forTimeInterval: 0.05) }
+        }
+        #expect(reply != nil)
+    }
+
+    @Test func openTabEventReachesTheConnectedApp() throws {
+        let rig = try Rig()
+        defer { rig.server.stop() }
+        #expect(!rig.server.sendOpenTab(.userDictionary))  // つながっていない
+        let c = try connectClient(rig.server.socketPath)
+        try c.send(helloFrame()); _ = recv(c)
+        // サーバーは hello の返事を送ってから「準備できた」にするので、その直後は false になりうる。つながるまで繰り返す
+        var sent = false
+        let deadline = Date().addingTimeInterval(replyTimeoutSeconds)
+        while !sent && Date() < deadline {
+            sent = rig.server.sendOpenTab(.userDictionary)
+            if !sent { Thread.sleep(forTimeInterval: 0.01) }
+        }
+        #expect(sent)
+        let frame = try #require(recv(c))
+        guard case .event(let ev)? = frame.body, case .openTab(let t)? = ev.kind else { Issue.record("no event"); return }
+        #expect(t.tab == "dictionary")
+        c.close()
+    }
+
+    @Test func handEditIsNoticedByReloadAndNotifiesTheApp() throws {
+        let rig = try Rig()
+        defer { rig.server.stop() }
+        let seen = LockedBox<Bool>(false)
+        rig.store.onChange = { old, new in seen.set(new.pageSize == 4 && old.pageSize == 3) }
+        try "paging.size\t4\n".write(to: rig.settingsFile, atomically: true, encoding: .utf8)
+        rig.store.reloadIfFileChanged()
+        #expect(seen.get())
+        #expect(rig.store.snapshot.version == 1)
+        rig.store.reloadIfFileChanged()
+        #expect(rig.store.snapshot.version == 1)  // 変わっていなければ読み直さない
+    }
+
+    @Test func realPeerCheckSeesThisProcess() throws {
+        // 本物の接続（listen / connect / accept）の accept 側の記述子で確かめる
+        let path = NSTemporaryDirectory() + "pc-\(UUID().uuidString.prefix(6)).sock"
+        let listener = socket(AF_UNIX, SOCK_STREAM, 0)
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        let bytes = Array(path.utf8CString)
+        withUnsafeMutableBytes(of: &address.sun_path) { raw in for (i, b) in bytes.enumerated() { raw[i] = UInt8(bitPattern: b) } }
+        _ = withUnsafePointer(to: &address) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(listener, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) } }
+        listen(listener, 1)
+        defer { close(listener); unlink(path) }
+        let client = try connectClient(path)
+        defer { client.close() }
+        let accepted = accept(listener, nil, nil)
+        #expect(accepted >= 0)
+        defer { close(accepted) }
+
+        var token = audit_token_t()
+        var length = socklen_t(MemoryLayout<audit_token_t>.size)
+        let rc = getsockopt(accepted, 0, 0x006, &token, &length)
+        #expect(rc == 0)
+        var code: SecCode?
+        let attrs = [kSecGuestAttributeAudit: withUnsafeBytes(of: &token) { Data($0) }] as CFDictionary
+        #expect(SecCodeCopyGuestWithAttributes(nil, attrs, SecCSFlags(), &code) == errSecSuccess)
+        var staticCode: SecStaticCode?
+        if let code { SecCodeCopyStaticCode(code, SecCSFlags(), &staticCode) }
+        var info: CFDictionary?
+        if let staticCode { SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &info) }
+
+        let id = (info as? [String: Any])?["identifier"] as? String ?? "none"
+        #expect(BridgeServer.peerSatisfies(requirement: "identifier \"\(id)\"", descriptor: accepted))
+        #expect(!BridgeServer.peerSatisfies(requirement: "identifier \"io.github.ikari-zen.inputmethod.ikari.settings\"", descriptor: accepted))
+        #expect(!BridgeServer.peerSatisfies(requirement: SigningRequirements.settingsApp(mode: .team), descriptor: accepted))
+        #expect(!BridgeServer.peerSatisfies(requirement: SigningRequirements.settingsApp(mode: .adhoc), descriptor: accepted))
+    }
+}
+
+final class LockedBox<T: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: T
+    init(_ v: T) { value = v }
+    func set(_ v: T) { lock.withLock { value = v } }
+    func get() -> T { lock.withLock { value } }
+}

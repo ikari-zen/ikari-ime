@@ -1,0 +1,32 @@
+// 設定アプリ（IkariSettings.app）と殻の間のメッセージ（ADR 0005 §6.3。契約）。
+// Swift だけが使う（Rust は生成しない。proto/build.rs の対象外）。
+// 変更したら macos/scripts/gen-proto.sh を流して bridge.pb.swift の差分をコミットする。
+// 輸送: Unix ドメインソケット。枠は 4 バイト（ビッグエンディアン）の長さ + この Frame（docs/phase2-contract.md §5）。
+syntax = "proto3";
+package ikari.bridge.v1;
+
+import "ikari/engine/v1/engine.proto";
+
+message Frame {
+  uint64 request_id = 1;                 // 設定アプリが付ける。殻からの通知は 0
+  oneof body {
+    BridgeHello hello = 10;               BridgeHelloReply hello_reply = 11;
+    GetSettings get_settings = 12;        SettingsSnapshot settings = 13;
+    UpdateSettings update_settings = 14;  // 返事は SettingsSnapshot（反映後）
+    ikari.engine.v1.Envelope engine = 20; // 管理の要求と返事。殻はそのままエンジンへ流し、返事もそのまま返す
+    Event event = 30;                     // 殻 → 設定アプリ
+    BridgeError error = 31;
+  }
+}
+message BridgeHello { uint32 bridge_version = 1; string app_version = 2; }   // bridge_version = 1
+message BridgeHelloReply { uint32 bridge_version = 1; string shell_version = 2; }
+message GetSettings {}
+message SettingEntry { string key = 1; string value = 2; }       // docs/phase2-contract.md §3 のキーと値
+message SettingsSnapshot { repeated SettingEntry effective = 1; } // すべての既知のキーの、今効いている値
+message UpdateSettings { repeated SettingEntry set = 1; repeated string reset = 2; }   // reset = その行を消して既定に戻す
+message Event { oneof kind { SettingsChanged settings_changed = 1; OpenTab open_tab = 2; } }
+message SettingsChanged {}                                        // メニューや手の編集で変わった。設定アプリは取り直す
+message OpenTab { string tab = 1; }                               // IkariShellCore.SettingsTab の rawValue
+message BridgeError { BridgeErrorCode code = 1; string key = 2; }  // key は不正だった設定のキー名だけ
+enum BridgeErrorCode { BRIDGE_ERROR_UNSPECIFIED = 0; VERSION_MISMATCH = 1; INVALID_SETTING = 2; NOT_ALLOWED = 3;
+                       ENGINE_UNAVAILABLE = 4; TOO_LARGE = 5; WRITE_FAILED = 6; }

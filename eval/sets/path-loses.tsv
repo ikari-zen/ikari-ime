@@ -1,0 +1,47 @@
+# 経路が負ける型（看守役、異常気象、設計仕様変更、推し活。#250）と、その直し方（ADR 0035 の規則 F・F2・H）で崩れうる守りの例。
+# 種別: 単独（読みだけ）、文脈（左文脈つき）、否定（今の 1 位を守る行）。tags の F / F2 / H は、どの規則で直す（守る）見込みかの印。LM は LM なしでは直らない見込みの行（ADR 0035 §2.4）。
+# 正は #250 の 4 件（看守役、異常気象、設計仕様変更、推し活）と、その兄弟、規則 F の対象から 10 件。否定は ADR 0035 §3.1 の型（サ変の名詞の方が意図、以上 の文）と、
+# 掃引で見つけた型（規則 F の熟語 + 1 字が 3 字の熟語に勝つ: 名誉理事 + 町。規則 H の W の chiVe の頻度が、長い語の一部として数えられて高くなっていると推測される: 紫外 と 市街）。
+# 正の「規則 F の対象」10 件と、掃引で見つけた型の否定は、掃引の結果（ADR 0035 の掃引の最初の点）から選んだ（選び方に偏りがある。改善と悪化の例であって、比率を表さない）。
+# 期待はユーザーの確認待ち（eval/sets/REVIEW.md の「ADR 0035」の節。#250）。特に 単独の きしょう（気象／起床）。確認を待たずに掃引の基準にする（ADR 0035 §6）。
+# split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev。調整は dev だけで行う。
+id	kind	tags	profile	context	reading	expected	note	split	source
+pl-kanshuyaku-s	単独	path-loses,H,LM			がくせいをかんしゅやく	学生を看守役	fh-kanshu-s と同じ読み。看守役 は 1 語でなく 看守 + 役。辞書では 看守薬 と差がつかない（ADR 0035 §2.4）。LM の pool に入れるのが目標	dev	issue250
+pl-kanshuyaku-c	文脈	path-loses,H,LM		刑務所実験の	がくせいをかんしゅやく	学生を看守役	ユーザーの報告（刑務所実験の の文脈でも 看取役 になる）	dev	issue250
+pl-kanshuyaku	単独	path-loses,H,LM			かんしゅやく	看守役	読みだけ	dev	issue250
+pl-kanshu	単独	path-loses,H			かんしゅ	看守	看守（chiVe 45724 位）と 看取（117971 位）。どちらも Sudachi の既定のコスト	dev	issue250
+pl-kanshu-c	文脈	path-loses,H		刑務所で働く	かんしゅ	看守	左文脈に 刑務所	test	issue250
+pl-kishou	単独	path-loses,H			きしょう	気象	気象（7340 位）と 起床（11400 位）。単独の第一候補をどちらにするかは要確認	dev	issue250
+pl-ijoukishou	単独	path-loses,F			いじょうきしょう	異常気象	seg-stretch-34 と同じ読み。異常気象 は辞書に 1 語（chiVe になし）。部品 異常・気象 はよく使う語（規則 F）	dev	issue250
+pl-ijoukishou-c	文脈	path-loses,F		今年の夏は記録的な猛暑で、	いじょうきしょう	異常気象	天気の文脈	test	issue250
+pl-ijoukishou-ga	単独	path-loses,F			いじょうきしょうがつづく	異常気象が続く	助詞が続く形	dev	issue250
+pl-shiyouhenkou	単独	path-loses,F			しようへんこう	仕様変更	仕様変更 は辞書に 1 語（chiVe になし）。部品 仕様・変更	dev	issue250
+pl-sekkei-shiyouhenkou	単独	path-loses,F			せっけいしようへんこう	設計仕様変更	ss-g-133 と同じ読み	dev	issue250
+pl-oshikatsu	単独	path-loses,F2			おしかつ	推し活	nw-oshikatsu-01 と同じ読み。推し活 は chiVe 66627 位。仮名を含むので今の frequent_compound に当たらない（規則 F2）	dev	issue250
+pl-oshikatsu-ni	単独	path-loses,F2			おしかつにはげむ	推し活に励む	助詞が続く形	dev	issue250
+pl-f-jikoshoukai	単独	path-loses,F			じこしょうかい	自己紹介	規則 F の対象（部品 自己・紹介）	dev	adr0035-f
+pl-f-kikaihonyaku	単独	path-loses,F			きかいほんやく	機械翻訳	規則 F の対象（部品 機械・翻訳）	dev	adr0035-f
+pl-f-sekaitaisen	単独	path-loses,F			せかいたいせん	世界大戦	規則 F の対象（部品 世界・大戦）	dev	adr0035-f
+pl-f-houdoukikan	単独	path-loses,F			ほうどうきかん	報道機関	規則 F の対象（部品 報道・機関）	dev	adr0035-f
+pl-f-iryouhoukai	単独	path-loses,F			いりょうほうかい	医療崩壊	規則 F の対象（部品 医療・崩壊）	test	adr0035-f
+pl-f-naizoushibou	単独	path-loses,F			ないぞうしぼう	内臓脂肪	規則 F の対象（部品 内臓・脂肪）	test	adr0035-f
+pl-f-genkouyoushi	単独	path-loses,F			げんこうようし	原稿用紙	規則 F の対象（部品 原稿・用紙）	dev	adr0035-f
+pl-f-shiboudouki	単独	path-loses,F			しぼうどうき	志望動機	規則 F の対象（部品 志望・動機）	dev	adr0035-f
+pl-f-kichoukouen	単独	path-loses,F			きちょうこうえん	基調講演	規則 F の対象（部品 基調・講演）	dev	adr0035-f
+pl-f-fuseikoui	単独	path-loses,F			ふせいこうい	不正行為	規則 F の対象（部品 不正・行為）	dev	adr0035-f
+pl-n-kishoujikan	否定	path-loses,H,guard			きしょうじかん	起床時間	守る。規則 H で 気象 が 起床 の経路に入り込まないか	dev	adr0035-guard
+pl-n-asa-kishou	否定	path-loses,H,guard			あさろくじにきしょう	朝6時に起床|朝六時に起床	守る。名詞で終わる形	dev	adr0035-guard
+pl-n-kishousuru	否定	path-loses,H,guard			きしょうする	起床する	守る（規則 S と連接）	dev	adr0035-guard
+pl-n-gojikishoushita	否定	path-loses,H,guard			ごじにきしょうした	5時に起床した|五時に起床した	守る	dev	adr0035-guard
+pl-n-kanshusuru	否定	path-loses,H,guard			かんしゅする	看取する	守る（看取 は サ変可能。看守する は規則 S で下がる）	test	adr0035-guard
+pl-n-ijoudesu	否定	path-loses,H,guard			いじょうです	以上です	守る。以上 は動かさない（すでに安い）	dev	adr0035-guard
+pl-n-sanninijou	否定	path-loses,H,guard			さんにんいじょう	3人以上|三人以上	守る	dev	adr0035-guard
+pl-n-meiyorijichou	否定	path-loses,F,guard			めいよりじちょう	名誉理事長	守る。規則 F の 熟語 + 1 字（名誉理事 + 町）が 理事長 に勝たないか	dev	adr0035-guard
+pl-n-kokyakumanzokudo	否定	path-loses,F,guard			こきゃくまんぞくど	顧客満足度	守る。顧客満足 + ℃ にならないか	dev	adr0035-guard
+pl-n-houmonkangoshi	否定	path-loses,F,guard			ほうもんかんごし	訪問看護師	守る。訪問看護 + し にならないか	dev	adr0035-guard
+pl-n-hogosekininsha	否定	path-loses,F,guard			ほごせきにんしゃ	保護責任者	守る。保護責任 + 車 にならないか	dev	adr0035-guard
+pl-n-futsuuyuubinkyoku	否定	path-loses,F,guard			ふつうゆうびんきょく	普通郵便局	守る。普通郵便 + 曲 にならないか	test	adr0035-guard
+pl-n-tanjikanroudou	否定	path-loses,F,guard			たんじかんろうどう	短時間労働	守る。端時間 にならないか	test	adr0035-guard
+pl-n-shigai	否定	path-loses,H,guard			しがい	市街	守る。規則 H の W（紫外。chiVe での頻度が高い。紫外線 の一部として数えられたためと推測）が 市街 に勝たないか（掃引で見つけた型）	dev	adr0035-guard
+pl-n-senpuu	否定	path-loses,H,guard			せんぷう	旋風	守る。扇風（chiVe での頻度が高い。扇風機 の一部と推測）が 旋風 に勝たないか（掃引で見つけた型）	test	adr0035-guard
+pl-n-muki	否定	path-loses,H,guard			むき	向き	守る。無機 が 向き（同音語の比較に入らない、仮名を含む表記）に勝たないか（掃引で見つけた型）	dev	adr0035-guard

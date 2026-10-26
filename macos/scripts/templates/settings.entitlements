@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- 設定アプリの entitlement（ADR 0005 §6.2、§11.2-7）。
+     App Sandbox に入れない（殻の Unix ソケットにつなぐため。network.client を足すより通信するコードを持たない方が NFR-17 に合う）。
+     Hardened Runtime は codesign の options に runtime を指定して付ける。ここに書く権限はない（キーなし）。
+     build.sh は署名のあとに、network.* がないことを検査する。 -->
+<plist version="1.0">
+<dict>
+</dict>
+</plist>

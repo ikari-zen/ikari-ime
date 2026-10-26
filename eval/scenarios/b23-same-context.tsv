@@ -1,0 +1,17 @@
+# b23-same-context（ADR 0013。下書き）: 同じ文脈で何度も選んだ表記が、選ぶほど1位から落ちることがないこと。
+# 今の main（LM あり）では、ゲームを + はじめてしった で 始めて知った を 3 回選ぶと、初めて知った に戻る。
+# 原因は 2 つ（ADR 0013 §0.6）: 学習の加点の上限（6000）で 始めて知った の加点が切られる一方、共有する語「知った」の
+# word の加点は 初めて知った にも付く。LearningGuard が「文脈によらない部分」を上限で切る前の値で数える。
+# 実行: ikari-eval --ranker full --scenario eval/scenarios/b23-same-context.tsv [--lm <gguf>]
+step	context	reading	surface	expect
+commit	ゲームを	はじめてしった	始めて知った	
+probe	ゲームを	はじめてしった	始めて知った	top1
+commit	ゲームを	はじめてしった	始めて知った	
+probe	ゲームを	はじめてしった	始めて知った	top1
+commit	ゲームを	はじめてしった	始めて知った	
+probe	ゲームを	はじめてしった	始めて知った	top1
+commit	ゲームを	はじめてしった	始めて知った	
+probe	ゲームを	はじめてしった	始めて知った	top1
+commit	ゲームを	はじめてしった	始めて知った	
+probe	ゲームを	はじめてしった	始めて知った	top1
+probe	その話は	はじめてしった	初めて知った	top1

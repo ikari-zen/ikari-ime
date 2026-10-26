@@ -1,0 +1,38 @@
+[workspace]
+resolver = "2"
+members = [
+    "core", "cli", "dict-builder", "dict-format", "eval", "import", "lm",
+    "input", "stack", "proto", "engine", "engine-ffi", "shell-ffi",
+]
+# default-members は置かない（refactor-plan-2026-10 §9 P4）。lm と engine-ffi も feature を付けなければ
+# llama.cpp をビルドしないので、`cargo test` が両 crate の単体テストを飛ばさない。
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+fst = "0.4.7"
+memmap2 = "0.9"
+clap = { version = "4.6", features = ["derive"] }
+tempfile = "3"
+jiff = "0.2"
+# gzip（既定の miniz_oxide。純 Rust）。engine.log の回した世代に使う（ADR 0034 §3.2）
+flate2 = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+llama-cpp-2 = "0.1.159"
+prost = "0.14"
+prost-build = "0.14"
+protox = "0.10"
+
+ikari-dict-format = { path = "dict-format" }
+ikari-core = { path = "core" }
+ikari-dict-builder = { path = "dict-builder" }
+ikari-import = { path = "import" }
+ikari-lm = { path = "lm" }
+ikari-input = { path = "input" }
+ikari-stack = { path = "stack" }
+ikari-proto = { path = "proto" }
+ikari-engine = { path = "engine" }

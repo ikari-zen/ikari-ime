@@ -1,0 +1,5 @@
+/* Input source display names (ADR 0005 s3.3, ADR 0026 s5.1). macOS looks them up by the mode dictionary key (ComponentInputModeDict), not by TISInputSourceID. */
+"CFBundleName" = "ikari";
+"CFBundleDisplayName" = "ikari";
+"@IKARI_ID_PREFIX@.inputmethod.ikari.Japanese" = "ikari";
+"com.apple.inputmethod.Roman" = "ikari (English)";

@@ -1,0 +1,9 @@
+#!/bin/sh
+# main への直接 push を禁止する（CLAUDE.md「ブランチと PR」）。main への反映は GitHub の PR で行う
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [ "$remote_ref" = "refs/heads/main" ]; then
+    echo "error: main への直接 push は禁止です。ブランチを push して PR を作ってください" >&2
+    exit 1
+  fi
+done
+exit 0

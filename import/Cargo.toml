@@ -1,0 +1,14 @@
+[package]
+name = "ikari-import"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+ikari-core.workspace = true
+ikari-dict-format.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

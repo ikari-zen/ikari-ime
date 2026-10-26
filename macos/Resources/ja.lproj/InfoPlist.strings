@@ -1,0 +1,5 @@
+/* 入力ソースの表示名（ADR 0005 §3.3、ADR 0026 §5.1）。macOS は TISInputSourceID ではなく、モードの辞書のキー（ComponentInputModeDict）で引く。 */
+"CFBundleName" = "ikari";
+"CFBundleDisplayName" = "ikari";
+"@IKARI_ID_PREFIX@.inputmethod.ikari.Japanese" = "ikari";
+"com.apple.inputmethod.Roman" = "ikari (English)";

@@ -1,0 +1,20 @@
+# a-03: 学習が現在の文脈を覆さない（フェーズ2 Q、spec の基本原則）。
+# 技術文書で「品詞」を何度も選んでも、戦闘の文脈では「瀕死」が1位のまま。
+# 技術文書の文脈では「品詞」が1位になる（学習は効いている）。
+# 実行: ikari-eval --ranker full --scenario eval/scenarios/a-03.tsv
+step	context	reading	surface	expect
+probe	敵の攻撃を受けて兵士は	ひんし	瀕死	top1
+commit	ユーザー辞書に単語を登録するときは	ひんし	品詞
+commit	ユーザー辞書に単語を登録するときは	ひんし	品詞
+commit	ユーザー辞書に単語を登録するときは	ひんし	品詞
+commit	辞書登録の画面で、表記と読みと	ひんし	品詞
+commit	辞書登録の画面で、表記と読みと	ひんし	品詞
+commit	英語の授業で、単語の	ひんし	品詞
+commit	英語の授業で、単語の	ひんし	品詞
+commit	変換候補に出ない単語の	ひんし	品詞
+commit	変換候補に出ない単語の	ひんし	品詞
+commit	変換候補に出ない単語の	ひんし	品詞
+probe	敵の攻撃を受けて兵士は	ひんし	瀕死	top1
+probe	戦闘で体力が減り、仲間は	ひんし	瀕死	top1
+probe	ボスが	ひんし	瀕死	top1
+probe	ユーザー辞書に単語を登録するときは	ひんし	品詞	top1

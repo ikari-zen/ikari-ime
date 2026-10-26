@@ -1,0 +1,7 @@
+#!/bin/sh
+# main への直接コミットを禁止する（CLAUDE.md「ブランチと PR」）。ブランチを切って PR で反映すること
+branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null)
+if [ "$branch" = "main" ]; then
+  echo "error: main への直接コミットは禁止です。ブランチを切ってください（例: git switch -c fix/xxx）" >&2
+  exit 1
+fi

@@ -1,0 +1,40 @@
+# 形式名詞の漢字の加点（formal_kanji_bonus）が熟語の区切りに漏れる誤りと、守る側の句の評価セット（B24。ADR 0017）。下書き: 期待はユーザーの確認待ち（eval/sets/REVIEW.md の ADR 0017 の節。docs/tasks.md A2-15）
+# leak: 読みの頭を 物・時・訳・癖 で切り出す誤り（直したい側）、guard: 実質名詞＋助詞などで今のまま正しいもの（崩してはいけない側）
+# split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev。調整は dev だけで行う。
+id	kind	tags	profile	context	reading	expected	note	split	source
+fns-leak-01	もの切り出し	leak			ものごと	物事	P でも 1位は ものごと（ひらがなの1語が安い）。表記の選択は範囲外（ADR 0017 §5-1、学習に任せる）。基準は 物後と。確認	dev	adr0017-draft
+fns-leak-02	もの切り出し	leak			ものほし	物干し	基準は 物星	test	adr0017-draft
+fns-leak-03	もの切り出し	leak			ものごし	物腰	基準は 物御市	dev	adr0017-draft
+fns-leak-04	もの切り出し	leak			ものみ	物見	基準は 物味	dev	adr0017-draft
+fns-leak-05	もの切り出し	leak			くせもの	曲者	基準は 癖物（癖と物に加点。上限 6000）。確認（曲者｜くせ者）	test	adr0017-draft
+fns-leak-06	もの切り出し	leak			ものいい	物言い	基準は 物善い	dev	adr0017-draft
+fns-leak-07	もの切り出し	leak			もののけ	物の怪|もののけ	基準は 物の毛	dev	adr0017-draft
+fns-leak-08	もの切り出し	leak			のみもの	飲み物	基準は のみ物	test	adr0017-draft
+fns-leak-09	もの切り出し	leak			ものわかれ	物別れ	基準は 物分かれ。確認（物分かれ も自然）	dev	adr0017-draft
+fns-leak-10	もの切り出し	leak			ものあんじ	物案じ	基準は 物暗示	test	adr0017-draft
+fns-leak-11	もの切り出し	leak			ものがしら	物頭	P でも 物が知ら（次が助詞）。ADR 0017 §4.3。まれな語。確認	dev	adr0017-draft
+fns-leak-12	とき・わけ・くせ切り出し	leak			ときたまご	溶き卵	基準は 時卵	dev	adr0017-draft
+fns-leak-13	とき・わけ・くせ切り出し	leak			くせじ	癖字	基準は 癖寺	dev	adr0017-draft
+fns-leak-14	とき・わけ・くせ切り出し	leak			とききかせる	説き聞かせる	基準は 時聞かせる。表記は 説ききかせる でも自然（聞かせる の漢字は確認）	dev	adr0017-draft
+fns-leak-15	とき・わけ・くせ切り出し	leak			ときふせる	説き伏せる	基準は 時伏せる	test	adr0017-draft
+fns-leak-16	とき・わけ・くせ切り出し	leak			わけあう	分け合う	基準は 訳会う	dev	adr0017-draft
+fns-leak-17	とき・わけ・くせ切り出し	leak			わけあたえる	分け与える	基準は 訳与える	dev	adr0017-draft
+fns-leak-18	とき・わけ・くせ切り出し	leak			わけまえ	分け前	基準・P とも 訳前（訳 の次が名詞でも、1語 分け前 より経路が安い。ADR 0017 の範囲外の残り）。確認	dev	adr0017-draft
+fns-leak-19	とき・わけ・くせ切り出し	leak			ときはなつ	解き放つ	P でも 時は夏（次が助詞）。ADR 0017 §4.3	dev	adr0017-draft
+fns-leak-20	ひらがな側（B31）	leak		大きな	ものおき	物置	ひらがな側の formal_bonus の漏れ（連体修飾のあとの もの に 4000）。基準・P とも 1位は もの置き（もの に 4000、物置 は5位）。B31 で直した（ひらがなの加点は、次が名詞・動詞・形容詞・接頭辞なら付けない）。確認	dev	adr0017-draft
+fns-guard-01	実質名詞+助詞（守る側）	guard			ものがたりない	物が足りない	hira-kan-15 と同じ。加点が区切りをまたぐことに頼る	dev	adr0017-draft
+fns-guard-02	実質名詞+助詞（守る側）	guard			ときがたつ	時が経つ	hira-kan-12 と同じ	test	adr0017-draft
+fns-guard-03	実質名詞+助詞（守る側）	guard			ものをおく	物を置く		dev	adr0017-draft
+fns-guard-04	実質名詞+助詞（守る側）	guard			ときをわすれる	時を忘れる		dev	adr0017-draft
+fns-guard-05	実質名詞+助詞（守る側）	guard			わけをきく	訳を聞く	訳を聞く（わけをきく）。理由を聞く意味では 訳を聞く。確認	test	adr0017-draft
+fns-guard-06	実質名詞+助詞（守る側）	guard			くせになる	癖になる		dev	adr0017-draft
+fns-guard-07	実質名詞+助詞（守る側）	guard			ものはためし	物は試し		dev	adr0017-draft
+fns-guard-08	実質名詞+助詞（守る側）	guard			ときのながれ	時の流れ	「の」は助詞に含めない。同じ形の組の中でも今と同じ1位	test	adr0017-draft
+fns-guard-09	実質名詞+助詞（守る側）	guard			ところかわれば	所変われば|ところ変われば	現状は ところ変われば。確認	dev	adr0017-draft
+fns-guard-10	実質名詞+助詞（守る側）	guard			わけがない	訳がない|わけがない	形式名詞の用法ならひらがな。文脈なしの既定は確認	dev	adr0017-draft
+fns-guard-11	実質名詞+助詞（守る側）	guard			くせがある	癖がある		dev	adr0017-draft
+fns-guard-12	実質名詞+助詞（守る側）	guard			ときがきた	時が来た		test	adr0017-draft
+fns-guard-13	熟語・接頭辞（守る側）	guard			ものたりない	物足りない	物 は接頭辞。次が動詞なので組の中だけ	dev	adr0017-draft
+fns-guard-14	熟語・接頭辞（守る側）	guard			かいものにいく	買い物に行く		dev	adr0017-draft
+fns-guard-15	熟語・接頭辞（守る側）	guard			ものがたり	物語		dev	adr0017-draft
+fns-guard-16	熟語・接頭辞（守る側）	guard			ものごころ	物心		dev	adr0017-draft

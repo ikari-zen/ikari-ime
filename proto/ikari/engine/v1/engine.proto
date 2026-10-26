@@ -1,0 +1,143 @@
+// エンジンと殻の間のメッセージ（ADR 0004 §5.2。契約）。
+// 変更したら macos/scripts/gen-proto.sh を流して engine.pb.swift の差分をコミットする。
+syntax = "proto3";
+package ikari.engine.v1;
+
+message Envelope {
+  uint32 schema_version = 1;     // = 1。不一致なら ErrorReply{code: SCHEMA_MISMATCH}
+  uint64 request_id = 2;         // 殻が付ける。返事にそのまま入れる
+  oneof body {
+    Hello hello = 10;               HelloReply hello_reply = 11;
+    BeginSession begin_session = 12; Ack ack = 13;
+    EndSession end_session = 14;
+    Prefetch prefetch = 15;          // 返事は Ack（すぐ返す）
+    Convert convert = 16;            ConvertReply convert_reply = 17;
+    PageRequest page = 18;           ConvertReply page_reply = 19;
+    Commit commit = 20;              // 返事は Ack
+    CommitText commit_text = 21;     // 変換せずに確定した文字列（確定履歴のため）。返事は Ack
+    Cancel cancel = 22;
+    Shutdown shutdown = 23;          // 版の不一致、設定の変更のときに殻が送る。エンジンは保存して exit
+
+    // ---- 文節の編集と再変換（ADR 0006 §5.2。追加だけなので schema_version は 1 のまま）----
+    SegmentPageRequest segment_page = 24;  SegmentPageReply segment_page_reply = 25;
+    ResizeSegment resize_segment = 26;     SegmentLayout segment_layout = 27;   // ResizeSegment と Reconvert の返事
+    CommitSegments commit_segments = 28;   // 返事は Ack
+    Reconvert reconvert = 29;              // 返事は SegmentLayout
+    // 30 は ErrorReply
+
+    ErrorReply error = 30;
+
+    // ---- 絵文字のショートコード（ADR 0027 §9.2。追加だけなので schema_version は 1 のまま）----
+    EmojiTableRequest emoji_table = 31;    EmojiTableReply emoji_table_reply = 32;
+
+    // ---- 診断ログ（ADR 0034 §2.2。追加だけなので schema_version は 1 のまま）----
+    DiagEvent diag = 33;                   // 殻 → エンジン。返事は Ack（殻は待たない）。secure のセッションでは送らない
+
+    // ---- 管理（ADR 0005 §8）。殻（メニュー）と、殻が中継する設定アプリだけが送る ----
+    UserDictList list_user_dict = 40;      UserDictListReply user_dict_list_reply = 41;
+    UserDictAdd add_user_dict = 42;        // 返事は UserDictListReply（変更後の一覧）
+    UserDictRemove remove_user_dict = 43;  // 同上
+    LearningStatus learning_status = 44;   LearningStatusReply learning_status_reply = 45;
+    LearningReset reset_learning = 46;     // 返事は LearningStatusReply（リセット後）
+    ExportData export_data = 47;           ExportReply export_reply = 48;
+    ImportData import_data = 49;           ImportReply import_reply = 50;
+    ProfileGet get_profile = 51;           ProfileReply profile_reply = 52;
+    ProfileSet set_profile = 53;           // 返事は ProfileReply（変更後）
+  }
+}
+
+message EngineConfig { string data_dir = 1; bool enable_lm = 2; uint32 idle_unload_secs = 3; }  // FFI の open に渡す
+message Hello { string shell_version = 1; }
+message HelloReply { string engine_version = 1; string dict_label = 2; LmState lm = 3; }
+enum LmState { LM_STATE_UNSPECIFIED = 0; LM_DISABLED = 1; LM_LOADING = 2; LM_READY = 3; LM_FAILED = 4; }
+// share_context: このクライアントが「最近の確定」をほかのアプリと貸し借りしてよいか（ADR 0015 D5、D6）。
+// 除外するアプリ（パスワード管理、ターミナルなど）は false。省略（false）は「貸し借りしない」で、今までの挙動と同じ。
+// 殻は、除外でないアプリでは true を送る。判定は殻の中だけで行い、エンジンは Bundle ID を保存しない。
+message BeginSession { uint64 session_id = 1; string client_bundle_id = 2; bool secure = 3; bool share_context = 4; }
+message EndSession { uint64 session_id = 1; }
+message SurroundingText { string left = 1; string right = 2; bool available = 3; }   // 末尾 2000 文字に切る（殻）
+message Prefetch { uint64 session_id = 1; string reading = 2; SurroundingText context = 3; uint64 context_rev = 4; }
+message Convert  { uint64 session_id = 1; string reading = 2; SurroundingText context = 3; uint64 context_rev = 4; uint32 page_size = 5; }
+message PageRequest { uint64 conversion_id = 1; uint32 index = 2; }
+message Candidate { string surface = 1; string annotation = 2; CandidateKind kind = 3; }
+enum CandidateKind { CANDIDATE_KIND_UNSPECIFIED = 0; DICTIONARY = 1; HIRAGANA = 2; KATAKANA = 3; REWRITER = 4;
+                     LITERAL = 5; }   // LITERAL = 再変換で読めなかった部分（元の表記だけ。ADR 0006 §9.3）
+message ConvertReply { uint64 conversion_id = 1; uint32 page_index = 2; repeated Candidate candidates = 3; bool has_next = 4;
+                       bool lm_applied = 5; uint32 engine_micros = 6;
+                       SegmentLayout layout = 7; }   // 新しいエンジンは Convert の返事に常に入れる（focused = 0）。ない（古いエンジン）なら殻は1文節として扱う
+message Commit { uint64 conversion_id = 1; uint32 candidate_index = 2; }   // 生成済みの列の中の位置（ページをまたいだ通し番号）
+message CommitText { uint64 session_id = 1; string reading = 2; string surface = 3; }
+message Cancel { uint64 conversion_id = 1; }
+message Ack {}
+message Shutdown { ShutdownReason reason = 1; }   // reason を省略（UNSPECIFIED）したときの挙動は、今までの Shutdown と同じ
+enum ShutdownReason { SHUTDOWN_REASON_UNSPECIFIED = 0; VERSION_MISMATCH = 1; SETTINGS_CHANGED = 2; }
+message ErrorReply { ErrorCode code = 1; string message = 2; }   // message にユーザーの文字列を入れない
+enum ErrorCode { ERROR_CODE_UNSPECIFIED = 0; SCHEMA_MISMATCH = 1; BAD_REQUEST = 2; UNKNOWN_SESSION = 3; UNKNOWN_CONVERSION = 4;
+                 ENGINE_NOT_READY = 5; INTERNAL = 6;
+                 STALE_LAYOUT = 7; }   // layout_rev が古い（ADR 0006 §5.2）
+
+// ---- 文節の編集と再変換（ADR 0006 §5.2、§16.1）----
+// 上限（超えたら BAD_REQUEST）: SegmentChoice の数は読みの文字数（256）まで、literal は 256 文字まで、Reconvert.surface は 64 文字まで。
+// ログには読みと表記を書かない（NFR-19）。
+// 2文節以上のときの数字キーは、殻がフォーカス中の文節の選択を変えるだけで、エンジンへは何も送らない（確定は Enter = CommitSegments）。
+
+message SegmentInfo { string reading = 1; string surface = 2; }   // surface = その文節の候補の 0 番（いま表示している表記）
+message SegmentLayout { uint64 conversion_id = 1; uint32 layout_rev = 2; repeated SegmentInfo segments = 3;
+                        uint32 focused = 4; SegmentPageReply focused_page = 5; uint32 engine_micros = 6; }
+message SegmentChoice { uint32 candidate_index = 1; string literal = 2; }   // literal が空でなければ殻が作った表記（字種変換。学習しない）
+message SegmentPageRequest { uint64 conversion_id = 1; uint32 layout_rev = 2; uint32 segment = 3; uint32 index = 4;
+                             repeated SegmentChoice left = 5; }   // left = 0〜segment-1 の選択。初めて作るときだけ使う
+message SegmentPageReply { uint32 segment = 1; uint32 page_index = 2; repeated Candidate candidates = 3; bool has_next = 4;
+                           bool lm_applied = 5; uint32 engine_micros = 6; }
+message ResizeSegment { uint64 conversion_id = 1; uint32 layout_rev = 2; uint32 segment = 3; sint32 delta = 4;
+                        repeated SegmentChoice left = 5; }
+message CommitSegments { uint64 conversion_id = 1; uint32 layout_rev = 2; repeated SegmentChoice choices = 3; }
+message Reconvert { uint64 session_id = 1; string surface = 2; SurroundingText context = 3; uint32 page_size = 4; }
+
+// ---- 管理のメッセージ（ADR 0005 §8.2）----
+// 文字列の扱い: ErrorReply.message にはユーザーの文字列を入れない。DataIssue.detail と UserDictListReply には利用者自身の
+// データが入る（画面に出すため）。エンジンのログにも殻のログにも書かない（ログは種類、所要時間、DataIssueKind だけ）。
+
+message UserDictEntry { string reading = 1; string surface = 2; string pos = 3; string comment = 4; }
+message PosOption { string name = 1; bool needs_conj_type = 2; }       // 同梱の user_pos.tsv の簡略品詞
+message UserDictList {}
+message UserDictListReply { repeated UserDictEntry entries = 1; repeated PosOption pos_options = 2;
+                            repeated string verb_conj_types = 3; DataIssue issue = 4; }   // issue は追加・削除の失敗
+message UserDictAdd { UserDictEntry entry = 1; }                          // 読みはエンジンが正規化する
+message UserDictRemove { string reading = 1; string surface = 2; }
+
+enum LearningLayer { LEARNING_LAYER_UNSPECIFIED = 0; LEARNING_LAYER_USAGE = 1; LEARNING_LAYER_INITIAL = 2; LEARNING_LAYER_ALL = 3; }
+message LearningStatus {}
+message LearningStatusReply { uint32 usage_rows = 1; uint32 initial_rows = 2; uint32 max_rows = 3; string backup_file = 4; }
+message LearningReset { LearningLayer layer = 1; }
+
+message DataCounts { uint32 profile_domains = 1; uint32 user_dict_entries = 2; uint32 learning_rows = 3; uint32 ingest_sources = 4; }
+message ExportData {}
+message ExportReply { bytes content = 1; uint32 schema = 2; DataCounts counts = 3; }
+message ImportData { bytes content = 1; bool dry_run = 2; }                // dry_run = 検証して件数を返すだけ
+message ImportReply { bool applied = 1; DataCounts counts = 2; DataIssue issue = 3; string backup_file = 4; }
+enum DataIssueKind { DATA_ISSUE_NONE = 0; NOT_IKARI_EXPORT = 1; SCHEMA_UNSUPPORTED = 2; PARSE = 3; INVALID_ENTRY = 4;
+                     NOT_FOUND = 5; TOO_LARGE = 6; IO = 7; }
+message DataIssue { DataIssueKind kind = 1; string section = 2; uint32 line = 3; uint32 found_schema = 4;
+                    uint32 supported_schema = 5; string detail = 6; }
+
+enum ProfileWeightKind { PROFILE_WEIGHT_UNSPECIFIED = 0; PROFILE_WEIGHT_OFF = 1; PROFILE_WEIGHT_SOMETIMES = 2; PROFILE_WEIGHT_OFTEN = 3; }
+message ProfileDomainState { string id = 1; string name = 2; ProfileWeightKind weight = 3; }
+message ProfileGet {}
+message ProfileReply { repeated ProfileDomainState domains = 1; }   // 同梱のプリセットすべて（OFF を含む）
+message ProfileSet { repeated ProfileDomainState domains = 1; }     // 全体を置き換える。OFF は書かない
+
+// ---- 絵文字のショートコード（ADR 0027 §9.2）----
+message EmojiTableRequest {}   // 殻がセッションの開始時と、データの版が変わったときに頼む（非同期）
+message EmojiEntry { string name = 1; string emoji = 2; }
+message EmojiTableReply { repeated EmojiEntry entries = 1; string data_label = 2; }   // 名前の昇順。データがなければ空
+
+// ---- 診断ログ（ADR 0034 §2.2、§4.2）。値は数と固定の語だけ。許可リストは engine/src/diag_schema.rs ----
+message DiagEvent {
+  uint64 session_id = 1;
+  string kind = 2;                 // 許可リストの kind（sh_episode など）
+  repeated DiagNum nums = 3;       // 数の値
+  repeated DiagTag tags = 4;       // 固定の語の値
+}
+message DiagNum { string key = 1; sint64 value = 2; }
+message DiagTag { string key = 1; string value = 2; }

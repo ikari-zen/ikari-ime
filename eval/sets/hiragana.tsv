@@ -1,0 +1,143 @@
+# ひらがな／漢字の表記の評価セット（LLM 生成。公用文作成の考え方（文化庁、2022）の書き表し方による）
+# split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev。調整は dev だけで行う。
+id	kind	tags	profile	context	reading	expected	note	split	source
+hira-aux-01	表記	llm,ひらがな		確認して	ください	ください	公用文: 補助動詞はひらがな	dev	llm-v1
+hira-aux-02	表記	llm,ひらがな		こちらを見て	ください	ください	公用文: 補助動詞はひらがな	dev	llm-v1
+hira-aux-03	表記	llm,ひらがな		少し待って	ください	ください	公用文: 補助動詞はひらがな	dev	llm-v1
+hira-aux-04	表記	llm,ひらがな		よく読んで	ください	ください	公用文: 補助動詞はひらがな	dev	llm-v1
+hira-aux-05	表記	llm,ひらがな		資料を送って	いただく	いただく	公用文: 補助動詞はひらがな	dev	llm-v1
+hira-aux-06	表記	llm,ひらがな		確認して	いただき	いただき	公用文: 補助動詞はひらがな	dev	llm-v1
+hira-aux-07	表記	llm,ひらがな		お待ちになって	いただけます	いただけます	公用文: 補助動詞はひらがな	test	llm-v1
+hira-aux-08	表記	llm,ひらがな		一度試して	みる	みる	公用文: 補助動詞はひらがな	dev	llm-v1
+hira-aux-09	表記	llm,ひらがな		実際に使って	みた	みた	公用文: 補助動詞はひらがな	dev	llm-v1
+hira-aux-10	表記	llm,ひらがな		読んで	みよう	みよう	公用文: 補助動詞はひらがな	test	llm-v1
+hira-aux-11	表記	llm,ひらがな		話して	みたい	みたい	公用文: 補助動詞はひらがな	dev	llm-v1
+hira-aux-12	表記	llm,ひらがな		先に準備して	おく	おく	公用文: 補助動詞はひらがな	dev	llm-v1
+hira-aux-13	表記	llm,ひらがな		メモを取って	おいた	おいた	公用文: 補助動詞はひらがな	dev	llm-v1
+hira-aux-14	表記	llm,ひらがな		確認して	おきます	おきます	公用文: 補助動詞はひらがな	dev	llm-v1
+hira-aux-15	表記	llm,ひらがな		全部食べて	しまう	しまう	公用文: 補助動詞はひらがな	dev	llm-v1
+hira-aux-16	表記	llm,ひらがな		うっかり忘れて	しまった	しまった	公用文: 補助動詞はひらがな	dev	llm-v1
+hira-aux-17	表記	llm,ひらがな		だんだん暗くなって	きた	きた	公用文: 補助動詞はひらがな	test	llm-v1
+hira-aux-18	表記	llm,ひらがな		歩いて	いく	いく	公用文: 補助動詞はひらがな	dev	llm-v1
+hira-aux-19	表記	llm,ひらがな		持って	いきます	いきます	公用文: 補助動詞はひらがな	dev	llm-v1
+hira-aux-20	表記	llm,ひらがな		友達に教えて	あげる	あげる	公用文: 補助動詞はひらがな	dev	llm-v1
+hira-aux-21	表記	llm,ひらがな		見せて	あげます	あげます	公用文: 補助動詞はひらがな	test	llm-v1
+hira-aux-22	表記	llm,ひらがな		手伝って	くれた	くれた	公用文: 補助動詞はひらがな	dev	llm-v1
+hira-aux-23	表記	llm,ひらがな		参加して	くれる	くれる	公用文: 補助動詞はひらがな	dev	llm-v1
+hira-aux-24	表記	llm,ひらがな		説明して	もらう	もらう	公用文: 補助動詞はひらがな	test	llm-v1
+hira-aux-25	表記	llm,ひらがな		書いて	ほしい	ほしい	公用文: 補助動詞はひらがな	dev	llm-v1
+hira-aux-26	表記	llm,ひらがな		机に置いて	ある	ある	公用文: 補助動詞はひらがな	dev	llm-v1
+hira-aux-27	表記	llm,ひらがな		調べて	おります	おります	公用文: 補助動詞はひらがな	dev	llm-v1
+hira-aux-28	表記	llm,ひらがな		送って	くださる	くださる	公用文: 補助動詞はひらがな	dev	llm-v1
+hira-fn-01	表記	llm,ひらがな		勉強する	こと	こと	公用文: 形式名詞はひらがな	dev	llm-v1
+hira-fn-02	表記	llm,ひらがな		参加する	ことが	ことが	公用文: 形式名詞はひらがな	test	llm-v1
+hira-fn-03	表記	llm,ひらがな		知っている	こと	こと	公用文: 形式名詞はひらがな	dev	llm-v1
+hira-fn-04	表記	llm,ひらがな		勉強した	ことがある	ことがある	公用文: 形式名詞はひらがな	dev	llm-v1
+hira-fn-05	表記	llm,ひらがな		大切な	もの	もの	公用文: 形式名詞はひらがな	test	llm-v1
+hira-fn-06	表記	llm,ひらがな		そのような	もの	もの	公用文: 形式名詞はひらがな	dev	llm-v1
+hira-fn-07	表記	llm,ひらがな		困った	とき	とき	公用文: 形式名詞はひらがな	dev	llm-v1
+hira-fn-08	表記	llm,ひらがな		雨の	とき	とき	公用文: 形式名詞はひらがな	test	llm-v1
+hira-fn-09	表記	llm,ひらがな		若い	とき	とき	公用文: 形式名詞はひらがな	dev	llm-v1
+hira-fn-10	表記	llm,ひらがな		暑い	ときは	ときは	公用文: 形式名詞はひらがな	test	llm-v1
+hira-fn-11	表記	llm,ひらがな		帰る	ところ	ところ	公用文: 形式名詞はひらがな	dev	llm-v1
+hira-fn-12	表記	llm,ひらがな		見た	ところ	ところ	公用文: 形式名詞はひらがな	dev	llm-v1
+hira-fn-13	表記	llm,ひらがな		話した	ところ	ところ	公用文: 形式名詞はひらがな	dev	llm-v1
+hira-fn-14	表記	llm,ひらがな		三日	ほど	ほど	公用文: 形式名詞はひらがな	dev	llm-v1
+hira-fn-15	表記	llm,ひらがな		そういう	わけ	わけ	公用文: 形式名詞はひらがな	test	llm-v1
+hira-fn-16	表記	llm,ひらがな		健康の	ため	ため	公用文: 形式名詞はひらがな	dev	llm-v1
+hira-fn-17	表記	llm,ひらがな		来る	はず	はず	公用文: 形式名詞はひらがな	dev	llm-v1
+hira-fn-18	表記	llm,ひらがな		知っている	はずだ	はずだ	公用文: 形式名詞はひらがな	dev	llm-v1
+hira-fn-19	表記	llm,ひらがな		行く	つもり	つもり	公用文: 形式名詞はひらがな	dev	llm-v1
+hira-fn-20	表記	llm,ひらがな		若い	うち	うち	公用文: 形式名詞はひらがな	dev	llm-v1
+hira-fn-21	表記	llm,ひらがな		知らない	うちに	うちに	公用文: 形式名詞はひらがな	dev	llm-v1
+hira-fn-22	表記	llm,ひらがな		次の	とおり	とおり	公用文: 形式名詞はひらがな	test	llm-v1
+hira-fn-23	表記	llm,ひらがな		言った	とおり	とおり	公用文: 形式名詞はひらがな	dev	llm-v1
+hira-fn-24	表記	llm,ひらがな		早い	ほう	ほう	公用文: 形式名詞はひらがな	dev	llm-v1
+hira-fn-25	表記	llm,ひらがな		安い	ほうが	ほうが	公用文: 形式名詞はひらがな	dev	llm-v1
+hira-fn-26	表記	llm,ひらがな		できる	かぎり	かぎり	公用文: 形式名詞はひらがな	dev	llm-v1
+hira-fn-27	表記	llm,ひらがな		見る	かぎり	かぎり	公用文: 形式名詞はひらがな	dev	llm-v1
+hira-fn-28	表記	llm,ひらがな		聞いた	とたん	とたん	公用文: 形式名詞はひらがな	test	llm-v1
+hira-fn-29	表記	llm,ひらがな		来る	たびに	たびに	公用文: 形式名詞はひらがな	dev	llm-v1
+hira-fn-30	表記	llm,ひらがな		彼の	おかげで	おかげで	公用文: 形式名詞はひらがな	dev	llm-v1
+hira-conj-01	表記	llm,ひらがな		参加は自由です。	ただし	ただし	公用文: 接続詞はひらがな	dev	llm-v1
+hira-conj-02	表記	llm,ひらがな		氏名	および	および	公用文: 接続詞はひらがな	test	llm-v1
+hira-conj-03	表記	llm,ひらがな		会議は終了しました。	また	また	公用文: 接続詞はひらがな	dev	llm-v1
+hira-conj-04	表記	llm,ひらがな		以上です。	なお	なお	公用文: 接続詞はひらがな	dev	llm-v1
+hira-conj-05	表記	llm,ひらがな		料金は無料です。	さらに	さらに	公用文: 接続詞はひらがな	dev	llm-v1
+hira-conj-06	表記	llm,ひらがな		条件を満たしました。	したがって	したがって	公用文: 接続詞はひらがな	dev	llm-v1
+hira-conj-07	表記	llm,ひらがな		雨が降った。	そして	そして	公用文: 接続詞はひらがな	dev	llm-v1
+hira-conj-08	表記	llm,ひらがな		努力した。	しかし	しかし	公用文: 接続詞はひらがな	test	llm-v1
+hira-conj-09	表記	llm,ひらがな		晴れると思った。	ところが	ところが	公用文: 接続詞はひらがな	dev	llm-v1
+hira-conj-10	表記	llm,ひらがな		費用は三千円です。	あるいは	あるいは	公用文: 接続詞はひらがな	dev	llm-v1
+hira-conj-11	表記	llm,ひらがな		これは正式な名称です。	すなわち	すなわち	公用文: 接続詞はひらがな	dev	llm-v1
+hira-conj-12	表記	llm,ひらがな		以上の理由があります。	ついては	ついては	公用文: 接続詞はひらがな	dev	llm-v1
+hira-conj-13	表記	llm,ひらがな		安全で	かつ	かつ	公用文: 接続詞はひらがな	test	llm-v1
+hira-conj-14	表記	llm,ひらがな		氏名	ならびに	ならびに	公用文: 接続詞はひらがな	dev	llm-v1
+hira-conj-15	表記	llm,ひらがな		資料を送付します。	おって	おって	公用文: 接続詞はひらがな	dev	llm-v1
+hira-conj-16	表記	llm,ひらがな		申し込みは以上です。	ところで	ところで	公用文: 接続詞はひらがな	test	llm-v1
+hira-adv-01	表記	llm,ひらがな		そこを	あえて	あえて	公用文: 一部の副詞はひらがな	dev	llm-v1
+hira-adv-02	表記	llm,ひらがな		雨だが、	せっかく	せっかく	公用文: 一部の副詞はひらがな	test	llm-v1
+hira-adv-03	表記	llm,ひらがな		手続きは	すでに	すでに	公用文: 一部の副詞はひらがな	dev	llm-v1
+hira-adv-04	表記	llm,ひらがな		彼は	やはり	やはり	公用文: 一部の副詞はひらがな	dev	llm-v1
+hira-adv-05	表記	llm,ひらがな			とりあえず	とりあえず	公用文: 一部の副詞はひらがな	dev	llm-v1
+hira-adv-06	表記	llm,ひらがな		ご都合がよければ、	ぜひ	ぜひ	公用文: 一部の副詞はひらがな	dev	llm-v1
+hira-adv-07	表記	llm,ひらがな		彼は	なかなか	なかなか	公用文: 一部の副詞はひらがな	dev	llm-v1
+hira-adv-08	表記	llm,ひらがな		時間が	ちょうど	ちょうど	公用文: 一部の副詞はひらがな	dev	llm-v1
+hira-adv-09	表記	llm,ひらがな		作業を	いったん	いったん	公用文: 一部の副詞はひらがな	test	llm-v1
+hira-adv-10	表記	llm,ひらがな		果物を	たくさん	たくさん	公用文: 一部の副詞はひらがな	dev	llm-v1
+hira-adv-11	表記	llm,ひらがな		作業は	ほとんど	ほとんど	公用文: 一部の副詞はひらがな	dev	llm-v1
+hira-adv-12	表記	llm,ひらがな			まず	まず	公用文: 一部の副詞はひらがな	dev	llm-v1
+hira-adv-13	表記	llm,ひらがな			あらかじめ	あらかじめ	公用文: 一部の副詞はひらがな	dev	llm-v1
+hira-adv-14	表記	llm,ひらがな		長い工事が	ようやく	ようやく	公用文: 一部の副詞はひらがな	dev	llm-v1
+hira-adv-15	表記	llm,ひらがな			ゆっくり	ゆっくり	公用文: 一部の副詞はひらがな	test	llm-v1
+hira-adv-16	表記	llm,ひらがな			ちゃんと	ちゃんと	公用文: 一部の副詞はひらがな	dev	llm-v1
+hira-adv-17	表記	llm,ひらがな			しっかり	しっかり	公用文: 一部の副詞はひらがな	dev	llm-v1
+hira-adv-18	表記	llm,ひらがな		作業が	いっそう	いっそう	公用文: 一部の副詞はひらがな	test	llm-v1
+hira-adv-19	表記	llm,ひらがな			たまたま	たまたま	公用文: 一部の副詞はひらがな	dev	llm-v1
+hira-adv-20	表記	llm,ひらがな			そろそろ	そろそろ	公用文: 一部の副詞はひらがな	dev	llm-v1
+hira-adv-21	表記	llm,ひらがな			はっきり	はっきり	公用文: 一部の副詞はひらがな	dev	llm-v1
+hira-adv-22	表記	llm,ひらがな			まるで	まるで	公用文: 一部の副詞はひらがな	test	llm-v1
+hira-adv-23	表記	llm,ひらがな			ひとまず	ひとまず	公用文: 一部の副詞はひらがな	dev	llm-v1
+hira-adv-24	表記	llm,ひらがな			いずれ	いずれ	公用文: 一部の副詞はひらがな	dev	llm-v1
+hira-adv-25	表記	llm,ひらがな			かなり	かなり	公用文: 一部の副詞はひらがな	dev	llm-v1
+hira-kan-01	表記	llm,漢字		映画を	みる	見る	公用文: 本動詞は漢字。見る（本動詞）	test	llm-v1
+hira-kan-02	表記	llm,漢字		テレビを	みる	見る	公用文: 本動詞は漢字。見る（本動詞）	dev	llm-v1
+hira-kan-03	表記	llm,漢字		学校に	いく	行く	公用文: 本動詞は漢字。行く（本動詞）	dev	llm-v1
+hira-kan-04	表記	llm,漢字		駅まで	いく	行く	公用文: 本動詞は漢字。行く（本動詞）	dev	llm-v1
+hira-kan-05	表記	llm,漢字		友達が	くる	来る	公用文: 本動詞は漢字。来る（本動詞）	dev	llm-v1
+hira-kan-06	表記	llm,漢字		彼は明日	くる	来る	公用文: 本動詞は漢字。来る（本動詞）	dev	llm-v1
+hira-kan-07	表記	llm,漢字		机の上に物を	おく	置く	公用文: 本動詞は漢字。置く（本動詞）、物（実質名詞）	dev	llm-v1
+hira-kan-08	表記	llm,漢字		お茶を	ください	下さい	公用文: 本動詞は漢字。物を求める本動詞「下さる」	dev	llm-v1
+hira-kan-09	表記	llm,漢字		資料を	ください	下さい	公用文: 本動詞は漢字。物を求める本動詞「下さる」	dev	llm-v1
+hira-kan-10	表記	llm,漢字		久しぶりに友達に	あえて	会えて	公用文: 本動詞は漢字。会う（本動詞）。副詞「あえて」ではない	dev	llm-v1
+hira-kan-11	表記	llm,漢字		彼女に	あえて	会えて	公用文: 本動詞は漢字。会う（本動詞）。副詞「あえて」ではない	test	llm-v1
+hira-kan-12	表記	llm,漢字			ときがたつ	時が経つ	公用文: 実質名詞は漢字	dev	llm-v1
+hira-kan-13	表記	llm,漢字			ときをわすれる	時を忘れる	公用文: 実質名詞は漢字	dev	llm-v1
+hira-kan-14	表記	llm,漢字		机に	ものをおく	物を置く	公用文: 実質名詞は漢字	dev	llm-v1
+hira-kan-15	表記	llm,漢字			ものがたりない	物が足りない	公用文: 実質名詞は漢字	dev	llm-v1
+hira-kan-16	表記	llm,漢字			たとえば	例えば	公用文: 常用漢字表の音訓で書ける副詞は漢字	dev	llm-v1
+hira-kan-17	表記	llm,漢字		生まれて	はじめて	初めて	公用文: 常用漢字表の音訓で書ける副詞は漢字	dev	llm-v1
+hira-kan-18	表記	llm,漢字			とくに	特に	公用文: 常用漢字表の音訓で書ける副詞は漢字	dev	llm-v1
+hira-kan-19	表記	llm,漢字			かならず	必ず	公用文: 常用漢字表の音訓で書ける副詞は漢字	dev	llm-v1
+hira-kan-20	表記	llm,漢字			すべて	全て	公用文: 常用漢字表の音訓で書ける副詞は漢字	dev	llm-v1
+hira-kan-21	表記	llm,漢字			おもに	主に	公用文: 常用漢字表の音訓で書ける副詞は漢字	dev	llm-v1
+hira-kan-22	表記	llm,漢字			もっとも	最も|もっとも	公用文: 常用漢字表の音訓で書ける副詞は漢字	dev	llm-v1
+hira-split-01	表記	llm,分割		雨が降る	ときは	ときは	不要な分割（助詞+1文字名詞など）が1位に来ないこと	dev	llm-v1
+hira-split-02	表記	llm,分割		疲れた	ときに	ときに	不要な分割（助詞+1文字名詞など）が1位に来ないこと	dev	llm-v1
+hira-split-03	表記	llm,分割		飲んだ	ところ	ところ	不要な分割（助詞+1文字名詞など）が1位に来ないこと	dev	llm-v1
+hira-split-04	表記	llm,分割		出る	ところだった	ところだった	不要な分割（助詞+1文字名詞など）が1位に来ないこと	dev	llm-v1
+hira-split-05	表記	llm,分割			ことし	今年	不要な分割（助詞+1文字名詞など）が1位に来ないこと	test	llm-v1
+hira-split-06	表記	llm,分割		行く	ことになった	ことになった	不要な分割（助詞+1文字名詞など）が1位に来ないこと	dev	llm-v1
+hira-split-07	表記	llm,分割		やる	ことにした	ことにした	不要な分割（助詞+1文字名詞など）が1位に来ないこと	dev	llm-v1
+hira-split-08	表記	llm,分割		できる	ことなら	ことなら	不要な分割（助詞+1文字名詞など）が1位に来ないこと	dev	llm-v1
+hira-split-09	表記	llm,分割		来る	ことは	ことは	不要な分割（助詞+1文字名詞など）が1位に来ないこと	dev	llm-v1
+hira-split-10	表記	llm,分割		走る	ほうが	ほうが	不要な分割（助詞+1文字名詞など）が1位に来ないこと	dev	llm-v1
+hira-split-11	表記	llm,分割		簡単な	ほうが	ほうが	不要な分割（助詞+1文字名詞など）が1位に来ないこと	dev	llm-v1
+hira-split-12	表記	llm,分割		終わった	はずだ	はずだ	不要な分割（助詞+1文字名詞など）が1位に来ないこと	dev	llm-v1
+hira-split-13	表記	llm,分割		急ぐ	あまり	あまり	不要な分割（助詞+1文字名詞など）が1位に来ないこと	dev	llm-v1
+hira-split-14	表記	llm,分割		行った	ばかり	ばかり	不要な分割（助詞+1文字名詞など）が1位に来ないこと	dev	llm-v1
+hira-split-15	表記	llm,分割		知らない	くせに	くせに	不要な分割（助詞+1文字名詞など）が1位に来ないこと	dev	llm-v1
+hira-split-16	表記	llm,分割		頑張った	おかげで	おかげで	不要な分割（助詞+1文字名詞など）が1位に来ないこと	dev	llm-v1
+hira-split-17	表記	llm,分割		したい	ものだ	ものだ	不要な分割（助詞+1文字名詞など）が1位に来ないこと	test	llm-v1
+hira-split-18	表記	llm,分割		以下の	とおり	とおり	不要な分割（助詞+1文字名詞など）が1位に来ないこと	dev	llm-v1
+hira-split-19	表記	llm,分割		大きな	おかげ	おかげ	不要な分割（助詞+1文字名詞など）が1位に来ないこと	test	llm-v1

@@ -1,0 +1,27 @@
+# Unicode 表記の評価セット（#263。設定 unicode.notation を on にした状態。ikari --unicode-notation）。公開の文字だけ。
+# 日本語のモードで、読みが 1 文字のひらがな（小さいかな、濁点つきを含む。長音記号は除く）のとき、U+3042 の形の候補が出る。補完はしない（2 文字以上は出さない）。
+# 合格は「期待が N 位以内」で、1 位ではない。N は tags の within-N。直る側は辞書の候補（と顔文字などの Rewriter）が先に来るので 9 位以内（候補に出ること）。
+# ikari-eval には N 位以内の書式も、unicode.notation を on にする指定もまだない。当面は ikari CLI で行ごとに確かめる（読み取りだけ）:
+#   ikari --dict <dict/> --user-dir $(mktemp -d) --unicode-notation -n 9 <読み>
+# 期待はユーザー確認待ち（eval/sets/REVIEW.md）。split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev。
+id	kind	tags	profile	context	reading	expected	note	split	source
+uni-fix-a	直る	unicode,within-9			あ	U+3042	1 文字のかな。候補に出ればよい（1 位は期待しない。辞書の候補が先）	dev	unicode-263
+uni-fix-i	直る	unicode,within-9			い	U+3044	1 文字のかな。候補に出ればよい（1 位は期待しない。辞書の候補が先）	test	unicode-263
+uni-fix-u	直る	unicode,within-9			う	U+3046	1 文字のかな。候補に出ればよい（1 位は期待しない。辞書の候補が先）	test	unicode-263
+uni-fix-e	直る	unicode,within-9			え	U+3048	1 文字のかな。候補に出ればよい（1 位は期待しない。辞書の候補が先）	dev	unicode-263
+uni-fix-o	直る	unicode,within-9			お	U+304A	1 文字のかな。候補に出ればよい（1 位は期待しない。辞書の候補が先）	dev	unicode-263
+uni-fix-ka	直る	unicode,within-9			か	U+304B	1 文字のかな。候補に出ればよい（1 位は期待しない。辞書の候補が先）	dev	unicode-263
+uni-fix-ki	直る	unicode,within-9			き	U+304D	1 文字のかな。候補に出ればよい（1 位は期待しない。辞書の候補が先）	dev	unicode-263
+uni-fix-n	直る	unicode,within-9			ん	U+3093	1 文字のかな。候補に出ればよい（1 位は期待しない。辞書の候補が先）	dev	unicode-263
+uni-fix-wo	直る	unicode,within-9			を	U+3092	1 文字のかな。候補に出ればよい（1 位は期待しない。辞書の候補が先）	test	unicode-263
+uni-fix-ga	直る	unicode,within-9			が	U+304C	1 文字のかな。候補に出ればよい（1 位は期待しない。辞書の候補が先）	test	unicode-263
+uni-fix-pa	直る	unicode,within-9			ぱ	U+3071	1 文字のかな。候補に出ればよい（1 位は期待しない。辞書の候補が先）	dev	unicode-263
+uni-fix-vu	直る	unicode,within-9			ゔ	U+3094	1 文字のかな。候補に出ればよい（1 位は期待しない。辞書の候補が先）	dev	unicode-263
+uni-fix-xa	直る	unicode,within-9			ぁ	U+3041	1 文字のかな。候補に出ればよい（1 位は期待しない。辞書の候補が先）	dev	unicode-263
+uni-fix-xtsu	直る	unicode,within-9			っ	U+3063	1 文字のかな。候補に出ればよい（1 位は期待しない。辞書の候補が先）	dev	unicode-263
+uni-fix-xya	直る	unicode,within-9			ゃ	U+3083	1 文字のかな。候補に出ればよい（1 位は期待しない。辞書の候補が先）	dev	unicode-263
+uni-fix-xi	直る	unicode,within-9			ぃ	U+3043	1 文字のかな。候補に出ればよい（1 位は期待しない。辞書の候補が先）	dev	unicode-263
+uni-keep-ki-top	守る	unicode,within-1			き	木	1 文字のかなの先頭は変わらない（辞書の候補が 1 位）	dev	unicode-263
+uni-keep-a-top	守る	unicode,within-1			あ	あ	1 位は入力そのまま	dev	unicode-263
+uni-keep-ai	守る	unicode,within-1			あい	アイ	2 文字は U+ を出さず、今までの 1 位のまま	dev	unicode-263
+uni-keep-nihon	守る	unicode,within-1			にほん	日本	3 文字は今までの 1 位のまま	dev	unicode-263

@@ -1,0 +1,47 @@
+# 常用漢字表にない動物名はひらがなを第一候補にする（#239。ADR 0002 §22 の続き。kana_style.tsv の animal_kana）。直る側、残る側（規則でも直らない）、守る側（常用漢字表にある動物名と、漢字が正しい成句・地名）
+# 期待はユーザー決定（2026-10-24）: 表記の既定は公用文の書き表し方（常用漢字表にない漢字はひらがな）。カタカナ・漢字は 2 位以降に残る。種別: 直る、残る、守る
+# split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev。調整は dev だけで行う。
+id	kind	tags	profile	context	reading	expected	note	split	source
+fix-usagi	直る	animal-kana			うさぎ	うさぎ	兎 は常用漢字表にない。ひらがなが第一候補	dev	animal-kana-239
+fix-tanuki	直る	animal-kana			たぬき	たぬき	狸 は常用漢字表にない。ひらがなが第一候補	test	animal-kana-239
+fix-itachi	直る	animal-kana			いたち	いたち	鼬 は常用漢字表にない。ひらがなが第一候補	dev	animal-kana-239
+fix-kujira	直る	animal-kana			くじら	くじら	鯨 は常用漢字表にない。ひらがなが第一候補	dev	animal-kana-239
+fix-katatsumuri	直る	animal-kana			かたつむり	かたつむり	蝸牛 は常用漢字表にない。ひらがなが第一候補	dev	animal-kana-239
+fix-nezumi	直る	animal-kana			ねずみ	ねずみ	鼠 は常用漢字表にない。ひらがなが第一候補	test	animal-kana-239
+fix-kitsune	直る	animal-kana			きつね	きつね	狐 は常用漢字表にない。ひらがなが第一候補	dev	animal-kana-239
+fix-inoshishi	直る	animal-kana			いのしし	いのしし	猪 は常用漢字表にない。ひらがなが第一候補	test	animal-kana-239
+fix-tokage	直る	animal-kana			とかげ	とかげ	蜥蜴 は常用漢字表にない。ひらがなが第一候補	dev	animal-kana-239
+fix-suzume	直る	animal-kana			すずめ	すずめ	雀 は常用漢字表にない。ひらがなが第一候補	dev	animal-kana-239
+fix-tsubame	直る	animal-kana			つばめ	つばめ	燕 は常用漢字表にない。ひらがなが第一候補	dev	animal-kana-239
+fix-same	直る	animal-kana			さめ	さめ	鮫 は常用漢字表にない。ひらがなが第一候補	dev	animal-kana-239
+fix-ookami	直る	animal-kana			おおかみ	おおかみ	狼 は常用漢字表にない。ひらがなが第一候補	dev	animal-kana-239
+fix-risu	直る	animal-kana			りす	りす	栗鼠 は常用漢字表にない。ひらがなが第一候補	dev	animal-kana-239
+fix-unagi	直る	animal-kana			うなぎ	うなぎ	鰻 は常用漢字表にない。ひらがなが第一候補	dev	animal-kana-239
+fix-hato	直る	animal-kana			はと	はと	鳩 は常用漢字表にない。ひらがなが第一候補	dev	animal-kana-239
+fix-usagi-ga-1wa	直る	animal-kana			うさぎが1わ	うさぎが1羽	助数詞（羽）は算用数字のあとで変換される（#219）。うさぎ はひらがな	test	animal-kana-239
+fix-suzume-2wa	直る	animal-kana			すずめが2わ	すずめが2羽		dev	animal-kana-239
+fix-tanuki-hashiru	直る	animal-kana			たぬきがはしる	たぬきが走る		dev	animal-kana-239
+fix-nezumi-hashiru	直る	animal-kana			ねずみがはしる	ねずみが走る		test	animal-kana-239
+fix-kujira-oyogu	直る	animal-kana			くじらがおよぐ	くじらが泳ぐ		dev	animal-kana-239
+rem-kitsune-to-tanuki	残る	animal-kana			きつねとたぬき	きつねとたぬき	動物名が2つ。全部ひらがなの候補は辞書の語の連なりではなく、読みそのままのかな候補（Hiragana）なので、この規則は効かない。きつねと狸 が1位	dev	animal-kana-239
+rem-usagi-shippo	残る	animal-kana			うさぎのしっぽ	うさぎのしっぽ	うさぎ は直る。しっぽ は 尻尾（常用漢字）が先に出る。しっぽ をひらがなにするかはユーザーの確認待ち	test	animal-kana-239
+rem-fukurou	残る	animal-kana			ふくろう	ふくろう	ふくろう は 梟 より先になるが、副ロウ（分割）が1位	dev	animal-kana-239
+rem-koumori	残る	animal-kana			こうもり	こうもり	こうもり は 蝙蝠 より先になるが、こう森（分割）が1位	dev	animal-kana-239
+keep-inu	守る	animal-kana			いぬ	犬	犬 は常用漢字表にある	dev	animal-kana-239
+keep-uma	守る	animal-kana			うま	馬	馬 は常用漢字表にある	dev	animal-kana-239
+keep-ushi	守る	animal-kana			うし	牛	牛 は常用漢字表にある	test	animal-kana-239
+keep-sakana	守る	animal-kana			さかな	魚	魚 は常用漢字表にある	dev	animal-kana-239
+keep-buta	守る	animal-kana			ぶた	豚	豚 は常用漢字表にある	dev	animal-kana-239
+keep-niwatori	守る	animal-kana			にわとり	鶏	鶏 は常用漢字表にある	dev	animal-kana-239
+keep-hitsuji	守る	animal-kana			ひつじ	羊	羊 は常用漢字表にある	dev	animal-kana-239
+keep-inu-1piki	守る	animal-kana			いぬが1ぴき	犬が1匹		dev	animal-kana-239
+keep-uma-hashiru	守る	animal-kana			うまがはしる	馬が走る		dev	animal-kana-239
+keep-sakana-taberu	守る	animal-kana			さかなをたべる	魚を食べる		test	animal-kana-239
+keep-kumamoto	守る	animal-kana			くまもと	熊本	地名	dev	animal-kana-239
+keep-kagoshima	守る	animal-kana			かごしま	鹿児島	地名	dev	animal-kana-239
+keep-uma-nenbutsu	守る	animal-kana			うまのみみにねんぶつ	馬の耳に念仏	成句	dev	animal-kana-239
+keep-saru-ki	守る	animal-kana			さるもきからおちる	猿も木から落ちる	成句。猿 は表外だが成句は漢字	dev	animal-kana-239
+keep-tora-no-ko	守る	animal-kana			とらのこ	虎の子	成句	dev	animal-kana-239
+keep-tanuki-neiri	守る	animal-kana			たぬきねいり	狸寝入り	成句（1語の複合語。表外の 狸 が正しい表記として残る）	test	animal-kana-239
+keep-uzuki	守る	animal-kana			うづき	卯月	固有の語（卯 は表外）	dev	animal-kana-239
+keep-neko	守る	animal-kana			ねこ	猫	猫 は常用漢字表にない。今回は対象にしない（ユーザーの確認待ち。現状維持）	dev	animal-kana-239

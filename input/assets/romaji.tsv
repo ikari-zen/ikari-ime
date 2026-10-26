@@ -1,0 +1,343 @@
+# ikari-ime default romaji table (Mozc compatible).
+# Format: input<TAB>output[<TAB>next pending]. Lines starting with # and blank lines are ignored.
+# A user table REPLACES this table entirely (no merge): copy this file as a template.
+
+# vowels
+a	あ
+i	い
+u	う
+e	え
+o	お
+
+# small kana (x / l)
+xa	ぁ
+xi	ぃ
+xu	ぅ
+xe	ぇ
+xo	ぉ
+xya	ゃ
+xyu	ゅ
+xyo	ょ
+xyi	ぃ
+xye	ぇ
+xtu	っ
+xtsu	っ
+xwa	ゎ
+xka	ヵ
+xke	ヶ
+la	ぁ
+li	ぃ
+lu	ぅ
+le	ぇ
+lo	ぉ
+lya	ゃ
+lyu	ゅ
+lyo	ょ
+lyi	ぃ
+lye	ぇ
+ltu	っ
+ltsu	っ
+lwa	ゎ
+lka	ヵ
+lke	ヶ
+xn	ん
+
+# basic rows
+ka	か
+ki	き
+ku	く
+ke	け
+ko	こ
+ga	が
+gi	ぎ
+gu	ぐ
+ge	げ
+go	ご
+sa	さ
+si	し
+su	す
+se	せ
+so	そ
+za	ざ
+zi	じ
+zu	ず
+ze	ぜ
+zo	ぞ
+ta	た
+ti	ち
+tu	つ
+te	て
+to	と
+da	だ
+di	ぢ
+du	づ
+de	で
+do	ど
+na	な
+ni	に
+nu	ぬ
+ne	ね
+no	の
+ha	は
+hi	ひ
+hu	ふ
+he	へ
+ho	ほ
+ba	ば
+bi	び
+bu	ぶ
+be	べ
+bo	ぼ
+pa	ぱ
+pi	ぴ
+pu	ぷ
+pe	ぺ
+po	ぽ
+ma	ま
+mi	み
+mu	む
+me	め
+mo	も
+ra	ら
+ri	り
+ru	る
+re	れ
+ro	ろ
+ya	や
+yu	ゆ
+yo	よ
+yi	い
+ye	いぇ
+wa	わ
+wi	うぃ
+wu	う
+we	うぇ
+wo	を
+wyi	ゐ
+wye	ゑ
+ca	か
+ci	し
+cu	く
+ce	せ
+co	こ
+fu	ふ
+fa	ふぁ
+fi	ふぃ
+fe	ふぇ
+fo	ふぉ
+va	ゔぁ
+vi	ゔぃ
+vu	ゔ
+ve	ゔぇ
+vo	ゔぉ
+ja	じゃ
+ji	じ
+ju	じゅ
+je	じぇ
+jo	じょ
+shi	し
+sha	しゃ
+shu	しゅ
+she	しぇ
+sho	しょ
+chi	ち
+cha	ちゃ
+chu	ちゅ
+che	ちぇ
+cho	ちょ
+tsu	つ
+tsa	つぁ
+tsi	つぃ
+tse	つぇ
+tso	つぉ
+qa	くぁ
+qi	くぃ
+qu	く
+qe	くぇ
+qo	くぉ
+kwa	くぁ
+gwa	ぐぁ
+wha	うぁ
+whi	うぃ
+whu	う
+whe	うぇ
+who	うぉ
+
+# youon (consonant + y + vowel, th/dh, tw/dw/fw)
+kya	きゃ
+kyi	きぃ
+kyu	きゅ
+kye	きぇ
+kyo	きょ
+gya	ぎゃ
+gyi	ぎぃ
+gyu	ぎゅ
+gye	ぎぇ
+gyo	ぎょ
+sya	しゃ
+syi	しぃ
+syu	しゅ
+sye	しぇ
+syo	しょ
+zya	じゃ
+zyi	じぃ
+zyu	じゅ
+zye	じぇ
+zyo	じょ
+jya	じゃ
+jyi	じぃ
+jyu	じゅ
+jye	じぇ
+jyo	じょ
+tya	ちゃ
+tyi	ちぃ
+tyu	ちゅ
+tye	ちぇ
+tyo	ちょ
+cya	ちゃ
+cyi	ちぃ
+cyu	ちゅ
+cye	ちぇ
+cyo	ちょ
+dya	ぢゃ
+dyi	ぢぃ
+dyu	ぢゅ
+dye	ぢぇ
+dyo	ぢょ
+nya	にゃ
+nyi	にぃ
+nyu	にゅ
+nye	にぇ
+nyo	にょ
+hya	ひゃ
+hyi	ひぃ
+hyu	ひゅ
+hye	ひぇ
+hyo	ひょ
+bya	びゃ
+byi	びぃ
+byu	びゅ
+bye	びぇ
+byo	びょ
+pya	ぴゃ
+pyi	ぴぃ
+pyu	ぴゅ
+pye	ぴぇ
+pyo	ぴょ
+mya	みゃ
+myi	みぃ
+myu	みゅ
+mye	みぇ
+myo	みょ
+rya	りゃ
+ryi	りぃ
+ryu	りゅ
+rye	りぇ
+ryo	りょ
+fya	ふゃ
+fyi	ふぃ
+fyu	ふゅ
+fye	ふぇ
+fyo	ふょ
+vya	ゔゃ
+vyi	ゔぃ
+vyu	ゔゅ
+vye	ゔぇ
+vyo	ゔょ
+tha	てゃ
+thi	てぃ
+thu	てゅ
+the	てぇ
+tho	てょ
+dha	でゃ
+dhi	でぃ
+dhu	でゅ
+dhe	でぇ
+dho	でょ
+twa	とぁ
+twi	とぃ
+twu	とぅ
+twe	とぇ
+two	とぉ
+dwa	どぁ
+dwi	どぃ
+dwu	どぅ
+dwe	どぇ
+dwo	どぉ
+fwa	ふぁ
+fwi	ふぃ
+fwu	ふぅ
+fwe	ふぇ
+fwo	ふぉ
+
+# n handling (n alone is flushed to ん at conversion time or before a non-matching key)
+nn	ん
+n'	ん
+n	ん
+
+# sokuon (doubled consonant -> small tsu, next pending is the consonant)
+bb	っ	b
+cc	っ	c
+dd	っ	d
+ff	っ	f
+gg	っ	g
+hh	っ	h
+jj	っ	j
+kk	っ	k
+mm	っ	m
+pp	っ	p
+qq	っ	q
+rr	っ	r
+ss	っ	s
+tt	っ	t
+vv	っ	v
+ww	っ	w
+zz	っ	z
+
+# symbols
+-	ー
+,	、
+.	。
+[	「
+]	」
+/	・
+~	〜
+
+# z + key
+zh	←
+zj	↓
+zk	↑
+zl	→
+z.	…
+z,	‥
+z-	〜
+z/	・
+z[	『
+z]	』
+
+# ASCII symbols -> full width (Mozc default in Japanese mode). '#<TAB>' is a data row, not a comment.
+!	！
+"	＂
+#	＃
+$	＄
+%	％
+&	＆
+'	＇
+(	（
+)	）
+*	＊
++	＋
+:	：
+;	；
+<	＜
+=	＝
+>	＞
+?	？
+@	＠
+\	＼
+^	＾
+_	＿
+`	｀
+{	｛
+|	｜
+}	｝

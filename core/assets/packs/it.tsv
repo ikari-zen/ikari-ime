@@ -1,0 +1,341 @@
+#ikari-pack	id=it	schema=1	name=IT の語彙
+# 下書き・ユーザー確認待ち（ADR 0012 §4。docs/tasks.md A2-13。全件の表は eval/sets/REVIEW.md の「ADR 0012: IT の語彙集」の節）。
+# Claude が自分の知識で下書きした（外部の辞書の行は写していない）。ユーザーが確認して語を足し削りする。確認するまで確定版として扱わない。
+# 実装済み: core の VocabularyPack が読む（同梱。既定で有効、設定 dict.pack_it で切れる。ADR 0012 §4、B20-4）。
+#
+# 列（タブ区切り）: 読み、英字の表記、品詞、形、分野、注記
+# - 読み: ひらがな。同じ語に読みが複数あれば行を分ける（くばねてぃす、くーばねてぃす）
+# - 英字の表記: 公式の綴り（GitHub、macOS、nginx）
+# - 品詞: ユーザー辞書の簡略品詞（core/assets/user_pos.tsv の 固有名詞、組織、名詞）
+# - 形:
+#     kana  = 読みをそのままカタカナにした表記（ユーザーが打ったとおりの言葉）を1位、英字を2位に置く（2026-10-14 のユーザー決定 B20-3）。
+#             カタカナの表記はこのファイルに書かない（読みから作る）。
+#     latin = 英字だけを出す（カタカナは作らない）。略語（AWS、API）と、文字の名前を読みに含む語（MySQL、Node.js）。
+#             エーダブリューエス のようなカタカナは誰も書かないため（ユーザーの確認が要る。ADR 0012 §11）
+# - 分野、注記: 確認のための情報。変換には使わない
+# - 行頭が # の行は注釈。「#読み<TAB>…」の形の行は、除外した語（日常の語と読みが重なる。読み込まれない）
+ぱいそん	Python	固有名詞	kana	言語	
+じゃばすくりぷと	JavaScript	固有名詞	kana	言語	
+たいぷすくりぷと	TypeScript	固有名詞	kana	言語	
+じゃば	Java	固有名詞	kana	言語	
+ことりん	Kotlin	固有名詞	kana	言語	
+すうぃふと	Swift	固有名詞	kana	言語	
+すいふと	Swift	固有名詞	kana	言語	
+らすと	Rust	固有名詞	kana	言語	一般語の ラスト（最後）と同じ読み。カタカナが1位なので一般語は崩れない
+ごーげんご	Go言語	固有名詞	kana	言語	ごー だけの読みは入れない（ゴー、５ と重なる）
+ごーらんぐ	Golang	固有名詞	kana	言語	
+るびー	Ruby	固有名詞	kana	言語	
+ぱーる	Perl	固有名詞	kana	言語	
+すから	Scala	固有名詞	kana	言語	
+はすける	Haskell	固有名詞	kana	言語	
+えりくさー	Elixir	固有名詞	kana	言語	
+あーらん	Erlang	固有名詞	kana	言語	
+くろーじゃー	Clojure	固有名詞	kana	言語	
+だーと	Dart	固有名詞	kana	言語	
+るあ	Lua	固有名詞	kana	言語	
+じゅりあ	Julia	固有名詞	kana	言語	人名と同じ読み
+ぐるーびー	Groovy	固有名詞	kana	言語	
+おきゃむる	OCaml	固有名詞	kana	言語	
+こぼる	COBOL	固有名詞	kana	言語	
+ふぉーとらん	Fortran	固有名詞	kana	言語	
+ばっしゅ	Bash	固有名詞	kana	言語	
+ぱわーしぇる	PowerShell	固有名詞	kana	言語	
+うぇぶあせんぶりー	WebAssembly	固有名詞	kana	言語	
+しーぷらすぷらす	C++	固有名詞	latin	言語	文字の名前の読み
+しーしゃーぷ	C#	固有名詞	latin	言語	文字の名前の読み
+おぶじぇくてぃぶしー	Objective-C	固有名詞	latin	言語	文字の名前を読みに含むので英字だけ
+えすきゅーえる	SQL	名詞	latin	言語	略語
+しーくぇる	SQL	名詞	kana	言語	
+ぐらふきゅーえる	GraphQL	固有名詞	latin	言語	文字の名前を読みに含むので英字だけ
+えいちてぃーえむえる	HTML	名詞	latin	言語	略語
+しーえすえす	CSS	名詞	latin	言語	略語
+じぇいそん	JSON	名詞	kana	形式	人名の ジェイソン と同じ読み。カタカナが1位
+やむる	YAML	名詞	kana	形式	
+#やめる	YAML	名詞	kana	形式	除外（2026-10-14 ユーザー決定）。試作で やめる の1位が 止める → ヤメル、やめるかどうか → ヤメルかどうか に崩れた（動詞 やめる と同じ読み）。YAML は やむる で出す
+とむる	TOML	名詞	kana	形式	
+えっくすえむえる	XML	名詞	latin	形式	略語
+まーくだうん	Markdown	名詞	kana	形式	
+しーえすぶい	CSV	名詞	latin	形式	略語
+ゆにこーど	Unicode	名詞	kana	形式	
+あすきー	ASCII	名詞	kana	形式	
+ゆーてぃーえふえいと	UTF-8	名詞	latin	形式	略語
+りあくと	React	固有名詞	kana	フロントエンド	
+びゅーじぇいえす	Vue.js	固有名詞	latin	フロントエンド	びゅー だけの読みは入れない（ビュー と重なる）。文字の名前を読みに含むので英字だけ
+あんぎゅらー	Angular	固有名詞	kana	フロントエンド	
+# 除外（ユーザー決定 2026-10-15。日常の語の1位を奪う） すべると	Svelte	固有名詞	kana	フロントエンド	
+ねくすとじぇいえす	Next.js	固有名詞	latin	フロントエンド	文字の名前を読みに含むので英字だけ
+# 除外（ユーザー決定 2026-10-15。日常の語の1位を奪う） なくすと	Nuxt	固有名詞	kana	フロントエンド	
+のーどじぇいえす	Node.js	固有名詞	latin	実行環境	文字の名前を読みに含むので英字だけ
+のーど	Node	固有名詞	kana	実行環境	確認（一般語の ノード と同じ読み）
+#での	Deno	固有名詞	kana	実行環境	除外（2026-10-14 ユーザー決定）。試作で ぜんぶでのかず の3位に 全部デノ数 が出た（助詞 で＋の と同じ読み）
+じゃんご	Django	固有名詞	kana	フレームワーク	
+ふらすく	Flask	固有名詞	kana	フレームワーク	
+ふぁすとえーぴーあい	FastAPI	固有名詞	latin	フレームワーク	文字の名前を読みに含むので英字だけ
+れいるず	Rails	固有名詞	kana	フレームワーク	
+るびーおんれいるず	Ruby on Rails	固有名詞	kana	フレームワーク	
+られべる	Laravel	固有名詞	kana	フレームワーク	
+すぷりんぐぶーと	Spring Boot	固有名詞	kana	フレームワーク	
+すぷりんぐふれーむわーく	Spring Framework	固有名詞	kana	フレームワーク	
+はいばねいと	Hibernate	固有名詞	kana	フレームワーク	
+じぇいくえり	jQuery	固有名詞	kana	フロントエンド	
+じぇーくえりー	jQuery	固有名詞	kana	フロントエンド	
+ぶーとすとらっぷ	Bootstrap	固有名詞	kana	フロントエンド	
+てーるうぃんど	Tailwind	固有名詞	kana	フロントエンド	
+りだっくす	Redux	固有名詞	kana	フロントエンド	
+うぇぶぱっく	webpack	固有名詞	kana	ビルド	公式は小文字
+ゔぃーと	Vite	固有名詞	kana	ビルド	
+ばべる	Babel	固有名詞	kana	ビルド	
+いーえすりんと	ESLint	固有名詞	latin	ビルド	文字の名前を読みに含むので英字だけ
+ぷりてぃあ	Prettier	固有名詞	kana	ビルド	
+じぇすと	Jest	固有名詞	kana	テスト	
+ぷれいらいと	Playwright	固有名詞	kana	テスト	
+せれにうむ	Selenium	固有名詞	kana	テスト	元素の セレン（セレニウム）と同じ読み
+さいぷれす	Cypress	固有名詞	kana	テスト	
+じぇいゆにっと	JUnit	固有名詞	latin	テスト	文字の名前を読みに含むので英字だけ
+もきーと	Mockito	固有名詞	kana	テスト	
+てんそるふろー	TensorFlow	固有名詞	kana	機械学習	
+てんさーふろー	TensorFlow	固有名詞	kana	機械学習	
+ぱいとーち	PyTorch	固有名詞	kana	機械学習	
+なむぱい	NumPy	固有名詞	kana	機械学習	
+ぱんだす	pandas	固有名詞	kana	機械学習	公式は小文字。動物の パンダ と別
+さいきっとらーん	scikit-learn	固有名詞	kana	機械学習	
+じゅぴたー	Jupyter	固有名詞	kana	機械学習	惑星の ジュピター と同じ読み
+らんぐちぇーん	LangChain	固有名詞	kana	機械学習	
+はぎんぐふぇいす	Hugging Face	固有名詞	kana	機械学習	
+くーだ	CUDA	固有名詞	kana	機械学習	
+えれくとろん	Electron	固有名詞	kana	アプリ	物理の エレクトロン と同じ読み
+ふらったー	Flutter	固有名詞	kana	アプリ	
+すうぃふとゆーあい	SwiftUI	固有名詞	latin	アプリ	文字の名前を読みに含むので英字だけ
+ゆにてぃ	Unity	固有名詞	kana	アプリ	
+あんりあるえんじん	Unreal Engine	固有名詞	kana	アプリ	
+まいえすきゅーえる	MySQL	固有名詞	latin	データベース	文字の名前を読みに含むので英字だけ
+ぽすとぐれすきゅーえる	PostgreSQL	固有名詞	latin	データベース	文字の名前を読みに含むので英字だけ
+ぽすとぐれす	Postgres	固有名詞	kana	データベース	ぽすぐれ（略称）から英字は出さない（読みにない文字を足すため）
+えすきゅーらいと	SQLite	固有名詞	latin	データベース	文字の名前を読みに含むので英字だけ
+おらくる	Oracle	固有名詞	kana	データベース	
+まりあでぃーびー	MariaDB	固有名詞	latin	データベース	文字の名前を読みに含むので英字だけ
+もんごでぃーびー	MongoDB	固有名詞	latin	データベース	文字の名前を読みに含むので英字だけ
+れでぃす	Redis	固有名詞	kana	データベース	
+めむきゃっしゅでぃー	memcached	固有名詞	latin	データベース	公式は小文字。文字の名前を読みに含むので英字だけ
+えらすてぃっくさーち	Elasticsearch	固有名詞	kana	検索	
+おーぷんさーち	OpenSearch	固有名詞	kana	検索	
+そーら	Solr	固有名詞	kana	検索	確認（空 と同じ読み そら ではなく そーら）
+# 除外（ユーザー決定 2026-10-15。日常の語の1位を奪う） きばな	Kibana	固有名詞	kana	監視	
+ろぐすたっしゅ	Logstash	固有名詞	kana	監視	
+かふか	Kafka	固有名詞	kana	ミドルウェア	作家の カフカ と同じ読み
+らびっとえむきゅー	RabbitMQ	固有名詞	latin	ミドルウェア	文字の名前を読みに含むので英字だけ
+かさんどら	Cassandra	固有名詞	kana	データベース	
+だいなもでぃーびー	DynamoDB	固有名詞	latin	データベース	文字の名前を読みに含むので英字だけ
+すのーふれいく	Snowflake	固有名詞	kana	データベース	
+びっぐくえり	BigQuery	固有名詞	kana	データベース	
+えんじんえっくす	nginx	固有名詞	latin	サーバー	公式は小文字。文字の名前を読みに含むので英字だけ
+あぱっち	Apache	固有名詞	kana	サーバー	
+とむきゃっと	Tomcat	固有名詞	kana	サーバー	
+じぇてぃ	Jetty	固有名詞	kana	サーバー	
+えーだぶりゅーえす	AWS	固有名詞	latin	クラウド	略語
+あじゅーる	Azure	固有名詞	kana	クラウド	
+あずーる	Azure	固有名詞	kana	クラウド	
+じーしーぴー	GCP	固有名詞	latin	クラウド	略語
+ぐーぐるくらうど	Google Cloud	固有名詞	kana	クラウド	
+ふぁいあべーす	Firebase	固有名詞	kana	クラウド	
+へろく	Heroku	固有名詞	kana	クラウド	
+ゔぁーせる	Vercel	固有名詞	kana	クラウド	
+ばーせる	Vercel	固有名詞	kana	クラウド	
+ねとりふぁい	Netlify	固有名詞	kana	クラウド	
+くらうどふれあ	Cloudflare	固有名詞	kana	クラウド	
+いーしーつー	EC2	固有名詞	latin	クラウド	略語
+えすすりー	S3	固有名詞	latin	クラウド	略語
+# 除外（ユーザー決定 2026-10-15。日常の語の1位を奪う） らむだ	Lambda	固有名詞	kana	クラウド	ギリシャ文字の ラムダ と同じ読み
+くらうどふろんと	CloudFront	固有名詞	kana	クラウド	
+くらうどうぉっち	CloudWatch	固有名詞	kana	クラウド	
+くばねてぃす	Kubernetes	固有名詞	kana	コンテナ	ユーザーの要望（2026-10-14）
+くーばねてぃす	Kubernetes	固有名詞	kana	コンテナ	
+くーべねてぃす	Kubernetes	固有名詞	kana	コンテナ	
+くばねてす	Kubernetes	固有名詞	kana	コンテナ	
+どっかー	Docker	固有名詞	kana	コンテナ	Core に Docker がある（今は英字が1位）
+ぽっどまん	Podman	固有名詞	kana	コンテナ	
+# 除外（ユーザー決定 2026-10-15。日常の語の1位を奪う） へるむ	Helm	固有名詞	kana	コンテナ	
+いすてぃお	Istio	固有名詞	kana	コンテナ	
+あるごしーでぃー	Argo CD	固有名詞	latin	コンテナ	文字の名前を読みに含むので英字だけ
+てらふぉーむ	Terraform	固有名詞	kana	構成管理	
+あんしぶる	Ansible	固有名詞	kana	構成管理	
+べいぐらんと	Vagrant	固有名詞	kana	構成管理	
+ぷろめてうす	Prometheus	固有名詞	kana	監視	神話の プロメテウス と同じ読み
+ぐらふぁな	Grafana	固有名詞	kana	監視	
+でーたどっぐ	Datadog	固有名詞	kana	監視	
+にゅーれりっく	New Relic	固有名詞	kana	監視	
+せんとり	Sentry	固有名詞	kana	監視	
+ざびっくす	Zabbix	固有名詞	kana	監視	
+すぷらんく	Splunk	固有名詞	kana	監視	
+じぇんきんす	Jenkins	固有名詞	kana	CI	Core に人名の ジェンキンス がある
+さーくるしーあい	CircleCI	固有名詞	latin	CI	文字の名前を読みに含むので英字だけ
+ぎっとはぶあくしょんず	GitHub Actions	固有名詞	kana	CI	
+おーぷんすたっく	OpenStack	固有名詞	kana	仮想化	
+ぶいえむうぇあ	VMware	固有名詞	latin	仮想化	文字の名前を読みに含むので英字だけ
+ばーちゃるぼっくす	VirtualBox	固有名詞	kana	仮想化	
+はいぱーぶい	Hyper-V	固有名詞	latin	仮想化	文字の名前を読みに含むので英字だけ
+りなっくす	Linux	固有名詞	kana	OS	ユーザーの要望（2026-10-14）
+りぬっくす	Linux	固有名詞	kana	OS	
+うぶんとぅ	Ubuntu	固有名詞	kana	OS	
+でびあん	Debian	固有名詞	kana	OS	
+せんとおーえす	CentOS	固有名詞	latin	OS	文字の名前を読みに含むので英字だけ
+ふぇどら	Fedora	固有名詞	kana	OS	
+れっどはっと	Red Hat	固有名詞	kana	OS	
+あるぱいん	Alpine	固有名詞	kana	OS	
+あーちりなっくす	Arch Linux	固有名詞	kana	OS	
+ふりーびーえすでぃー	FreeBSD	固有名詞	latin	OS	文字の名前を読みに含むので英字だけ
+まっくおーえす	macOS	固有名詞	latin	OS	文字の名前を読みに含むので英字だけ
+あいおーえす	iOS	固有名詞	latin	OS	略語
+あんどろいど	Android	固有名詞	kana	OS	
+うぃんどうず	Windows	固有名詞	kana	OS	
+くろーむ	Chrome	固有名詞	kana	ブラウザ	金属の クローム と同じ読み
+ふぁいあふぉっくす	Firefox	固有名詞	kana	ブラウザ	
+さふぁり	Safari	固有名詞	kana	ブラウザ	一般語の サファリ と同じ読み
+くろみうむ	Chromium	固有名詞	kana	ブラウザ	
+ぎっと	Git	固有名詞	kana	開発ツール	
+ぎっとはぶ	GitHub	固有名詞	kana	開発ツール	
+ぎっとらぶ	GitLab	固有名詞	kana	開発ツール	
+びっとばけっと	Bitbucket	固有名詞	kana	開発ツール	
+さぶばーじょん	Subversion	固有名詞	kana	開発ツール	
+ぐれいどる	Gradle	固有名詞	kana	ビルド	
+ぐらどる	Gradle	固有名詞	kana	ビルド	
+# 除外（ユーザー決定 2026-10-15。日常の語の1位を奪う） めいぶん	Maven	固有名詞	kana	ビルド	
+めいゔん	Maven	固有名詞	kana	ビルド	
+えぬぴーえむ	npm	固有名詞	latin	ビルド	略語。公式は小文字
+やーん	Yarn	固有名詞	kana	ビルド	
+ぴっぷ	pip	固有名詞	kana	ビルド	公式は小文字
+ほーむぶるー	Homebrew	固有名詞	kana	開発ツール	
+ゔぃむ	Vim	固有名詞	kana	開発ツール	
+びむ	Vim	固有名詞	kana	開発ツール	
+ねおゔぃむ	Neovim	固有名詞	kana	開発ツール	
+ねおびむ	Neovim	固有名詞	kana	開発ツール	
+いーまっくす	Emacs	固有名詞	kana	開発ツール	
+ぶいえすこーど	VS Code	固有名詞	latin	開発ツール	文字の名前の読みを含む
+びじゅあるすたじお	Visual Studio	固有名詞	kana	開発ツール	
+びじゅあるすたじおこーど	Visual Studio Code	固有名詞	kana	開発ツール	
+いんてりじぇい	IntelliJ	固有名詞	kana	開発ツール	
+いくりぷす	Eclipse	固有名詞	kana	開発ツール	天文の 日食・月食 と同じ読み
+えっくすこーど	Xcode	固有名詞	latin	開発ツール	文字の名前を読みに含むので英字だけ
+ぽすとまん	Postman	固有名詞	kana	開発ツール	
+てぃーまっくす	tmux	固有名詞	latin	開発ツール	公式は小文字。文字の名前を読みに含むので英字だけ
+かーる	curl	固有名詞	kana	開発ツール	公式は小文字。人名の カール と同じ読み
+すどー	sudo	固有名詞	kana	開発ツール	公式は小文字
+ぐれっぷ	grep	固有名詞	kana	開発ツール	公式は小文字
+くろん	cron	固有名詞	kana	開発ツール	公式は小文字
+しすてむでぃー	systemd	固有名詞	latin	開発ツール	公式は小文字。文字の名前を読みに含むので英字だけ
+こぱいろっと	Copilot	固有名詞	kana	AI	
+くろーど	Claude	固有名詞	kana	AI	
+じぇみに	Gemini	固有名詞	kana	AI	
+おーぷんえーあい	OpenAI	組織	kana	AI	
+あんそろぴっく	Anthropic	組織	kana	AI	
+えるえるえむ	LLM	名詞	latin	AI	略語
+すらっく	Slack	固有名詞	kana	コミュニケーション	一般語の スラック（たるみ）と同じ読み
+ずーむ	Zoom	固有名詞	kana	コミュニケーション	一般語の ズーム と同じ読み
+でぃすこーど	Discord	固有名詞	kana	コミュニケーション	
+のーしょん	Notion	固有名詞	kana	コミュニケーション	
+こんふるえんす	Confluence	固有名詞	kana	コミュニケーション	
+# 除外（ユーザー決定 2026-10-15。日常の語の1位を奪う） じら	Jira	固有名詞	kana	コミュニケーション	
+ばっくろぐ	Backlog	固有名詞	kana	コミュニケーション	一般語の バックログ と同じ読み
+# 除外（ユーザー決定 2026-10-15。日常の語の1位を奪う） とれろ	Trello	固有名詞	kana	コミュニケーション	
+ふぃぐま	Figma	固有名詞	kana	デザイン	
+きーた	Qiita	固有名詞	kana	コミュニティ	
+えくせる	Excel	固有名詞	kana	オフィス	
+ぱわーぽいんと	PowerPoint	固有名詞	kana	オフィス	
+あうとるっく	Outlook	固有名詞	kana	オフィス	
+しぇあぽいんと	SharePoint	固有名詞	kana	オフィス	
+わんどらいぶ	OneDrive	固有名詞	kana	オフィス	
+どろっぷぼっくす	Dropbox	固有名詞	kana	オフィス	
+せーるすふぉーす	Salesforce	固有名詞	kana	業務	
+しょっぴふぁい	Shopify	固有名詞	kana	業務	
+すとらいぷ	Stripe	固有名詞	kana	業務	一般語の ストライプ と同じ読み
+わーどぷれす	WordPress	固有名詞	kana	CMS	
+どるーぱる	Drupal	固有名詞	kana	CMS	
+らいふれい	Liferay	固有名詞	kana	CMS	ユーザーの要望（2026-10-14）
+らいふれいでぃーえっくすぴー	Liferay DXP	固有名詞	latin	CMS	文字の名前を読みに含むので英字だけ
+おーえすじーあい	OSGi	固有名詞	latin	Java	略語
+ふりーまーかー	FreeMarker	固有名詞	kana	Java	
+ぽーとれっと	Portlet	名詞	kana	Java	
+さーぶれっと	Servlet	名詞	kana	Java	
+じぇいえすぴー	JSP	名詞	latin	Java	略語
+じぇいでぃーびーしー	JDBC	名詞	latin	Java	略語
+じぇいぶいえむ	JVM	名詞	latin	Java	略語
+じぇいでぃーけー	JDK	名詞	latin	Java	略語
+おーぷんじぇいでぃーけー	OpenJDK	固有名詞	latin	Java	文字の名前を読みに含むので英字だけ
+きーくろーく	Keycloak	固有名詞	kana	認証	
+さむる	SAML	名詞	kana	認証	
+えるだっぷ	LDAP	名詞	kana	認証	
+おくた	Okta	固有名詞	kana	認証	
+おーおーす	OAuth	名詞	kana	認証	
+はどぅーぷ	Hadoop	固有名詞	kana	データ基盤	
+えあふろー	Airflow	固有名詞	kana	データ基盤	
+たぶろー	Tableau	固有名詞	kana	データ基盤	
+ぱわーびーあい	Power BI	固有名詞	latin	データ基盤	文字の名前を読みに含むので英字だけ
+わいやーしゃーく	Wireshark	固有名詞	kana	ネットワーク	
+うぇぶそけっと	WebSocket	名詞	kana	ネットワーク	
+ぶるーとぅーす	Bluetooth	名詞	kana	ネットワーク	
+えすえすえいち	SSH	名詞	latin	ネットワーク	略語
+えいちてぃーてぃーぴー	HTTP	名詞	latin	ネットワーク	略語
+えいちてぃーてぃーぴーえす	HTTPS	名詞	latin	ネットワーク	略語
+てぃーしーぴー	TCP	名詞	latin	ネットワーク	略語
+ゆーでぃーぴー	UDP	名詞	latin	ネットワーク	略語
+でぃーえぬえす	DNS	名詞	latin	ネットワーク	略語
+てぃーえるえす	TLS	名詞	latin	ネットワーク	略語
+えすえすえる	SSL	名詞	latin	ネットワーク	略語
+ぶいぴーえぬ	VPN	名詞	latin	ネットワーク	略語
+じーあーるぴーしー	gRPC	名詞	latin	ネットワーク	略語
+えーぴーあい	API	名詞	latin	一般	略語
+えすでぃーけー	SDK	名詞	latin	一般	略語
+しーえるあい	CLI	名詞	latin	一般	略語
+じーゆーあい	GUI	名詞	latin	一般	略語
+あいでぃーいー	IDE	名詞	latin	一般	略語
+ゆーあーるえる	URL	名詞	latin	一般	略語
+ゆーゆーあいでぃー	UUID	名詞	latin	一般	略語
+でぶおぷす	DevOps	名詞	kana	一般	
+えぬびでぃあ	NVIDIA	組織	kana	ハードウェア	
+いんてる	Intel	組織	kana	ハードウェア	
+らずべりーぱい	Raspberry Pi	固有名詞	kana	ハードウェア	
+あるでぃーの	Arduino	固有名詞	kana	ハードウェア	
+すぷりんぐ	Spring	固有名詞	kana	フレームワーク	一般語の スプリング（ばね、春）と同じ読み
+ねすとじぇいえす	NestJS	固有名詞	latin	フレームワーク	文字の名前を読みに含むので英字だけ
+あすとろ	Astro	固有名詞	kana	フロントエンド	
+すとーりーぶっく	Storybook	固有名詞	kana	フロントエンド	
+りあくとねいてぃぶ	React Native	固有名詞	kana	アプリ	
+じぇっとぱっくこんぽーず	Jetpack Compose	固有名詞	kana	アプリ	
+ぱいだんてぃっく	Pydantic	固有名詞	kana	フレームワーク	
+えすきゅーえるあるけみー	SQLAlchemy	固有名詞	latin	データベース	文字の名前を読みに含むので英字だけ
+ぷりずま	Prisma	固有名詞	kana	データベース	
+すーぱべーす	Supabase	固有名詞	kana	クラウド	
+くりっくはうす	ClickHouse	固有名詞	kana	データベース	
+だっくでぃーびー	DuckDB	固有名詞	latin	データベース	文字の名前を読みに含むので英字だけ
+いんふるっくすでぃーびー	InfluxDB	固有名詞	latin	データベース	文字の名前を読みに含むので英字だけ
+ずーきーぱー	ZooKeeper	固有名詞	kana	ミドルウェア	
+とりの	Trino	固有名詞	kana	データ基盤	
+でーたぶりっくす	Databricks	固有名詞	kana	データ基盤	
+るっかー	Looker	固有名詞	kana	データ基盤	
+めたべーす	Metabase	固有名詞	kana	データ基盤	
+かすたまいず	Kustomize	固有名詞	kana	コンテナ	
+らんちゃー	Rancher	固有名詞	kana	コンテナ	
+おーぷんしふと	OpenShift	固有名詞	kana	コンテナ	
+ふぁーげーと	Fargate	固有名詞	kana	クラウド	
+いーしーえす	ECS	固有名詞	latin	クラウド	略語
+いーけーえす	EKS	固有名詞	latin	クラウド	略語
+あーるでぃーえす	RDS	固有名詞	latin	クラウド	略語
+ぶいぴーしー	VPC	名詞	latin	クラウド	略語
+くらうどふぉーめーしょん	CloudFormation	固有名詞	kana	構成管理	
+ぷるみ	Pulumi	固有名詞	kana	構成管理	
+ぎっとおぷす	GitOps	名詞	kana	構成管理	
+いぇーがー	Jaeger	固有名詞	kana	監視	
+おーぷんてれめとり	OpenTelemetry	固有名詞	kana	監視	
+ふるえんとでぃー	Fluentd	固有名詞	latin	監視	文字の名前を読みに含むので英字だけ
+そなーきゅーぶ	SonarQube	固有名詞	kana	開発ツール	
+でぃぺんだぼっと	Dependabot	固有名詞	kana	開発ツール	
+ぷらんとゆーえむえる	PlantUML	固有名詞	latin	開発ツール	文字の名前を読みに含むので英字だけ
+おぶしでぃあん	Obsidian	固有名詞	kana	開発ツール	鉱物の オブシディアン と同じ読み
+ぎっとはぶこぱいろっと	GitHub Copilot	固有名詞	kana	AI	
+すわがー	Swagger	固有名詞	kana	開発ツール	
+おーぷんえーぴーあい	OpenAPI	固有名詞	latin	開発ツール	文字の名前を読みに含むので英字だけ
+ちーむず	Teams	固有名詞	kana	コミュニケーション	
+ちゃっとわーく	Chatwork	固有名詞	kana	コミュニケーション	
+きんとーん	kintone	固有名詞	kana	業務	公式は小文字
+きゃんば	Canva	固有名詞	kana	デザイン	
+らいふれいぽーたる	Liferay Portal	固有名詞	kana	CMS	

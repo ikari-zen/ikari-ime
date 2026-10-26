@@ -1,0 +1,7 @@
+/target
+/data/raw/
+/data/build/
+.DS_Store
+/.claude/worktrees/
+__pycache__/
+*.pyc

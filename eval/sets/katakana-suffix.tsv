@@ -1,0 +1,148 @@
+# 名詞+接尾的な漢字（名・数・者・性・化・的・型・用・機・内・外）と、短いカタカナの普通名詞（Sudachi の解析用の表記）と同じ読みの漢字、および本物のカタカナ語の否定ケース（LLM 生成。eval/reports/phase3-katakana.md）
+# split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev。調整は dev だけで行う。
+id	kind	tags	profile	context	reading	expected	note	split	source
+kata-mei-01	接尾	llm,カタカナ			りぽじとりめい	リポジトリ名	名詞+名（接尾）。文脈なしで全部を入力。安いカタカナ「メイ」に負けないこと	dev	llm-kata-v1
+kata-mei-02	接尾	llm,カタカナ			ゆーざめい	ユーザ名|ユーザー名	名詞+名（接尾）。文脈なしで全部を入力。安いカタカナ「メイ」に負けないこと	test	llm-kata-v1
+kata-mei-03	接尾	llm,カタカナ			ふぁいるめい	ファイル名	名詞+名（接尾）。文脈なしで全部を入力。安いカタカナ「メイ」に負けないこと	dev	llm-kata-v1
+kata-mei-04	接尾	llm,カタカナ			ほすとめい	ホスト名	名詞+名（接尾）。文脈なしで全部を入力。安いカタカナ「メイ」に負けないこと	dev	llm-kata-v1
+kata-mei-05	接尾	llm,カタカナ			くらすめい	クラス名	名詞+名（接尾）。文脈なしで全部を入力。安いカタカナ「メイ」に負けないこと	dev	llm-kata-v1
+kata-mei-06	接尾	llm,カタカナ			へんすうめい	変数名	名詞+名（接尾）。文脈なしで全部を入力。安いカタカナ「メイ」に負けないこと	dev	llm-kata-v1
+kata-mei-07	接尾	llm,カタカナ			かんすうめい	関数名	名詞+名（接尾）。文脈なしで全部を入力。安いカタカナ「メイ」に負けないこと	test	llm-kata-v1
+kata-mei-08	接尾	llm,カタカナ			ぶらんちめい	ブランチ名	名詞+名（接尾）。文脈なしで全部を入力。安いカタカナ「メイ」に負けないこと	dev	llm-kata-v1
+kata-mei-09	接尾	llm,カタカナ			ぱっけーじめい	パッケージ名	名詞+名（接尾）。文脈なしで全部を入力。安いカタカナ「メイ」に負けないこと	dev	llm-kata-v1
+kata-mei-10	接尾	llm,カタカナ			ていすうめい	定数名	名詞+名（接尾）。文脈なしで全部を入力。安いカタカナ「メイ」に負けないこと	test	llm-kata-v1
+kata-mei-11	接尾	llm,カタカナ			てーぶるめい	テーブル名	名詞+名（接尾）。文脈なしで全部を入力。安いカタカナ「メイ」に負けないこと	dev	llm-kata-v1
+kata-mei-12	接尾	llm,カタカナ			かくちょうしめい	拡張子名	名詞+名（接尾）。文脈なしで全部を入力。安いカタカナ「メイ」に負けないこと	dev	llm-kata-v1
+kata-mei-ctx-01	接尾	llm,カタカナ		リポジトリ	めい	名	確定済みの名詞の後ろの「名」	dev	llm-kata-v1
+kata-mei-ctx-02	接尾	llm,カタカナ		ユーザ	めい	名	確定済みの名詞の後ろの「名」	dev	llm-kata-v1
+kata-mei-ctx-03	接尾	llm,カタカナ		プロジェクト	めい	名	確定済みの名詞の後ろの「名」	test	llm-kata-v1
+kata-mei-ctx-04	接尾	llm,カタカナ		商品	めい	名	確定済みの名詞の後ろの「名」	dev	llm-kata-v1
+kata-mei-ctx-05	接尾	llm,カタカナ		会社	めい	名	確定済みの名詞の後ろの「名」	dev	llm-kata-v1
+kata-mei-ctx-06	接尾	llm,カタカナ		サーバ	めい	名	確定済みの名詞の後ろの「名」	test	llm-kata-v1
+kata-mei-ctx-07	接尾	llm,カタカナ		データベース	めい	名	確定済みの名詞の後ろの「名」	dev	llm-kata-v1
+kata-suu-01	接尾	llm,カタカナ			ふぁいるすう	ファイル数	名詞+数（接尾）。文脈なしで全部を入力	test	llm-kata-v1
+kata-suu-02	接尾	llm,カタカナ			もじすう	文字数	名詞+数（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-suu-03	接尾	llm,カタカナ			ようそすう	要素数	名詞+数（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-suu-04	接尾	llm,カタカナ			ひきすう	引数	名詞+数（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-suu-05	接尾	llm,カタカナ			ぎょうすう	行数	名詞+数（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-suu-06	接尾	llm,カタカナ			けんすう	件数	名詞+数（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-sha-01	接尾	llm,カタカナ			かんりしゃ	管理者	名詞+者（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-sha-02	接尾	llm,カタカナ			かいはつしゃ	開発者	名詞+者（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-sha-03	接尾	llm,カタカナ			さくせいしゃ	作成者	名詞+者（接尾）。文脈なしで全部を入力	test	llm-kata-v1
+kata-sha-04	接尾	llm,カタカナ			とうろくしゃ	登録者	名詞+者（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-sha-05	接尾	llm,カタカナ			せきにんしゃ	責任者	名詞+者（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-sha-06	接尾	llm,カタカナ			りようしゃ	利用者	名詞+者（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-sei-01	接尾	llm,カタカナ			かくちょうせい	拡張性	名詞+性（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-sei-02	接尾	llm,カタカナ			しんらいせい	信頼性	名詞+性（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-sei-03	接尾	llm,カタカナ			じゅうなんせい	柔軟性	名詞+性（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-sei-04	接尾	llm,カタカナ			ほしゅせい	保守性	名詞+性（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-sei-05	接尾	llm,カタカナ			かのうせい	可能性	名詞+性（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-sei-06	接尾	llm,カタカナ			ゆうこうせい	有効性	名詞+性（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-ka-01	接尾	llm,カタカナ			こうぞうか	構造化	名詞+化（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-ka-02	接尾	llm,カタカナ			じどうか	自動化	名詞+化（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-ka-03	接尾	llm,カタカナ			さいてきか	最適化	名詞+化（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-ka-04	接尾	llm,カタカナ			ひょうじゅんか	標準化	名詞+化（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-ka-05	接尾	llm,カタカナ			かしか	可視化	名詞+化（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-ka-06	接尾	llm,カタカナ			もじれつか	文字列化	名詞+化（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-teki-01	接尾	llm,カタカナ			ろんりてき	論理的	名詞+的（接尾）。文脈なしで全部を入力	test	llm-kata-v1
+kata-teki-02	接尾	llm,カタカナ			きほんてき	基本的	名詞+的（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-teki-03	接尾	llm,カタカナ			こうかてき	効果的	名詞+的（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-teki-04	接尾	llm,カタカナ			ぐたいてき	具体的	名詞+的（接尾）。文脈なしで全部を入力	test	llm-kata-v1
+kata-teki-05	接尾	llm,カタカナ			きゃっかんてき	客観的	名詞+的（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-teki-06	接尾	llm,カタカナ			ていきてき	定期的	名詞+的（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-gata-01	接尾	llm,カタカナ			せいすうがた	整数型	名詞+型（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-gata-02	接尾	llm,カタカナ			もじれつがた	文字列型	名詞+型（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-gata-03	接尾	llm,カタカナ			こがた	小型	名詞+型（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-gata-04	接尾	llm,カタカナ			おおがた	大型	名詞+型（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-gata-05	接尾	llm,カタカナ			しんがた	新型	名詞+型（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-gata-06	接尾	llm,カタカナ			きゅうがた	旧型	名詞+型（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-you-01	接尾	llm,カタカナ			かいはつよう	開発用	名詞+用（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-you-02	接尾	llm,カタカナ			ほんばんよう	本番用	名詞+用（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-you-03	接尾	llm,カタカナ			おとなよう	大人用	名詞+用（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-you-04	接尾	llm,カタカナ			じむよう	事務用	名詞+用（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-you-05	接尾	llm,カタカナ			しけんよう	試験用	名詞+用（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-you-06	接尾	llm,カタカナ			かていよう	家庭用	名詞+用（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-ki-01	接尾	llm,カタカナ			せんたくき	洗濯機	名詞+機（接尾）。文脈なしで全部を入力	test	llm-kata-v1
+kata-ki-02	接尾	llm,カタカナ			ふくごうき	複合機	名詞+機（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-ki-03	接尾	llm,カタカナ			ひこうき	飛行機	名詞+機（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-ki-04	接尾	llm,カタカナ			けいさんき	計算機	名詞+機（接尾）。文脈なしで全部を入力	test	llm-kata-v1
+kata-ki-05	接尾	llm,カタカナ			そうじき	掃除機	名詞+機（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-ki-06	接尾	llm,カタカナ			せんぷうき	扇風機	名詞+機（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-nai-01	接尾	llm,カタカナ			しゃない	社内	名詞+内（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-nai-02	接尾	llm,カタカナ			かんない	館内	名詞+内（接尾）。文脈なしで全部を入力	test	llm-kata-v1
+kata-nai-03	接尾	llm,カタカナ			けんない	県内	名詞+内（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-nai-04	接尾	llm,カタカナ			はんいない	範囲内	名詞+内（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-nai-05	接尾	llm,カタカナ			たいしょうない	対象内	名詞+内（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-nai-06	接尾	llm,カタカナ			じかんない	時間内	名詞+内（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-gai-01	接尾	llm,カタカナ			しゃがい	社外	名詞+外（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-gai-02	接尾	llm,カタカナ			こくがい	国外	名詞+外（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-gai-03	接尾	llm,カタカナ			はんいがい	範囲外	名詞+外（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-gai-04	接尾	llm,カタカナ			たいしょうがい	対象外	名詞+外（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-gai-05	接尾	llm,カタカナ			きかくがい	規格外	名詞+外（接尾）。文脈なしで全部を入力	test	llm-kata-v1
+kata-gai-06	接尾	llm,カタカナ			じかんがい	時間外	名詞+外（接尾）。文脈なしで全部を入力	dev	llm-kata-v1
+kata-suu-ctx-01	接尾	llm,カタカナ		ファイル	すう	数	確定済みの名詞の後ろの接尾	dev	llm-kata-v1
+kata-sha-ctx-01	接尾	llm,カタカナ		システム管理	しゃ	者	確定済みの名詞の後ろの接尾	dev	llm-kata-v1
+kata-teki-ctx-01	接尾	llm,カタカナ		論理	てき	的	確定済みの名詞の後ろの接尾	test	llm-kata-v1
+kata-ka-ctx-01	接尾	llm,カタカナ		自動	か	化	確定済みの名詞の後ろの接尾	dev	llm-kata-v1
+kata-you-ctx-01	接尾	llm,カタカナ		開発	よう	用	確定済みの名詞の後ろの接尾	dev	llm-kata-v1
+kata-sei-ctx-01	接尾	llm,カタカナ		拡張	せい	性	確定済みの名詞の後ろの接尾	dev	llm-kata-v1
+kata-gata-ctx-01	接尾	llm,カタカナ		整数	がた	型	確定済みの名詞の後ろの接尾	dev	llm-kata-v1
+kata-nai-ctx-01	接尾	llm,カタカナ		社	ない	内	確定済みの名詞の後ろの接尾	dev	llm-kata-v1
+kata-gai-ctx-01	接尾	llm,カタカナ		対象	がい	外	確定済みの名詞の後ろの接尾	test	llm-kata-v1
+kata-ki-ctx-01	接尾	llm,カタカナ		洗濯	き	機	確定済みの名詞の後ろの接尾	dev	llm-kata-v1
+kata-k-hana-01	短カナ	llm,カタカナ		桜の	はな	花	短いカタカナの普通名詞（Sudachi の解析用の表記）と同じ読みの漢字	dev	llm-kata-v1
+kata-k-haru-01	短カナ	llm,カタカナ		暖かい	はる	春	短いカタカナの普通名詞（Sudachi の解析用の表記）と同じ読みの漢字	dev	llm-kata-v1
+kata-k-inu-01	短カナ	llm,カタカナ		散歩する	いぬ	犬	短いカタカナの普通名詞（Sudachi の解析用の表記）と同じ読みの漢字	dev	llm-kata-v1
+kata-k-sake-01	短カナ	llm,カタカナ		祝いの席で飲む	さけ	酒	短いカタカナの普通名詞（Sudachi の解析用の表記）と同じ読みの漢字	dev	llm-kata-v1
+kata-k-te-01	短カナ	llm,カタカナ		右の	て	手	短いカタカナの普通名詞（Sudachi の解析用の表記）と同じ読みの漢字	dev	llm-kata-v1
+kata-k-mirai-01	短カナ	llm,カタカナ		地球の	みらい	未来	短いカタカナの普通名詞（Sudachi の解析用の表記）と同じ読みの漢字	dev	llm-kata-v1
+kata-k-minami-01	短カナ	llm,カタカナ		駅の	みなみ	南	短いカタカナの普通名詞（Sudachi の解析用の表記）と同じ読みの漢字	dev	llm-kata-v1
+kata-k-han-01	短カナ	llm,カタカナ		最新	ばん	版	短いカタカナの普通名詞（Sudachi の解析用の表記）と同じ読みの漢字	test	llm-kata-v1
+kata-k-han2-01	短カナ	llm,カタカナ		日本語	ばん	版	短いカタカナの普通名詞（Sudachi の解析用の表記）と同じ読みの漢字	dev	llm-kata-v1
+kata-k-ji-01	短カナ	llm,カタカナ		午後三	じ	時	短いカタカナの普通名詞（Sudachi の解析用の表記）と同じ読みの漢字	dev	llm-kata-v1
+kata-k-jin-01	短カナ	llm,カタカナ		日本	じん	人	短いカタカナの普通名詞（Sudachi の解析用の表記）と同じ読みの漢字	dev	llm-kata-v1
+kata-k-hon-01	短カナ	llm,カタカナ		図書館で	ほん	本	短いカタカナの普通名詞（Sudachi の解析用の表記）と同じ読みの漢字	dev	llm-kata-v1
+kata-k-sai-01	短カナ	llm,カタカナ		引っ越しの	さい	際|さい	短いカタカナの普通名詞（Sudachi の解析用の表記）と同じ読みの漢字	dev	llm-kata-v1
+kata-k-hiru-01	短カナ	llm,カタカナ		朝と	ひる	昼	短いカタカナの普通名詞（Sudachi の解析用の表記）と同じ読みの漢字	test	llm-kata-v1
+kata-k-kome-01	短カナ	llm,カタカナ		日本の	こめ	米	短いカタカナの普通名詞（Sudachi の解析用の表記）と同じ読みの漢字	dev	llm-kata-v1
+kata-k-koko-01	短カナ	llm,カタカナ			ここ	ここ|ココ	文脈なしの「ここ」。ひらがなか、カタカナの強調	dev	llm-kata-v1
+kata-neg-memo-01	否定	llm,カタカナ		これを	めも	メモ	本物のカタカナ語。漢字やひらがなに化けないこと	test	llm-kata-v1
+kata-neg-memo2-01	否定	llm,カタカナ			めも	メモ	本物のカタカナ語。漢字やひらがなに化けないこと	test	llm-kata-v1
+kata-neg-pen-01	否定	llm,カタカナ		黒い	ぺん	ペン	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-pen2-01	否定	llm,カタカナ			ぺん	ペン	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-cocoa-01	否定	llm,カタカナ		温かい	ここあ	ココア	本物のカタカナ語。漢字やひらがなに化けないこと	test	llm-kata-v1
+kata-neg-cocoa2-01	否定	llm,カタカナ			ここあ	ココア	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-data-01	否定	llm,カタカナ			でーた	データ	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-data2-01	否定	llm,カタカナ		大量の	でーた	データ	本物のカタカナ語。漢字やひらがなに化けないこと	test	llm-kata-v1
+kata-neg-main-01	否定	llm,カタカナ			めいん	メイン	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-main2-01	否定	llm,カタカナ		これが	めいん	メイン	本物のカタカナ語。漢字やひらがなに化けないこと	test	llm-kata-v1
+kata-neg-page-01	否定	llm,カタカナ		次の	ぺーじ	ページ	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-time-01	否定	llm,カタカナ			たいむ	タイム	本物のカタカナ語。漢字やひらがなに化けないこと	test	llm-kata-v1
+kata-neg-pin-01	否定	llm,カタカナ			ぴん	ピン	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-tab-01	否定	llm,カタカナ		新しい	たぶ	タブ	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-tempo-01	否定	llm,カタカナ		曲の	てんぽ	テンポ	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-line-01	否定	llm,カタカナ			らいん	ライン	本物のカタカナ語。漢字やひらがなに化けないこと	test	llm-kata-v1
+kata-neg-button-01	否定	llm,カタカナ			ぼたん	ボタン	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-gas-01	否定	llm,カタカナ		都市	がす	ガス	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-building-01	否定	llm,カタカナ		高い	びる	ビル	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-sign-01	否定	llm,カタカナ			さいん	サイン	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-pan-01	否定	llm,カタカナ		焼きたての	ぱん	パン	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-bus-01	否定	llm,カタカナ		市内の	ばす	バス	本物のカタカナ語。漢字やひらがなに化けないこと	test	llm-kata-v1
+kata-neg-glass-01	否定	llm,カタカナ		窓	がらす	ガラス	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-tire-01	否定	llm,カタカナ			たいや	タイヤ	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-salad-01	否定	llm,カタカナ			さらだ	サラダ	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-milk-01	否定	llm,カタカナ			みるく	ミルク	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-mail-01	否定	llm,カタカナ			めーる	メール	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-file-01	否定	llm,カタカナ			ふぁいる	ファイル	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-key-01	否定	llm,カタカナ			きー	キー	本物のカタカナ語。漢字やひらがなに化けないこと	test	llm-kata-v1
+kata-neg-user-01	否定	llm,カタカナ			ゆーざー	ユーザー	本物のカタカナ語。漢字やひらがなに化けないこと	test	llm-kata-v1
+kata-neg-dollar-01	否定	llm,カタカナ		米国の通貨	どる	ドル	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-menu-01	否定	llm,カタカナ			めにゅー	メニュー	本物のカタカナ語。漢字やひらがなに化けないこと	test	llm-kata-v1
+kata-neg-mode-01	否定	llm,カタカナ			もーど	モード	本物のカタカナ語。漢字やひらがなに化けないこと	test	llm-kata-v1
+kata-neg-size-01	否定	llm,カタカナ			さいず	サイズ	本物のカタカナ語。漢字やひらがなに化けないこと	test	llm-kata-v1
+kata-neg-type-01	否定	llm,カタカナ			たいぷ	タイプ	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-map-01	否定	llm,カタカナ			まっぷ	マップ	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-cake-01	否定	llm,カタカナ			けーき	ケーキ	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-coffee-01	否定	llm,カタカナ			こーひー	コーヒー	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-event-01	否定	llm,カタカナ			いべんと	イベント	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1
+kata-neg-menmo-01	否定	llm,カタカナ			めもり	メモリ	本物のカタカナ語。漢字やひらがなに化けないこと	dev	llm-kata-v1

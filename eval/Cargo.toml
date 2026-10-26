@@ -1,0 +1,29 @@
+[package]
+name = "ikari-eval"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "ikari-eval"
+path = "src/main.rs"
+
+[dependencies]
+ikari-core.workspace = true
+ikari-dict-format.workspace = true
+ikari-stack.workspace = true
+clap.workspace = true
+ikari-import.workspace = true
+serde_json.workspace = true
+
+[features]
+# zenz（llama.cpp）を使う。cmake が必要（ADR 0002 §13.2）
+lm = ["ikari-stack/lm"]
+lm-metal = ["lm", "ikari-stack/lm-metal"]
+
+[dev-dependencies]
+ikari-dict-builder.workspace = true
+tempfile.workspace = true

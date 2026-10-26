@@ -1,0 +1,19 @@
+# it-pack（ADR 0012 §4.3、B20-3）: IT の語彙集は、打った読みのカタカナが1位、英字が2位。1回英字を選べば英字が1位になる。
+# 英字の差（PACK_LATIN_OFFSET = 100）が、1回の選択の学習の加点より小さいことの確認でもある（ADR 0012 §10-8）。
+# 形 latin（略語、文字の名前を読みに含む語）も、読みのカタカナが1位、英字が2位（ADR 0020 §12。B32。以前は英字が1位）。
+# 実行: ikari-eval --ranker full --scenario eval/scenarios/it-pack.tsv   （語彙集は既定で有効）
+step	context	reading	surface	expect
+probe		くばねてぃす	クバネティス	top1
+probe		くばねてぃす	Kubernetes	not-top1
+commit		くばねてぃす	Kubernetes
+probe		くばねてぃす	Kubernetes	top1
+probe	この	くばねてぃす	Kubernetes	top1
+probe		りなっくす	リナックス	top1
+probe		りなっくす	Linux	not-top1
+commit		りなっくす	Linux
+probe		りなっくす	Linux	top1
+probe		まいえすきゅーえる	マイエスキューエル	top1
+probe		ぎっとはぶ	ギットハブ	top1
+probe		ぎっとはぶ	GitHub	not-top1
+commit	リポジトリは	ぎっとはぶ	GitHub
+probe	リポジトリは	ぎっとはぶ	GitHub	top1

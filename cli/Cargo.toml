@@ -1,0 +1,25 @@
+[package]
+name = "ikari-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "ikari"
+path = "src/main.rs"
+
+[dependencies]
+ikari-core.workspace = true
+ikari-input.workspace = true
+ikari-stack.workspace = true
+clap.workspace = true
+ikari-import.workspace = true
+
+[features]
+# zenz（llama.cpp）を使う。cmake が必要（ADR 0002 §13.2）
+lm = ["ikari-stack/lm"]
+lm-metal = ["lm", "ikari-stack/lm-metal"]
+
+[dev-dependencies]
+ikari-dict-builder.workspace = true
+tempfile.workspace = true

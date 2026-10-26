@@ -1,0 +1,28 @@
+# 元号と西暦の相互変換（#262。明治〜令和。年だけ）。公開の年だけ
+# 期待はユーザーの確認待ち。境の年（2019、1989、1926、1912）は両方が正解（新しい元号が先）
+# 合格は N 位以内（tags の within-N。eval/scripts/rank-within.sh で見る）。辞書自身が「令和8年」を1位に出すので、れいわ8ねんの西暦は2位。
+# split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev。
+id	kind	tags	profile	context	reading	expected	note	split	source
+era-reiwa8	直る	era,within-2			れいわ8ねん	2026年	令和8年	dev	era-262
+era-reiwa1	直る	era,within-2			れいわがんねん	2019年	令和元年	dev	era-262
+era-heisei23	直る	era,within-2			へいせい23ねん	2011年	平成23年	dev	era-262
+era-heisei1	直る	era,within-2			へいせいがんねん	1989年	平成元年	dev	era-262
+era-heisei31	直る	era,within-2			へいせい31ねん	2019年	平成の最後の年	dev	era-262
+era-showa64	直る	era,within-2			しょうわ64ねん	1989年	昭和の最後の年	dev	era-262
+era-showa1	直る	era,within-2			しょうわがんねん	1926年	昭和元年	dev	era-262
+era-showa25	直る	era,within-2			しょうわ25ねん	1950年	昭和25年	dev	era-262
+era-taisho15	直る	era,within-2			たいしょう15ねん	1926年	大正の最後の年	dev	era-262
+era-taisho1	直る	era,within-2			たいしょうがんねん	1912年	大正元年	dev	era-262
+era-meiji45	直る	era,within-2			めいじ45ねん	1912年	明治の最後の年	test	era-262
+era-meiji1	直る	era,within-2			めいじがんねん	1868年	明治元年	test	era-262
+era-heisei23-fw	直る	era,within-2			へいせい２３ねん	2011年	全角の数字	dev	era-262
+west-2011	直る	era,within-2			2011ねん	平成23年	2011年は平成23年	dev	era-262
+west-2026	直る	era,within-2			2026ねん	令和8年	2026年は令和8年	dev	era-262
+west-1950	直る	era,within-2			1950ねん	昭和25年	1950年は昭和25年	dev	era-262
+west-1920	直る	era,within-2			1920ねん	大正9年	1920年は大正9年	dev	era-262
+west-1900	直る	era,within-2			1900ねん	明治33年	1900年は明治33年	dev	era-262
+west-2019	直る	era,within-3			2019ねん	令和元年|平成31年	境の年。令和が先（年末で決める）	dev	era-262
+west-1989	直る	era,within-3			1989ねん	平成元年|昭和64年	境の年。平成が先	test	era-262
+west-1926	直る	era,within-3			1926ねん	昭和元年|大正15年	境の年。昭和が先	test	era-262
+west-1912	直る	era,within-3			1912ねん	大正元年|明治45年	境の年。大正が先	dev	era-262
+west-1868	直る	era,within-2			1868ねん	明治元年	明治の最初の年	dev	era-262

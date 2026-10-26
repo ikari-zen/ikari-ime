@@ -1,0 +1,90 @@
+# カタカナ語らしさの補正（#271）の評価セット。公開の語だけ。辞書にない／弱い外来語は 1 位のカタカナ、擬音語・擬態語・和語はひらがな（守る側）。期待はユーザーの確認待ち。
+# split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev。調整は dev だけで行う。
+id	kind	tags	profile	context	reading	expected	note	split	source
+kl-weak-01	カタカナ語(弱い)	katakana-like,weak			ぺねとれーしょん	ペネトレーション	辞書にない／弱いカタカナ語。期待は 1 位のカタカナ	dev	agent-271
+kl-weak-02	カタカナ語(弱い)	katakana-like,weak			ぺねとれーしょんてすと	ペネトレーションテスト	辞書にない／弱いカタカナ語。期待は 1 位のカタカナ	dev	agent-271
+kl-weak-03	カタカナ語(弱い)	katakana-like,weak			ぐれーてぃんぐ	グレーティング	辞書にない／弱いカタカナ語。期待は 1 位のカタカナ	dev	agent-271
+kl-weak-04	カタカナ語(弱い)	katakana-like,weak			ぱーそならいずど	パーソナライズド	辞書にない／弱いカタカナ語。期待は 1 位のカタカナ	dev	agent-271
+kl-weak-05	カタカナ語(弱い)	katakana-like,weak			ふぁいなりぜーしょん	ファイナリゼーション	辞書にない／弱いカタカナ語。期待は 1 位のカタカナ	dev	agent-271
+kl-weak-06	カタカナ語(弱い)	katakana-like,weak			ぷれぜんてぃーずむ	プレゼンティーズム	辞書にない／弱いカタカナ語。期待は 1 位のカタカナ	dev	agent-271
+kl-weak-07	カタカナ語(弱い)	katakana-like,weak			ふぇいずどあうと	フェイズドアウト	辞書にない／弱いカタカナ語。期待は 1 位のカタカナ	test	agent-271
+kl-weak-08	カタカナ語(弱い)	katakana-like,weak			ゔぇんだー	ヴェンダー|ベンダー	辞書にない／弱いカタカナ語。期待は 1 位のカタカナ	dev	agent-271
+kl-weak-09	カタカナ語(弱い)	katakana-like,weak			ふぁんくたー	ファンクター	辞書にない／弱いカタカナ語。期待は 1 位のカタカナ	dev	agent-271
+kl-weak-10	カタカナ語(弱い)	katakana-like,weak			ぷらんく	プランク	辞書にない／弱いカタカナ語。期待は 1 位のカタカナ	dev	agent-271
+kl-weak-11	カタカナ語(弱い)	katakana-like,weak			ぱーそなりずむ	パーソナリズム	辞書にない／弱いカタカナ語。期待は 1 位のカタカナ	dev	agent-271
+kl-weak-12	カタカナ語(弱い)	katakana-like,weak			ふぇてぃしずむ	フェティシズム	辞書にない／弱いカタカナ語。期待は 1 位のカタカナ	dev	agent-271
+kl-weak-13	カタカナ語(弱い)	katakana-like,weak			ぱるぷんて	パルプンテ	辞書にない／弱いカタカナ語。期待は 1 位のカタカナ	test	agent-271
+kl-dict-01	カタカナ語(辞書)	katakana-like,dict			ぷろぐらみんぐ	プログラミング	辞書にあるカタカナ語。今も 1 位であること（守る）	test	agent-271
+kl-dict-02	カタカナ語(辞書)	katakana-like,dict			ゔぁいおりん	ヴァイオリン|バイオリン	辞書にあるカタカナ語。今も 1 位であること（守る）	dev	agent-271
+kl-dict-03	カタカナ語(辞書)	katakana-like,dict			てぃーしゃつ	ティーシャツ|Tシャツ|ティーシャツ	辞書にあるカタカナ語。今も 1 位であること（守る）	dev	agent-271
+kl-dict-04	カタカナ語(辞書)	katakana-like,dict			ふぁいなんす	ファイナンス	辞書にあるカタカナ語。今も 1 位であること（守る）	test	agent-271
+kl-dict-05	カタカナ語(辞書)	katakana-like,dict			あぷりけーしょん	アプリケーション	辞書にあるカタカナ語。今も 1 位であること（守る）	dev	agent-271
+kl-dict-06	カタカナ語(辞書)	katakana-like,dict			ぷろとこる	プロトコル	辞書にあるカタカナ語。今も 1 位であること（守る）	dev	agent-271
+kl-dict-07	カタカナ語(辞書)	katakana-like,dict			ぷらっとふぉーむ	プラットフォーム	辞書にあるカタカナ語。今も 1 位であること（守る）	dev	agent-271
+kl-dict-08	カタカナ語(辞書)	katakana-like,dict			ぽーとふぉりお	ポートフォリオ	辞書にあるカタカナ語。今も 1 位であること（守る）	dev	agent-271
+kl-dict-09	カタカナ語(辞書)	katakana-like,dict			ふぃるたー	フィルター	辞書にあるカタカナ語。今も 1 位であること（守る）	dev	agent-271
+kl-dict-10	カタカナ語(辞書)	katakana-like,dict			ぐらふぃっくす	グラフィックス	辞書にあるカタカナ語。今も 1 位であること（守る）	dev	agent-271
+kl-dict-11	カタカナ語(辞書)	katakana-like,dict			でぃれくとり	ディレクトリ	辞書にあるカタカナ語。今も 1 位であること（守る）	test	agent-271
+kl-dict-12	カタカナ語(辞書)	katakana-like,dict			ぷろふぃーる	プロフィール	辞書にあるカタカナ語。今も 1 位であること（守る）	dev	agent-271
+kl-dict-13	カタカナ語(辞書)	katakana-like,dict			ぷれぜんてーしょん	プレゼンテーション	辞書にあるカタカナ語。今も 1 位であること（守る）	dev	agent-271
+kl-dict-14	カタカナ語(辞書)	katakana-like,dict			ぱいぷらいん	パイプライン	辞書にあるカタカナ語。今も 1 位であること（守る）	dev	agent-271
+kl-dict-15	カタカナ語(辞書)	katakana-like,dict			ぷるりくえすと	プルリクエスト	辞書にあるカタカナ語。今も 1 位であること（守る）	dev	agent-271
+kl-dict-16	カタカナ語(辞書)	katakana-like,dict			ぺあぷろぐらみんぐ	ペアプログラミング	辞書にあるカタカナ語。今も 1 位であること（守る）	test	agent-271
+kl-dict-17	カタカナ語(辞書)	katakana-like,dict			ふぃーどばっく	フィードバック	辞書にあるカタカナ語。今も 1 位であること（守る）	dev	agent-271
+kl-dict-18	カタカナ語(辞書)	katakana-like,dict			ふぁんくしょん	ファンクション	辞書にあるカタカナ語。今も 1 位であること（守る）	dev	agent-271
+kl-dict-19	カタカナ語(辞書)	katakana-like,dict			ぺーじびゅー	ページビュー	辞書にあるカタカナ語。今も 1 位であること（守る）	dev	agent-271
+kl-dict-20	カタカナ語(辞書)	katakana-like,dict			ぽりしー	ポリシー	辞書にあるカタカナ語。今も 1 位であること（守る）	dev	agent-271
+kl-dict-21	カタカナ語(辞書)	katakana-like,dict			ぷらいべーと	プライベート	辞書にあるカタカナ語。今も 1 位であること（守る）	dev	agent-271
+kl-dict-22	カタカナ語(辞書)	katakana-like,dict			ふぉるだ	フォルダ	辞書にあるカタカナ語。今も 1 位であること（守る）	dev	agent-271
+kl-guard-01	擬音語・和語	katakana-like,guard			ぷんぷん	ぷんぷん	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-02	擬音語・和語	katakana-like,guard			ぺたぺた	ぺたぺた	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-03	擬音語・和語	katakana-like,guard			ふかふか	ふかふか	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-04	擬音語・和語	katakana-like,guard			ふくろう	梟|ふくろう	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-05	擬音語・和語	katakana-like,guard			ぱちぱち	ぱちぱち	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-06	擬音語・和語	katakana-like,guard			ぽかぽか	ぽかぽか	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-07	擬音語・和語	katakana-like,guard			ぴかぴか	ぴかぴか	ひらがなが正しい語。カタカナに奪われないこと（守る）	test	agent-271
+kl-guard-08	擬音語・和語	katakana-like,guard			ぷかぷか	ぷかぷか	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-09	擬音語・和語	katakana-like,guard			ふわふわ	ふわふわ	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-10	擬音語・和語	katakana-like,guard			ぐるぐる	ぐるぐる	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-11	擬音語・和語	katakana-like,guard			むしむし	むしむし	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-12	擬音語・和語	katakana-like,guard			ぺらぺら	ぺらぺら	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-13	擬音語・和語	katakana-like,guard			ぱらぱら	ぱらぱら	ひらがなが正しい語。カタカナに奪われないこと（守る）	test	agent-271
+kl-guard-14	擬音語・和語	katakana-like,guard			ぽつぽつ	ぽつぽつ	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-15	擬音語・和語	katakana-like,guard			ふんわり	ふんわり	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-16	擬音語・和語	katakana-like,guard			ぐっすり	ぐっすり	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-17	擬音語・和語	katakana-like,guard			むかむか	むかむか	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-18	擬音語・和語	katakana-like,guard			ぴったり	ぴったり	ひらがなが正しい語。カタカナに奪われないこと（守る）	test	agent-271
+kl-guard-19	擬音語・和語	katakana-like,guard			ぽっかり	ぽっかり	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-20	擬音語・和語	katakana-like,guard			ふらふら	ふらふら	ひらがなが正しい語。カタカナに奪われないこと（守る）	test	agent-271
+kl-guard-21	擬音語・和語	katakana-like,guard			ぐちゃぐちゃ	ぐちゃぐちゃ	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-22	擬音語・和語	katakana-like,guard			ぷりぷり	ぷりぷり	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-23	擬音語・和語	katakana-like,guard			ぺこぺこ	ぺこぺこ	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-24	擬音語・和語	katakana-like,guard			ぴょんぴょん	ぴょんぴょん	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-25	擬音語・和語	katakana-like,guard			ふむふむ	ふむふむ	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-26	擬音語・和語	katakana-like,guard			ぐんぐん	ぐんぐん	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-27	擬音語・和語	katakana-like,guard			ぶるぶる	ぶるぶる	ひらがなが正しい語。カタカナに奪われないこと（守る）	test	agent-271
+kl-guard-28	擬音語・和語	katakana-like,guard			ふぐ	河豚|ふぐ	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-29	擬音語・和語	katakana-like,guard			ふじさん	富士山	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-30	擬音語・和語	katakana-like,guard			ぐんま	群馬	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-31	擬音語・和語	katakana-like,guard			むらさき	紫	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-32	擬音語・和語	katakana-like,guard			ふくふく	ふくふく	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-33	擬音語・和語	katakana-like,guard			ふっくら	ふっくら	ひらがなが正しい語。カタカナに奪われないこと（守る）	test	agent-271
+kl-guard-34	擬音語・和語	katakana-like,guard			ふにゃふにゃ	ふにゃふにゃ	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-35	擬音語・和語	katakana-like,guard			ぽよぽよ	ぽよぽよ	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-36	擬音語・和語	katakana-like,guard			ぷるぷる	ぷるぷる	ひらがなが正しい語。カタカナに奪われないこと（守る）	test	agent-271
+kl-guard-37	擬音語・和語	katakana-like,guard			ぽろぽろ	ぽろぽろ	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-38	擬音語・和語	katakana-like,guard			ぱたぱた	ぱたぱた	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-39	擬音語・和語	katakana-like,guard			ぴりぴり	ぴりぴり	ひらがなが正しい語。カタカナに奪われないこと（守る）	test	agent-271
+kl-guard-40	擬音語・和語	katakana-like,guard			ぱっくり	ぱっくり	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-41	擬音語・和語	katakana-like,guard			ぷっくり	ぷっくり	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-42	擬音語・和語	katakana-like,guard			ぐらぐら	ぐらぐら	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-43	擬音語・和語	katakana-like,guard			ぐにゃぐにゃ	ぐにゃぐにゃ	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-44	擬音語・和語	katakana-like,guard			むくむく	むくむく	ひらがなが正しい語。カタカナに奪われないこと（守る）	test	agent-271
+kl-guard-45	擬音語・和語	katakana-like,guard			むっつり	むっつり	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-46	擬音語・和語	katakana-like,guard			ふーふー	ふーふー	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-47	擬音語・和語	katakana-like,guard			ぽーっと	ぽーっと	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-48	擬音語・和語	katakana-like,guard			ぱくぱく	ぱくぱく	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-49	擬音語・和語	katakana-like,guard			ぽきぽき	ぽきぽき	ひらがなが正しい語。カタカナに奪われないこと（守る）	test	agent-271
+kl-guard-50	擬音語・和語	katakana-like,guard			ぐふふ	ぐふふ	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-51	擬音語・和語	katakana-like,guard			ふふふ	ふふふ	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-guard-52	擬音語・和語	katakana-like,guard			ぷぷぷ	ぷぷぷ	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271

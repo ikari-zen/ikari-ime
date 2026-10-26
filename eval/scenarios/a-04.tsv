@@ -1,0 +1,31 @@
+# a-04: 文脈なしの学習（Unconditional の特徴量だけ）が、現在の文脈の証拠を覆さない（フェーズ2 Q）。
+# 文脈なしで「品詞」を何度も選んでも、戦闘の文脈（話題と左文脈）が「瀕死」を支持するときは「瀕死」のまま。
+# （文脈がないときに学習が効くことは、単体テストと a-02 で確かめる。LM ありでは、文脈なしの読みは LM が決める）
+# 実行: ikari-eval --ranker full --scenario eval/scenarios/a-04.tsv
+step	context	reading	surface	expect
+probe	敵の攻撃を受けて兵士は	ひんし	瀕死	top1
+probe	ボスが	ひんし	瀕死	top1
+commit		ひんし	品詞
+commit		ひんし	品詞
+commit		ひんし	品詞
+commit		ひんし	品詞
+commit		ひんし	品詞
+commit		ひんし	品詞
+commit		ひんし	品詞
+commit		ひんし	品詞
+commit		ひんし	品詞
+commit		ひんし	品詞
+commit		ひんし	品詞
+commit		ひんし	品詞
+commit		ひんし	品詞
+commit		ひんし	品詞
+commit		ひんし	品詞
+commit		ひんし	品詞
+commit		ひんし	品詞
+commit		ひんし	品詞
+commit		ひんし	品詞
+commit		ひんし	品詞
+probe	敵の攻撃を受けて兵士は	ひんし	瀕死	top1
+probe	戦闘で体力が減り、仲間は	ひんし	瀕死	top1
+probe	ボスが	ひんし	瀕死	top1
+probe	瀕死の重傷を負った兵士は、敵の攻撃に耐えきれず	ひんし	瀕死	top1

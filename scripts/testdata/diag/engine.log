@@ -1,0 +1,26 @@
+1793086400000 sh_episode 0us lm=ready err=- mode=romaji start=typing end=commit_segments keys=12 keys_to_conv=11 rlen=9 dur_ms=4000 pick_ms=2500 spaces=3 cand_moves=2 pages=1 segs=3 seg_focus=2 seg_resize=1 seg_changed=1 esc_back=0 bs=2 panel=client ctx=ok wait_us=9000
+1793086400100 sh_episode 0us lm=ready err=- mode=romaji start=reconvert end=commit_cand keys=2 spaces=1 pick=3 pick_kind=rewriter segs=1
+1793086400200 convert 60us lm=ready err=- segments=1 cache=hit lm_applied=1 ctx_rev=9
+1793086400300 convert 8us lm=ready err=UNKNOWN_SESSION
+1793086400400 sh_episode 0us lm=ready err=- mode=kana start=typing end=esc_clear keys=3 dur_ms=700 esc_back=1
+1793086400500 sh_mode 0us lm=ready err=- from=ja to=en via=key
+1793086400600 sh_episode 0us lm=ready err=- mode=shortcode_en start=typing end=shortcode_pick keys=4 dur_ms=800 pick_kind=emoji
+1793086400700 sh_engine 0us lm=ready err=- timeout=2 fallback_convs=1
+1793086400800 stat 0us lm=ready err=- rss_kb=300000 sessions=1
+1793086400900 log_dropped 0us lm=ready err=- n=5
+1793086401000 diag_reject 0us lm=ready err=- n=2
+1793086401100 lm_load 800000us lm=ready err=-
+1793086401200 sh_future_kind 0us lm=ready err=- unknown_key=1
+1793086402000 begin_session 30us lm=ready err=- session=1 app=com.example.Editor
+1793086402100 end_session 5us lm=ready err=- session=1
+1793086402200 begin_session 30us lm=ready err=- session=1 app=com.example.Editor
+1793086403000 prefetch 4us lm=loading err=UNKNOWN_SESSION session=1
+1793086403100 convert 5us lm=loading err=UNKNOWN_SESSION session=1
+1793086403200 reconvert 5us lm=loading err=UNKNOWN_SESSION
+1793086409000 lm_unload 0us lm=loading err=- reason=shutdown
+1793086410000 begin_session 30us lm=loading err=- session=1 app=io.github.ikari-zen.inputmethod.ikari.smoke
+1793086410100 sh_episode 0us lm=ready err=- session=1 mode=romaji start=typing end=commit_cand keys=3 spaces=1 pick=5
+1793086410200 convert 5us lm=ready err=UNKNOWN_SESSION
+1793086403300 begin_session 30us lm=loading err=- session=1 app=com.example.Editor
+1793086403400 end_session 5us lm=loading err=- session=1
+1793086403500 commit_text 5us lm=loading err=UNKNOWN_SESSION session=1

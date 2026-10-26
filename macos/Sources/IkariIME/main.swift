@@ -1,0 +1,37 @@
+// 殻のエントリポイント（ADR 0004 §6.2）。IMKServer を起動して、イベントループを回す。
+//
+// X（バンドルの組み立て）が Info.plist に入れるキー（ADR 0004 §6.1、docs/phase2-contract.md §1）:
+//   CFBundleIdentifier                 = io.github.ikari-zen.inputmethod.ikari
+//   CFBundleName                       = ikari
+//   InputMethodConnectionName          = io.github.ikari-zen.inputmethod.ikari_Connection   （IkariIdentifiers.inputMethodConnection）
+//   InputMethodServerControllerClass   = IkariInputController                      （@objc(IkariInputController) で名前を固定している）
+//   LSBackgroundOnly                   = YES
+//   LSMinimumSystemVersion             = 26.0
+//   TISIntendedLanguage                = ja
+//   tsInputMethodCharacterRepertoireKey = [Hira, Kana, Latn]
+//   ComponentInputModeDict             = 入力モード1つ（.Japanese「あ」）。アイコン付き（ADR 0005 §15.2-1）
+//   IkariSigningMode                   = team | adhoc                              （AppContext が XPC の署名要件に使う）
+// Resources には macos/Resources/keymap/*.tsv を `keymap/` ディレクトリごと、アイコンの PDF を入れる。
+import AppKit
+import Foundation
+import IkariXPC
+import InputMethodKit
+
+guard let bundleIdentifier = Bundle.main.bundleIdentifier else {
+    FileHandle.standardError.write(Data("ikari: no bundle identifier (not running from the app bundle)\n".utf8))
+    exit(EXIT_FAILURE)
+}
+
+// サーバを生存させておく（解放されると接続を受けられなくなる）
+let server = IMKServer(name: IkariIdentifiers.inputMethodConnection, bundleIdentifier: bundleIdentifier)
+guard server != nil else {
+    FileHandle.standardError.write(Data("ikari: failed to start IMKServer\n".utf8))
+    exit(EXIT_FAILURE)
+}
+
+// 設定アプリとのブリッジ（Unix ソケット）を待ち始める。作れなくても入力は止めない
+AppContext.shared.startBridge()
+
+let application = NSApplication.shared
+application.setActivationPolicy(.accessory)
+application.run()

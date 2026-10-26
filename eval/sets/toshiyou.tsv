@@ -1,0 +1,24 @@
+# 「〜としよう」「〜にしよう」「〜でしよう」（助詞＋サ変の しよう）が 名詞の 使用・都市用 に負ける誤りと、守る側の評価セット（B63。issue #110）
+# target: 直したい側（意志形の しよう が1位）、guard: 名詞の 使用・仕様 のままであるべきもの（しよう の直後に する・できる・名詞が続く）
+# split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev。調整は dev だけで行う。
+id	kind	tags	profile	context	reading	expected	note	split	source
+ts-target-01	target	としよう 文脈なし			としよう	としよう	issue の報告（B63）。基準は 都市用	dev	issue110
+ts-target-02	target	としよう 英語の文脈		issue のあと	としよう	としよう	基準は と使用	dev	issue110
+ts-target-03	target	としよう 日本語の文脈		会議の進め方について。	としよう	としよう		dev	issue110
+ts-target-04	target	にしよう 文脈なし			にしよう	にしよう	基準は に使用	test	issue110
+ts-target-05	target	にしよう 英語の文脈		issue のあと	にしよう	にしよう	基準は に使用	dev	issue110
+ts-target-06	target	でしよう 文脈なし			でしよう	でしよう	基準は で使用	dev	issue110
+ts-target-07	target	でしよう 英語の文脈		issue のあと	でしよう	でしよう	基準は で使用	dev	issue110
+ts-target-08	target	そうしよう			そうしよう	そうしよう	基準は そう使用	dev	issue110
+ts-target-09	target	ここにしよう			ここにしよう	ここにしよう	基準は ここに使用	test	issue110
+ts-target-10	target	これにしよう			これにしよう	これにしよう	基準は これに使用	dev	issue110
+ts-target-11	target	ここでしよう			ここでしよう	ここでしよう	基準は ここで使用	dev	issue110
+ts-target-12	target	ごはんにしよう			ごはんにしよう	ごはんにしよう|ご飯にしよう	基準は ごはんに使用	dev	issue110
+ts-target-13	target	としようと			としようと	としようと	基準は 都市用と	test	issue110
+ts-guard-14	guard	しよう 単独			しよう	使用	今のまま 使用	dev	issue110
+ts-guard-15	guard	使用する			しようする	使用する	今のまま	test	issue110
+ts-guard-16	guard	で使用する			でしようする	で使用する	しよう の直後に する があるときは名詞のまま	dev	issue110
+ts-guard-17	guard	に使用する			にしようする	に使用する	同上	dev	issue110
+ts-guard-18	guard	で使用できる			でしようできる	で使用できる	同上	test	issue110
+ts-guard-19	guard	仕様書			しようしょ	仕様書	今のまま	dev	issue110
+ts-guard-20	guard	使用禁止			しようきんし	使用禁止	今のまま	dev	issue110

@@ -1,0 +1,14 @@
+# 曜日の読みの評価セット（#265。設定 date.weekday_dates を on にした状態。ikari --date-weekday-dates）。公開の曜日だけ。
+# 読みが曜日の語（げつようび〜にちようび）全体に一致したとき、辞書の曜日の語（月曜日など）はそのまま 1 位で、直近の日付（今日を含めて次のその曜日）の候補が後ろに足される。補完はしない。
+# ikari-eval には時計を固定する指定も、date.weekday_dates を on にする指定もない。ここでは曜日の語が 1 位のままであることだけを期待にする（off でも on でも同じ）。
+# 日付の中身（今日が月曜なら げつようび は今日、など）は core/src/rewriter/weekday.rs のユニットテスト（固定の日時）で確かめ、候補が出ることは ikari CLI で行ごとに確かめる（読み取りだけ）:
+#   ikari --dict <dict/> --user-dir $(mktemp -d) --date-weekday-dates -n 10 <読み>
+# 期待はユーザー確認待ち（eval/sets/REVIEW.md）。split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev。
+id	kind	tags	profile	context	reading	expected	note	split	source
+wd-getsu	守る	weekday			げつようび	月曜日	曜日の語が 1 位のまま。日付の候補は後ろ	dev	weekday-265
+wd-ka	守る	weekday			かようび	火曜日	同上	dev	weekday-265
+wd-sui	守る	weekday			すいようび	水曜日	同上	dev	weekday-265
+wd-moku	守る	weekday			もくようび	木曜日	同上	dev	weekday-265
+wd-kin	守る	weekday			きんようび	金曜日	同上	dev	weekday-265
+wd-do	守る	weekday			どようび	土曜日	同上	dev	weekday-265
+wd-nichi	守る	weekday			にちようび	日曜日	同上	dev	weekday-265

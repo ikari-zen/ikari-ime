@@ -1,0 +1,7 @@
+# 小書き仮名の評価セット（#217）。入力していない小書き仮名を足す候補（め → 目ぇ）は出さない。
+# 「出ない」ことの確認は eval/scripts/cli-golden.tsv の め/て/き（評価は1位だけを見る）。手書きなので split 列は持たない。
+id	kind	tags	profile	context	reading	expected	note
+smallkana-01	表記	smallkana			めぇ	目ぇ	小書き仮名を入力したので 目ぇ が出る
+smallkana-02	表記	smallkana			わりぃ	悪ぃ	読みに小書き仮名があるので 悪ぃ が出る
+smallkana-03	表記	smallkana			め	目	入力していない ぇ を足した 目ぇ ではなく 目 が1位
+smallkana-04	表記	smallkana			き	木	入力していない ぃ を足した 木ぃ ではなく 木 が1位

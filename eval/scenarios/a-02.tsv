@@ -1,0 +1,11 @@
+# a-02（怒りの記録）: 学習が文脈を見ず、別の文での選択が残った。
+# 別の文脈（ゲームを）で珍しい表記を選んでも、元の文脈（その話は）の1位は変わらないこと。
+# 同じ文脈では、選んだ表記が1位になること（学習が効いていること）。
+# 実行: ikari-eval --ranker full --scenario eval/scenarios/a-02.tsv
+step	context	reading	surface	expect
+probe	その話は	はじめてしった	初めて知った	top1
+probe	ゲームを	はじめてしった	始めて知った	not-top1
+commit	ゲームを	はじめてしった	始めて知った	
+commit	ゲームを	はじめてしった	始めて知った	
+probe	ゲームを	はじめてしった	始めて知った	top1
+probe	その話は	はじめてしった	初めて知った	top1

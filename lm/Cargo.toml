@@ -1,0 +1,19 @@
+[package]
+name = "ikari-lm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+# llama.cpp を使う実装を有効にする。cmake と Xcode のコマンドラインツールが必要。
+# 無効のときは llama.cpp をビルドしない（`cargo build --workspace` を軽く保つ）。
+llama = ["dep:llama-cpp-2"]
+metal = ["llama", "llama-cpp-2/metal"]
+
+[dependencies]
+ikari-core.workspace = true
+llama-cpp-2 = { workspace = true, optional = true }
+
+[dev-dependencies]
+tempfile.workspace = true

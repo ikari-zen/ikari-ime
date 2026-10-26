@@ -1,0 +1,58 @@
+# 左文脈の語と候補をつないだ複合語の加点（ADR 0007）の副作用を見る、文脈つきの自然な入力（ADR 0007 §7、§8。phase3-context-compound §4 の入力から選んだ）
+# 期待はユーザーの確認待ち（eval/sets/REVIEW.md の ADR 0007 の節。A2-4）。種別: 複合語（規則が効く）、助詞（名詞のあとに助詞だけ）、終助詞（名詞 + か）、変わらない（今も 1位）
+# split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev。調整は dev だけで行う。
+id	kind	tags	profile	context	reading	expected	note	split	source
+ctxc-sentaku-ki	複合語	adr0007		洗濯	き	機	洗濯機。接尾辞の 器 に負けていた	test	adr0007-natural
+ctxc-saishin-ban	複合語	adr0007		最新	ばん	版	最新版。接尾辞の 板 に負けていた	test	adr0007-natural
+ctxc-jidou-ka	複合語	adr0007		自動	か	化	自動化。接尾辞の 家 に負けていた	dev	adr0007-natural
+ctxc-ippan-ka	複合語	adr0007		一般	か	化	一般化	dev	adr0007-natural
+ctxc-jouhou-ka	複合語	adr0007		情報	か	化	情報化	dev	adr0007-natural
+ctxc-eiga-ka	複合語	adr0007		映画	か	化	映画化	test	adr0007-natural
+ctxc-nihon-go	複合語	adr0007		日本	ご	語	日本語。日本 は にっぽん とも読む	dev	adr0007-natural
+ctxc-daigaku-sei	複合語	adr0007		大学	せい	生	大学生	dev	adr0007-natural
+ctxc-mise-in	複合語	adr0007		店	いん	員	店員	dev	adr0007-natural
+ctxc-kaisha-in	複合語	adr0007		会社	いん	員	会社員	dev	adr0007-natural
+ctxc-nen-kan	複合語	adr0007		年	かん	間	年間（年鑑、年刊、年官 より安い）	dev	adr0007-natural
+ctxc-toki-kan	複合語	adr0007		時	かん	間	時間	dev	adr0007-natural
+ctxc-moku-ji	複合語	adr0007		目	じ	次	目次（目地、目路 より安い）	dev	adr0007-natural
+ctxc-te-gami	複合語	adr0007		手	がみ	紙	手紙	test	adr0007-natural
+ctxc-hana-bi	複合語	adr0007		花	び	火	花火	dev	adr0007-natural
+ctxc-hon-ya	複合語	adr0007		本	や	屋	本屋	dev	adr0007-natural
+ctxc-sekai-juu	複合語	adr0007		世界	じゅう	中	世界中	dev	adr0007-natural
+ctxc-senshu-ken	複合語	adr0007		選手	けん	権	選手権	dev	adr0007-natural
+ctxc-kuni-sai	複合語	adr0007		国	さい	際	国際	dev	adr0007-natural
+ctxc-hon-dana	複合語	adr0007		本	だな	棚	本棚	dev	adr0007-natural
+ctxc-chi-ka	複合語	adr0007		地	か	下	地下	dev	adr0007-natural
+ctxc-kyouto-shi	複合語	adr0007		京都	し	市	京都市（地名。ADR 0007 §12.1 Q2）	dev	adr0007-natural
+ctxc-oosaka-fu	複合語	adr0007		大阪	ふ	府	大阪府（地名）	test	adr0007-natural
+ctxc-chiba-ken	複合語	adr0007		千葉	けん	県	千葉県（地名）	dev	adr0007-natural
+ctxc-mondai-ka	複合語	adr0007		問題	か	化|か	問題化 とも 問題か（疑問）とも読める	dev	adr0007-natural
+ctxc-toukyou-to	複合語	adr0007		東京	と	都|と	東京都 とも 東京と とも読める	test	adr0007-natural
+ctxc-denwa-bangou	変わらない	adr0007		電話	ばんごう	番号	電話番号。1語なら長さは問わない（§5）	dev	adr0007-natural
+ctxc-kabushiki-gaisha	変わらない	adr0007		株式	がいしゃ	会社	株式会社	test	adr0007-natural
+ctxc-jidou-kasuru	変わらない	adr0007		自動	かする	化する	複数の語の候補は対象外（§5）	dev	adr0007-natural
+ctxc-nihongo-ban	複合語	adr0007		日本語	ばん	版	日本語版 が辞書にない。名詞的な接尾辞の増幅をやめて直った（ADR 0029）	dev	adr0007-natural
+ctxc-gogosan-ji	複合語	adr0007		午後三	じ	時	三時 が辞書にない	dev	adr0007-natural
+ctxc-mizu-to	助詞	adr0007		水	と	と	既知の悪化: 水都（スイト）が当たり 都 になる（§12.1 Q3 で受け入れ）	dev	adr0007-natural
+ctxc-hito-goto	助詞	adr0007		人	ごと	ごと	既知の悪化: 人事（ヒトゴト）が当たり 事 になる（§12.1 Q3 で受け入れ）	test	adr0007-natural
+ctxc-hon-to	助詞	adr0007		本	と	と	間違いのまま: 本途 が当たる（今は 都）	dev	adr0007-natural
+ctxc-chichi-to	助詞	adr0007		父	と	と	変わらない	dev	adr0007-natural
+ctxc-inu-to	助詞	adr0007		犬	と	と	犬都 は人名なので当たらない	dev	adr0007-natural
+ctxc-hito-to	助詞	adr0007		人	と	と	人都 は人名なので当たらない	dev	adr0007-natural
+ctxc-kaisha-no	助詞	adr0007		会社	の	の	変わらない	dev	adr0007-natural
+ctxc-toukyou-ni	助詞	adr0007		東京	に	に	変わらない	dev	adr0007-natural
+ctxc-kodomo-tachi	助詞	adr0007		子供	たち	たち	子供たち と 子供達 は同じ lemma。公用文の たち のまま	test	adr0007-natural
+ctxc-watashi-tachi	助詞	adr0007		私	たち	たち	私立（シリツ）は読みが合わないので当たらない	dev	adr0007-natural
+ctxc-kare-ra	助詞	adr0007		彼	ら	ら	変わらない	dev	adr0007-natural
+ctxc-tanaka-san	助詞	adr0007		田中	さん	さん	変わらない	dev	adr0007-natural
+ctxc-sensei-gata	助詞	adr0007		先生	がた	方|がた	変わらない	dev	adr0007-natural
+ctxc-hontou-ka	終助詞	adr0007		本当	か	か	名詞的な接尾辞の増幅をやめて直った（ADR 0029。以前は 家）	dev	adr0007-natural
+ctxc-muri-ka	終助詞	adr0007		無理	か	か	名詞的な接尾辞の増幅をやめて直った（ADR 0029。以前は 化）	dev	adr0007-natural
+ctxc-daijoubu-ka	終助詞	adr0007		大丈夫	か	か	名詞的な接尾辞の増幅をやめて直った（ADR 0029。以前は 化）	dev	adr0007-natural
+ctxc-saiteki-kai	複合語	adr0029		最適	かい	解	最適解。形状詞 + 名詞的な接尾辞（海）に負けていた（#137、ADR 0029）	dev	issue137
+ctxc-muri-kai	複合語	adr0029		無理	かい	解	無理解。名詞的な接尾辞（海）に負けていた（#137、ADR 0029）	dev	issue137
+ctxc-juuyou-shi	複合語	adr0029		重要	し	視	重要視。形状詞 + 1 字（氏）に負けていた（#137、ADR 0029）	dev	issue137
+ctxc-jinkou-ritsu	複合語	adr0029		人口	りつ	率	人口率。名詞的な接尾辞の増幅をやめても 率 が出ること（#137、ADR 0029）	dev	issue137
+ctxc-shuppatsu-ten	複合語	adr0029		出発	てん	点	出発点。名詞的な接尾辞の増幅をやめても 点 が出ること（#137、ADR 0029）	dev	issue137
+ctxc-saiteki-ka	変わらない	adr0029		最適	か	化	最適化。形状詞 + か は 化 のまま（#137、ADR 0029）	dev	issue137
+ctxc-kantan-ka	終助詞	adr0029		簡単	か	か	簡単か。辞書にない〜化より終助詞 か が先に出る（ADR 0029 Q3 で受け入れた）	test	issue137

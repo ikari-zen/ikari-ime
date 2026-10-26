@@ -1,0 +1,15 @@
+# b28-borrowed（ADR 0015 Q7。B28 レーン C）: 借りた左文脈（borrowed=true）は、学習の文脈の特徴量にならない。
+# 借りた文脈（ゲームを）で珍しい表記を選んでも、「文脈なし」の記録になるので、元の文脈（その話は）の1位は変わらない（a-02 と同じ不変条件）。
+# 借りた文脈で引き当てても、文脈の記録（ゲームを）は使われない。自分の文脈（borrowed なし）での学習は、今までどおり効く。
+# 注意: 実辞書・実モデルのある環境で確かめること（このシナリオを書いた環境には data/ がなく、未実行）。
+# 実行: ikari-eval --ranker full --scenario eval/scenarios/b28-borrowed.tsv
+step	context	reading	surface	expect	borrowed
+probe	その話は	はじめてしった	初めて知った	top1	false
+commit	ゲームを	はじめてしった	始めて知った		true
+commit	ゲームを	はじめてしった	始めて知った		true
+probe	その話は	はじめてしった	初めて知った	top1	false
+probe	その話は	はじめてしった	初めて知った	top1	true
+commit	ゲームを	はじめてしった	始めて知った		false
+commit	ゲームを	はじめてしった	始めて知った		false
+probe	ゲームを	はじめてしった	始めて知った	top1	false
+probe	その話は	はじめてしった	初めて知った	top1	false

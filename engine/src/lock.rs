@@ -1,0 +1,85 @@
+//! `engine.lock`: エンジンが動いている間、flock で持つ（ADR 0004 §7.4）。
+//!
+//! CLI の学習ファイルを書き換えるコマンドは、同じファイルのロックを試して、取られていればエラーにする。
+
+use std::fmt;
+use std::fs::{File, OpenOptions, TryLockError};
+use std::path::Path;
+
+use ikari_core::user::UserDir;
+
+#[derive(Debug)]
+pub enum LockError {
+    /// 別のエンジンが持っている
+    Held,
+    Io(String),
+}
+
+impl fmt::Display for LockError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LockError::Held => write!(f, "another engine holds the data directory lock"),
+            LockError::Io(m) => write!(f, "{m}"),
+        }
+    }
+}
+
+impl std::error::Error for LockError {}
+
+/// 持っている間だけロックが有効。落とすと（プロセスが死んでも）解放される。
+#[derive(Debug)]
+pub struct EngineLock {
+    _file: File,
+}
+
+impl EngineLock {
+    pub fn acquire(data_dir: &Path) -> Result<EngineLock, LockError> {
+        let path = UserDir::new(data_dir).engine_lock();
+        let file = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&path)
+            .map_err(|e| LockError::Io(format!("{}: {e}", path.display())))?;
+        match file.try_lock() {
+            Ok(()) => Ok(EngineLock { _file: file }),
+            Err(TryLockError::WouldBlock) => Err(LockError::Held),
+            Err(TryLockError::Error(e)) => Err(LockError::Io(format!("{}: {e}", path.display()))),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+
+    fn temp_dir(tag: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("ikari-engine-lock-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn second_lock_fails_until_the_first_is_dropped() {
+        let dir = temp_dir("exclusive");
+        let first = EngineLock::acquire(&dir).unwrap();
+        assert!(matches!(EngineLock::acquire(&dir), Err(LockError::Held)));
+        drop(first);
+        assert!(EngineLock::acquire(&dir).is_ok());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn missing_directory_is_an_io_error() {
+        // 普通のファイルの下は、root でも作れない（/nonexistent は root だと作れてしまう）
+        let file = tempfile::NamedTempFile::new().unwrap();
+        assert!(matches!(
+            EngineLock::acquire(&file.path().join("ikari-dir")),
+            Err(LockError::Io(_))
+        ));
+    }
+}

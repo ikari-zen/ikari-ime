@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- IkariSettings.app（設定アプリ「ikari 設定」）の Info.plist のテンプレート（ADR 0005 §6.2、§11.2-7）。
+     ikari.app/Contents/Helpers/ に同梱し、殻が LaunchServices で起動する。
+     版（CFBundleShortVersionString、CFBundleVersion）と IkariSigningMode は build.sh が PlistBuddy で埋める。
+     識別子は docs/phase2-contract.md §1 と揃える（IkariIdentifiers.settings）。
+     LSUIElement と LSBackgroundOnly は付けない: 普通のアプリとして Dock に出て、前面に出る。
+     CFBundleIconFile の AppIcon は Resources/AppIcon.icns（錨。macos/tools/make-app-icon.swift が作り、build.sh が置く）。 -->
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>ja</string>
+    <key>CFBundleExecutable</key>
+    <string>IkariSettings</string>
+    <key>CFBundleIdentifier</key>
+    <string>@IKARI_ID_PREFIX@.inputmethod.ikari.settings</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>ikari 設定</string>
+    <key>CFBundleDisplayName</key>
+    <string>ikari 設定</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.0.0</string>
+    <key>CFBundleVersion</key>
+    <string>0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>26.0</string>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSHumanReadableCopyright</key>
+    <string>ikari</string>
+    <key>IkariSigningMode</key>
+    <string>team</string>
+</dict>
+</plist>

@@ -1,0 +1,106 @@
+# 数詞のあとの助数詞（ADR 0019 §2.2 の規則 C。B34）。左文脈が数（漢数字と算用数字）で、読みが助数詞。直る側、期待が文脈で決まるもの（両方を正解にする）、守る側（今も 1位が正しい）
+# 期待はユーザーの確認待ち（eval/sets/REVIEW.md の ADR 0019 の節。A2）。種別: 直る、文脈（両方が正解）、守る、残る（規則 C でも直らない）
+# split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev。調整は dev だけで行う。
+id	kind	tags	profile	context	reading	expected	note	split	source
+fix-juu-fun	直る	adr0019		十	ふん	分	十分。接尾辞の 墳 に負けていた	dev	adr0019-counters
+fix-juu-pun	直る	adr0019		十	ぷん	分	十分（ぷん）。墳 に負けていた	dev	adr0019-counters
+fix-hyaku-en	直る	adr0019		百	えん	円	百円。接尾辞の 園 に負けていた	dev	adr0019-counters
+fix-ni-ken	直る	adr0019		二	けん	件	二件。接尾辞の 圏 に負けていた	dev	adr0019-counters
+fix-san-shuu	直る	adr0019		三	しゅう	週	三週。接尾辞の 州 に負けていた	test	adr0019-counters
+fix-juu-byou	直る	adr0019		十	びょう	秒	十秒。接尾辞の 病 に負けていた	test	adr0019-counters
+fix-san-dai	直る	adr0019		三	だい	台|代	三台。接尾辞の 大 に負けていた	dev	adr0019-counters
+fix-gogosan-ji	直る	adr0019		午後三	じ	時	午後三時（ADR 0007 の ctxc-gogosan-ji と同じ）	dev	adr0019-counters
+fix-gozen-juu-ji	直る	adr0019		午前十	じ	時	午前十時	dev	adr0019-counters
+fix-juu-ni-fun	直る	adr0019		十二	ふん	分	十二分	dev	adr0019-counters
+fix-nisen-en	直る	adr0019		二千	えん	円	二千円	test	adr0019-counters
+fix-a-10-fun	直る	adr0019		10	ふん	分	算用数字の文脈。10分	dev	adr0019-counters
+fix-a-100-en	直る	adr0019		100	えん	円	算用数字の文脈。100円	dev	adr0019-counters
+fix-a-3-shuu	直る	adr0019		3	しゅう	週	算用数字の文脈。3週	dev	adr0019-counters
+fix-a-gogo3-ji	直る	adr0019		午後3	じ	時	算用数字の文脈。午後3時	test	adr0019-counters
+ctx-ni-ji	文脈	adr0019		二	じ	次|時	二次 も 二時 も自然（ADR 0019 §11 で両方を正解にする）	dev	adr0019-counters
+ctx-san-tou	文脈	adr0019		三	とう	等|頭	三等 も 三頭 も自然（両方を正解にする）	dev	adr0019-counters
+ctx-ni-kai	文脈	adr0019		二	かい	回|階	二回 も 二階 も自然（両方を正解にする。回 / 階 は ADR 0019 §4 の群 4）	dev	adr0019-counters
+ctx-san-ji	文脈	adr0019		三	じ	次|時	三次 も 三時 も自然（両方を正解にする）	dev	adr0019-counters
+guard-go-nin	守る	adr0019		五	にん	人	五人。今も 1位が正しい	dev	adr0019-counters
+guard-ichi-hon	守る	adr0019		一	ほん	本	一本	dev	adr0019-counters
+guard-yon-gatsu	守る	adr0019		四	がつ	月	四月	dev	adr0019-counters
+guard-san-nichi	守る	adr0019		三	にち	日	三日	test	adr0019-counters
+guard-juu-nen	守る	adr0019		十	ねん	年	十年	dev	adr0019-counters
+guard-ni-mai	守る	adr0019		二	まい	枚	二枚	dev	adr0019-counters
+guard-go-sai	守る	adr0019		五	さい	歳	五歳	dev	adr0019-counters
+guard-san-jikan	守る	adr0019		三	じかん	時間	三時間	test	adr0019-counters
+guard-ichi-do	守る	adr0019		一	ど	度	一度	dev	adr0019-counters
+guard-juu-kan	残る	adr0019		十	かん	巻|間	十巻 も 十間 も自然（両方を正解にする）。基準は 館、規則 C のあとは 缶（期待は 2位。直らない）	dev	adr0019-counters
+guard-ni-hiki	守る	adr0019		二	ひき	匹	二匹	dev	adr0019-counters
+guard-san-ban	残る	adr0019		三	ばん	番	三番。基準は 板、規則 C のあとは 版（期待の 番 は 2位。直らない）	dev	adr0019-counters
+guard-san-ko	残る	adr0019		三	こ	個	三個。湖 が残る（番 と同じく、規則 C では直らない）	dev	adr0019-counters
+read-3-ji-ni	直る	adr0019			3じに	3時に	読みの中の算用数字。3時に（3字に に負けていた）	dev	adr0019-counters
+read-10-pun	直る	adr0019			10ぷん	10分	10墳 に負けていた	dev	adr0019-counters
+read-100-en	直る	adr0019			100えん	100円	100園 に負けていた	dev	adr0019-counters
+read-2-ken	直る	adr0019			2けん	2件	2件。県 に負けていた（#219 の規則で 1位）	test	adr0019-counters
+read-5-fun	直る	adr0019			5ふん	5分	算用数字の読み	dev	adr0019-counters
+read-3-shuu	直る	adr0019			3しゅう	3週	算用数字の読み	dev	adr0019-counters
+read-10-byou	直る	adr0019			10びょう	10秒	10秒。病 に負けていた（#219 の規則で 1位）	dev	adr0019-counters
+read-2-dai	直る	adr0019			2だい	2台|2代	算用数字の読み。2台 も 2代 も自然（両方を正解にする）	dev	adr0019-counters
+read-2-kai	直る	adr0019			2かい	2回|2階	2回 も 2階 も自然（両方を正解にする）。2日位 に負けていた（#219 の規則で 2階 が 1位）	dev	adr0019-counters
+read-3-ji	文脈	adr0019			3じ	3次|3時	3次 も 3時 も自然（両方を正解にする）	test	adr0019-counters
+read-zen-3-ji-ni	直る	adr0019			３じに	３時に	全角数字の読み	dev	adr0019-counters
+read-zen-10-pun	直る	adr0019			１０ぷん	１０分	全角数字の読み	dev	adr0019-counters
+read-kan-san-ji-ni	直る	adr0019			三じに	三時に	漢数字の読み	test	adr0019-counters
+read-kan-juu-pun	直る	adr0019			十ぷん	十分	漢数字の読み	dev	adr0019-counters
+read-kan-hyaku-en	直る	adr0019			百えん	百円	漢数字の読み	dev	adr0019-counters
+guard-read-3-no	守る	adr0019			3の	3の	数字のあとの助詞	dev	adr0019-counters
+guard-read-3-nin	守る	adr0019			3にん	3人	算用数字の読み。人	test	adr0019-counters
+guard-read-2-hon	守る	adr0019			2ほん	2本	算用数字の読み。本	dev	adr0019-counters
+guard-read-1-tsu	守る	adr0019			1つ	1つ	算用数字の読み。つ	dev	adr0019-counters
+guard-read-3-gatsu	守る	adr0019			3がつ	3月	算用数字の読み。月	dev	adr0019-counters
+guard-read-2026-nen	守る	adr0019			2026ねん	2026年|2026ねん	算用数字の読み。年	dev	adr0019-counters
+guard-read-3-ka-getsu	直る	adr0019			3かげつ	3か月|3ヶ月|3カ月	3か月（公用文）。1位は 3箇月 だった（辞書の か月 の ime_penalty のため。#222）。辞書のポリシー official_ka_counter で直る（ADR 0019 §17）	test	adr0019-counters
+guard-read-3-i	守る	adr0019			3い	3位	算用数字の読み。位	dev	adr0019-counters
+guard-read-2-ko	直る	adr0019			2こ	2個	2個。#219 の規則で 戸 が上がり、個 は 3位に下がった。#222 の suffix_bonus で 個 が 1位	dev	adr0019-counters
+guard-read-4-sai	守る	adr0019			4さい	4歳	算用数字の読み。歳	dev	adr0019-counters
+guard-read-100-nin	守る	adr0019			100にん	100人	算用数字の読み。人	dev	adr0019-counters
+guard-read-2-bai	文脈	adr0019			2ばい	2倍|2杯	2倍 も 2杯 も自然（両方を正解にする）	test	adr0019-counters
+guard-read-3-nensei	直る	adr0019			3ねんせい	3年生	3年生。3年性 が 1位（年生 は 2位）だった。#222 の suffix_bonus で 年生 が 1位	dev	adr0019-counters
+guard-read-3-gou	守る	adr0019			3ごう	3号	算用数字の読み。号	test	adr0019-counters
+guard-read-5-hun-go	守る	adr0019			5ふんご	5分後	算用数字の読み。分後	dev	adr0019-counters
+guard-read-3-kai-me	文脈	adr0019			3かいめ	3回目|3階目	3回目 も 3階目 も自然（両方を正解にする。#219 の規則で 1位が 3階目 になり、期待に入る）	dev	adr0019-counters
+guard-read-kan-juu-nin	守る	adr0019			十にん	十人	漢数字の読み。人	test	adr0019-counters
+read-3-ken	直る	adr0019			3けん	3件|3軒	算用数字の読み。3県 に負けていた（#219）	test	adr0019-counters
+read-3-kai	直る	adr0019			3かい	3回|3階	算用数字の読み。3日位 に負けていた（#219）	test	adr0019-counters
+read-1-kai	直る	adr0019			1かい	1回|1階	算用数字の読み。1日位 に負けていた（#219）	dev	adr0019-counters
+read-3-byou	直る	adr0019			3びょう	3秒	算用数字の読み。3病 に負けていた（#219）	dev	adr0019-counters
+read-3-kan	直る	adr0019			3かん	3巻|3間|3缶	算用数字の読み。3日ん に負けていた（#219）	dev	adr0019-counters
+guard-read-3-de	守る	adr0019			3で	3で	数字のあとの助詞（#219 の規則を強くしすぎると 3デ になる）	dev	adr0019-counters
+guard-read-3-made	守る	adr0019			3まで	3まで	数字のあとの助詞（強くしすぎると 3間で になる）	test	adr0019-counters
+guard-read-3-gurai	守る	adr0019			3ぐらい	3ぐらい	数字のあとの副助詞	test	adr0019-counters
+guard-read-2-honme	守る	adr0019			2ほんめ	2本目	算用数字の読み。本目（強くしすぎると 2ホン目 になる）	dev	adr0019-counters
+guard-read-3-hon	守る	adr0019			3ほん	3本	算用数字の読み。本	dev	adr0019-counters
+guard-read-2-satsu	守る	adr0019			2さつ	2冊	算用数字の読み。冊（冊 は 接尾辞,一般。助数詞の刷 に負けない）	dev	adr0019-counters
+read-2-kai-date	残る	adr0019			2かいだて	2階建て	2階建て。2階だて が上（2位。基準は 2日位だて で 14位）。残る（建て を漢字にする候補が負ける。#219 の対象外）	test	adr0019-counters
+read-3-ko-zutsu	直る	adr0019			3こずつ	3個ずつ	3個ずつ。3戸ずつ が 1位（個 は 3位）だった（#222）	dev	adr0019-counters
+read-3-ka-koku-go	直る	adr0019			3かこくご	3か国語|3カ国語	3か国語（公用文）。1位は 3か国後 だった（LM なし。後 が 語 より安い）。language_bonus（か国 → 語 の辺）で 3か国語 が 1位（ADR 0019 §18。#222）。「3こくご」は読みに「か」がないので対象外	dev	adr0019-counters
+read-2-ka-koku-go	直る	adr0019			2かこくご	2か国語|2カ国語	3かこくご の兄弟。1位は 2か国後 だった（ADR 0019 §18）。期待は未確認（REVIEW.md）	test	adr0019-counters
+read-5-ka-koku-go	直る	adr0019			5かこくご	5か国語|5カ国語	3かこくご の兄弟。1位は 5か国後 だった（ADR 0019 §18）。期待は未確認（REVIEW.md）	dev	adr0019-counters
+guard-read-3-ka-koku-go-wo	直る	adr0019			3かこくごを	3か国語を|3カ国語を	助詞が続く形。1位は 3か国後を だった（language_bonus が 4500 以下では直らない。ADR 0019 §18）。期待は未確認（REVIEW.md）	dev	adr0019-counters
+guard-read-3-ka-koku-nai	守る	adr0019			3かこくない	3か国内|3カ国内	か国のあとの 内。language_bonus は 語 だけに効く（ADR 0019 §18）	dev	adr0019-counters
+guard-read-3-ka-koku-ijou	守る	adr0019			3かこくいじょう	3か国以上|3カ国以上	か国のあとの 以上（ADR 0019 §18）	dev	adr0019-counters
+guard-read-3-ka-getsu-go	守る	adr0019			3かげつご	3か月後|3カ月後	か月のあとの 後 は 語 に取られない（language_bonus は か国 だけ。ADR 0019 §18）	dev	adr0019-counters
+guard-read-kokugo	守る	adr0019			こくご	国語	国語（こくご）。language_bonus の対象外（か国 の辺ではない）	dev	adr0019-counters
+read-3-ka-koku	直る	adr0019			3かこく	3か国|3カ国|3ヶ国	3日国 が 1位だった（#222）。1位は 3箇国 だった（3か国 は辞書の ime_penalty のため 2位以下）。official_ka_counter で 3か国 が 1位（ADR 0019 §17）	dev	adr0019-counters
+guard-read-3-kara	守る	adr0019			3から	3から	数字のあとの助詞。3日等 が 1位だった（#222）	dev	adr0019-counters
+guard-read-10-ko-iri	守る	adr0019			10こいりのはこ	10個入りの箱	個 のあとに入り（#222）	dev	adr0019-counters
+guard-read-2-ko-satsu	守る	adr0019			2さつ	2冊	冊 は 接尾辞,一般。助数詞の刷 に負けない（suffix_bonus を広げすぎると 2刷）	dev	adr0019-counters
+guard-read-3-ka-shou	守る	adr0019			3かしょ	3か所|3カ所	3日署 が 1位だった（#222）。そのあと 3箇所 が 1位だった。official_ka_counter で 3か所 が 1位（ADR 0019 §17）	dev	adr0019-counters
+guard-read-3-no-2	守る	adr0019			10の	10の	数字のあとの助詞（suffix_bonus を広げすぎると 10幅）	dev	adr0019-counters
+ord-dai10-kan	直る	adr0019			だい10かん	第10巻	第の次の巻。第10缶 は不自然（#240）	dev	adr0019-counters
+ord-dai3-kai	直る	adr0019			だい3かい	第3回	第3階 でなく 第3回（#240）	dev	adr0019-counters
+ord-daisan-kai	直る	adr0019			だいさんかい	第三回	かなの数詞でも同じ（#240）	dev	adr0019-counters
+ord-dai2-shou	直る	adr0019			だい2しょう	第2章	第2升・第2勝 でなく 章（#240）	test	adr0019-counters
+ord-dai5-wa	直る	adr0019			だい5わ	第5話	第5羽 でなく 話（#240）	dev	adr0019-counters
+ord-dai12-ki	直る	adr0019			だい12き	第12期	期（#240）	dev	adr0019-counters
+ord-dai3-jou	直る	adr0019			だい3じょう	第3条	条（#240）	dev	adr0019-counters
+ord-dai10-ban	守る	adr0019			だい10ばん	第10番	番は今も1位（#202 の address_bonus）。壊さない	dev	adr0019-counters
+ord-dai10-han	守る	adr0019			だい10はん	第10版	今も1位。壊さない	dev	adr0019-counters
+ord-10-kan	守る	adr0019			10かん	10缶|10巻	第 がなければ缶も巻も自然（文脈で決まる）。今の1位を壊さない	dev	adr0019-counters
+ord-3-kai	守る	adr0019			3かい	3階|3回	第 がなければ階も回も自然。壊さない	test	adr0019-counters

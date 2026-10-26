@@ -1,0 +1,17 @@
+# macOS 風プリセット（既定。ADR 0004 §15.1-4）。形式は docs/phase2-contract.md §4。「キー<TAB>操作」
+f6	convert.hiragana
+f7	convert.fullwidth_katakana
+f8	convert.halfwidth_katakana
+f9	convert.fullwidth_alnum
+f10	convert.halfwidth_alnum
+ctrl+j	convert.hiragana
+ctrl+k	convert.fullwidth_katakana
+ctrl+;	convert.halfwidth_katakana
+ctrl+l	convert.fullwidth_alnum
+left	segment.focus_left
+right	segment.focus_right
+shift+left	segment.shrink
+shift+right	segment.expand
+ctrl+shift+r	reconvert
+down	candidate.next
+up	candidate.previous

@@ -1,0 +1,22 @@
+# b23-naoru（ADR 0013。下書き）: 文脈の記録がないときの学習。ユーザーの報告（2026-10-13）: 「直ったけど」が「治った」になる。
+# 実機の左文脈は、周辺テキストか確定履歴なので、空のことは少ない。ここでは毎回違う文脈で 直った を選ぶ。
+# 期待は ADR 0013 §1 の推奨案（記録のない文脈では、文脈によらない記録に戻す。重み 1.0）。今の main では「直った」の probe が失敗する。
+# 対照: 病気やけがの文脈（話題と左文脈が 治った を支持する）では、学習で覆さない（spec の基本原則。LearningGuard）。
+# LM ありでは、空の文脈の なおった は LM が 治った を強く推す（+1501）。5 回選んだあとに 直った が1位になる（ADR 0013 §3.3）。
+# 実行: ikari-eval --ranker full --scenario eval/scenarios/b23-naoru.tsv [--lm <gguf>]
+step	context	reading	surface	expect
+probe	風邪が	なおった	治った	top1
+probe	けががすっかり	なおった	治った	top1
+commit	テストを流したら	なおった	直った	
+probe	了解です。	なおった	直った	top1
+probe	さっき見たら	なおった	直った	top1
+probe	風邪が	なおった	治った	top1
+commit	再起動したら	なおった	直った	
+commit	設定を変えたら	なおった	直った	
+commit	さっきの件、	なおった	直った	
+commit	ようやく	なおった	直った	
+probe		なおった	直った	top1
+probe	了解です。	なおった	直った	top1
+probe	風邪が	なおった	治った	top1
+probe	病院で薬をもらって、風邪が	なおった	治った	top1
+probe	けががすっかり	なおった	治った	top1

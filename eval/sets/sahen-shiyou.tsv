@@ -1,0 +1,182 @@
+# サ変可能の名詞＋しよう（てすとしよう → テストしよう）と、使用・仕様が正しい入力の評価セット（#230。ADR 0016 §12）
+# kind=target は しよう が1位であるべきもの、guard は 使用・仕様 のままであるべきもの。期待はユーザー確認済み（2026-10-23）の分を含む
+# ambig-sahen+仕様 は せっけいしよう など。設計仕様 の言い回しはほぼないので、期待は 設計しよう（ユーザー決定 2026-10-23）
+# split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev
+id	kind	tags	profile	context	reading	expected	note	split	source
+ss-t-001	target	sahen+しよう			てすとしよう	テストしよう		dev	issue230
+ss-t-002	target	sahen+しよう			けいかくしよう	計画しよう		test	issue230
+ss-t-003	target	sahen+しよう			じっこうしよう	実行しよう		dev	issue230
+ss-t-004	target	sahen+しよう			かくにんしよう	確認しよう		dev	issue230
+ss-t-005	target	sahen+しよう			れんらくしよう	連絡しよう		dev	issue230
+ss-t-006	target	sahen+しよう			けんとうしよう	検討しよう		dev	issue230
+ss-t-007	target	sahen+しよう			せいりしよう	整理しよう		test	issue230
+ss-t-008	target	sahen+しよう			べんきょうしよう	勉強しよう		test	issue230
+ss-t-009	target	sahen+しよう			そうじしよう	掃除しよう		dev	issue230
+ss-t-010	target	sahen+しよう			うんどうしよう	運動しよう		dev	issue230
+ss-t-011	target	sahen+しよう			じゅんびしよう	準備しよう		test	issue230
+ss-t-012	target	sahen+しよう			そうだんしよう	相談しよう		dev	issue230
+ss-t-013	target	sahen+しよう			よやくしよう	予約しよう		dev	issue230
+ss-t-014	target	sahen+しよう			ほぞんしよう	保存しよう		dev	issue230
+ss-t-015	target	sahen+しよう			さくじょしよう	削除しよう		dev	issue230
+ss-t-016	target	sahen+しよう			へんこうしよう	変更しよう		dev	issue230
+ss-t-017	target	sahen+しよう			ついかしよう	追加しよう		dev	issue230
+ss-t-018	target	sahen+しよう			しゅうせいしよう	修正しよう		dev	issue230
+ss-t-019	target	sahen+しよう			さんかしよう	参加しよう		dev	issue230
+ss-t-020	target	sahen+しよう			はっぴょうしよう	発表しよう		dev	issue230
+ss-t-021	target	sahen+しよう			せつめいしよう	説明しよう		dev	issue230
+ss-t-022	target	sahen+しよう			しょうかいしよう	紹介しよう		test	issue230
+ss-t-023	target	sahen+しよう			れんしゅうしよう	練習しよう		dev	issue230
+ss-t-024	target	sahen+しよう			さくせいしよう	作成しよう		dev	issue230
+ss-t-025	target	sahen+しよう			とうろくしよう	登録しよう		dev	issue230
+ss-t-026	target	sahen+しよう			しゅっぱつしよう	出発しよう		dev	issue230
+ss-t-027	target	sahen+しよう			へんしゅうしよう	編集しよう		test	issue230
+ss-t-028	target	sahen+しよう			けいさんしよう	計算しよう		test	issue230
+ss-t-029	target	sahen+しよう			ちょうさしよう	調査しよう		dev	issue230
+ss-t-030	target	sahen+しよう			ていあんしよう	提案しよう		test	issue230
+ss-t-031	target	sahen+しよう			たいおうしよう	対応しよう		dev	issue230
+ss-t-032	target	sahen+しよう			かいけつしよう	解決しよう		dev	issue230
+ss-t-033	target	sahen+しよう			ふくしゅうしよう	復習しよう		dev	issue230
+ss-t-034	target	sahen+しよう			さんぽしよう	散歩しよう		dev	issue230
+ss-t-035	target	sahen+しよう			りょこうしよう	旅行しよう		dev	issue230
+ss-t-036	target	sahen+しよう			せんたくしよう	洗濯しよう		dev	issue230
+ss-t-037	target	sahen+しよう			しょくじしよう	食事しよう		dev	issue230
+ss-t-038	target	sahen+しよう			でんわしよう	電話しよう		dev	issue230
+ss-t-039	target	sahen+しよう			かんしゃしよう	感謝しよう		dev	issue230
+ss-t-040	target	sahen+しよう			はんだんしよう	判断しよう		dev	issue230
+ss-t-041	target	sahen+しよう			さいかいしよう	再開しよう		dev	issue230
+ss-t-042	target	sahen+しよう			しゅうりょうしよう	終了しよう		test	issue230
+ss-t-043	target	sahen+しよう			かいししよう	開始しよう		dev	issue230
+ss-t-044	target	sahen+しよう			ていししよう	停止しよう		dev	issue230
+ss-t-045	target	sahen+しようか			てすとしようか	テストしようか		dev	issue230
+ss-t-046	target	sahen+しようか			けいかくしようか	計画しようか		dev	issue230
+ss-t-047	target	sahen+しようか			じっこうしようか	実行しようか		dev	issue230
+ss-t-048	target	sahen+しようか			かくにんしようか	確認しようか		dev	issue230
+ss-t-049	target	sahen+しようか			れんらくしようか	連絡しようか		test	issue230
+ss-t-050	target	sahen+しようか			けんとうしようか	検討しようか		dev	issue230
+ss-t-051	target	sahen+しようか			せいりしようか	整理しようか		dev	issue230
+ss-t-052	target	sahen+しようか			べんきょうしようか	勉強しようか		dev	issue230
+ss-t-053	target	sahen+しようか			そうじしようか	掃除しようか		dev	issue230
+ss-t-054	target	sahen+しようか			うんどうしようか	運動しようか		dev	issue230
+ss-t-055	target	sahen+しようか			じゅんびしようか	準備しようか		test	issue230
+ss-t-056	target	sahen+しようか			そうだんしようか	相談しようか		dev	issue230
+ss-t-057	target	sahen+しようか			よやくしようか	予約しようか		dev	issue230
+ss-t-058	target	sahen+しようか			ほぞんしようか	保存しようか		test	issue230
+ss-t-059	target	sahen+しようか			さくじょしようか	削除しようか		dev	issue230
+ss-t-060	target	sahen+しようと			てすとしようとおもう	テストしようと思う		dev	issue230
+ss-t-061	target	sahen+しようと			けいかくしようとおもう	計画しようと思う		dev	issue230
+ss-t-062	target	sahen+しようと			じっこうしようとおもう	実行しようと思う		dev	issue230
+ss-t-063	target	sahen+しようと			かくにんしようとおもう	確認しようと思う		dev	issue230
+ss-t-064	target	sahen+しようと			れんらくしようとおもう	連絡しようと思う		dev	issue230
+ss-t-065	target	sahen+しようと			けんとうしようとおもう	検討しようと思う		dev	issue230
+ss-t-066	target	sahen+しようと			せいりしようとおもう	整理しようと思う		dev	issue230
+ss-t-067	target	sahen+しようと			べんきょうしようとおもう	勉強しようと思う		test	issue230
+ss-t-068	target	sahen+しようと			そうじしようとおもう	掃除しようと思う		dev	issue230
+ss-t-069	target	sahen+しようと			うんどうしようとおもう	運動しようと思う		test	issue230
+ss-g-070	guard	bare-使用仕様			しようする	使用する		dev	issue230
+ss-g-071	guard	bare-使用仕様			しようちゅう	使用中		dev	issue230
+ss-g-072	guard	bare-使用仕様			しようしゃ	使用者		test	issue230
+ss-g-073	guard	bare-使用仕様			しようりょう	使用料		dev	issue230
+ss-g-074	guard	bare-使用仕様			しようじょうきょう	使用状況		dev	issue230
+ss-g-075	guard	bare-使用仕様			しようきかん	使用期間		dev	issue230
+ss-g-076	guard	bare-使用仕様			しようほうほう	使用方法		dev	issue230
+ss-g-077	guard	bare-使用仕様			しようかのう	使用可能		test	issue230
+ss-g-078	guard	bare-使用仕様			しようふか	使用不可		test	issue230
+ss-g-079	guard	bare-使用仕様			しようきんし	使用禁止		dev	issue230
+ss-g-080	guard	bare-使用仕様			しようずみ	使用済み		test	issue230
+ss-g-081	guard	bare-使用仕様			しようげんかい	使用限界		dev	issue230
+ss-g-082	guard	bare-使用仕様			しようしょ	仕様書		dev	issue230
+ss-g-083	guard	bare-使用仕様			しようへんこう	仕様変更		dev	issue230
+ss-g-084	guard	bare-使用仕様			しようきょか	使用許可		dev	issue230
+ss-g-085	guard	bare-使用仕様			しようにんずう	使用人数		dev	issue230
+ss-g-086	guard	bare-使用仕様			しようもくてき	使用目的		dev	issue230
+ss-g-087	guard	bare-使用仕様			しようれい	使用例		test	issue230
+ss-g-088	guard	bare-使用仕様			しようかいすう	使用回数		dev	issue230
+ss-g-089	guard	bare-使用仕様			しようじ	使用時		dev	issue230
+ss-g-090	guard	bare-使用仕様			しようかんきょう	使用環境		dev	issue230
+ss-g-091	guard	bare-使用仕様			しようげんご	使用言語		dev	issue230
+ss-g-092	guard	bare-使用仕様			しようせいげん	使用制限		dev	issue230
+ss-g-093	guard	bare-使用仕様			しよう	使用		dev	issue230
+ss-g-094	guard	bare-使用仕様			きのうをしようする	機能を使用する		dev	issue230
+ss-g-095	guard	bare-使用仕様			ほんをしようする	本を使用する		test	issue230
+ss-g-096	guard	bare-使用仕様			ぱすわーどをしようしない	パスワードを使用しない		dev	issue230
+ss-g-097	guard	bare-使用仕様			じてんしゃをしようして	自転車を使用して		dev	issue230
+ss-g-098	guard	bare-使用仕様			せいひんをしようしてください	製品を使用してください		dev	issue230
+ss-g-099	guard	bare-使用仕様			ほんをしよう	本を使用		dev	issue230
+ss-g-100	guard	bare-使用仕様			きのうをしよう	機能を使用		dev	issue230
+ss-g-101	guard	bare-使用仕様			しようしないで	使用しないで		dev	issue230
+ss-g-102	guard	bare-使用仕様			さいしようする	再使用する		dev	issue230
+ss-g-103	guard	bare-使用仕様			みしよう	未使用		dev	issue230
+ss-g-104	guard	sahen+しようしょ			てすとしようしょ	テスト仕様書		test	issue230
+ss-g-105	guard	sahen+しようしょ			けいかくしようしょ	計画仕様書		dev	issue230
+ss-g-106	guard	sahen+しようしょ			じっこうしようしょ	実行仕様書		dev	issue230
+ss-g-107	guard	sahen+しようしょ			かくにんしようしょ	確認仕様書		dev	issue230
+ss-g-108	guard	sahen+しようしょ			れんらくしようしょ	連絡仕様書		dev	issue230
+ss-g-109	guard	sahen+しようしょ			けんとうしようしょ	検討仕様書		dev	issue230
+ss-g-110	guard	sahen+しようしょ			せいりしようしょ	整理仕様書		dev	issue230
+ss-g-111	guard	sahen+しようしょ			べんきょうしようしょ	勉強仕様書		dev	issue230
+ss-g-112	guard	sahen+しようしょ			そうじしようしょ	掃除仕様書		dev	issue230
+ss-g-113	guard	sahen+しようしょ			うんどうしようしょ	運動仕様書		test	issue230
+ss-g-114	guard	sahen+しようしょ			じゅんびしようしょ	準備仕様書		dev	issue230
+ss-g-115	guard	sahen+しようしょ			そうだんしようしょ	相談仕様書		dev	issue230
+ss-g-116	guard	sahen+しようちゅう			てすとしようちゅう	テスト使用中		test	issue230
+ss-g-117	guard	sahen+しようちゅう			けいかくしようちゅう	計画使用中		dev	issue230
+ss-g-118	guard	sahen+しようちゅう			じっこうしようちゅう	実行使用中		test	issue230
+ss-g-119	guard	sahen+しようちゅう			かくにんしようちゅう	確認使用中		dev	issue230
+ss-g-120	guard	sahen+しようちゅう			れんらくしようちゅう	連絡使用中		test	issue230
+ss-g-121	guard	sahen+しようちゅう			けんとうしようちゅう	検討使用中		dev	issue230
+ss-g-122	guard	sahen+しようちゅう			せいりしようちゅう	整理使用中		dev	issue230
+ss-g-123	guard	sahen+しようちゅう			べんきょうしようちゅう	勉強使用中		dev	issue230
+ss-g-124	guard	sahen+しようちゅう			そうじしようちゅう	掃除使用中		dev	issue230
+ss-g-125	guard	sahen+しようちゅう			うんどうしようちゅう	運動使用中		test	issue230
+ss-g-126	guard	sahen+しようちゅう			じゅんびしようちゅう	準備使用中		dev	issue230
+ss-g-127	guard	sahen+しようちゅう			そうだんしようちゅう	相談使用中		dev	issue230
+ss-g-128	guard	sahen+仕様書変更			せっけいしようしょ	設計仕様書		dev	issue230
+ss-g-129	guard	sahen+仕様書変更			かいはつしようしょ	開発仕様書		dev	issue230
+ss-g-130	guard	sahen+仕様書変更			てすとしようへんこう	テスト仕様変更		dev	issue230
+ss-g-131	guard	sahen+仕様書変更			じっそうしようしょ	実装仕様書		dev	issue230
+ss-g-132	guard	sahen+仕様書変更			どうさしようしょ	動作仕様書		dev	issue230
+ss-g-133	guard	sahen+仕様書変更			せっけいしようへんこう	設計仕様変更		dev	issue230
+ss-g-134	guard	sahen+仕様書変更			つうしんしようしょ	通信仕様書		dev	issue230
+ss-g-135	guard	sahen+仕様書変更			うんようしようしょ	運用仕様書		dev	issue230
+ss-g-136	target	ambig-sahen+仕様			せっけいしよう	設計しよう	設計仕様 などの言い回しはほぼない（ユーザー決定 2026-10-23）。期待は サ変＋しよう	test	issue230
+ss-g-137	target	ambig-sahen+仕様			かいはつしよう	開発しよう	設計仕様 などの言い回しはほぼない（ユーザー決定 2026-10-23）。期待は サ変＋しよう	dev	issue230
+ss-g-138	target	ambig-sahen+仕様			じっそうしよう	実装しよう	設計仕様 などの言い回しはほぼない（ユーザー決定 2026-10-23）。期待は サ変＋しよう	test	issue230
+ss-g-139	target	ambig-sahen+仕様			どうさしよう	動作しよう	設計仕様 などの言い回しはほぼない（ユーザー決定 2026-10-23）。期待は サ変＋しよう	dev	issue230
+ss-g-140	target	ambig-sahen+仕様			そうさしよう	操作しよう	設計仕様 などの言い回しはほぼない（ユーザー決定 2026-10-23）。期待は サ変＋しよう	dev	issue230
+ss-g-141	target	ambig-sahen+仕様			つうしんしよう	通信しよう	設計仕様 などの言い回しはほぼない（ユーザー決定 2026-10-23）。期待は サ変＋しよう	dev	issue230
+ss-g-142	target	ambig-sahen+仕様			うんようしよう	運用しよう	設計仕様 などの言い回しはほぼない（ユーザー決定 2026-10-23）。期待は サ変＋しよう	dev	issue230
+ss-g-143	target	ambig-sahen+仕様			しゅつりょくしよう	出力しよう	設計仕様 などの言い回しはほぼない（ユーザー決定 2026-10-23）。期待は サ変＋しよう	test	issue230
+ss-g-144	target	ambig-sahen+仕様			にゅうりょくしよう	入力しよう	設計仕様 などの言い回しはほぼない（ユーザー決定 2026-10-23）。期待は サ変＋しよう	dev	issue230
+ss-g-145	target	ambig-sahen+仕様			せいぎょしよう	制御しよう	設計仕様 などの言い回しはほぼない（ユーザー決定 2026-10-23）。期待は サ変＋しよう	dev	issue230
+ss-g-146	target	ambig-sahen+仕様			しょりしよう	処理しよう	設計仕様 などの言い回しはほぼない（ユーザー決定 2026-10-23）。期待は サ変＋しよう	test	issue230
+ss-g-147	target	ambig-sahen+仕様			へんこうしよう	変更しよう	設計仕様 などの言い回しはほぼない（ユーザー決定 2026-10-23）。期待は サ変＋しよう	dev	issue230
+ss-g-148	target	ambig-sahen+仕様			しけんしよう	試験しよう	設計仕様 などの言い回しはほぼない（ユーザー決定 2026-10-23）。期待は サ変＋しよう	test	issue230
+ss-g-149	target	ambig-sahen+仕様			けんさしよう	検査しよう	設計仕様 などの言い回しはほぼない（ユーザー決定 2026-10-23）。期待は サ変＋しよう	dev	issue230
+ss-g-150	target	ambig-sahen+仕様			せいぞうしよう	製造しよう	設計仕様 などの言い回しはほぼない（ユーザー決定 2026-10-23）。期待は サ変＋しよう	dev	issue230
+ss-g-151	target	ambig-sahen+仕様			さぎょうしよう	作業しよう	設計仕様 などの言い回しはほぼない（ユーザー決定 2026-10-23）。期待は サ変＋しよう	test	issue230
+ss-t-152	target	sahen+しようじゃないか			てすとしようじゃないか	テストしようじゃないか		test	issue230
+ss-t-153	target	sahen+しようじゃないか			けいかくしようじゃないか	計画しようじゃないか		dev	issue230
+ss-t-154	target	sahen+しようじゃないか			じっこうしようじゃないか	実行しようじゃないか		dev	issue230
+ss-t-155	target	sahen+しようじゃないか			かくにんしようじゃないか	確認しようじゃないか		test	issue230
+ss-t-156	target	sahen+しようじゃないか			れんらくしようじゃないか	連絡しようじゃないか		dev	issue230
+ss-t-157	target	sahen+しようじゃないか			けんとうしようじゃないか	検討しようじゃないか		dev	issue230
+ss-t-158	target	sahen+しようじゃないか			せいりしようじゃないか	整理しようじゃないか		dev	issue230
+ss-t-159	target	sahen+しようじゃないか			べんきょうしようじゃないか	勉強しようじゃないか		dev	issue230
+ss-t-160	target	sahen+しようぜ			そうじしようぜ	掃除しようぜ		dev	issue230
+ss-t-161	target	sahen+しようぜ			うんどうしようぜ	運動しようぜ		test	issue230
+ss-t-162	target	sahen+しようぜ			じゅんびしようぜ	準備しようぜ		dev	issue230
+ss-t-163	target	sahen+しようぜ			そうだんしようぜ	相談しようぜ		dev	issue230
+ss-t-164	target	sahen+しようぜ			よやくしようぜ	予約しようぜ		test	issue230
+ss-t-165	target	sahen+しようぜ			ほぞんしようぜ	保存しようぜ		dev	issue230
+ss-t-166	target	context-しよう			そうしよう	そうしよう		dev	issue230
+ss-t-167	target	context-しよう			どうしよう	どうしよう		dev	issue230
+ss-t-168	target	context-しよう			こうしよう	こうしよう		dev	issue230
+ss-t-169	target	context-しよう			ここにしよう	ここにしよう		dev	issue230
+ss-t-170	target	context-しよう			あしたにしよう	明日にしよう		dev	issue230
+ss-t-171	target	context-しよう			きょうはやすみにしよう	今日は休みにしよう		dev	issue230
+ss-t-172	target	context-しよう			いえでべんきょうしよう	家で勉強しよう		dev	issue230
+ss-t-173	target	context-しよう			いっしょにさんぽしよう	一緒に散歩しよう		test	issue230
+ss-t-174	target	context-しよう			あしたかくにんしよう	明日確認しよう		dev	issue230
+ss-t-175	target	context-しよう			もういちどてすとしよう	もう一度テストしよう		dev	issue230
+ss-t-176	target	context-しよう			しょくじしよう	食事しよう		test	issue230
+ss-t-177	target	context-しよう			ひるごはんをたべながらそうだんしよう	昼ご飯を食べながら相談しよう		dev	issue230

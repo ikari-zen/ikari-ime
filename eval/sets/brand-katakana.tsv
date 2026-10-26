@@ -1,0 +1,20 @@
+# 会社名・ブランドのカタカナ表記の回帰セット（#223。ユーザー決定 2026-10-23: 地名がある読みは漢字が 1 位、カタカナは 2 位以内、学習で 1 位）。公開の例だけ。
+# 合格は「期待（カタカナ）が 2 位以内」。ikari-eval には N 位以内の書式がないので、eval/scripts/rank-within.sh で --out-cases の rank 列を見る（1 位でなくてよい）。
+# tags の known は、今 3 位以下の行（LM なし。まつだ は 松だ、やまと は ヤ・マ・ト、たけだ・さんわ は別の候補が間に入る）。LM ありは全件 2 位以内。known が 2 位以内に入ったら印を外す。手書きなので split 列は持たない。
+id	kind	tags	profile	context	reading	expected	note
+brand-001	守る	brand			すずき	スズキ	自動車メーカー（単独）
+brand-002	守る	brand		株式会社	すずき	スズキ	会社名
+brand-003	守る	brand,known			まつだ	マツダ	自動車メーカー（単独）
+brand-004	守る	brand			くぼた	クボタ	農機メーカー（単独）
+brand-005	守る	brand			こなみ	コナミ	ゲーム会社（単独）
+brand-006	守る	brand			かどかわ	カドカワ	出版社（単独）
+brand-007	守る	brand			だいわ	ダイワ	ブランド（単独）
+brand-008	守る	brand			あさひ	アサヒ	ビール会社（単独）
+brand-009	守る	brand			にっさん	ニッサン	自動車メーカー（単独）
+brand-010	守る	brand			かわさき	カワサキ	バイクメーカー（単独）
+brand-011	守る	brand			ひたち	ヒタチ	電機メーカー（単独）
+brand-012	守る	brand			こじま	コジマ	家電量販店（単独）
+brand-013	守る	brand,known			たけだ	タケダ	製薬会社（単独）
+brand-014	守る	brand,known			やまと	ヤマト	運送会社（単独）
+brand-015	守る	brand			いとまん	イトマン	社名（単独）
+brand-016	守る	brand,known			さんわ	サンワ	社名（単独）

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- IkariEngine.xpc の Info.plist のテンプレート（ADR 0004 §2）。
+     版、IkariSigningMode、IkariPeerRequirement は build.sh が PlistBuddy で埋める。
+     IkariPeerRequirement は ikari-smoke --print-requirement shell <方式> の出力（SigningRequirements が唯一の出どころ）。 -->
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>ja</string>
+    <key>CFBundleExecutable</key>
+    <string>IkariEngine</string>
+    <key>CFBundleIdentifier</key>
+    <string>@IKARI_ID_PREFIX@.inputmethod.ikari.engine</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>IkariEngine</string>
+    <key>CFBundlePackageType</key>
+    <string>XPC!</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.0.0</string>
+    <key>CFBundleVersion</key>
+    <string>0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>26.0</string>
+    <key>XPCService</key>
+    <dict>
+        <key>ServiceType</key>
+        <string>Application</string>
+    </dict>
+    <key>IkariSigningMode</key>
+    <string>team</string>
+    <key>IkariPeerRequirement</key>
+    <string></string>
+</dict>
+</plist>

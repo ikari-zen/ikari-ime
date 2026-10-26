@@ -1,0 +1,212 @@
+//! `settings.tsv` のうち、エンジンが読むキー（docs/phase2-contract.md §3）。
+//!
+//! 形式は `キー<TAB>値`。`#` で始まる行と空行は無視する。未知のキーと不正な値は無視して既定値を使う
+//! （入力を止めない）。ファイルがなければ既定値。
+
+use std::path::Path;
+
+pub const SETTINGS_FILE_NAME: &str = "settings.tsv";
+
+const COMMENT_PREFIX: char = '#';
+const SEPARATOR: char = '\t';
+const KEY_LM: &str = "engine.lm";
+const KEY_IDLE_UNLOAD_SECS: &str = "engine.idle_unload_secs";
+const KEY_PACK_IT: &str = "dict.pack_it";
+const KEY_POSTAL_JAPANESE: &str = "postal.japanese";
+const KEY_POSTAL_ENGLISH: &str = "postal.english";
+const KEY_POSTAL_TE_PREFIX: &str = "postal.te_prefix";
+const KEY_UNICODE_NOTATION: &str = "unicode.notation";
+const KEY_DATE_WEEKDAY_DATES: &str = "date.weekday_dates";
+const VALUE_ON: &str = "on";
+const VALUE_OFF: &str = "off";
+
+/// `postal.japanese` の既定（住所 ↔ 郵便番号。ADR 0032）
+pub const DEFAULT_POSTAL_JAPANESE: bool = true;
+/// `postal.english` の既定（英語のモードで郵便番号の候補。殻が使う。ADR 0032 §9）
+pub const DEFAULT_POSTAL_ENGLISH: bool = false;
+/// `postal.te_prefix` の既定（`て` + 郵便番号 → 〒つき。ADR 0032 §8）
+pub const DEFAULT_POSTAL_TE_PREFIX: bool = false;
+/// `unicode.notation` の既定（1 文字のかな → `U+3042`）
+pub const DEFAULT_UNICODE_NOTATION: bool = false;
+/// `date.weekday_dates` の既定（曜日の読みに直近の日付の候補を足す。#265）
+pub const DEFAULT_DATE_WEEKDAY_DATES: bool = false;
+
+fn parse_switch(value: &str) -> Option<bool> {
+    match value {
+        VALUE_ON => Some(true),
+        VALUE_OFF => Some(false),
+        _ => None,
+    }
+}
+
+/// 設定ファイルに書かれていたものだけを持つ（書かれていなければ None）。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Settings {
+    /// `engine.lm`
+    pub lm: Option<bool>,
+    /// `engine.idle_unload_secs`（0 = 解放しない）
+    pub idle_unload_secs: Option<u32>,
+    /// `dict.pack_it`（IT の語彙集。既定は on。ADR 0012 B20-4）
+    pub pack_it: Option<bool>,
+    /// `postal.japanese`（既定は on。ADR 0032）
+    pub postal_japanese: Option<bool>,
+    /// `postal.english`（既定は off。ADR 0032）
+    pub postal_english: Option<bool>,
+    /// `postal.te_prefix`（既定は off。ADR 0032）
+    pub postal_te_prefix: Option<bool>,
+    /// `unicode.notation`（既定は off）
+    pub unicode_notation: Option<bool>,
+    /// `date.weekday_dates`（既定は off）
+    pub date_weekday_dates: Option<bool>,
+}
+
+impl Settings {
+    pub fn postal_japanese_or_default(&self) -> bool {
+        self.postal_japanese.unwrap_or(DEFAULT_POSTAL_JAPANESE)
+    }
+
+    pub fn postal_english_or_default(&self) -> bool {
+        self.postal_english.unwrap_or(DEFAULT_POSTAL_ENGLISH)
+    }
+
+    pub fn postal_te_prefix_or_default(&self) -> bool {
+        self.postal_te_prefix.unwrap_or(DEFAULT_POSTAL_TE_PREFIX)
+    }
+
+    pub fn unicode_notation_or_default(&self) -> bool {
+        self.unicode_notation.unwrap_or(DEFAULT_UNICODE_NOTATION)
+    }
+
+    pub fn date_weekday_dates_or_default(&self) -> bool {
+        self.date_weekday_dates
+            .unwrap_or(DEFAULT_DATE_WEEKDAY_DATES)
+    }
+}
+
+pub fn parse(text: &str) -> Settings {
+    let mut settings = Settings::default();
+    for line in text.lines() {
+        let line = line.trim_end_matches('\r');
+        if line.is_empty() || line.starts_with(COMMENT_PREFIX) {
+            continue;
+        }
+        let Some((key, value)) = line.split_once(SEPARATOR) else {
+            continue;
+        };
+        let value = value.trim();
+        match key.trim() {
+            KEY_LM => match value {
+                VALUE_ON => settings.lm = Some(true),
+                VALUE_OFF => settings.lm = Some(false),
+                _ => {}
+            },
+            KEY_PACK_IT => match value {
+                VALUE_ON => settings.pack_it = Some(true),
+                VALUE_OFF => settings.pack_it = Some(false),
+                _ => {}
+            },
+            KEY_POSTAL_JAPANESE => settings.postal_japanese = parse_switch(value),
+            KEY_POSTAL_ENGLISH => settings.postal_english = parse_switch(value),
+            KEY_POSTAL_TE_PREFIX => settings.postal_te_prefix = parse_switch(value),
+            KEY_UNICODE_NOTATION => settings.unicode_notation = parse_switch(value),
+            KEY_DATE_WEEKDAY_DATES => settings.date_weekday_dates = parse_switch(value),
+            KEY_IDLE_UNLOAD_SECS => {
+                if let Ok(secs) = value.parse::<u32>() {
+                    settings.idle_unload_secs = Some(secs);
+                }
+            }
+            _ => {}
+        }
+    }
+    settings
+}
+
+/// 読めなければ既定値。
+pub fn load(data_dir: &Path) -> Settings {
+    std::fs::read_to_string(data_dir.join(SETTINGS_FILE_NAME))
+        .map(|text| parse(&text))
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_the_engine_keys() {
+        let s = parse("# c\n\nengine.lm\toff\nengine.idle_unload_secs\t60\ninput.method\tkana\n");
+        assert_eq!(
+            s,
+            Settings {
+                lm: Some(false),
+                idle_unload_secs: Some(60),
+                pack_it: None,
+                ..Settings::default()
+            }
+        );
+    }
+
+    #[test]
+    fn reads_the_pack_switch() {
+        assert_eq!(parse("dict.pack_it\toff\n").pack_it, Some(false));
+        assert_eq!(parse("dict.pack_it\ton\n").pack_it, Some(true));
+        assert_eq!(parse("dict.pack_it\tmaybe\n").pack_it, None);
+        assert_eq!(parse("").pack_it, None);
+    }
+
+    #[test]
+    fn postal_keys_have_defaults_and_read_both_values() {
+        let none = parse("");
+        assert_eq!(none.postal_japanese, None);
+        assert!(none.postal_japanese_or_default());
+        assert!(!none.postal_english_or_default());
+        assert!(!none.postal_te_prefix_or_default());
+        let s = parse("postal.japanese\toff\npostal.english\ton\npostal.te_prefix\ton\n");
+        assert_eq!(s.postal_japanese, Some(false));
+        assert_eq!(s.postal_english, Some(true));
+        assert_eq!(s.postal_te_prefix, Some(true));
+        assert!(!s.postal_japanese_or_default());
+        assert!(s.postal_english_or_default() && s.postal_te_prefix_or_default());
+        // 不正な値は書かれていないものとして扱う（既定に戻る）
+        let bad = parse("postal.japanese\tmaybe\npostal.te_prefix\t1\n");
+        assert_eq!(bad, Settings::default());
+    }
+
+    #[test]
+    fn unicode_notation_defaults_off_and_reads_both_values() {
+        assert!(!parse("").unicode_notation_or_default());
+        assert!(parse("unicode.notation\ton\n").unicode_notation_or_default());
+        assert_eq!(
+            parse("unicode.notation\toff\n").unicode_notation,
+            Some(false)
+        );
+        assert_eq!(parse("unicode.notation\t1\n"), Settings::default());
+    }
+
+    #[test]
+    fn date_weekday_dates_defaults_off_and_reads_both_values() {
+        assert!(!parse("").date_weekday_dates_or_default());
+        assert!(parse("date.weekday_dates\ton\n").date_weekday_dates_or_default());
+        assert_eq!(
+            parse("date.weekday_dates\toff\n").date_weekday_dates,
+            Some(false)
+        );
+        assert_eq!(parse("date.weekday_dates\t1\n"), Settings::default());
+    }
+
+    #[test]
+    fn bad_values_and_unknown_keys_are_ignored() {
+        let s = parse("engine.lm\tmaybe\nengine.idle_unload_secs\t-1\nx\ty\nno tab line\n");
+        assert_eq!(s, Settings::default());
+        assert_eq!(
+            parse("engine.idle_unload_secs\t0\n").idle_unload_secs,
+            Some(0)
+        );
+        assert_eq!(parse("engine.lm\ton\r\n").lm, Some(true));
+    }
+
+    #[test]
+    fn missing_file_is_the_default() {
+        assert_eq!(load(Path::new("/nonexistent/ikari")), Settings::default());
+    }
+}

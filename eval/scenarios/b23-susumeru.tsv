@@ -1,0 +1,17 @@
+# b23-susumeru（ADR 0013。下書き）: 文脈の記録がないときの学習。ユーザーの報告（B18）: すすめられる → 進められる。
+# 毎回違う文脈で 進められる を選んだあと、記録のない文脈でも 進められる が1位になること（LM なしでは main でも通る。差が 229 と小さい）。
+# 対照: 勧める・薦める の文脈（入会を、禁煙を）の すすめられた を、学習で 進められた にしない。
+# 「今から風呂に入ってくるけど」+ すすめられる は入れていない。LM なしでは話題スコアが 勧める を 1331 支持し、
+# LearningGuard が学習を止める（基本原則どおり）。LM ありでは推奨案で 1 回選べば 進められる が1位になる（ADR 0013 §3.3）。
+# 実行: ikari-eval --ranker full --scenario eval/scenarios/b23-susumeru.tsv [--lm <gguf>]
+step	context	reading	surface	expect
+probe	友人に入会を	すすめられた	進められた	not-top1
+probe	医者に禁煙を	すすめられた	進められた	not-top1
+commit	このタスクは並行して	すすめられる	進められる	
+probe		すすめられる	進められる	top1
+probe	了解、	すすめられる	進められる	top1
+commit	明日までに	すすめられる	進められる	
+commit	レビューのあとで	すすめられる	進められる	
+probe		すすめられる	進められる	top1
+probe	友人に入会を	すすめられた	進められた	not-top1
+probe	医者に禁煙を	すすめられた	進められた	not-top1

@@ -1,0 +1,81 @@
+# まれな同音語・解析用に安い語・サ変でない名詞＋する の評価セット（B26。ADR 0016）。下書き: 期待はユーザーの確認待ち（eval/sets/REVIEW.md の ADR 0016 の節。docs/tasks.md A2-14）
+# rh-user: ユーザーの報告、rh-freq: 読みだけでよく使う語（chiVe の頻度と日常の用法）、rh-suru: サ変でない名詞＋する、rh-neg: 規則で崩してはいけない側（文脈のあるまれな語、文の中の 最下位（ADR 0018）、する 以外の形、ほかに候補のない 名詞＋する）
+# split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev。調整は dev だけで行う。
+id	kind	tags	profile	context	reading	expected	note	split	source
+rh-user-01	報告	ユーザー報告,サ変			せいこうする	成功する	2026-10-14 の報告。1位は 成功する。2位に 製鋼する（分野の偏った語）が来るのが問題（この列では測れない。ADR 0016 §1）	dev	adr0016-draft
+rh-user-02	報告	ユーザー報告,文脈なし			いとだけ	意図だけ	基準は 糸だけ。糸 は chiVe で 意図 より頻度が高く（3104 位 / 5145 位）、頻度の規則では直らない	test	adr0016-draft
+rh-user-03	報告	ユーザー報告,文脈		実装はしないで。	いとだけ	意図だけ	基準は 糸だけ（話題の加点 -1677 が差 2403 に届かない）	dev	adr0016-draft
+rh-user-04	報告	ユーザー報告,サ変			さいかいする	再開する	基準は 再会する（2位 再開する、3位 最下位する）。実機では 最下位する が1位になった	dev	adr0016-draft
+rh-user-05	報告	ユーザー報告,サ変			さいかいして	再開して		test	adr0016-draft
+rh-user-06	報告	ユーザー報告,サ変			さいかいしよう	再開しよう	基準は 再会使用	dev	adr0016-draft
+rh-user-07	報告	ユーザー報告,サ変,文脈		作業を	さいかいする	再開する		dev	adr0016-draft
+rh-user-08	報告	ユーザー報告,文脈なし			さいかい	再開|再会	既知の誤り（ADR 0018。直さない決定）。基準は 最下位（frequent_compound -8000）。再開 と 再会 のどちらでもよい。学習（2回）で 再開 が1位になる	test	adr0016-draft
+rh-freq-01	頻度	文脈なし			うちゅう	宇宙	基準の1位: 右中（cost 3144、chiVe 79202 位）	dev	adr0016-draft
+rh-freq-02	頻度	文脈なし			らいしゅう	来週	基準の1位: 来襲（61431 位）が1位、来週 は4位	dev	adr0016-draft
+rh-freq-03	頻度	文脈なし			しゅうまつ	週末	基準の1位: 終末（cost 5419）	test	adr0016-draft
+rh-freq-04	頻度	文脈なし			がくぶ	学部	基準の1位: 楽舞（124385 位）	test	adr0016-draft
+rh-freq-05	頻度	文脈なし			ようび	曜日	基準の1位: 妖美（248590 位）	dev	adr0016-draft
+rh-freq-06	頻度	文脈なし			ほうちょう	包丁	基準の1位: 訪朝（cost 4479）	dev	adr0016-draft
+rh-freq-07	頻度	文脈なし			かくじ	各自	基準の1位: 各字（307217 位）	dev	adr0016-draft
+rh-freq-08	頻度	文脈なし			せんご	戦後	基準の1位: 先後（102973 位）	dev	adr0016-draft
+rh-freq-09	頻度	文脈なし			いほう	違法	基準の1位: 移封（84103 位）	dev	adr0016-draft
+rh-freq-10	頻度	文脈なし			きけん	危険	基準の1位: 棄権（32044 位）	dev	adr0016-draft
+rh-freq-11	頻度	文脈なし			じょうじ	常時	基準の1位: 情事（68347 位）	dev	adr0016-draft
+rh-freq-12	頻度	文脈なし			かいちょう	会長	基準の1位: 開帳（cost 5954）	test	adr0016-draft
+rh-freq-13	頻度	文脈なし			しはん	市販	基準の1位: 四半（cost 2754。四半期 の部品）	dev	adr0016-draft
+rh-freq-14	頻度	文脈なし			かんげん	還元	基準の1位: 管弦（cost 3788。管弦楽 の部品）	dev	adr0016-draft
+rh-freq-15	頻度	文脈なし			じゅよう	需要	基準の1位: 受容	dev	adr0016-draft
+rh-freq-16	頻度	文脈なし			かいだん	階段	基準の1位: 会談	dev	adr0016-draft
+rh-freq-17	頻度	文脈なし			ぶたい	舞台	基準の1位: 部隊（cost 2534）	test	adr0016-draft
+rh-freq-18	頻度	文脈なし			きじ	記事	基準の1位: 生地（cost 4859）	test	adr0016-draft
+rh-freq-19	頻度	文脈なし			さとう	砂糖	基準の1位: 差等（差＋等の分割）	dev	adr0016-draft
+rh-freq-20	頻度	文脈なし			しさつ	視察	基準の1位: 刺殺	dev	adr0016-draft
+rh-freq-21	頻度	文脈なし			ぞうき	臓器	基準の1位: 雑木	dev	adr0016-draft
+rh-freq-22	頻度	文脈なし			げんどう	言動	基準の1位: 原動	test	adr0016-draft
+rh-freq-23	頻度	文脈なし			そうき	早期	基準の1位: 想起	dev	adr0016-draft
+rh-freq-24	頻度	文脈なし			じきゅう	時給	基準の1位: 自給	dev	adr0016-draft
+rh-suru-01	サ変	文脈なし			じょうきょうする	上京する	基準の1位: 状況する（サ変でない名詞 + する）	dev	adr0016-draft
+rh-suru-02	サ変	文脈なし			じょせいする	助成する	基準の1位: 女性する（サ変でない名詞 + する）	dev	adr0016-draft
+rh-suru-03	サ変	文脈なし			しきする	指揮する	基準の1位: 式する（サ変でない名詞 + する）	dev	adr0016-draft
+rh-suru-04	サ変	文脈なし			せんせいする	先制する	基準の1位: 先生する（サ変でない名詞 + する）	dev	adr0016-draft
+rh-suru-05	サ変	文脈なし			きかんする	帰還する	基準の1位: 期間する（サ変でない名詞 + する）	test	adr0016-draft
+rh-suru-06	サ変	文脈なし			ぶんかする	分化する	基準の1位: 文化する（サ変でない名詞 + する）	dev	adr0016-draft
+rh-suru-07	サ変	文脈なし			かいせんする	開戦する	基準の1位: 回線する（サ変でない名詞 + する）	dev	adr0016-draft
+rh-suru-08	サ変	文脈なし			げんきんする	厳禁する	基準の1位: 現金する（サ変でない名詞 + する）	dev	adr0016-draft
+rh-suru-09	サ変	文脈なし			さいしゅうする	採集する	基準の1位: 最終する（サ変でない名詞 + する）	dev	adr0016-draft
+rh-suru-10	サ変	文脈なし			てんじょうする	添乗する	基準の1位: 天井する（サ変でない名詞 + する）	test	adr0016-draft
+rh-suru-11	サ変	文脈なし			しじょうする	試乗する	基準の1位: 市場する（サ変でない名詞 + する）	dev	adr0016-draft
+rh-suru-12	サ変	文脈なし			じたくする	支度する	基準の1位: 自宅する（サ変でない名詞 + する）	dev	adr0016-draft
+rh-suru-13	サ変	文脈なし			だいたいする	代替する	基準の1位: 大体する（サ変でない名詞 + する）	dev	adr0016-draft
+rh-suru-14	サ変	文脈なし			こうえんする	講演する|公演する	基準の1位: 公園する（サ変でない名詞 + する）	dev	adr0016-draft
+rh-suru-15	サ変	文脈なし			こうこうする	航行する	基準の1位: 高校する（サ変でない名詞 + する）	dev	adr0016-draft
+rh-suru-16	サ変	文脈なし			ちかくする	知覚する	基準の1位: 近くする（サ変でない名詞 + する）	dev	adr0016-draft
+rh-suru-17	サ変	文脈なし			ずしする	図示する	基準の1位: 寿司する（サ変でない名詞 + する）	test	adr0016-draft
+rh-suru-18	サ変	文脈なし			きゅうめいする	究明する	基準の1位: 九名する（サ変でない名詞 + する）	dev	adr0016-draft
+rh-suru-19	サ変	文脈なし			ごきする	誤記する	基準の1位: 五機する（サ変でない名詞 + する）	dev	adr0016-draft
+rh-neg-01	否定	文脈		リーグで	さいかい	最下位	文脈で 最下位	dev	adr0016-draft
+rh-neg-02	否定	文脈なし			さいかいになる	最下位になる	する 以外は 最下位 のまま	dev	adr0016-draft
+rh-neg-03	否定	文脈なし			さいかいだった	最下位だった		test	adr0016-draft
+rh-neg-04	否定	文脈		怪我人を	かいほう	介抱	chiVe 62248 位。頻度の規則で落ちやすい	test	adr0016-draft
+rh-neg-05	否定	文脈		鉄鋼業の	せいこう	製鋼|成功	分野の語は文脈があれば出る	dev	adr0016-draft
+rh-neg-06	否定	文脈		画面の	せんい	遷移	IT の語	dev	adr0016-draft
+rh-neg-07	否定	文脈		他者を	じゅよう	受容		dev	adr0016-draft
+rh-neg-08	否定	文脈		首脳	かいだん	会談		dev	adr0016-draft
+rh-neg-09	否定	文脈		軍の	ぶたい	部隊		test	adr0016-draft
+rh-neg-10	否定	文脈		布の	きじ	生地		dev	adr0016-draft
+rh-neg-11	否定	文脈		敵機が	らいしゅう	来襲		dev	adr0016-draft
+rh-neg-12	否定	文脈		世界の	しゅうまつ	終末		test	adr0016-draft
+rh-neg-13	否定	文脈		選挙を	きけん	棄権		dev	adr0016-draft
+rh-neg-14	否定	文脈		残高の	しょうかい	照会	ext にもある型	dev	adr0016-draft
+rh-neg-15	否定	文脈		原文と訳文を	たいしょう	対照		dev	adr0016-draft
+rh-neg-16	否定	文脈		コインロッカーに	こうか	硬貨		dev	adr0016-draft
+rh-neg-17	否定	文脈なし			げーむする	ゲームする	サ変でない名詞 + する（ほかに候補がない）	test	adr0016-draft
+rh-neg-18	否定	文脈なし			てにすする	テニスする		dev	adr0016-draft
+rh-neg-19	否定	文脈なし			らんちする	ランチする		test	adr0016-draft
+rh-neg-20	否定	文脈なし			いみする	意味する		test	adr0016-draft
+rh-neg-21	否定	文脈なし			せいこうした	成功した		dev	adr0016-draft
+rh-neg-22	否定	文脈なし			さいかいからのぎゃくてん	最下位からの逆転	文の中の 最下位。読みの中の後ろの語は文脈の加点にならないので、規則で 再会 に変えないこと（ADR 0018 §5.3）	dev	adr0018-draft
+rh-neg-23	否定	文脈なし			さいかいにてんらく	最下位に転落	文の中の 最下位。読みの中の後ろの語は文脈の加点にならないので、規則で 再会 に変えないこと（ADR 0018 §5.3）	dev	adr0018-draft
+rh-neg-24	否定	文脈なし			さいかいのちーむ	最下位のチーム	文の中の 最下位。読みの中の後ろの語は文脈の加点にならないので、規則で 再会 に変えないこと（ADR 0018 §5.3）	dev	adr0018-draft
+rh-neg-25	否定	文脈なし			さいかいをだっしゅつ	最下位を脱出	文の中の 最下位。読みの中の後ろの語は文脈の加点にならないので、規則で 再会 に変えないこと（ADR 0018 §5.3）	test	adr0018-draft
+rh-neg-26	否定	文脈なし			せいせきはさいかいだった	成績は最下位だった	文の中の 最下位。読みの中の後ろの語は文脈の加点にならないので、規則で 再会 に変えないこと（ADR 0018 §5.3）	dev	adr0018-draft

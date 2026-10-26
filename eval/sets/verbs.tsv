@@ -1,0 +1,126 @@
+# 同音の動詞の表記（異字同訓）の評価セット（B18。ADR 0009）。下書き: 期待はユーザーの確認待ち（eval/sets/REVIEW.md の ADR 0009 の節）
+# 期待の根拠: 文化審議会国語分科会「「異字同訓」の漢字の使い分け例」（2014）と常用漢字表（2010）。表外字・表外訓（掻く、奬める）は公用文の書き表し方に従ってかなにする。
+# 種別: 文脈（目的語や主語で使い分けが決まる）、文脈なし（読みだけ。広い意味の方を既定とする案。ユーザーの確認待ち）、会話（作者の日常の書き方。B18 の報告を含む）
+# split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev。調整は dev だけで行う。
+id	kind	tags	profile	context	reading	expected	note	split	source
+verb-susumeru-01	文脈	adr0009		計画を	すすめる	進める	物事を前へ（異字同訓 2014）	dev	b18-draft
+verb-susumeru-02	文脈	adr0009		作業を	すすめた	進めた	物事を前へ	dev	b18-draft
+verb-susumeru-03	文脈	adr0009		話を先に	すすめよう	進めよう	物事を前へ	dev	b18-draft
+verb-susumeru-04	文脈	adr0009		準備を	すすめています	進めています	物事を前へ	dev	b18-draft
+verb-susumeru-05	文脈	adr0009		時計の針を	すすめる	進める	前へ動かす	test	b18-draft
+verb-susumeru-06	文脈	adr0009		医者に禁煙を	すすめられた	勧められた	誘いかける（異字同訓 2014: 入会を勧める）	dev	b18-draft
+verb-susumeru-07	文脈	adr0009		友人に入会を	すすめる	勧める	誘いかける	dev	b18-draft
+verb-susumeru-08	文脈	adr0009		客に席を	すすめた	勧めた	誘いかける	test	b18-draft
+verb-susumeru-09	文脈	adr0009		委員長に彼を	すすめる	薦める	推薦する（異字同訓 2014: 候補者として薦める）	dev	b18-draft
+verb-susumeru-10	文脈	adr0009		この本を友達に	すすめたい	薦めたい|勧めたい	推薦とも誘いかけとも取れる	dev	b18-draft
+verb-susumeru-11	文脈なし	adr0009			すすめる	進める	文脈なしの既定（広い意味の方。ユーザーの確認待ち）	dev	b18-draft
+verb-susumeru-12	文脈なし	adr0009			すすめられるたすくはあるか	進められるタスクはあるか	後ろの語まで一度に打った場合	test	b18-draft
+verb-naosu-01	文脈	adr0009		バグが	なおった	直った	正常に戻る（異字同訓 2014: 故障を直す）	dev	b18-draft
+verb-naosu-02	文脈	adr0009		誤字を	なおす	直す	訂正	test	b18-draft
+verb-naosu-03	文脈	adr0009		壊れた自転車を	なおして	直して	修理	dev	b18-draft
+verb-naosu-04	文脈	adr0009		機嫌が	なおった	直った	元の状態に戻る	dev	b18-draft
+verb-naosu-05	文脈	adr0009		レビューの指摘を	なおしました	直しました	訂正	dev	b18-draft
+verb-naosu-06	文脈	adr0009		風邪が	なおった	治った	病気（異字同訓 2014: 風邪が治る）	dev	b18-draft
+verb-naosu-07	文脈	adr0009		けがを早く	なおしたい	治したい	けが	test	b18-draft
+verb-naosu-08	文脈	adr0009		病気を	なおす	治す	病気	test	b18-draft
+verb-naosu-09	文脈	adr0009		虫歯を	なおして	治して	病気	dev	b18-draft
+verb-naosu-10	文脈なし	adr0009			なおす	直す	文脈なしの既定（広い意味の方。ユーザーの確認待ち）	dev	b18-draft
+verb-naosu-11	文脈なし	adr0009			なおる	直る	文脈なしの既定（広い意味の方。ユーザーの確認待ち）	dev	b18-draft
+verb-kaku-01	文脈	adr0009		メールを	かこう	書こう	文字・文章	test	b18-draft
+verb-kaku-02	文脈	adr0009		日記を	かいた	書いた	文字・文章	dev	b18-draft
+verb-kaku-03	文脈	adr0009		手紙を	かきます	書きます	文字・文章	dev	b18-draft
+verb-kaku-04	文脈	adr0009		ブログに感想を	かこうと	書こうと	文字・文章	test	b18-draft
+verb-kaku-05	文脈	adr0009,unreachable		絵を	かく	描く	絵（常用漢字表 描 か-く。異字同訓 2014）	dev	b18-draft
+verb-kaku-06	文脈	adr0009		汗を	かいた	かいた	掻 は表外字。公用文はかな	dev	b18-draft
+verb-kaku-07	文脈	adr0009		恥を	かく	かく	掻 は表外字。公用文はかな	dev	b18-draft
+verb-kaku-08	文脈	adr0009		地図を	かいて	描いて|書いて	どちらも使う	dev	b18-draft
+verb-kaku-09	文脈なし	adr0009			かく	書く	文脈なしの既定（ユーザーの確認待ち）	dev	b18-draft
+verb-kaku-10	文脈なし	adr0009			かこうとしたら	書こうとしたら	後ろの語まで一度に打った場合	dev	b18-draft
+verb-kaku-11	文脈	adr0009		庭を柵で	かこう	囲う	囲う（書こう にしない側の確認）	test	b18-draft
+verb-kaku-12	文脈	adr0009		周りを壁で	かこった	囲った	囲う	dev	b18-draft
+verb-hakaru-01	文脈	adr0009		体温を	はかった	測った|計った	測る（異字同訓 2014: 体温を測る）	test	b18-draft
+verb-hakaru-02	文脈	adr0009		時間を	はかって	計って	計る	dev	b18-draft
+verb-hakaru-03	文脈	adr0009		問題の解決を	はかる	図る	図る	dev	b18-draft
+verb-hakaru-04	文脈	adr0009		便宜を	はかって	図って	図る	dev	b18-draft
+verb-hakaru-05	文脈	adr0009		小麦粉の重さを	はかります	量ります	量る	dev	b18-draft
+verb-hakaru-06	文脈	adr0009		審議会に	はかる	諮る	諮る	test	b18-draft
+verb-hakaru-07	文脈	adr0009		血圧を	はかろう	測ろう	測る	dev	b18-draft
+verb-toru-01	文脈	adr0009		写真を	とった	撮った	撮影（異字同訓 2014）	dev	b18-draft
+verb-toru-02	文脈	adr0009		メモを	とって	取って	取る	dev	b18-draft
+verb-toru-03	文脈	adr0009		休みを	とる	取る	取る	dev	b18-draft
+verb-toru-04	文脈	adr0009		指揮を	とる	執る	執る（異字同訓 2014: 指揮を執る）	dev	b18-draft
+verb-toru-05	文脈	adr0009		新卒を	とる	採る	採る（異字同訓 2014: 新卒者を採る）	dev	b18-draft
+verb-toru-06	文脈	adr0009		網で魚を	とった	捕った|取った	捕る（異字同訓 2014: ネズミを捕る）。取る も使う	test	b18-draft
+verb-toru-07	文脈	adr0009		連絡を	とりました	取りました	取る	dev	b18-draft
+verb-toru-08	文脈	adr0009		動画を	とって	撮って	撮影	dev	b18-draft
+verb-toru-09	文脈	adr0009		責任を	とる	取る	取る	dev	b18-draft
+verb-toru-10	文脈	adr0009		バックアップを	とって	取って	取る	test	b18-draft
+verb-toru-11	文脈なし	adr0009			とる	取る	文脈なしの既定（ユーザーの確認待ち）	dev	b18-draft
+verb-au-01	文脈	adr0009		友達に	あった	会った	人と（異字同訓 2014）	dev	b18-draft
+verb-au-02	文脈	adr0009		計算が	あわない	合わない	一致	dev	b18-draft
+verb-au-03	文脈	adr0009		事故に	あった	遭った	好ましくない出来事（異字同訓 2014: 事故に遭う）	dev	b18-draft
+verb-au-04	文脈	adr0009		サイズが	あう	合う	一致	test	b18-draft
+verb-au-05	文脈	adr0009		明日の朝	あおう	会おう	人と	dev	b18-draft
+verb-au-06	文脈	adr0009		ひどい目に	あった	遭った	好ましくない出来事	dev	b18-draft
+verb-au-07	文脈	adr0009		駅で先生に	あいました	会いました	人と	dev	b18-draft
+verb-au-08	文脈	adr0009		テストの結果が期待値と	あわない	合わない	一致	dev	b18-draft
+verb-au-09	文脈	adr0009		話が	あう	合う	一致	dev	b18-draft
+verb-kiku-01	文脈	adr0009		話を	きいた	聞いた	聞く	dev	b18-draft
+verb-kiku-02	文脈	adr0009		音楽を	きく	聴く|聞く	聴く（異字同訓 2014: 音楽を聴く）。聞く も使う	dev	b18-draft
+verb-kiku-03	文脈	adr0009		薬が	きいて	効いて	効く	dev	b18-draft
+verb-kiku-04	文脈	adr0009		道を	きいた	聞いた	尋ねる	dev	b18-draft
+verb-kiku-05	文脈	adr0009		気が	きく	利く	利く（異字同訓 2014: 気が利く）	test	b18-draft
+verb-kiku-06	文脈	adr0009		先輩に	きいてみる	聞いてみる	尋ねる	dev	b18-draft
+verb-kiku-07	文脈	adr0009		エアコンが	きかない	効かない	効く	dev	b18-draft
+verb-kiku-08	文脈なし	adr0009			きいた	聞いた	文脈なしの既定（ユーザーの確認待ち）	test	b18-draft
+verb-kaeru-01	文脈	adr0009		設定を	かえた	変えた	変化	dev	b18-draft
+verb-kaeru-02	文脈	adr0009		家に	かえる	帰る	帰る	test	b18-draft
+verb-kaeru-03	文脈	adr0009		方針を	かえる	変える	変化	dev	b18-draft
+verb-kaeru-04	文脈	adr0009		そろそろ	かえろう	帰ろう	帰る	dev	b18-draft
+verb-kaeru-05	文脈	adr0009		投手を	かえる	代える	代える（異字同訓 2014: 投手を代える）	dev	b18-draft
+verb-kaeru-06	文脈	adr0009		円をドルに	かえる	換える|替える	換える（異字同訓 2014: 物を金に換える）	dev	b18-draft
+verb-kaeru-07	文脈	adr0009		仕事が終わったら	かえります	帰ります	帰る	dev	b18-draft
+verb-kaeru-08	文脈	adr0009		我に	かえった	返った	返る	dev	b18-draft
+verb-akeru-01	文脈	adr0009		窓を	あけて	開けて	開ける	dev	b18-draft
+verb-akeru-02	文脈	adr0009		席を	あけて	空けて	空ける（異字同訓 2014: 席を空ける）	dev	b18-draft
+verb-akeru-03	文脈	adr0009		夜が	あけた	明けた	明ける	test	b18-draft
+verb-akeru-04	文脈	adr0009		梅雨が	あけた	明けた	明ける	test	b18-draft
+verb-akeru-05	文脈	adr0009		ドアを	あける	開ける	開ける	dev	b18-draft
+verb-akeru-06	文脈	adr0009		一行	あけて	空けて	空ける	dev	b18-draft
+verb-tsutomeru-01	文脈	adr0009		会社に	つとめる	勤める	勤める	dev	b18-draft
+verb-tsutomeru-02	文脈	adr0009		議長を	つとめる	務める	務める（異字同訓 2014: 議長を務める）	dev	b18-draft
+verb-tsutomeru-03	文脈	adr0009		改善に	つとめる	努める	努める	dev	b18-draft
+verb-tsutomeru-04	文脈	adr0009		銀行に	つとめています	勤めています	勤める	dev	b18-draft
+verb-utsu-01	文脈	adr0009		キーボードを	うつ	打つ	打つ	dev	b18-draft
+verb-utsu-02	文脈	adr0009		メールを	うった	打った	打つ	dev	b18-draft
+verb-utsu-03	文脈	adr0009		鉄砲を	うつ	撃つ	撃つ	test	b18-draft
+verb-utsu-04	文脈	adr0009		あだを	うつ	討つ	討つ（異字同訓 2014: あだを討つ）	dev	b18-draft
+verb-utsuru-01	文脈	adr0009		写真に	うつった	写った	写る	dev	b18-draft
+verb-utsuru-02	文脈	adr0009		画面に	うつる	映る	映る（異字同訓 2014: 画面に映る）	test	b18-draft
+verb-utsuru-03	文脈	adr0009		風邪が	うつった	移った	移る（異字同訓 2014: 風邪が移る）	dev	b18-draft
+verb-utsuru-04	文脈	adr0009		ファイルを別のフォルダに	うつした	移した	移す	dev	b18-draft
+verb-okuru-01	文脈	adr0009		メールを	おくった	送った	送る	dev	b18-draft
+verb-okuru-02	文脈	adr0009		誕生日にプレゼントを	おくった	贈った|送った	贈る（異字同訓 2014）。送る も使う	dev	b18-draft
+verb-okuru-03	文脈なし	adr0009			おくって	送って	文脈なしの既定（ユーザーの確認待ち）	dev	b18-draft
+verb-noboru-01	文脈	adr0009		山に	のぼった	登った	登る	dev	b18-draft
+verb-noboru-02	文脈	adr0009		階段を	のぼる	上る	上る（異字同訓 2014: 階段を上る）	dev	b18-draft
+verb-noboru-03	文脈	adr0009		日が	のぼる	昇る	昇る	dev	b18-draft
+verb-arawasu-01	文脈	adr0009		気持ちを言葉で	あらわす	表す	表す	dev	b18-draft
+verb-arawasu-02	文脈	adr0009		姿を	あらわした	現した	現す	dev	b18-draft
+verb-arawasu-03	文脈	adr0009		研究の成果を本に	あらわした	著した	著す	dev	b18-draft
+verb-tsuku-01	文脈	adr0009		駅に	ついた	着いた	着く	test	b18-draft
+verb-tsuku-02	文脈	adr0009		職に	つく	就く	就く	dev	b18-draft
+verb-tsuku-03	文脈	adr0009		シャツに汚れが	ついた	付いた	付く	dev	b18-draft
+verb-tsuku-04	文脈	adr0009		もうすぐ	つきます	着きます	着く	test	b18-draft
+verb-chat-01	会話	adr0009		今から風呂に入ってくるけど	すすめられる	進められる	B18 の報告（2026-10-13）。後ろは「タスクはあるか？」	dev	b18-draft
+verb-chat-02	会話	adr0009			なおったけど	直ったけど	B18 の報告（2026-10-13）	dev	b18-draft
+verb-chat-03	会話	adr0009		と	かこう	書こう	B18 の報告（2026-10-13）。後ろは「としたら」	dev	b18-draft
+verb-chat-04	会話	adr0009		このPRで	なおした	直した	IT の会話	dev	b18-draft
+verb-chat-05	会話	adr0009		テストを	かいて	書いて	IT の会話	dev	b18-draft
+verb-chat-06	会話	adr0009		ログを	とって	取って	IT の会話	dev	b18-draft
+verb-chat-07	会話	adr0009		レビューを	すすめて	進めて	IT の会話	test	b18-draft
+verb-chat-08	会話	adr0009		手順書を	かいた	書いた	IT の会話	dev	b18-draft
+verb-chat-09	会話	adr0009		エラーが	なおらない	直らない	IT の会話	test	b18-draft
+verb-chat-10	会話	adr0009		タスクを	すすめておいて	進めておいて	IT の会話	dev	b18-draft
+verb-chat-11	会話	adr0009		スクショを	とって	撮って|取って	IT の会話	dev	b18-draft
+verb-chat-12	会話	adr0009		設定を	なおしたら	直したら	IT の会話	dev	b18-draft

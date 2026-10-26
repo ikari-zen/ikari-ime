@@ -1,0 +1,177 @@
+# 副詞と、こう／そう／どう／もう で始まる語の自然な入力（ADR 0008 §6.2。スパイクの 174 件。文脈なし）。副詞だけ、副詞 + 用言、正しい 副詞 + 名詞、副詞 + サ変名詞 + する、こう／そう／どう／もう で始まる漢語。期待はユーザーの確認待ち（eval/sets/REVIEW.md、docs/tasks.md A2-3）
+# split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev。調整は dev だけで行う。
+id	kind	tags	profile	context	reading	expected	note	split	source
+adv-only-01	副詞	副詞			すぐ	すぐ	副詞だけ。語ごとのペナルティで す‐ぐ に崩れた（ADR 0008 §0.2）	test	adr0008-spike
+adv-only-02	副詞	副詞			どうも	どうも	副詞だけ。語ごとのペナルティで 道も に崩れた	dev	adr0008-spike
+adv-only-03	副詞	副詞			どう	どう	副詞だけ。語ごとのペナルティで 道 に崩れた	dev	adr0008-spike
+adv-only-04	副詞	副詞			そう	そう	指示副詞だけ	dev	adr0008-spike
+adv-only-05	副詞	副詞			こう	こう	指示副詞だけ	dev	adr0008-spike
+adv-only-06	副詞	副詞			もう	もう	副詞だけ	dev	adr0008-spike
+adv-only-07	副詞	副詞			もし	もし	副詞だけ	dev	adr0008-spike
+adv-only-08	副詞	副詞			つい	つい	副詞だけ。語ごとのペナルティで 付い に崩れた	dev	adr0008-spike
+adv-only-09	副詞	副詞			よく	よく	副詞だけ（公用文: ひらがな）	dev	adr0008-spike
+adv-only-10	副詞	副詞			まず	まず	副詞だけ（公用文: ひらがな）	dev	adr0008-spike
+adv-only-11	副詞	副詞			こうかな	こうかな|高価な	副詞 + か + な。語ごとのペナルティで 高価な に崩れた。高価な も自然な読みなので確認	test	adr0008-spike
+adv-only-12	副詞	副詞			どうかな	どうかな	副詞 + か + な	dev	adr0008-spike
+adv-pred-01	副詞+用言	副詞			そうですね	そうですね	副詞 + 助動詞。語ごとのペナルティで 層ですね に崩れた	test	adr0008-spike
+adv-pred-02	副詞+用言	副詞			そうかもしれない	そうかもしれない	副詞 + か + 用言。か を挟む規則にすると 層かもしれない に崩れた（ADR 0008 §2.3）	dev	adr0008-spike
+adv-pred-03	副詞+用言	副詞			どうしたの	どうしたの	副詞 + 用言	dev	adr0008-spike
+adv-only-13	副詞	副詞			もうすぐ	もうすぐ	副詞 + 副詞	dev	adr0008-spike
+adv-only-14	副詞	副詞			すぐに	すぐに	副詞	dev	adr0008-spike
+adv-pred-04	副詞+用言	副詞			そうする	そうする	副詞 + する	test	adr0008-spike
+adv-pred-05	副詞+用言	副詞			こうなる	こうなる	副詞 + 用言	dev	adr0008-spike
+adv-pred-06	副詞+用言	副詞			どうしよう	どうしよう	副詞 + 用言。基準は どう使用（覆う名詞がないので規則では直らない。ADR 0008 §6）	dev	adr0008-spike
+adv-pred-07	副詞+用言	副詞			どうする	どうする	副詞 + する	dev	adr0008-spike
+adv-pred-08	副詞+用言	副詞			そうおもう	そう思う	副詞 + 用言	dev	adr0008-spike
+adv-pred-09	副詞+用言	副詞			こうする	こうする	副詞 + する	dev	adr0008-spike
+adv-noun-01	副詞+名詞	副詞			もういちど	もう一度	正しい 副詞 + 名詞（覆う名詞なし）	dev	adr0008-spike
+adv-noun-02	副詞+名詞	副詞			もうすこし	もう少し	副詞 + 副詞	dev	adr0008-spike
+adv-noun-03	副詞+名詞	副詞			もうひとつ	もう一つ	副詞 + 名詞（公用文: 一つ）	dev	adr0008-spike
+adv-noun-04	副詞+名詞	副詞			もういっかい	もう一回	副詞 + 名詞。基準は もう行っ海（動詞の連用形が安い。ADR 0008 §7-4）	dev	adr0008-spike
+adv-noun-05	副詞+名詞	副詞			もうじかん	もう時間	副詞 + 名詞	dev	adr0008-spike
+adv-noun-06	副詞+名詞	副詞			まだじかん	まだ時間	副詞 + 名詞	dev	adr0008-spike
+adv-noun-07	副詞+名詞	副詞			ちょっとじかん	ちょっと時間	副詞 + 名詞	test	adr0008-spike
+adv-noun-08	副詞+名詞	副詞			ちょっとまえ	ちょっと前	副詞 + 名詞	dev	adr0008-spike
+adv-noun-09	副詞+名詞	副詞			ずっとまえ	ずっと前	副詞 + 名詞	test	adr0008-spike
+adv-noun-10	副詞+名詞	副詞			もっとまえ	もっと前	副詞 + 名詞	dev	adr0008-spike
+adv-noun-11	副詞+名詞	副詞			すぐちかく	すぐ近く	副詞 + 名詞	dev	adr0008-spike
+adv-noun-12	副詞+名詞	副詞			かなりまえ	かなり前	副詞 + 名詞（公用文: かなり。漢字の 可成 にしない）	dev	adr0008-spike
+adv-noun-13	副詞+名詞	副詞			ほぼぜんぶ	ほぼ全部	副詞 + 名詞（ほぼ＋全＋イン に逃げない）	test	adr0008-spike
+adv-noun-14	副詞+名詞	副詞			まずさいしょに	まず最初に	副詞 + 名詞 + 助詞（先ず にしない）	dev	adr0008-spike
+adv-noun-15	副詞+名詞	副詞			さらにうえ	更に上|さらに上	副詞 + 名詞（公用文: 副詞は 更に、接続詞は さらに）	dev	adr0008-spike
+adv-noun-16	副詞+名詞	副詞			もっとうえ	もっと上	副詞 + 名詞	dev	adr0008-spike
+adv-noun-17	副詞+名詞	副詞			いつもどおり	いつもどおり|いつも通り	名詞 + 接尾（公用文: とおり）	dev	adr0008-spike
+adv-noun-18	副詞+名詞	副詞			ぜひいちど	是非一度|ぜひ一度	副詞 + 名詞	dev	adr0008-spike
+adv-noun-19	副詞+名詞	副詞			ずっといっしょ	ずっと一緒	副詞 + 名詞。基準は ずっと行っしょ（ADR 0008 §7-4）	test	adr0008-spike
+adv-noun-20	副詞+名詞	副詞			ちょうどいま	ちょうど今	副詞 + 名詞（丁度 にしない）	test	adr0008-spike
+adv-noun-21	副詞+名詞	副詞			ちょうどいちねん	ちょうど一年|ちょうど1年	副詞 + 名詞	dev	adr0008-spike
+adv-pred-10	副詞+用言	副詞			とてもきれい	とてもきれい|とても綺麗	副詞 + 形状詞。基準は とても来れい（ADR 0008 §7-4）	dev	adr0008-spike
+adv-noun-22	副詞+名詞	副詞			すこしまえ	少し前	副詞 + 名詞（公用文: 少し）	dev	adr0008-spike
+adv-kango-01	漢語	副詞			そうじき	掃除機	そう＋時期 にしない（ADR 0008 で直す。katakana-suffix の kata-ki-05 と同じ）	dev	adr0008-spike
+adv-kango-02	漢語	副詞			そうじかん	総時間|そう時間	総時間 と そう時間（そう時間はかからない）のどちらも自然。確認	dev	adr0008-spike
+adv-kango-03	漢語	副詞			こうかそくてい	効果測定	こう + か + 測定。規則の対象外（ADR 0008 §2.3）。基準から誤り	dev	adr0008-spike
+adv-kango-04	漢語	副詞			こうぞうか	構造化	こう＋増加 にしない	dev	adr0008-spike
+adv-kango-05	漢語	副詞			どうぶつ	動物	漢語	test	adr0008-spike
+adv-kango-06	漢語	副詞			どうろ	道路	漢語	dev	adr0008-spike
+adv-kango-07	漢語	副詞			こうえん	公園|講演|公演|後援	同音の漢語（こう＋円 にしない）	dev	adr0008-spike
+adv-kango-08	漢語	副詞			そうだん	相談	漢語	test	adr0008-spike
+adv-kango-09	漢語	副詞			もうしこみ	申し込み|申込み|申込	複合語	dev	adr0008-spike
+adv-kango-10	漢語	副詞			どうぐ	道具	漢語	dev	adr0008-spike
+adv-kango-11	漢語	副詞			こうはん	後半	こう＋班 にしない（ADR 0008 で直す）	dev	adr0008-spike
+adv-kango-12	漢語	副詞			そうさ	操作|捜査	同音の漢語	test	adr0008-spike
+adv-pred-11	副詞+用言	副詞			どうしょうもない	どうしょうもない|どうしようもない	口語の読み。基準は 同省もない（副詞の絡まない誤り）。確認	dev	adr0008-spike
+adv-pred-12	副詞+用言	副詞			もうしわけない	申し訳ない	複合語。基準は もう仕分けない（ADR 0008 §7-4）	dev	adr0008-spike
+adv-only-15	副詞	副詞			こうして	こうして	副詞 + して	dev	adr0008-spike
+adv-only-16	副詞	副詞			そうして	そうして	副詞 + して	dev	adr0008-spike
+adv-only-17	副詞	副詞			どうして	どうして	副詞	dev	adr0008-spike
+adv-only-18	副詞	副詞			ああいう	ああいう	連体詞	dev	adr0008-spike
+adv-noun-23	副詞+名詞	副詞			こういうとき	こういうとき	連体詞 + 形式名詞（公用文: とき）	dev	adr0008-spike
+adv-noun-24	副詞+名詞	副詞			そういうこと	そういうこと	連体詞 + 形式名詞（公用文: こと）	dev	adr0008-spike
+adv-noun-25	副詞+名詞	副詞			どういうこと	どういうこと	連体詞 + 形式名詞	test	adr0008-spike
+adv-pred-13	副詞+用言	副詞			もうおそい	もう遅い	副詞 + 形容詞	test	adr0008-spike
+adv-pred-14	副詞+用言	副詞			すぐいく	すぐ行く	副詞 + 動詞	dev	adr0008-spike
+adv-only-19	副詞	副詞			まだまだ	まだまだ	副詞	dev	adr0008-spike
+adv-pred-15	副詞+用言	副詞			ちょっとまって	ちょっと待って	副詞 + 動詞	dev	adr0008-spike
+adv-noun-26	副詞+名詞	副詞			けっこうたいへん	結構大変	副詞 + 形状詞	dev	adr0008-spike
+adv-noun-27	副詞+名詞	副詞			ずいぶんまえ	随分前|ずいぶん前	副詞 + 名詞	dev	adr0008-spike
+adv-noun-28	副詞+名詞	副詞			すでにじっそう	既に実装|すでに実装	副詞 + 名詞（公用文: 既に）	dev	adr0008-spike
+adv-only-20	副詞	副詞			ただいま	ただいま|ただ今	副詞・感動詞	test	adr0008-spike
+adv-noun-29	副詞+名詞	副詞			ただひとり	ただ一人|ただ1人	副詞 + 名詞（人数は 一人 と 1人 のどちらも）	dev	adr0008-spike
+adv-noun-30	副詞+名詞	副詞			やはりこれ	やはりこれ	副詞 + 代名詞	dev	adr0008-spike
+adv-noun-31	副詞+名詞	副詞			ちゃんとかくにん	ちゃんと確認	副詞 + サ変名詞（チャンと にしない）	dev	adr0008-spike
+adv-noun-32	副詞+名詞	副詞			きっとだいじょうぶ	きっと大丈夫	副詞 + 形状詞	dev	adr0008-spike
+adv-pred-16	副詞+用言	副詞			なかなかいい	なかなかいい	副詞 + 形容詞	dev	adr0008-spike
+adv-noun-33	副詞+名詞	副詞			たぶんだいじょうぶ	多分大丈夫|たぶん大丈夫	副詞 + 形状詞	dev	adr0008-spike
+adv-noun-34	副詞+名詞	副詞			とりあえずびーる	取りあえずビール|とりあえずビール	副詞 + 名詞（公用文: 取りあえず。取り敢えず にしない）	dev	adr0008-spike
+adv-kango-13	漢語	副詞			そうけい	総計|早慶	漢語	dev	adr0008-spike
+adv-kango-14	漢語	副詞			どうき	動機|同期|動悸	同音の漢語。基準は どう来（ADR 0008 §7-4）	dev	adr0008-spike
+adv-kango-15	漢語	副詞			こうりつ	効率|公立	同音の漢語	dev	adr0008-spike
+adv-kango-16	漢語	副詞			そうごう	総合	漢語	dev	adr0008-spike
+adv-kango-17	漢語	副詞			こうか	効果|高価|硬化|校歌|降下	同音の漢語	dev	adr0008-spike
+adv-kango-18	漢語	副詞			そうおん	騒音	そう＋オン にしない（ADR 0008 で直す）	dev	adr0008-spike
+adv-kango-19	漢語	副詞			どうさ	動作	漢語	test	adr0008-spike
+adv-kango-20	漢語	副詞			もうてん	盲点	漢語	dev	adr0008-spike
+adv-kango-21	漢語	副詞			こうせい	構成|校正|公正|厚生|更生|攻勢|後世|恒星	同音の漢語	test	adr0008-spike
+adv-sahen-01	副詞+サ変	副詞			どうたいしょする	どう対処する	副詞 + サ変名詞 + する（一律の加算で 道対処する に崩れた）	dev	adr0008-spike
+adv-sahen-02	副詞+サ変	副詞			どうせつめいする	どう説明する	副詞 + サ変名詞 + する	dev	adr0008-spike
+adv-sahen-03	副詞+サ変	副詞			そうはんだんした	そう判断した	副詞 + サ変名詞 + した	dev	adr0008-spike
+adv-sahen-04	副詞+サ変	副詞			こうひょうげんする	こう表現する	副詞 + サ変名詞 + する（一律の加算で 高表現する に崩れた）	dev	adr0008-spike
+adv-sahen-05	副詞+サ変	副詞			どうかいしゃくする	どう解釈する	副詞 + サ変名詞 + する	dev	adr0008-spike
+adv-sahen-06	副詞+サ変	副詞			そうせっていする	そう設定する	副詞 + サ変名詞 + する	dev	adr0008-spike
+adv-sahen-07	副詞+サ変	副詞			こうしゅうせいする	こう修正する	副詞 + サ変名詞 + する（上限なしだと 光周性 が覆う名詞になり 高修正する に崩れた）	test	adr0008-spike
+adv-sahen-08	副詞+サ変	副詞			どうへんかんする	どう変換する	副詞 + サ変名詞 + する	dev	adr0008-spike
+adv-pred-17	副詞+用言	副詞			そうきめた	そう決めた	副詞 + 動詞	dev	adr0008-spike
+adv-only-21	副詞	副詞			こうやって	こうやって	副詞 + 動詞	dev	adr0008-spike
+adv-only-22	副詞	副詞			どうやって	どうやって	副詞 + 動詞	dev	adr0008-spike
+adv-kango-22	漢語	副詞			よくあさ	翌朝	漢語（よく＋朝 にしない）	dev	adr0008-spike
+adv-noun-35	副詞+名詞	副詞			ふとまど	ふと窓	副詞 + 名詞。基準は 府と窓（副詞の絡まない誤り）	dev	adr0008-spike
+adv-noun-36	副詞+名詞	副詞			すぐあと	すぐ後	副詞 + 名詞	test	adr0008-spike
+adv-noun-37	副詞+名詞	副詞			すぐそば	すぐそば|すぐ側	副詞 + 名詞	dev	adr0008-spike
+adv-noun-38	副詞+名詞	副詞			またらいしゅう	また来週	副詞 + 名詞。基準は また来襲（ADR 0008 §7-4）	dev	adr0008-spike
+adv-noun-39	副詞+名詞	副詞			またあした	また明日	副詞 + 名詞	dev	adr0008-spike
+adv-noun-40	副詞+名詞	副詞			まだあさ	まだ朝	副詞 + 名詞	dev	adr0008-spike
+adv-noun-41	副詞+名詞	副詞			もうよる	もう夜	副詞 + 名詞	dev	adr0008-spike
+adv-noun-42	副詞+名詞	副詞			もうひとり	もう一人|もう1人	副詞 + 名詞（人数は 一人 と 1人 のどちらも）	test	adr0008-spike
+adv-noun-43	副詞+名詞	副詞			ほぼまいにち	ほぼ毎日	副詞 + 名詞	dev	adr0008-spike
+adv-noun-44	副詞+名詞	副詞			ほぼぜんいん	ほぼ全員	副詞 + 名詞	dev	adr0008-spike
+adv-noun-45	副詞+名詞	副詞			ややたかめ	やや高め	副詞 + 名詞	dev	adr0008-spike
+adv-noun-46	副詞+名詞	副詞			まずさいしょ	まず最初	副詞 + 名詞	dev	adr0008-spike
+adv-only-23	副詞	副詞			なおさら	なおさら|尚更	副詞	dev	adr0008-spike
+adv-noun-47	副詞+名詞	副詞			ただいちど	ただ一度	副詞 + 名詞	test	adr0008-spike
+adv-only-24	副詞	副詞			さぞかし	さぞかし	副詞	dev	adr0008-spike
+adv-kango-23	漢語	副詞			もうれつ	猛烈	漢語	dev	adr0008-spike
+adv-kango-24	漢語	副詞			どうきゅうせい	同級生	漢語	dev	adr0008-spike
+adv-kango-25	漢語	副詞			そうりだいじん	総理大臣	漢語	dev	adr0008-spike
+adv-kango-26	漢語	副詞			こうこうせい	高校生	漢語	test	adr0008-spike
+adv-kango-27	漢語	副詞			どうぶつえん	動物園	漢語	dev	adr0008-spike
+adv-kango-28	漢語	副詞			こうかい	公開|後悔|航海|公海|更改	同音の漢語	dev	adr0008-spike
+adv-kango-29	漢語	副詞			そうかい	総会|爽快	同音の漢語	dev	adr0008-spike
+adv-kango-30	漢語	副詞			どうかい	同会|どうかい	同会 と どうかい（どう＋かい。どうかい？）のどちらも自然。確認	dev	adr0008-spike
+adv-kango-31	漢語	副詞			もうけ	儲け|設け|もうけ	和語（もう＋け にしない）	test	adr0008-spike
+adv-kango-32	漢語	副詞			そうば	相場	漢語	dev	adr0008-spike
+adv-kango-33	漢語	副詞			どうじ	同時	漢語	dev	adr0008-spike
+adv-kango-34	漢語	副詞			こうど	高度|硬度	同音の漢語	test	adr0008-spike
+adv-kango-35	漢語	副詞			もうふ	毛布	もう＋府 にしない（ADR 0008 で直す）	dev	adr0008-spike
+adv-kango-36	漢語	副詞			そうこ	倉庫	漢語	dev	adr0008-spike
+adv-kango-37	漢語	副詞			どうこう	動向|同行|どうこう	同音の漢語	dev	adr0008-spike
+adv-kango-38	漢語	副詞			こうこう	高校|孝行|こうこう|煌々	同音の漢語	dev	adr0008-spike
+adv-only-25	副詞	副詞			そうそう	そうそう|早々|草々	副詞・同音の漢語	dev	adr0008-spike
+adv-kango-39	漢語	副詞			こうりょ	考慮	漢語	dev	adr0008-spike
+adv-kango-40	漢語	副詞			そうしん	送信	漢語	dev	adr0008-spike
+adv-kango-41	漢語	副詞			どうにゅう	導入	漢語	dev	adr0008-spike
+adv-kango-42	漢語	副詞			こうしん	更新|行進|後進|交信	同音の漢語	dev	adr0008-spike
+adv-kango-43	漢語	副詞			そうち	装置	漢語	test	adr0008-spike
+adv-kango-44	漢語	副詞			どうし	同士|同志|動詞|同市	同音の漢語。基準は どう＋市。規則で どうし（副詞 + サ変の し）になるが、同士 は1位にならない（ADR 0008 §7-1）	test	adr0008-spike
+adv-kango-45	漢語	副詞			そうさくする	捜索する|創作する	サ変名詞 + する	dev	adr0008-spike
+adv-kango-46	漢語	副詞			こうちくする	構築する	サ変名詞 + する	dev	adr0008-spike
+adv-kango-47	漢語	副詞			どうさかくにん	動作確認	複合名詞	dev	adr0008-spike
+adv-only-26	副詞	副詞			どうせ	どうせ	副詞	dev	adr0008-spike
+adv-kango-48	漢語	副詞			そうとう	相当	漢語。基準は 層等（副詞の絡まない誤り）	dev	adr0008-spike
+adv-kango-49	漢語	副詞			こうてい	肯定|工程|校庭|皇帝|行程|公定|高低	同音の漢語	dev	adr0008-spike
+adv-kango-50	漢語	副詞			もうしあげる	申し上げる	複合動詞	dev	adr0008-spike
+adv-noun-48	副詞+名詞	副詞			またこんど	また今度	副詞 + 名詞	test	adr0008-spike
+adv-noun-49	副詞+名詞	副詞			まだみてい	まだ未定	副詞 + 名詞。基準は まだ見てい（ADR 0008 §7-4）。読みの意図（未定）を確認	dev	adr0008-spike
+adv-noun-50	副詞+名詞	副詞			もうはんぶん	もう半分	副詞 + 名詞	test	adr0008-spike
+adv-noun-51	副詞+名詞	副詞			ややおおめ	やや多め	副詞 + 名詞	dev	adr0008-spike
+adv-noun-52	副詞+名詞	副詞			ほぼどうじ	ほぼ同時	副詞 + 名詞	dev	adr0008-spike
+adv-noun-53	副詞+名詞	副詞			もうごご	もう午後	副詞 + 名詞（もう＋御語 にしない）	dev	adr0008-spike
+adv-noun-54	副詞+名詞	副詞			まだごぜん	まだ午前	副詞 + 名詞。基準は まだ御前（副詞の絡まない誤り）	dev	adr0008-spike
+adv-noun-55	副詞+名詞	副詞			すぐうしろ	すぐ後ろ	副詞 + 名詞	dev	adr0008-spike
+adv-noun-56	副詞+名詞	副詞			またつぎ	また次	副詞 + 名詞	dev	adr0008-spike
+adv-noun-57	副詞+名詞	副詞			もうおとな	もう大人	副詞 + 名詞	dev	adr0008-spike
+adv-noun-58	副詞+名詞	副詞			もうこども	もう子供|もう子ども	副詞 + 名詞（公用文: 子供）	dev	adr0008-spike
+adv-noun-59	副詞+名詞	副詞			ぜひこんど	是非今度|ぜひ今度	副詞 + 名詞（一律の加算で 是非込んど に崩れた）	dev	adr0008-spike
+adv-noun-60	副詞+名詞	副詞			まずけつろん	まず結論	副詞 + 名詞	dev	adr0008-spike
+adv-noun-61	副詞+名詞	副詞			なぜきょう	なぜ今日	副詞 + 名詞。基準は 何故今日（副詞の絡まない誤り）	dev	adr0008-spike
+adv-noun-62	副詞+名詞	副詞			もうきょう	もう今日	副詞 + 名詞	test	adr0008-spike
+adv-noun-63	副詞+名詞	副詞			まだこども	まだ子供|まだ子ども	副詞 + 名詞	dev	adr0008-spike
+adv-noun-64	副詞+名詞	副詞			またらいねん	また来年	副詞 + 名詞	dev	adr0008-spike
+adv-noun-65	副詞+名詞	副詞			もうらいねん	もう来年	副詞 + 名詞	dev	adr0008-spike
+adv-noun-66	副詞+名詞	副詞			ほぼかくじつ	ほぼ確実	副詞 + 形状詞	dev	adr0008-spike
+adv-noun-67	副詞+名詞	副詞			まずだいいちに	まず第一に	副詞 + 名詞	dev	adr0008-spike
+adv-kango-51	漢語	副詞			よくじつ	翌日	漢語	dev	adr0008-spike
+adv-noun-68	副詞+名詞	副詞			もうしんや	もう深夜	副詞 + 名詞（一律の加算で もう死んや に崩れた）	dev	adr0008-spike
+adv-noun-69	副詞+名詞	副詞			ただいっかい	ただ一回	副詞 + 名詞。基準は ただ行っ海（ADR 0008 §7-4）	test	adr0008-spike
+adv-noun-70	副詞+名詞	副詞			なおいっそう	なお一層|なおいっそう	副詞 + 副詞。基準は なお行っそう（ADR 0008 §7-4）	dev	adr0008-spike
+adv-noun-71	副詞+名詞	副詞			もうぜんぶ	もう全部	副詞 + 名詞	dev	adr0008-spike
+adv-noun-72	副詞+名詞	副詞			まだはんぶん	まだ半分	副詞 + 名詞	dev	adr0008-spike
