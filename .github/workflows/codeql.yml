@@ -1,0 +1,27 @@
+# CodeQL（コードの脆弱性パターンの解析）。公開リポジトリでだけ動く（private では GitHub Advanced Security が要る）。
+# 公開したあとの最初の実行で、動作を確かめて直すこと。Swift は、Rust の XCFramework が先に要り、
+# macOS のランナーでのビルドが重いので、最初は Rust だけ。
+name: CodeQL
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * 1"
+permissions:
+  contents: read
+  security-events: write
+jobs:
+  analyze-rust:
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: rust
+          build-mode: none
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:rust"
