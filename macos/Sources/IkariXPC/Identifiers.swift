@@ -58,6 +58,15 @@ public enum SigningRequirements {
         }
     }
 
+    /// 設定アプリがブリッジ（Unix ソケット）でつないだ相手（殻）が正しいか（殻側の `settingsApp` の対）
+    public static func bridgeShell(mode: SigningMode, teamID: String = IkariIdentifiers.teamID) -> String {
+        let identifier = "identifier \"\(IkariIdentifiers.shell)\""
+        switch mode {
+        case .team: return "\(identifier) and \(teamClause(teamID))"
+        case .adhoc: return identifier
+        }
+    }
+
     private static func teamClause(_ teamID: String) -> String {
         "anchor apple generic and certificate leaf[subject.OU] = \"\(teamID)\""
     }

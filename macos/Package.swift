@@ -41,7 +41,7 @@ var targets: [Target] = [
     // 契約コミットで完成させてあり、以後はレーン S3 も U も変えない
     .target(name: "IkariBridge", dependencies: ["IkariShellCore", "IkariProto"]),
     // 設定アプリ（ADR 0005 §6.2）。レーン U が実装する。エンジンには直接つながない（殻の中継だけ）
-    .executableTarget(name: "IkariSettings", dependencies: ["IkariShellCore", "IkariBridge", "IkariProto"]),
+    .executableTarget(name: "IkariSettings", dependencies: ["IkariShellCore", "IkariBridge", "IkariProto", "IkariXPC"]),
     // XPC サービス（FFI を呼ぶだけ）
     .executableTarget(
         name: "IkariEngineService",
@@ -54,7 +54,7 @@ var targets: [Target] = [
     .testTarget(name: "IkariIMETests", dependencies: ["IkariIME", "IkariBridge", "IkariProto", "IkariShellCore", "IkariXPC"]),
     .testTarget(name: "IkariShellCoreTests", dependencies: ["IkariShellCore"]),
     .testTarget(name: "IkariBridgeTests", dependencies: ["IkariBridge", "IkariProto", "IkariShellCore"]),
-    .testTarget(name: "IkariSettingsTests", dependencies: ["IkariSettings", "IkariBridge", "IkariProto", "IkariShellCore"]),
+    .testTarget(name: "IkariSettingsTests", dependencies: ["IkariSettings", "IkariBridge", "IkariProto", "IkariShellCore", "IkariXPC"]),
     .testTarget(name: "IkariXPCTests", dependencies: ["IkariXPC", "IkariShellCore", "IkariProto"]),
 ]
 
