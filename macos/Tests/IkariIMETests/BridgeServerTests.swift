@@ -288,19 +288,28 @@ private struct Rig {
         }
         #expect(connected)
 
-        let clock = ContinuousClock()
-        var slowest: Duration = .zero
-        let deadline = Date().addingTimeInterval(replyTimeoutSeconds)
-        // 送信バッファが埋まって時間切れになり、殻が切るまで送り続ける
-        while connected && Date() < deadline {
-            for _ in 0..<1000 {
-                let elapsed = clock.measure { rig.server.notifySettingsChanged() }
-                slowest = max(slowest, elapsed)
+        // 送信バッファが埋まって時間切れになり、殻が切るまで送り続ける。止まったら失敗にする（固まらないように別のスレッドで）
+        let server = rig.server
+        let disconnected = LockedBox<Bool>(false)
+        let slowest = LockedBox<Duration>(.zero)
+        let done = DispatchSemaphore(value: 0)
+        Thread {
+            let clock = ContinuousClock()
+            let deadline = Date().addingTimeInterval(replyTimeoutSeconds)
+            var stillConnected = true
+            while stillConnected && Date() < deadline {
+                for _ in 0..<1000 {
+                    let elapsed = clock.measure { server.notifySettingsChanged() }
+                    if elapsed > slowest.get() { slowest.set(elapsed) }
+                }
+                stillConnected = server.sendOpenTab(.userDictionary)
             }
-            connected = rig.server.sendOpenTab(.userDictionary)
-        }
-        #expect(!connected)  // 殻が接続を閉じた
-        #expect(slowest < .milliseconds(500))  // 呼び出し元は書き込みを待たない
+            disconnected.set(!stillConnected)
+            done.signal()
+        }.start()
+        #expect(done.wait(timeout: .now() + replyTimeoutSeconds * 2) == .success)  // 送る側が止まらない
+        #expect(disconnected.get())  // 殻が接続を閉じた
+        #expect(slowest.get() < .milliseconds(500))  // 呼び出し元は書き込みを待たない
     }
 
     @Test func handEditIsNoticedByReloadAndNotifiesTheApp() throws {
