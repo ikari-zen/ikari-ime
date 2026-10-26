@@ -108,6 +108,8 @@ final class SettingsStore: @unchecked Sendable {
                 try FileManager.default.createDirectory(
                     at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try Data(updated.utf8).write(to: fileURL, options: .atomic)
+                try FileManager.default.setAttributes(
+                    [.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
             } catch {
                 lock.unlock()
                 AppContext.log.error("settings.tsv: write failed")

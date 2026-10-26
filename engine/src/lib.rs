@@ -190,6 +190,7 @@ impl Engine {
         if !data_dir.is_dir() {
             return Err(EngineError::Config("data_dir is not a directory".into()));
         }
+        secure_data_dir(&data_dir);
         let settings = settings::load(&data_dir);
         let lm_requested = settings.lm.unwrap_or(cfg.enable_lm);
         let idle_unload_secs = settings.idle_unload_secs.unwrap_or(cfg.idle_unload_secs);
@@ -410,6 +411,24 @@ struct Inner {
     save_io: Mutex<()>,
     /// 文節の区切りをコアに頼む口。None なら本番（`RealSeam`）。テストだけがモックを入れる
     seam_override: Option<Arc<dyn SegmentSeam>>,
+}
+
+/// 起動時にデータ用フォルダ（本体、backups、logs）を 0700、中のファイルを 0600 にする。
+/// 失敗しても起動は止めない（権限を変えられない場所でも動く）。
+fn secure_data_dir(data_dir: &Path) {
+    for dir in [
+        data_dir.to_path_buf(),
+        data_dir.join(admin::BACKUP_DIR_NAME),
+        data_dir.join(log::LOG_DIR_NAME),
+    ] {
+        if dir.is_dir() {
+            let _ = std::fs::set_permissions(
+                &dir,
+                std::os::unix::fs::PermissionsExt::from_mode(ikari_core::user::PRIVATE_DIR_MODE),
+            );
+            ikari_core::user::tighten_files(&dir);
+        }
+    }
 }
 
 fn char_count_exceeds(s: &str, limit: usize) -> bool {
