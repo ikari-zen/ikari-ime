@@ -272,6 +272,46 @@ private struct Rig {
         c.close()
     }
 
+    /// 設定アプリが読まなくなっても、通知を送る側（main、入力の経路）は止まらず、殻は接続を閉じる（issue #44）
+    @Test func aPeerThatStopsReadingDoesNotBlockNotificationsAndIsDisconnected() throws {
+        let rig = try Rig()
+        defer { rig.server.stop() }
+        let c = try connectClient(rig.server.socketPath)
+        defer { c.close() }
+        try c.send(helloFrame()); _ = recv(c)
+        // 以後、c は読まない
+        var connected = false
+        let readyDeadline = Date().addingTimeInterval(replyTimeoutSeconds)
+        while !connected && Date() < readyDeadline {
+            connected = rig.server.sendOpenTab(.userDictionary)
+            if !connected { Thread.sleep(forTimeInterval: 0.01) }
+        }
+        #expect(connected)
+
+        // 送信バッファが埋まって時間切れになり、殻が切るまで送り続ける。止まったら失敗にする（固まらないように別のスレッドで）
+        let server = rig.server
+        let disconnected = LockedBox<Bool>(false)
+        let slowest = LockedBox<Duration>(.zero)
+        let done = DispatchSemaphore(value: 0)
+        Thread {
+            let clock = ContinuousClock()
+            let deadline = Date().addingTimeInterval(replyTimeoutSeconds)
+            var stillConnected = true
+            while stillConnected && Date() < deadline {
+                for _ in 0..<1000 {
+                    let elapsed = clock.measure { server.notifySettingsChanged() }
+                    if elapsed > slowest.get() { slowest.set(elapsed) }
+                }
+                stillConnected = server.sendOpenTab(.userDictionary)
+            }
+            disconnected.set(!stillConnected)
+            done.signal()
+        }.start()
+        #expect(done.wait(timeout: .now() + replyTimeoutSeconds * 2) == .success)  // 送る側が止まらない
+        #expect(disconnected.get())  // 殻が接続を閉じた
+        #expect(slowest.get() < .milliseconds(500))  // 呼び出し元は書き込みを待たない
+    }
+
     @Test func handEditIsNoticedByReloadAndNotifiesTheApp() throws {
         let rig = try Rig()
         defer { rig.server.stop() }
