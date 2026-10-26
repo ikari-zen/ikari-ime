@@ -1,0 +1,20 @@
+# 依存パッケージの更新と脆弱性の通知（Dependabot）。更新の PR は、週 1 回、まとめて出す。
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      cargo-minor-and-patch:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "swift"
+    directory: "/macos"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

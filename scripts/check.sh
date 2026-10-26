@@ -128,6 +128,15 @@ check_leaks() {
   done
 }
 
+check_audit() {
+  log "依存パッケージの脆弱性（cargo audit。RustSec のデータベースで Cargo.lock を調べる）"
+  if ! command -v cargo-audit >/dev/null; then
+    warn "cargo-audit がありません。検査を飛ばします（cargo install cargo-audit --locked）"
+    return 0
+  fi
+  cargo audit -q || die "cargo audit が脆弱性を見つけたか、データベースの取得に失敗しました（cargo audit で確かめてください）"
+}
+
 check_shell_syntax() {
   log "シェルスクリプトの構文"
   local script
@@ -210,6 +219,7 @@ if [[ "$DOCS_ONLY" -eq 1 ]]; then
   exit 0
 fi
 
+check_audit
 run_rust_base
 if [[ "$WITH_LM" -eq 1 ]]; then run_rust_lm; fi
 if [[ "$WITH_SWIFT" -eq 1 ]]; then run_swift; fi
