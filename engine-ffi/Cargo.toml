@@ -17,3 +17,7 @@ lm-metal = ["lm", "ikari-engine/lm-metal"]
 ikari-engine.workspace = true
 ikari-proto.workspace = true
 prost.workspace = true
+
+[dev-dependencies]
+ikari-dict-builder.workspace = true
+tempfile.workspace = true
