@@ -29,4 +29,12 @@ import Testing
         )
         #expect(SigningRequirements.settingsApp(mode: .adhoc) == "identifier \"io.github.ikari-zen.inputmethod.ikari.settings\"")
     }
+
+    @Test func bridgeShellRequirementPinsTheShellIdentifierAndTheTeam() {
+        #expect(
+            SigningRequirements.bridgeShell(mode: .team)
+                == "identifier \"io.github.ikari-zen.inputmethod.ikari\" and anchor apple generic and certificate leaf[subject.OU] = \"L9Z8SK775X\""
+        )
+        #expect(SigningRequirements.bridgeShell(mode: .adhoc) == "identifier \"io.github.ikari-zen.inputmethod.ikari\"")
+    }
 }
