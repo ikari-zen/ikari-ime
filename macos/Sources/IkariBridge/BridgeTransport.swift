@@ -26,6 +26,8 @@ public final class FileDescriptorTransport: BridgeTransport, @unchecked Sendable
     private static let readChunkBytes = 64 * 1024
 
     private let descriptor: Int32
+    /// `SO_SNDTIMEO` を付けたか（付けたときだけ、書き込みの EAGAIN を時間切れと読む）
+    private let hasSendTimeout: Bool
     private let stateLock = NSLock()
     private let sendLock = NSLock()
     private let receiveLock = NSLock()
@@ -42,12 +44,34 @@ public final class FileDescriptorTransport: BridgeTransport, @unchecked Sendable
     }()
 
     /// `descriptor` は引き取る（`deinit` で閉じる）。ソケットなら `SO_NOSIGPIPE` を付け、SIGPIPE も無視にして、
-    /// 切れた相手への書き込みでプロセスが落ちないようにする
-    public init(descriptor: Int32) {
+    /// 切れた相手への書き込みでプロセスが落ちないようにする。
+    ///
+    /// `sendTimeout` を渡すと、書き込みが進まない（相手が読まず、送信バッファが空かない）時間の上限を
+    /// `SO_SNDTIMEO` で付ける。超えたら接続を閉じ、`send` は `BridgeTransportError.io(ETIMEDOUT)` を投げる
+    /// （枠の途中まで書いたかもしれないので、続けて使えない）。上限は「進まない時間」で、枠全体の時間ではない
+    /// （大きな枠を読み続けている相手は切らない）。`nil` なら上限なし（相手が読むまで待つ）
+    public init(descriptor: Int32, sendTimeout: Duration? = nil) {
         self.descriptor = descriptor
         Self.ignoreSIGPIPE
         var on: Int32 = 1
         _ = setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
+        hasSendTimeout = sendTimeout != nil
+        if let sendTimeout {
+            // 相手がすでに閉じていると EINVAL で断られる。そのときは最初の書き込みが EPIPE で失敗するので、無視してよい
+            var interval = Self.makeTimeval(sendTimeout)
+            _ = setsockopt(descriptor, SOL_SOCKET, SO_SNDTIMEO, &interval, socklen_t(MemoryLayout<timeval>.size))
+        }
+    }
+
+    /// `Duration` を `timeval` に。0 は「上限なし」の意味になるので、最小でも 1 マイクロ秒にする
+    private static func makeTimeval(_ duration: Duration) -> timeval {
+        let (seconds, attoseconds) = duration.components
+        let attosecondsPerMicrosecond: Int64 = 1_000_000_000_000
+        var value = Darwin.timeval(
+            tv_sec: __darwin_time_t(max(seconds, 0)),
+            tv_usec: __darwin_suseconds_t(max(attoseconds / attosecondsPerMicrosecond, 0)))
+        if value.tv_sec == 0 && value.tv_usec == 0 { value.tv_usec = 1 }
+        return value
     }
 
     deinit {
@@ -80,8 +104,14 @@ public final class FileDescriptorTransport: BridgeTransport, @unchecked Sendable
             while offset < raw.count {
                 let written = Darwin.write(descriptor, raw.baseAddress! + offset, raw.count - offset)
                 if written < 0 {
-                    if errno == EINTR { continue }
-                    throw Self.isDisconnect(errno) ? BridgeTransportError.closed : BridgeTransportError.io(errno)
+                    let code = errno
+                    if code == EINTR { continue }
+                    if hasSendTimeout && (code == EAGAIN || code == EWOULDBLOCK) {
+                        // 相手が読まない。枠の途中で止まっているかもしれないので、接続ごと閉じる（相手はつなぎ直す）
+                        close()
+                        throw BridgeTransportError.io(ETIMEDOUT)
+                    }
+                    throw Self.isDisconnect(code) ? BridgeTransportError.closed : BridgeTransportError.io(code)
                 }
                 offset += written
             }

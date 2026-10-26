@@ -112,6 +112,31 @@ private func eventFrame() -> Frame {
         #expect(throws: BridgeTransportError.frame(.tooLarge(length: UInt64(UInt32.max)))) { try receiver.receive() }
     }
 
+    /// 受け手が読まないとき、送る側は `sendTimeout` で戻り、接続を閉じる（issue #44）
+    @Test func sendTimesOutAndClosesWhenThePeerDoesNotRead() throws {
+        var fds: [Int32] = [0, 0]
+        #expect(socketpair(AF_UNIX, SOCK_STREAM, 0, &fds) == 0)
+        let timeout: Duration = .milliseconds(200)
+        let sender = FileDescriptorTransport(descriptor: fds[0], sendTimeout: timeout)
+        defer { Darwin.close(fds[1]) }  // 受け手は読まない
+        let result = ResultBox()
+        let done = DispatchSemaphore(value: 0)
+        let started = ContinuousClock.now
+        Thread {
+            // 送信バッファが埋まるまで送り続ける
+            do {
+                while true { try sender.send(exportFrame(id: 1, size: 64 * 1024)) }
+            } catch { result.set(error) }
+            done.signal()
+        }.start()
+        // 止まり続けるなら失敗にする（固まった）
+        #expect(done.wait(timeout: .now() + 10) == .success)
+        #expect(ContinuousClock.now - started < .seconds(5))
+        #expect(result.get() as? BridgeTransportError == .io(ETIMEDOUT))
+        // 閉じたので、以後の送信はすぐ断る
+        #expect(throws: BridgeTransportError.closed) { try sender.send(eventFrame()) }
+    }
+
     @Test func refusesToSendAnOversizedFrame() throws {
         let (a, _) = try FileDescriptorTransport.socketPair()
         let huge = exportFrame(id: 1, size: BridgeLimits.maxFrameBytes + 1)

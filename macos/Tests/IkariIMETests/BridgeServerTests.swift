@@ -272,6 +272,37 @@ private struct Rig {
         c.close()
     }
 
+    /// 設定アプリが読まなくなっても、通知を送る側（main、入力の経路）は止まらず、殻は接続を閉じる（issue #44）
+    @Test func aPeerThatStopsReadingDoesNotBlockNotificationsAndIsDisconnected() throws {
+        let rig = try Rig()
+        defer { rig.server.stop() }
+        let c = try connectClient(rig.server.socketPath)
+        defer { c.close() }
+        try c.send(helloFrame()); _ = recv(c)
+        // 以後、c は読まない
+        var connected = false
+        let readyDeadline = Date().addingTimeInterval(replyTimeoutSeconds)
+        while !connected && Date() < readyDeadline {
+            connected = rig.server.sendOpenTab(.userDictionary)
+            if !connected { Thread.sleep(forTimeInterval: 0.01) }
+        }
+        #expect(connected)
+
+        let clock = ContinuousClock()
+        var slowest: Duration = .zero
+        let deadline = Date().addingTimeInterval(replyTimeoutSeconds)
+        // 送信バッファが埋まって時間切れになり、殻が切るまで送り続ける
+        while connected && Date() < deadline {
+            for _ in 0..<1000 {
+                let elapsed = clock.measure { rig.server.notifySettingsChanged() }
+                slowest = max(slowest, elapsed)
+            }
+            connected = rig.server.sendOpenTab(.userDictionary)
+        }
+        #expect(!connected)  // 殻が接続を閉じた
+        #expect(slowest < .milliseconds(500))  // 呼び出し元は書き込みを待たない
+    }
+
     @Test func handEditIsNoticedByReloadAndNotifiesTheApp() throws {
         let rig = try Rig()
         defer { rig.server.stop() }

@@ -24,6 +24,9 @@ final class BridgeServer: @unchecked Sendable {
     private static let localPeerToken: Int32 = 0x006
     private static let directoryPermissions: mode_t = 0o700
     private static let socketPermissions: mode_t = 0o600
+    /// 設定アプリへの書き込みが進まない時間の上限。超えたら接続を閉じる（設定アプリはつなぎ直す。issue #44）。
+    /// 暫定値（掃引していない）。相手が一時停止したときに、送る側のスレッドと `sendLock` を待たせる上限になる
+    static let sendTimeout: Duration = .seconds(2)
 
     private let socketURL: URL
     private let store: SettingsStore
@@ -36,6 +39,9 @@ final class BridgeServer: @unchecked Sendable {
     private var connection: BridgeTransport?
     /// `BridgeHello` を交わし終えた接続だけに、殻からの通知（`Event`）を送る
     private var connectionReady = false
+
+    /// 殻からの通知は、このキューで順に送る。呼び出し元（main、入力の経路）は、相手が読まなくても止まらない
+    private let eventQueue = DispatchQueue(label: "\(Identity.productID).bridge-event", qos: .utility)
 
     /// 中継は別のキューで並行に動かす（インポートで長く待つ間も、設定の取得や更新を止めない）
     private let relayQueue = DispatchQueue(
@@ -95,7 +101,8 @@ final class BridgeServer: @unchecked Sendable {
         sendEvent { $0.settingsChanged = Ikari_Bridge_V1_SettingsChanged() }
     }
 
-    /// すでに動いている設定アプリに、開くタブを伝える（起動の引数は動作中のアプリには届かない）。つながっていなければ false
+    /// すでに動いている設定アプリに、開くタブを伝える（起動の引数は動作中のアプリには届かない）。つながっていなければ false。
+    /// 送るのは別のキューなので、true は「送る順番に入れた」の意味（届いたことまでは分からない）
     @discardableResult
     func sendOpenTab(_ tab: SettingsTab) -> Bool {
         sendEvent {
@@ -105,6 +112,7 @@ final class BridgeServer: @unchecked Sendable {
         }
     }
 
+    /// 通知を `eventQueue` に入れて、すぐ戻る。書き込みは `sendTimeout` で打ち切られ、そのときは接続が閉じる
     @discardableResult
     private func sendEvent(_ build: (inout Ikari_Bridge_V1_Event) -> Void) -> Bool {
         lock.lock()
@@ -116,7 +124,8 @@ final class BridgeServer: @unchecked Sendable {
         var frame = Frame()
         frame.requestID = 0
         frame.event = event
-        return (try? target.send(frame)) != nil
+        eventQueue.async { [self] in send(frame, on: target) }
+        return true
     }
 
     // MARK: ソケット
@@ -197,7 +206,7 @@ final class BridgeServer: @unchecked Sendable {
             Darwin.close(client)
             return
         }
-        let transport = FileDescriptorTransport(descriptor: client)
+        let transport = FileDescriptorTransport(descriptor: client, sendTimeout: Self.sendTimeout)
         lock.lock()
         guard connection == nil else {
             lock.unlock()
@@ -344,6 +353,10 @@ final class BridgeServer: @unchecked Sendable {
             // 返事が大きすぎる（エクスポートが上限を超えた）など。壊れた枠は送らず、理由だけ返す
             AppContext.log.error("bridge: cannot send a frame")
             if case .tooLarge = error { _ = try? transport.send(.error(requestID: frame.requestID, code: .tooLarge)) }
+        } catch BridgeTransportError.io(let code) where code == ETIMEDOUT {
+            // 相手が読まない（`sendTimeout`）。輸送が閉じたので、serve の受信が終わり、接続を片づける
+            AppContext.log.error("bridge: send timed out; closing the connection")
+            transport.close()
         } catch {
             transport.close()
         }
