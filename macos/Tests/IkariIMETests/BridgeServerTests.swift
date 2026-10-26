@@ -19,6 +19,8 @@ import Testing
 private final class StubEngine: EngineClient, @unchecked Sendable {
     let lock = NSLock()
     var relayed: [Data] = []
+    /// 非 nil なら、relay はこの合図が出るまで止まる（同時数の試験用）
+    var hold: DispatchSemaphore?
     func hello(shellVersion: String, timeout: Duration) throws -> EngineHello { EngineHello(engineVersion: "t", dictLabel: "t", lm: .ready) }
     func beginSession(_ session: SessionInfo) {}
     func endSession(sessionID: UInt64) {}
@@ -35,6 +37,7 @@ private final class StubEngine: EngineClient, @unchecked Sendable {
     func shutdown(reason: EngineShutdownReason) {}
     func relay(_ request: Data, timeout: Duration) throws -> Data {
         lock.withLock { relayed.append(request) }
+        hold?.wait()
         var reply = Ikari_Engine_V1_Envelope()
         var profile = Ikari_Engine_V1_ProfileReply()
         var d = Ikari_Engine_V1_ProfileDomainState()
@@ -208,6 +211,56 @@ private struct Rig {
         #expect(e.code == .notAllowed && refused.requestID == 22)
         #expect(rig.engine.relayed.count == 1)  // Commit は流れていない
         c.close()
+    }
+
+    @Test func relayFloodIsRefusedBeyondTheLimitWithoutQueueing() throws {
+        let rig = try Rig()
+        defer { rig.server.stop() }
+        let hold = DispatchSemaphore(value: 0)
+        rig.engine.hold = hold
+        let c = try connectClient(rig.server.socketPath)
+        try c.send(helloFrame()); _ = recv(c)
+
+        let limit = BridgeServer.maxConcurrentRelays
+        let flood = limit + 20
+        for i in 0..<flood {
+            var env = Ikari_Engine_V1_Envelope(); env.schemaVersion = 1; env.getProfile = Ikari_Engine_V1_ProfileGet()
+            var f = Frame(); f.requestID = UInt64(100 + i); f.engine = env
+            try c.send(f)
+        }
+        // 上限を超えた分は、中継が止まっている間にも、すぐ busy 相当で返る
+        var refused = 0
+        for _ in 0..<(flood - limit) {
+            let r = try #require(recv(c, seconds: 5))
+            guard case .error(let e)? = r.body else { Issue.record("expected an error"); break }
+            #expect(e.code == .engineUnavailable)
+            refused += 1
+        }
+        #expect(refused == flood - limit)
+        #expect(rig.engine.lock.withLock { rig.engine.relayed.count } <= limit)
+
+        // 止めを外すと、受け付けた分だけが返る。その後は、また受け付ける
+        for _ in 0..<limit { hold.signal() }
+        for _ in 0..<limit {
+            let r = try #require(recv(c))
+            guard case .engine? = r.body else { Issue.record("expected a relay reply"); break }
+        }
+        rig.engine.hold = nil
+        var env = Ikari_Engine_V1_Envelope(); env.schemaVersion = 1; env.getProfile = Ikari_Engine_V1_ProfileGet()
+        var f = Frame(); f.requestID = 999; f.engine = env
+        try c.send(f)
+        let again = try #require(recv(c))
+        guard case .engine? = again.body else { Issue.record("not accepted after release"); return }
+        c.close()
+    }
+
+    @Test func relayGateLimitsLargeRequestsToOne() {
+        let gate = RelayGate(maxConcurrent: 4, maxLarge: 1)
+        #expect(gate.tryEnter(large: true))
+        #expect(!gate.tryEnter(large: true))
+        #expect(gate.tryEnter(large: false))
+        gate.leave(large: true)
+        #expect(gate.tryEnter(large: true))
     }
 
     @Test func secondConnectionIsRejectedWhileOneIsActive() throws {

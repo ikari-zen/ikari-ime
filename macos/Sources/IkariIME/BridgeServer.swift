@@ -47,6 +47,14 @@ final class BridgeServer: @unchecked Sendable {
     private let relayQueue = DispatchQueue(
         label: "\(Identity.productID).bridge-relay", qos: .utility, attributes: .concurrent)
 
+    /// 同時に走る中継の数の上限。暫定値（掃引なしで決めた。PR で要確認）
+    static let maxConcurrentRelays = 4
+    /// この大きさ以上の要求は「大きな要求」として、同時に 1 本までにする（枠の上限は 64MiB。暫定値）
+    static let largeRelayBytes = 1 * 1024 * 1024
+    static let maxConcurrentLargeRelays = 1
+    private let relayGate = RelayGate(
+        maxConcurrent: BridgeServer.maxConcurrentRelays, maxLarge: BridgeServer.maxConcurrentLargeRelays)
+
     /// `peerValidator` は接続したソケットの記述子を受け、相手が設定アプリなら真。既定は署名の確認
     /// （テストだけが差し替える）
     init(
@@ -295,7 +303,22 @@ final class BridgeServer: @unchecked Sendable {
         case .updateSettings(let update)?:
             send(apply(update, requestID: frame.requestID), on: transport)
         case .engine(let envelope)?:
-            relayQueue.async { [self] in relay(envelope, requestID: frame.requestID, on: transport) }
+            // 受け付けた時点で枠を取り、満員なら待たせず断る（連打でキューとメモリを溜めない）
+            // 直列化は一度だけ行い、そのバイト列を中継へ渡す（複製を増やさない）
+            guard let request = try? envelope.serializedData() else {
+                send(.error(requestID: frame.requestID, code: .engineUnavailable), on: transport)
+                return
+            }
+            let isLarge = request.count >= Self.largeRelayBytes
+            guard relayGate.tryEnter(large: isLarge) else {
+                AppContext.log.error("bridge: relay busy")
+                send(.error(requestID: frame.requestID, code: .engineUnavailable), on: transport)
+                return
+            }
+            relayQueue.async { [self] in
+                defer { relayGate.leave(large: isLarge) }
+                relay(request, timeout: RelayPolicy.timeout(for: envelope.body), requestID: frame.requestID, on: transport)
+            }
         default:
             // 設定アプリから送ってよいのは、上の要求だけ（二度目の Hello、殻からの通知や返事の種類は断る）
             send(.error(requestID: frame.requestID, code: .notAllowed), on: transport)
@@ -330,10 +353,8 @@ final class BridgeServer: @unchecked Sendable {
     }
 
     /// 管理の要求をエンジンへそのまま流し、返事をそのまま返す（種類の許可リストは `handle` で確認済み。中身は解釈しない）
-    private func relay(_ envelope: EngineEnvelope, requestID: UInt64, on transport: BridgeTransport) {
-        let timeout = RelayPolicy.timeout(for: envelope.body)
+    private func relay(_ request: Data, timeout: Duration, requestID: UInt64, on transport: BridgeTransport) {
         do {
-            let request = try envelope.serializedData()
             let replyBytes = try engine.relay(request, timeout: timeout)
             let reply = try EngineEnvelope(serializedBytes: replyBytes)
             var frame = Frame()
@@ -360,6 +381,36 @@ final class BridgeServer: @unchecked Sendable {
         } catch {
             transport.close()
         }
+    }
+}
+
+/// 中継の同時数を数える。満員なら待たずに false を返す
+final class RelayGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private let maxConcurrent: Int
+    private let maxLarge: Int
+    private var running = 0
+    private var runningLarge = 0
+
+    init(maxConcurrent: Int, maxLarge: Int) {
+        self.maxConcurrent = maxConcurrent
+        self.maxLarge = maxLarge
+    }
+
+    func tryEnter(large: Bool) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard running < maxConcurrent, !large || runningLarge < maxLarge else { return false }
+        running += 1
+        if large { runningLarge += 1 }
+        return true
+    }
+
+    func leave(large: Bool) {
+        lock.lock()
+        running -= 1
+        if large { runningLarge -= 1 }
+        lock.unlock()
     }
 }
 #else
