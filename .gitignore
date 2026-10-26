@@ -5,3 +5,4 @@
 /.claude/worktrees/
 __pycache__/
 *.pyc
+/.gitleaks.local.toml

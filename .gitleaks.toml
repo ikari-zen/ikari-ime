@@ -1,0 +1,35 @@
+# 秘密と個人情報の漏れを検査する設定（gitleaks。scripts/check.sh が、入っていれば流す）。
+# 既定のルール（鍵、トークンなど）に、このプロジェクトの個人情報のルールを足す。
+# 実名や旧アカウント名のようなルールは、公開しないよう .gitleaks.local.toml（.gitignore 済み）に置く。
+title = "ikari-ime"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "home-path"
+description = "ホームディレクトリのパス（ユーザー名が入る）。テスト用のダミー（someone、u）は除く"
+regex = '''/Users/[A-Za-z0-9._-]+'''
+keywords = ["/users/"]
+[[rules.allowlists]]
+regexTarget = "match"
+regexes = ['''/Users/(someone|u)$''']
+
+[[rules]]
+id = "personal-email"
+description = "noreply 以外のメールアドレス"
+regex = '''[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}'''
+keywords = ["@"]
+[[rules.allowlists]]
+regexTarget = "match"
+regexes = [
+  '''noreply''',
+  '''@[0-9]+x\.''',
+  '''@example\.(com|org|net)$''',
+]
+
+[[rules]]
+id = "apple-certificate-name"
+description = "Apple の証明書の名前（Common Name。メールアドレスや本名が入る）"
+regex = '''Apple (Development|Distribution): [^()\n]+ \([A-Z0-9]{10}\)'''
+keywords = ["apple development", "apple distribution"]

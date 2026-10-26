@@ -108,6 +108,26 @@ check_identity() {
     || die "$swift が lib.sh の既定値と違います。macos/scripts/gen-identity.sh を流してください"
 }
 
+check_leaks() {
+  log "秘密と個人情報の検査（gitleaks。コミットの作者のメールも）"
+  # コミットの作者・署名者のメールは noreply だけ（gitleaks は作者欄を見ないので、ここで調べる）
+  local bad
+  bad="$(git log --all --format='%ae%n%ce' 2>/dev/null | sort -u | grep -v -E 'noreply' || true)"
+  [[ -z "$bad" ]] || die "noreply 以外のメールがコミットの作者欄にあります（GitHub の設定で Keep my email addresses private をオンに）: $(printf '%s' "$bad" | tr '\n' ' ')"
+  if ! command -v gitleaks >/dev/null; then
+    warn "gitleaks がありません。検査を飛ばします（brew install gitleaks）"
+    return 0
+  fi
+  local conf
+  for conf in .gitleaks.toml .gitleaks.local.toml; do
+    [[ -f "$conf" ]] || continue
+    gitleaks git . --config "$conf" --no-banner --redact >/dev/null 2>&1 \
+      || die "gitleaks が履歴に漏れを見つけました（${conf}）。gitleaks git . --config ${conf} --redact で確かめてください"
+    gitleaks git . --config "$conf" --staged --no-banner --redact >/dev/null 2>&1 \
+      || die "gitleaks がステージ済みの変更に漏れを見つけました（${conf}）"
+  done
+}
+
 check_shell_syntax() {
   log "シェルスクリプトの構文"
   local script
@@ -181,6 +201,7 @@ run_perf() {
 check_links
 check_model_name
 check_identity
+check_leaks
 check_adr_status
 check_shell_syntax
 scripts/test-diag-report.sh
