@@ -71,3 +71,74 @@ fn table_is_reloaded_with_the_dictionary_when_the_file_changes() {
     t.e().inner.refresh_data();
     assert!(!candidates(t.e(), "1000001").contains(&ADDRESS.to_owned()));
 }
+
+fn lookup(e: &Engine, code: &str) -> envelope::Body {
+    send(
+        e,
+        envelope::Body::PostalLookup(pb::PostalLookupRequest {
+            code: code.to_owned(),
+        }),
+    )
+}
+
+fn lookup_addresses(e: &Engine, code: &str) -> Vec<String> {
+    match lookup(e, code) {
+        envelope::Body::PostalLookupReply(r) => r.addresses,
+        other => panic!("unexpected reply: {other:?}"),
+    }
+}
+
+#[test]
+fn lookup_returns_addresses_for_a_known_code_and_empty_for_unknown() {
+    let mut t = Real::new();
+    write_table(&t, POSTAL_SAMPLE);
+    t.engine = None;
+    t.open();
+    let found = lookup_addresses(t.e(), "1000001");
+    assert!(found.contains(&ADDRESS.to_owned()), "{found:?}");
+    assert!(lookup_addresses(t.e(), "9999999").is_empty());
+}
+
+#[test]
+fn lookup_without_a_table_is_empty() {
+    let t = Real::new();
+    assert!(lookup_addresses(t.e(), "1000001").is_empty());
+    let (e, _) = engine(0);
+    assert!(lookup_addresses(&e, "1000001").is_empty());
+}
+
+#[test]
+fn lookup_rejects_malformed_codes() {
+    let t = Real::new();
+    for code in [
+        "",
+        "100000",
+        "10000011",
+        "100-0001",
+        "１０００００１",
+        "abcdefg",
+        "100000a",
+    ] {
+        assert_eq!(
+            error_code(&lookup(t.e(), code)),
+            ErrorCode::BadRequest,
+            "{code:?}"
+        );
+    }
+}
+
+#[test]
+fn lookup_does_not_log_the_code() {
+    let mut t = Real::new();
+    write_table(&t, POSTAL_SAMPLE);
+    t.engine = None;
+    t.open();
+    lookup_addresses(t.e(), "1000001");
+    let _ = lookup(t.e(), "12345x7");
+    let log = t.log();
+    assert!(log.contains("postal_lookup"), "{log}");
+    assert!(
+        !log.contains("1000001") && !log.contains("12345x7"),
+        "{log}"
+    );
+}
