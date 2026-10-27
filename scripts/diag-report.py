@@ -182,7 +182,8 @@ def split_epochs(events):
                 cur[1] = app
             if not cur[3]:
                 cur[3] = True
-            if app.endswith(SMOKE_APP_SUFFIX):
+            # secure のセッションと古い版の行は app を持たない（NFR-18）。smoke ではないものとして数える
+            if app is not None and app.endswith(SMOKE_APP_SUFFIX):
                 smoke_sessions.add(cur[0])
                 begins[epoch][0] += 1
             else:

@@ -45,4 +45,13 @@ printf '%s\n' "$smoke" | grep -q '^| smoke の行（除かない） | 3 |$' || d
 printf '%s\n' "$smoke" | grep -q '^| pick=5 | 1 | 33.3% |$' || die "--include-smoke で smoke の合成が入っていません"
 printf '%s\n' "$actual" | grep -q '^| pick=5 | 0 | 0.0% |$' || die "smoke の合成が既定で入っています"
 
+# app の無い begin_session（secure のセッション、古い版の行）があっても落ちない（#63）
+noapp="$(mktemp -d)"
+trap 'rm -rf "$noapp"' EXIT
+printf '%s\n' \
+  "1793114850000 begin_session 5us lm=ready err=- session=1" \
+  "1793114851000 convert 40us lm=ready err=- segments=1 cache=hit lm_applied=1 ctx_rev=1" \
+  "1793114852000 end_session 3us lm=ready err=- session=1" > "$noapp/engine.log"
+python3 -I "$REPORT" "$noapp" > /dev/null || die "app の無い begin_session で diag-report.py が落ちました"
+
 log "diag-report のテスト: OK"
