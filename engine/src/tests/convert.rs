@@ -318,6 +318,34 @@ fn convert_log_tells_why_the_cache_missed() {
 }
 
 #[test]
+fn convert_log_has_gap_and_confident_without_text() {
+    let (e, dir) = logged_engine(0, LmBudget::default(), "log-gap");
+    begin(&e, 1, false);
+    let r = convert(&e, 1, READING, 0);
+    let line = last_convert_line(&e, &dir);
+    let gap = line
+        .split_whitespace()
+        .find_map(|t| t.strip_prefix("gap="))
+        .expect("gap");
+    let conf = u8::from(r.confident);
+    assert!(line.contains(&format!("confident={conf}")), "{line}");
+    assert!(gap == "na" || gap.parse::<i32>().is_ok(), "{line}");
+    assert!(!line.contains(READING), "{line}");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn confident_threshold_boundaries() {
+    use crate::convert::{CONFIDENT_GAP_WITH_LM, CONFIDENT_GAP_WITHOUT_LM, is_confident};
+    assert!(is_confident(CONFIDENT_GAP_WITHOUT_LM, false));
+    assert!(!is_confident(CONFIDENT_GAP_WITHOUT_LM - 1, false));
+    assert!(is_confident(CONFIDENT_GAP_WITH_LM, true));
+    assert!(!is_confident(CONFIDENT_GAP_WITH_LM - 1, true));
+    // LM ありの閾値は LM なしの値では足りない
+    assert!(!is_confident(CONFIDENT_GAP_WITHOUT_LM, true));
+}
+
+#[test]
 fn engine_log_never_contains_the_text() {
     let (e, dir) = logged_engine(0, LmBudget::default(), "log-privacy");
     begin(&e, 1, false);
@@ -329,7 +357,7 @@ fn engine_log_never_contains_the_text() {
         assert!(!text.contains(secret), "{secret} leaked: {text}");
     }
     // 注記は固定の語（key=value）だけ
-    const KEYS: [&str; 22] = [
+    const KEYS: [&str; 24] = [
         "session",
         "conv",
         "app",
@@ -352,6 +380,8 @@ fn engine_log_never_contains_the_text() {
         "reading",
         "lext",
         "tail",
+        "gap",
+        "confident",
     ];
     for line in text.lines() {
         for token in line.split_whitespace().skip(4) {

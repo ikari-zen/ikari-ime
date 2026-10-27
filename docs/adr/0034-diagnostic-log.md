@@ -184,6 +184,7 @@ message DiagTag { string key = 1; string value = 2; }
 - `rw=` は `commit` `commit_segments` の確定した候補の Rewriter の名前（複数の文節なら `,` でつなぐ）。`ctx=0` は `convert` `prefetch` で周辺テキストがない（`available = false` または送られなかった）とき。
 - `lm_load` は暖機のスレッドが読み込みを終えたとき（失敗は `err=lm_load_failed`）。`lm_unload` の `idle` は見回りが「読み込み済み → 未読み込み」を見つけたとき（最大 1 秒の遅れ）、`settings` は Stack の差し替えで読み込み済みの LM が替わったとき、`shutdown` は `Engine` を閉じるとき。
 - `stat` は見回りが 10 分ごと（前回から要求があったときだけ）に書く。RSS は `ps` を見回りのスレッドから呼んで取る（unsafe と新しい依存を避けるため）。取れなければ `rss_kb` を省く。
+- #69 で `convert` の行に `gap=<読み全体の 1 位と 2 位の score の差。整数。候補が 1 件以下なら na>` と `confident=1|0` を足した。閾値（LM なし 5000、LM あり 10000）は暫定で、この `gap` を見て見直す。
 
 **性能の p50 / p99（範囲 5）は新しい行を足さない。** 既存の `convert` `segment_page` `page` `prefetch_done` の所要（us）と `cache` `lm_applied` から集計スクリプトで出す。殻から見た待ち時間は `sh_episode` の `wait_us`。
 
