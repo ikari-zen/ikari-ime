@@ -24,7 +24,7 @@ struct IkariSettingsApp: App {
                 .task { app.start() }
         }
         .windowResizability(.contentMinSize)
-        .defaultSize(width: 760, height: 620)
+        .defaultSize(width: SidebarMetrics.windowDefaultWidth, height: 620)
     }
 }
 
