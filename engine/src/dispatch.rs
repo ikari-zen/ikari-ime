@@ -65,6 +65,40 @@ fn request_session(body: &envelope::Body) -> Option<u64> {
     }
 }
 
+/// 要求が持つ `conversion_id`（ログの `conv=` 用。番号だけで文字ではない）
+fn request_conversion(body: &envelope::Body) -> Option<u64> {
+    match body {
+        envelope::Body::Page(r) => Some(r.conversion_id),
+        envelope::Body::Commit(r) => Some(r.conversion_id),
+        envelope::Body::Cancel(r) => Some(r.conversion_id),
+        envelope::Body::SegmentPage(r) => Some(r.conversion_id),
+        envelope::Body::ResizeSegment(r) => Some(r.conversion_id),
+        envelope::Body::CommitSegments(r) => Some(r.conversion_id),
+        _ => None,
+    }
+}
+
+/// 返事が新しく作った `conversion_id`（`convert` と `reconvert`）
+fn reply_conversion(reply: &envelope::Body) -> Option<u64> {
+    match reply {
+        envelope::Body::ConvertReply(r) => Some(r.conversion_id),
+        envelope::Body::SegmentLayout(r) => Some(r.conversion_id),
+        _ => None,
+    }
+}
+
+/// 変換の行を、同じセッションの `sh_episode` と、同じ変換の `commit` などに結ぶ番号の注記。
+/// `session=` は変換を作る要求（`convert`、`reconvert`）にだけ付け、`conv=` は変換に触れる行すべてに付ける
+/// （どれの `lm_applied` のまま確定したかを調べるため。ADR 0034 §4.3）
+fn ids_note(session: Option<u64>, conversion: Option<u64>) -> Option<String> {
+    match (session, conversion) {
+        (Some(s), Some(c)) => Some(format!("session={s} conv={c}")),
+        (Some(s), None) => Some(session_note(s)),
+        (None, Some(c)) => Some(format!("conv={c}")),
+        (None, None) => None,
+    }
+}
+
 /// `session=` の注記
 fn session_note(id: u64) -> String {
     format!("session={id}")
@@ -124,6 +158,11 @@ impl Inner {
             );
         }
         let session = request_session(&body);
+        let creates_conversion = matches!(
+            body,
+            envelope::Body::Convert(_) | envelope::Body::Reconvert(_)
+        );
+        let request_conv = request_conversion(&body);
         let result = catch_unwind(AssertUnwindSafe(|| self.dispatch(body)))
             .unwrap_or(Err(Fail::new(ErrorCode::Internal, "internal error")));
         match result {
@@ -131,7 +170,14 @@ impl Inner {
                 // 管理の失敗は Ok の返事の中の DataIssue で返る。ログには種類の名前だけを書く
                 let issue = admin::issue_label(&reply);
                 // 文節の数と区切り直しの向きだけを添える（読みと表記は書かない。NFR-19）
-                let note = join_notes(segments::log_note(&reply, resize), trace);
+                let ids = ids_note(
+                    session.filter(|_| creates_conversion),
+                    request_conv.or_else(|| reply_conversion(&reply)),
+                );
+                let note = join_notes(
+                    ids,
+                    join_notes(segments::log_note(&reply, resize), trace),
+                );
                 Processed {
                     reply: Envelope {
                         schema_version: SCHEMA_VERSION,
