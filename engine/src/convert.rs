@@ -248,6 +248,8 @@ impl Inner {
             candidates,
             has_next,
             lm_applied,
+            // 契約コミットでは false（レーン E が、1 位と 2 位の差で判定する。#69）
+            confident: false,
             engine_micros: micros_u32(started),
             layout: Some(layout),
         });
@@ -287,6 +289,7 @@ impl Inner {
             candidates,
             has_next,
             lm_applied: self.lm_applied_since(before),
+            confident: false,
             engine_micros: micros_u32(started),
             // 区切りだけを添える（文節ごとのページは SegmentPage で引く）
             layout: Some(layout_reply(
