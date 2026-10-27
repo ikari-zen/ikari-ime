@@ -55,6 +55,9 @@ private func engineFrame(id: UInt64 = 4, _ build: (inout EngineEnvelope) -> Void
             { $0.segmentLayout = Ikari_Engine_V1_SegmentLayout() },
             { $0.commitSegments = Ikari_Engine_V1_CommitSegments() },
             { $0.reconvert = Ikari_Engine_V1_Reconvert() },
+            // 英語のモードの郵便番号（ADR 0032 §9.1）も殻の入力だけが頼む
+            { $0.postalLookup = Ikari_Engine_V1_PostalLookupRequest() },
+            { $0.postalLookupReply = Ikari_Engine_V1_PostalLookupReply() },
         ]
         for build in rejected {
             let frame = engineFrame(id: 12, build)
