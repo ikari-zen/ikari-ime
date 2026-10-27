@@ -5,6 +5,7 @@ import Testing
 
 @Suite struct ConfidentConversionTests {
     static let onSettings = Settings(candidateHideWhenConfident: true)
+    static let offSettings = Settings(candidateHideWhenConfident: false)
 
     static func page(confident: Bool, layout: SegmentLayoutInfo? = nil) -> ConversionPage {
         var page = MockEngine.defaultPages[0]
@@ -30,8 +31,9 @@ import Testing
 
     static let marked = KeyAction.setMarkedText(MarkedText(text: "品詞", highlightedLength: 2))
 
-    @Test func offKeepsTheListEvenWhenConfident() throws {
-        let h = try Self.harness(settings: .default)
+    @Test func defaultIsOnAndOffKeepsTheListEvenWhenConfident() throws {
+        #expect(Settings.default.candidateHideWhenConfident)
+        let h = try Self.harness(settings: Self.offSettings)
         h.type("hinsi")
         #expect(h.press(.space) == [Self.marked, .showCandidates(Self.model())])
         #expect(h.converting?.candidatesHidden == false)
