@@ -40,7 +40,7 @@ public struct Settings: Sendable, Equatable {
     public var unicodeNotation: Bool
     /// `date.weekday_dates`。曜日の読みに、直近の日付の候補を出す（日本語。エンジンが読む。既定はオフ）
     public var dateWeekdayDates: Bool
-    /// `candidate.hide_when_confident`。エンジンが確信が高いと返した変換では、最初の Space で 1 位だけを下線つきで出し、一覧は 2 回目の Space か ↓ で出す（殻が使う。既定はオフ。#69）
+    /// `candidate.hide_when_confident`。エンジンが確信が高いと返した変換では、最初の Space で 1 位だけを下線つきで出し、一覧は 2 回目の Space か ↓ で出す（殻が使う。既定はオン（2026-10-28 ユーザー決定）。#69）
     public var candidateHideWhenConfident: Bool
 
     public init(
@@ -132,7 +132,7 @@ public struct Settings: Sendable, Equatable {
     public static let defaultDateWeekdayDates = false
     /// 確信が高い変換で候補一覧を隠す（#69）。値は `on` / `off`
     public static let candidateHideWhenConfidentKey = "candidate.hide_when_confident"
-    public static let defaultCandidateHideWhenConfident = false
+    public static let defaultCandidateHideWhenConfident = true
     /// `context.shared_exclude` の値の区切り
     public static let listSeparator: Character = ","
     private static let keymapKeyPrefix = "keymap."

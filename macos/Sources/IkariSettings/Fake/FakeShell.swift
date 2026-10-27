@@ -46,7 +46,7 @@ struct FakeState: Sendable {
         Settings.postalTePrefixKey: "off",
         Settings.unicodeNotationKey: "off",
         Settings.dateWeekdayDatesKey: "off",
-        Settings.candidateHideWhenConfidentKey: "off",
+        Settings.candidateHideWhenConfidentKey: "on",
         Settings.emojiShortcodeExcludeKey: Settings.defaultEmojiShortcodeExclude.joined(
             separator: String(Settings.listSeparator)),
     ]
