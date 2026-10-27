@@ -1,5 +1,6 @@
-// 英語のモードの郵便番号（ADR 0032 §9.1。issue #27）。語の頭の `te` + 数字 7 桁をためて、7 桁目を打った瞬間に候補ウィンドウを出す。
-// 7 桁目より前は候補も下線も出さない。候補を出している間も下線は付けない。選ぶのは ↑/↓、確定は Enter、Esc は打った文字のまま確定して閉じる。
+// 英語のモードの郵便番号（ADR 0032 §9.1。issue #27）と Unicode 表記（issue #28）。語の頭の `te` + 数字 7 桁、`u+` + 16 進 4〜6 桁を
+// ためて、最後の桁を打った瞬間に候補ウィンドウを出す（`u+` は 4 桁目から出て、5 桁、6 桁と増えるたびに更新する）。
+// 最後の桁より前は候補も下線も出さない。候補を出している間も下線は付けない。選ぶのは ↑/↓、確定は Enter、Esc は打った文字のまま確定して閉じる。
 // 住所はエンジンに 1 回だけ非同期に問い合わせ（`PostalLookupRequest`）、返事が来たとき状態が同じなら候補に足す。
 // 英語の経路でエンジンを同期で呼ばない（ADR 0026 §9）。この型は問い合わせをしない。呼ぶ側（コントローラ）が `fetchPostalAddresses` で行う。
 import Foundation
@@ -29,8 +30,8 @@ struct PostalStep: Sendable, Equatable {
 }
 
 struct PostalMachine: Sendable, Equatable {
-    /// ためる語の種類。今は `te` + 郵便番号だけ（`u+` は #28 で足す）
-    enum Kind: Sendable, Equatable { case te }
+    /// ためる語の種類。`te` = `te` + 郵便番号（`postal.english`）、`unicode` = `u+` + 16 進（`unicode.notation`）
+    enum Kind: Sendable, Equatable, Hashable { case te, unicode }
 
     struct Choosing: Sendable, Equatable {
         var kind: Kind
@@ -48,8 +49,11 @@ struct PostalMachine: Sendable, Equatable {
     }
 
     static let postalDigits = 7
+    static let hexMin = 4
+    static let hexMax = 6
     static let pageSize = 9
     private static let tePrefix = "te"
+    private static let unicodePrefix = "u+"
     private static let commandModifiers: KeyModifiers = [.control, .option, .command]
 
     private(set) var phase: Phase = .inactive
@@ -59,11 +63,20 @@ struct PostalMachine: Sendable, Equatable {
 
     // MARK: キー
 
-    /// 関係ないキー（ためていなくて、入りの条件も満たさない）は nil
-    mutating func handle(_ input: KeyInput, canEnter: Bool) -> PostalStep? {
+    /// 今ためている語の種類（ためていなければ nil）
+    var activeKind: Kind? {
+        switch phase {
+        case .inactive: nil
+        case .typing(let kind, _): kind
+        case .choosing(let choosing): choosing.kind
+        }
+    }
+
+    /// 関係ないキー（ためていなくて、入りの条件も満たさない）は nil。`kinds` は今オンの種類（設定）
+    mutating func handle(_ input: KeyInput, canEnter: Bool, kinds: Set<Kind> = [.te]) -> PostalStep? {
         switch phase {
         case .inactive:
-            return enter(input, canEnter: canEnter)
+            return enter(input, canEnter: canEnter, kinds: kinds)
         case .typing(let kind, let buffer):
             return typing(kind, buffer, input)
         case .choosing(let choosing):
@@ -71,9 +84,15 @@ struct PostalMachine: Sendable, Equatable {
         }
     }
 
-    private mutating func enter(_ input: KeyInput, canEnter: Bool) -> PostalStep? {
-        guard canEnter, Self.isPlain(input), case .character(let text) = input.key, text == "t" else { return nil }
-        phase = .typing(.te, text)
+    private mutating func enter(_ input: KeyInput, canEnter: Bool, kinds: Set<Kind>) -> PostalStep? {
+        guard canEnter, Self.isPlain(input), case .character(let text) = input.key else { return nil }
+        let kind: Kind
+        switch text {
+        case "t" where kinds.contains(.te): kind = .te
+        case "u" where kinds.contains(.unicode): kind = .unicode
+        default: return nil
+        }
+        phase = .typing(kind, text)
         return Self.typingStep(text)
     }
 
@@ -112,12 +131,18 @@ struct PostalMachine: Sendable, Equatable {
             step.passKey = false
             return step
         case .backspace:
+            // `u+` は 5 桁、6 桁なら 1 桁戻っても候補が残る（更新）。足りなくなったら閉じる
             var shorter = choosing.buffer
             shorter.removeLast()
-            phase = .typing(choosing.kind, shorter)
-            var step = Self.typingStep(shorter)
-            step.actions.append(.hideCandidates)
+            var step = settle(choosing.kind, shorter)
+            if case .typing = phase { step.actions.append(.hideCandidates) }
             return step
+        case .character(let text):
+            // `u+` は桁が増えるたびに候補を更新する。ほかは打ち直し
+            if let next = Self.append(text, to: choosing.buffer, kind: choosing.kind), Self.baseRows(choosing.kind, next) != nil {
+                return settle(choosing.kind, next)
+            }
+            return retype(buffer: choosing.buffer, hidesCandidates: true)
         default:
             // Space、Tab、数字、ほかの文字、桁あふれ、←/→ など
             return retype(buffer: choosing.buffer, hidesCandidates: true)
@@ -128,12 +153,16 @@ struct PostalMachine: Sendable, Equatable {
 
     /// 最後の桁がそろったら候補を出し、そろっていなければ「ためている状態」にする
     private mutating func settle(_ kind: Kind, _ buffer: String) -> PostalStep {
-        guard let rows = Self.baseRows(kind, buffer), let code = Self.postalCode(kind, buffer) else {
+        guard let rows = Self.baseRows(kind, buffer) else {
             phase = .typing(kind, buffer)
             return Self.typingStep(buffer)
         }
-        serial += 1
-        let request = PostalLookupRequest(code: code, serial: serial)
+        // 住所を問い合わせるのは郵便番号だけ。`u+` は殻の中で文字が決まる
+        var request: PostalLookupRequest?
+        if let code = Self.postalCode(kind, buffer) {
+            serial += 1
+            request = PostalLookupRequest(code: code, serial: serial)
+        }
         let choosing = Choosing(kind: kind, buffer: buffer, rows: rows, selected: 0, pending: request)
         phase = .choosing(choosing)
         return PostalStep(actions: [Self.mark(rows[0]), .showCandidates(Self.model(choosing))], lookup: request)
@@ -203,6 +232,9 @@ struct PostalMachine: Sendable, Equatable {
         case .te:
             if buffer == "t" { return text == "e" ? tePrefix : nil }
             return c.isASCII && c.isNumber && buffer.count - tePrefix.count < postalDigits ? buffer + text : nil
+        case .unicode:
+            if buffer == "u" { return text == "+" ? unicodePrefix : nil }
+            return c.isASCII && c.isHexDigit && buffer.count - unicodePrefix.count < hexMax ? buffer + text : nil
         }
     }
 
@@ -212,6 +244,9 @@ struct PostalMachine: Sendable, Equatable {
         case .te:
             guard let code = postalCode(kind, buffer) else { return nil }
             return [buffer, "〒\(code.prefix(3))-\(code.suffix(4))", "〒" + code]
+        case .unicode:
+            guard let character = unicodeCharacter(buffer) else { return nil }
+            return [buffer, character]
         }
     }
 
@@ -221,6 +256,21 @@ struct PostalMachine: Sendable, Equatable {
         case .te:
             let code = String(buffer.dropFirst(tePrefix.count))
             return buffer.hasPrefix(tePrefix) && code.count == postalDigits ? code : nil
+        case .unicode:
+            return nil
+        }
+    }
+
+    /// `u+` + 16 進（4〜6 桁）が表す 1 文字。10FFFF を超える並び、サロゲート、制御文字、未割り当ては nil（出さない）
+    static func unicodeCharacter(_ buffer: String) -> String? {
+        guard buffer.hasPrefix(unicodePrefix) else { return nil }
+        let digits = buffer.dropFirst(unicodePrefix.count)
+        guard (hexMin...hexMax).contains(digits.count), let value = UInt32(digits, radix: 16),
+            let scalar = Unicode.Scalar(value)
+        else { return nil }
+        switch scalar.properties.generalCategory {
+        case .control, .unassigned, .surrogate: return nil
+        default: return String(Character(scalar))
         }
     }
 
@@ -243,22 +293,26 @@ struct PostalMachine: Sendable, Equatable {
 }
 
 extension EnglishMode {
-    /// 郵便番号の語をためている（変換中の文字列か候補を出している）
+    /// 郵便番号か `u+` の語をためている（変換中の文字列か候補を出している）
     public var isPostalActive: Bool { postal.isActive }
 
     /// 打鍵を処理する。関係なければ nil（ショートコードの口に流す）
     mutating func handlePostal(_ input: KeyInput, environment: EnglishShortcodeEnvironment) -> EnglishTextOutcome? {
         guard !shortcode.isActive else { return nil }
-        guard environment.settings.postalEnglish else {
-            // ためている途中でスイッチが切れた。ためた文字を確定して、このキーはアプリに渡す
+        var kinds: Set<PostalMachine.Kind> = []
+        if environment.settings.postalEnglish { kinds.insert(.te) }
+        if environment.settings.unicodeNotation { kinds.insert(.unicode) }
+        // ためている種類のスイッチが切れた。ためた文字を確定して、このキーはアプリに渡す
+        if let active = postal.activeKind, !kinds.contains(active) {
             guard var step = postal.flush() else { return nil }
             step.passKey = true
             return postalOutcome(step, key: input)
         }
+        guard !kinds.isEmpty else { return nil }
         let canEnter = !environment.secure && !environment.isRepeat
             && !environment.settings.emojiShortcodeExclude.contains(environment.clientBundleID)
             && Self.isWordStart(after: lastCharacter)
-        guard let step = postal.handle(input, canEnter: canEnter) else { return nil }
+        guard let step = postal.handle(input, canEnter: canEnter, kinds: kinds) else { return nil }
         return postalOutcome(step, key: input)
     }
 
