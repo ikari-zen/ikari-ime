@@ -138,6 +138,13 @@ final class BridgeServer: @unchecked Sendable {
 
     // MARK: ソケット
 
+    /// `path` がシンボリックリンクでなく、ディレクトリで、自分の uid のものか(lstat で確かめる)
+    static func isOwnedRealDirectory(_ path: String) -> Bool {
+        var info = stat()
+        guard lstat(path, &info) == 0 else { return false }
+        return (info.st_mode & S_IFMT) == S_IFDIR && info.st_uid == getuid()
+    }
+
     private func makeListener() -> Int32? {
         let directory = socketURL.deletingLastPathComponent()
         do {
@@ -146,6 +153,11 @@ final class BridgeServer: @unchecked Sendable {
                 attributes: [.posixPermissions: Int(Self.directoryPermissions)])
         } catch {
             AppContext.log.error("bridge: cannot create the run directory")
+            return nil
+        }
+        // 作ったあとに lstat で確かめる(シンボリックリンクを辿って chmod しない)
+        guard Self.isOwnedRealDirectory(directory.path) else {
+            AppContext.log.error("bridge: the run directory is not a plain directory owned by this user")
             return nil
         }
         // すでにあるディレクトリの権限も 0700 にそろえる

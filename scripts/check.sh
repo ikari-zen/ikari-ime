@@ -168,9 +168,33 @@ run_rust_lm() {
   cargo test -p ikari-engine-ffi --features lm-metal
 }
 
+# swift test が終わらずに固まることがある（IkariSettingsTests で 1 回、全テストが通ったあとにプロセスが終了しなかった）。
+# macOS には timeout コマンドがないので、時間を見て、超えたら子プロセスごと止めて失敗にする。
+# 暫定値（計測なし。通常は数分）。IKARI_SWIFT_TEST_TIMEOUT で上書きできる
+readonly SWIFT_TEST_TIMEOUT_SECS="${IKARI_SWIFT_TEST_TIMEOUT:-900}"
+
+kill_tree() {
+  local pid="$1" child
+  for child in $(pgrep -P "$pid" 2>/dev/null || true); do
+    kill_tree "$child"
+  done
+  kill "$pid" 2>/dev/null || true
+}
+
 run_swift() {
   log "swift test"
-  swift test --manifest-cache none --package-path macos
+  swift test --manifest-cache none --package-path macos &
+  local pid=$! waited=0
+  while kill -0 "$pid" 2>/dev/null; do
+    if [[ "$waited" -ge "$SWIFT_TEST_TIMEOUT_SECS" ]]; then
+      kill_tree "$pid"
+      wait "$pid" 2>/dev/null || true
+      die "swift test が ${SWIFT_TEST_TIMEOUT_SECS} 秒で終わらなかったので止めた（固まった疑い）"
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  wait "$pid"
 }
 
 # 実データのテスト。前提（辞書、モデル）がなければ、黙って成功せずここで失敗させる
