@@ -79,7 +79,7 @@ let package = Package(
     ],
     dependencies: [
         // 1.38.x に固定する（ADR 0004 §1）
-        .package(url: "https://github.com/apple/swift-protobuf.git", .upToNextMinor(from: "1.38.0")),
+        .package(url: "https://github.com/apple/swift-protobuf.git", .upToNextMinor(from: "1.39.0")),
     ],
     targets: targets
 )
