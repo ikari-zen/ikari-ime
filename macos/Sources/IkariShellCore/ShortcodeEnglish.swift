@@ -10,8 +10,11 @@ public struct EnglishShortcodeEnvironment: Sendable, Equatable {
     public var clientBundleID: String
     public var secure: Bool
     public var isRepeat: Bool
+    /// スパイク（#27）。検証用のフラグ。既定オフ
+    public var spikePostal: Bool
 
-    public init(settings: Settings, clientBundleID: String, secure: Bool, isRepeat: Bool) {
+    public init(settings: Settings, clientBundleID: String, secure: Bool, isRepeat: Bool, spikePostal: Bool = false) {
+        self.spikePostal = spikePostal
         self.settings = settings
         self.clientBundleID = clientBundleID
         self.secure = secure
@@ -64,6 +67,7 @@ extension EnglishMode {
     public mutating func handleText(
         _ input: KeyInput, environment: EnglishShortcodeEnvironment, now: UInt64 = DispatchTime.now().uptimeNanoseconds
     ) -> EnglishTextOutcome {
+        if let spike = handleSpikePostal(input, environment: environment, now: now) { return spike }
         let before = shortcode.phase
         let canEnter = Self.canEnterShortcode(environment: environment, last: lastCharacter)
         shortcode.smallLetters = environment.settings.emojiSmallLetters

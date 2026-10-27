@@ -110,6 +110,9 @@ public struct EnglishMode: Sendable, Equatable {
     var diagEpisode: DiagEpisode?
     /// 終わった合成。コントローラが `takeFinishedDiag` で取り出して `InputStateMachine.recordEnglishEpisode` に渡す
     var finishedDiag: DiagFinishedEpisode?
+    /// スパイク（#27、捨てるコード）。`SpikePostalEnglish.swift`
+    var spikePostal = SpikePostalMachine()
+    var lastSpikeStep: SpikeStep?
 
     public init() {}
 

@@ -134,6 +134,12 @@ struct ClientAccess {
         return SelectedText(range: TextRange(location: selected.location, length: selected.length), text: text)
     }
 
+    /// スパイク（#27）。アプリが持っている変換中の範囲の長さ。持っていなければ nil
+    func markedRangeLength() -> Int? {
+        let marked = client.markedRange()
+        return Self.isValid(marked) ? marked.length : nil
+    }
+
     /// 何も入力していないのにクライアントに残っている変換中の文字列（ADR 0006 §16.3）。なければ nil
     func strayMarkedText() -> String? {
         let marked = client.markedRange()

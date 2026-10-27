@@ -154,9 +154,11 @@ final class IkariInputController: IMKInputController {
         case .text:
             // ショートコードの口（ADR 0027 §3）。関係ないキーは、たまりに足して素通し
             let environment = EnglishShortcodeEnvironment(
-                settings: applied.settings, clientBundleID: clientBundleID, secure: false, isRepeat: isRepeat)
+                settings: applied.settings, clientBundleID: clientBundleID, secure: false, isRepeat: isRepeat,
+                spikePostal: SpikePostalFlag.isEnabled())
             let outcome = english.handleText(input, environment: environment)
             apply(outcome)
+            logSpikePostal(passKey: outcome.passKey)
             machine?.recordEnglishEpisode(english.takeFinishedDiag())
             return !outcome.passKey
         }
@@ -170,11 +172,49 @@ final class IkariInputController: IMKInputController {
 
     /// ショートコードの表示があれば、今の表示のまま確定する（モードの切り替え、secure、`deactivateServer`、クリック、英数・かなキー）
     private func flushEnglishShortcode(_ reason: StaticString, end: DiagEnd) {
+        // スパイク（#27）。secure のときは何も書かない（`flushSpikePostal` の記録は捨てる）
+        if let outcome = english.flushSpikePostal() {
+            apply(outcome)
+            if IsSecureEventInputEnabled() { _ = english.takeSpikeStep() } else { logSpikePostal(passKey: false, reason: reason) }
+        }
         if let outcome = english.flushShortcode(end: end) {
             // 調査用（#291）。文字は書かず、何が状態を終わらせたかだけ残す
             AppContext.log.info("english shortcode flushed by \(reason, privacy: .public)")
             apply(outcome)
             machine?.recordEnglishEpisode(english.takeFinishedDiag())
+        }
+    }
+
+    // MARK: スパイク（#27。捨てるコード）
+
+    /// 状態の遷移だけを書く。文字は書かない（NFR-19）。secure の打鍵はここに来ない
+    private func logSpikePostal(passKey: Bool, reason: StaticString? = nil) {
+        guard let step = english.takeSpikeStep() else { return }
+        let trace = step.trace
+        let marked = currentClient()?.markedRangeLength().map(String.init) ?? "na"
+        let expected = trace.expectedMarkedLength.map(String.init) ?? "na"
+        AppContext.log.info(
+            "spike-postal app=\(self.clientBundleID, privacy: .public) ev=\(trace.event, privacy: .public) from=\(trace.from, privacy: .public) to=\(trace.to, privacy: .public) res=\(trace.result, privacy: .public) kind=\(trace.kind, privacy: .public) len=\(trace.bufferLength) keys_in=\(trace.keysIn) gap_ms=\(trace.gapMillis) pass=\(passKey) marked_len=\(marked, privacy: .public) expect_marked=\(expected, privacy: .public) why=\(reason.map { "\($0)" } ?? "-", privacy: .public)"
+        )
+        if let code = step.lookup { requestSpikeLookup(code) }
+    }
+
+    /// ダミーの非同期の問い合わせ（本番は XPC の `PostalLookupRequest`）。返事が来たときに状態が同じなら候補に足す
+    private func requestSpikeLookup(_ code: String) {
+        let delay = SpikePostalFlag.delayMillis()
+        let asked = DispatchTime.now()
+        // スパイクなので、数十ミリ秒だけ強く持つ
+        nonisolated(unsafe) let target = self
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(delay)) {
+            guard !IsSecureEventInputEnabled() else { return }
+            let outcome = target.english.spikePostalLookupArrived(code: code, addresses: SpikePostalTable.lookup(code))
+            target.apply(outcome)
+            let waited = Int((DispatchTime.now().uptimeNanoseconds - asked.uptimeNanoseconds) / 1_000_000)
+            if let step = target.english.takeSpikeStep() {
+                AppContext.log.info(
+                    "spike-postal app=\(target.clientBundleID, privacy: .public) ev=lookup res=\(step.trace.result, privacy: .public) wait_ms=\(waited) delay_ms=\(delay) rows=\(SpikePostalTable.lookup(code).count)"
+                )
+            }
         }
     }
 
