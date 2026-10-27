@@ -157,8 +157,27 @@ final class IkariInputController: IMKInputController {
                 settings: applied.settings, clientBundleID: clientBundleID, secure: false, isRepeat: isRepeat)
             let outcome = english.handleText(input, environment: environment)
             apply(outcome)
+            if let request = outcome.lookup { requestPostalLookup(request) }
             machine?.recordEnglishEpisode(english.takeFinishedDiag())
             return !outcome.passKey
+        }
+    }
+
+    /// 郵便番号の住所を、主スレッドの外で 1 回だけ問い合わせる（ADR 0032 §9.1）。返事が来たとき状態が同じなら候補に足す。
+    /// コードも住所もログに書かない
+    private func requestPostalLookup(_ request: PostalLookupRequest) {
+        let engine = context.engine
+        // コントローラは主スレッドでしか触らない。待ちの上限（`postalLookupTimeout`）の間だけ強く持つ
+        nonisolated(unsafe) let target = self
+        DispatchQueue.global(qos: .userInitiated).async {
+            let addresses = fetchPostalAddresses(engine: engine, code: request.code)
+            DispatchQueue.main.async {
+                // パスワード欄に移っていたら何もしない
+                guard !IsSecureEventInputEnabled(),
+                    let outcome = target.english.postalLookupArrived(request, addresses: addresses)
+                else { return }
+                target.apply(outcome)
+            }
         }
     }
 
@@ -170,6 +189,8 @@ final class IkariInputController: IMKInputController {
 
     /// ショートコードの表示があれば、今の表示のまま確定する（モードの切り替え、secure、`deactivateServer`、クリック、英数・かなキー）
     private func flushEnglishShortcode(_ reason: StaticString, end: DiagEnd) {
+        // 郵便番号をためていれば、打った文字のまま確定する（ショートコードとは同時に状態に入らない）
+        if let outcome = english.flushPostal() { apply(outcome) }
         if let outcome = english.flushShortcode(end: end) {
             // 調査用（#291）。文字は書かず、何が状態を終わらせたかだけ残す
             AppContext.log.info("english shortcode flushed by \(reason, privacy: .public)")

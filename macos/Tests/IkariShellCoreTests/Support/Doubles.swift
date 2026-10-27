@@ -139,6 +139,7 @@ final class MockEngine: EngineClient, @unchecked Sendable {
         case reconvert(ReconvertRequest, Duration)
         case shutdown(EngineShutdownReason)
         case relay(Data, Duration)
+        case postalLookup(code: String, Duration)
     }
 
     private let lock = NSLock()
@@ -164,6 +165,9 @@ final class MockEngine: EngineClient, @unchecked Sendable {
 
     /// `relay` の返事。既定は空のバイト列
     var onRelay: @Sendable (Data) throws -> Data = { _ in Data() }
+
+    /// `postalLookup` の返事。既定は空
+    var onPostalLookup: @Sendable (String) throws -> [String] = { _ in [] }
 
     /// 3ページ分（3 + 3 + 2 件）。候補の位置が通し番号 0...7 になる
     static let defaultPages: [ConversionPage] = [
@@ -254,6 +258,11 @@ final class MockEngine: EngineClient, @unchecked Sendable {
     func relay(_ request: Data, timeout: Duration) throws -> Data {
         record(.relay(request, timeout))
         return try onRelay(request)
+    }
+
+    func postalLookup(code: String, timeout: Duration) throws -> [String] {
+        record(.postalLookup(code: code, timeout))
+        return try onPostalLookup(code)
     }
 
     // 取り出しの補助

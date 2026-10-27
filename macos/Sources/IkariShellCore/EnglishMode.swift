@@ -106,6 +106,8 @@ public struct EnglishMode: Sendable, Equatable {
     public private(set) var pool = EnglishContextPool()
     /// 絵文字のショートコード（ADR 0027 §3。B48）。英語のモードの規則で動く。処理は `ShortcodeEnglish.swift`
     var shortcode = ShortcodeMachine(mode: .english)
+    /// 語頭の `te` + 郵便番号（ADR 0032 §9.1）。処理は `EnglishPostal.swift`
+    var postal = PostalMachine()
     /// いまのショートコードの合成 1 回の数（診断ログ。ADR 0034 §4.2 の `mode=shortcode_en`）。状態に入っていない間は nil
     var diagEpisode: DiagEpisode?
     /// 終わった合成。コントローラが `takeFinishedDiag` で取り出して `InputStateMachine.recordEnglishEpisode` に渡す
