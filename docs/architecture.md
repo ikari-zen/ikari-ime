@@ -66,6 +66,7 @@ IkariEngine.xpc（同梱の XPC サービス。App Sandbox、ネットワーク�
 - **英語のモードは打鍵をすべてアプリに素通しにする**（`handle` が false）。英数・かなキー（keyCode 102・104）はどのモードでも受け止める（素通しにするとアプリに余計な文字が入る）。secure なら、日本語でも英語でも素通しで、何も記録しない（日本語は合成中なら今の表示のまま確定してから）。キー割り当ての `mode.toggle` / `mode.english` / `mode.japanese`（既定は割り当てなし）は、どちらのモードでも変換より先に見る。
 - 英語の文脈は、殻が `EnglishContextPool`（`IkariShellCore/EnglishMode.swift`、純関数）にためる。印字できる文字を足し、Backspace は末尾を消し、区切り（Return、Tab、矢印、Escape、F キー、Ctrl・Option・Command 付き、モードの切り替え、`deactivateServer`、2000 スカラー）で 1 件の `CommitText`（`reading` は空）として片道でエンジンに送る。エンジンは確定履歴に入れるだけで、学習しない。`reading` が空の項目は、履歴の読みを使う再変換（`core/src/converter/reconvert.rs`）が飛ばす。
 - ショートコード（ADR 0027）の英語のモードへの配線は B48、打鍵と確定文字列の統計は B45。
+- 英語のモードの郵便番号（ADR 0032 §9.1、設定 `postal.english`、既定 off）: 語頭の `te` + 数字 7 桁を殻の `PostalMachine`（`EnglishPostal.swift`）がためて、7 桁目で候補ウィンドウを自動で出す（下線なし。選ぶのは ↑/↓ だけ）。住所は、殻が主スレッドの外で `PostalLookupRequest` をエンジンへ 1 回送り（`EngineClient.postalLookup`。待ちの上限は暫定で 1 秒）、エンジンが `postal.tsv` の表（`stack().postal`）を引いて返す。返事が来たとき状態が同じ（同じコードと同じ候補の通し番号）なら候補に足し、違えば捨てる。設定アプリからは中継しない（`RelayPolicy`）。
 
 ## 3. データの置き場所
 
