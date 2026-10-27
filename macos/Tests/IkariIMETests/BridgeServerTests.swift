@@ -422,3 +422,35 @@ final class LockedBox<T: Sendable>: @unchecked Sendable {
     func set(_ v: T) { lock.withLock { value = v } }
     func get() -> T { lock.withLock { value } }
 }
+
+
+@Suite struct RunDirectoryCheckTests {
+    private func makeTemp() throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("ikari-rundir-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    @Test func acceptsOwnDirectory() throws {
+        let root = try makeTemp()
+        defer { try? FileManager.default.removeItem(at: root) }
+        #expect(BridgeServer.isOwnedRealDirectory(root.path))
+    }
+
+    @Test func rejectsSymlinkToDirectory() throws {
+        let root = try makeTemp()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let link = root.appendingPathComponent("link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: root)
+        #expect(!BridgeServer.isOwnedRealDirectory(link.path))
+    }
+
+    @Test func rejectsRegularFileAndMissing() throws {
+        let root = try makeTemp()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("file")
+        FileManager.default.createFile(atPath: file.path, contents: Data())
+        #expect(!BridgeServer.isOwnedRealDirectory(file.path))
+        #expect(!BridgeServer.isOwnedRealDirectory(root.appendingPathComponent("none").path))
+    }
+}

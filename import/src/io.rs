@@ -48,6 +48,14 @@ pub struct IngestFile {
 }
 
 pub fn read_ingest_file(path: &Path) -> Result<IngestFile, ReadError> {
+    // シンボリックリンクと FIFO などを開く前に断る（open は辿る・FIFO では止まる）
+    let meta = std::fs::symlink_metadata(path)?;
+    if !meta.file_type().is_file() {
+        return Err(ReadError::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "通常のファイルではない(シンボリックリンク、FIFO など)",
+        )));
+    }
     let file = File::open(path)?;
     let len = file.metadata()?.len();
     if len > MAX_FILE_BYTES {
@@ -64,4 +72,48 @@ pub fn read_ingest_file(path: &Path) -> Result<IngestFile, ReadError> {
         fnv64,
         bytes,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real.jsonl");
+        std::fs::write(&real, b"").unwrap();
+        let link = dir.path().join("link.jsonl");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        match read_ingest_file(&link) {
+            Err(ReadError::Io(e)) => assert_eq!(e.kind(), std::io::ErrorKind::InvalidInput),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_fifo_without_blocking() {
+        let dir = tempfile::tempdir().unwrap();
+        let fifo = dir.path().join("fifo.jsonl");
+        let c = std::ffi::CString::new(fifo.to_str().unwrap()).unwrap();
+        assert_eq!(unsafe { libc_mkfifo(c.as_ptr(), 0o600) }, 0);
+        match read_ingest_file(&fifo) {
+            Err(ReadError::Io(e)) => assert_eq!(e.kind(), std::io::ErrorKind::InvalidInput),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn missing_stays_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        match read_ingest_file(&dir.path().join("none")) {
+            Err(ReadError::Io(e)) => assert_eq!(e.kind(), std::io::ErrorKind::NotFound),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    unsafe extern "C" {
+        #[link_name = "mkfifo"]
+        fn libc_mkfifo(path: *const std::ffi::c_char, mode: u32) -> i32;
+    }
 }
