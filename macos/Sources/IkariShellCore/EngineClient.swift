@@ -104,6 +104,8 @@ public struct ConversionPage: Sendable, Equatable {
     public var candidates: [CandidateItem]
     public var hasNext: Bool
     public var lmApplied: Bool
+    /// 1 位と 2 位の差が閾値以上（`ConvertReply.confident`。#69）。`convert` の返事だけで意味を持つ
+    public var confident: Bool
     public var engineMicros: Int
     /// 区切り（`ConvertReply.layout`）。古いエンジンは nil で、殻は 1 文節として扱う。`page` の返事では nil
     public var layout: SegmentLayoutInfo?
@@ -114,6 +116,7 @@ public struct ConversionPage: Sendable, Equatable {
         candidates: [CandidateItem],
         hasNext: Bool,
         lmApplied: Bool = false,
+        confident: Bool = false,
         engineMicros: Int = 0,
         layout: SegmentLayoutInfo? = nil
     ) {
@@ -122,6 +125,7 @@ public struct ConversionPage: Sendable, Equatable {
         self.candidates = candidates
         self.hasNext = hasNext
         self.lmApplied = lmApplied
+        self.confident = confident
         self.engineMicros = engineMicros
         self.layout = layout
     }

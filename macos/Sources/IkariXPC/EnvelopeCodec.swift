@@ -125,6 +125,7 @@ enum EnvelopeCodec {
             candidates: items,
             hasNext: reply.hasNext_p,
             lmApplied: reply.lmApplied,
+            confident: reply.confident,
             engineMicros: Int(reply.engineMicros),
             layout: try reply.hasLayout ? layout(reply.layout) : nil
         )
