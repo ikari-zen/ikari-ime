@@ -243,6 +243,12 @@ struct ConversionTab: View {
                     ForEach(Array(Settings.pageSizeRange), id: \.self) { Text("\($0) 件").tag($0) }
                 }
                 .pickerStyle(.menu)
+                Toggle(
+                    "確信が高い変換では候補一覧を出さない",
+                    isOn: .asyncSetter(
+                        get: { model.values.candidateHideWhenConfident }, set: model.setCandidateHideWhenConfident))
+                Text("最初の Space で 1 位だけを出します。もう一度 Space か ↓ で一覧を出します。")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("言語モデル（zenz）") {
                 Toggle(
