@@ -34,6 +34,16 @@ func makeSettingsModel(_ harness: Harness) async -> SettingsModel {
         #expect(model.profile.first { $0.id == "novel" }?.weight == .off)
     }
 
+    @Test func atokPresetCanBeChosenAndStored() async throws {
+        let harness = try await Harness.make()
+        defer { harness.close() }
+        let model = await makeSettingsModel(harness)
+        await model.setKeymapPreset(.atok)
+        #expect(model.errorMessage == nil)
+        #expect(model.values.keymapPreset == .atok)
+        #expect(harness.shell.state.snapshot.settings["keymap.preset"] == "atok")
+    }
+
     @Test func everyKnownSettingCanBeChangedFromTheModel() async throws {
         let harness = try await Harness.make()
         defer { harness.close() }
@@ -248,6 +258,8 @@ func makeSettingsModel(_ harness: Harness) async -> SettingsModel {
         #expect(table.primaryChord(for: .toHiragana, preset: .macos) == KeyChord(key: "j", modifiers: .control))
         #expect(table.primaryChord(for: .toHiragana, preset: .msIme) == KeyChord(key: "u", modifiers: .control))
         #expect(table.primaryChord(for: .toHalfwidthAlnum, preset: .macos) == nil)  // F10 だけ
+        #expect(table.primaryChord(for: .toHalfwidthAlnum, preset: .atok) == KeyChord(key: "@", modifiers: .control))
+        #expect(table.primaryChord(for: .reconvert, preset: .atok) == KeyChord(key: "y", modifiers: [.control, .shift]))
         #expect(table.chords(for: .toHiragana, preset: .macos).first == KeyChord(key: "f6"))
     }
 }

@@ -48,7 +48,7 @@ Swift の定数は `macos/Sources/IkariXPC/Identifiers.swift`（`IkariIdentifier
 | キー | 値 | 既定 | 読むもの | 意味 |
 | --- | --- | --- | --- | --- |
 | `input.method` | `romaji` / `kana` | `romaji` | 殻 | 入力方式。`kana` は物理キーを `IkariJisKey` の番号に対応づける（配列に依存しない） |
-| `keymap.preset` | `macos` / `ms-ime` | `macos` | 殻 | キー割り当てのプリセット（§4）。既定は macOS 風（ADR 0004 §15.1-4） |
+| `keymap.preset` | `macos` / `ms-ime` / `atok` | `macos` | 殻 | キー割り当てのプリセット（§4）。既定は macOS 風（ADR 0004 §15.1-4） |
 | `keymap.<操作>` | キーの表記（§4）/ `none` | （プリセットのまま） | 殻 | 個別の上書き。`none` はその操作の割り当てを外す |
 | `paging.wrap` | `true` / `false` | `true` | 殻 | 最後のページで Space を押したとき、先頭のページに戻る。`false` なら止まる（ADR 0004 §15.1-3）。前のページへは常に Shift+Space |
 | `paging.size` | `1`〜`9` | `3` | 殻 | 最初に見せる候補数。3 件目の次へ進むと 9 件に広がり、以後は 9 件ずつ（ADR 0014）。エンジンへの `Convert.page_size` はいつも 9（`Settings.enginePageSize`） |
@@ -67,27 +67,29 @@ Swift の定数は `macos/Sources/IkariXPC/Identifiers.swift`（`IkariIdentifier
 `修飾キー+キー`。修飾キーは `ctrl`、`shift`、`option`、`command`。キーは小文字で、1文字のキー（`j`、`;`）、`space`、`enter`、`escape`、`backspace`、`left`、`right`、`up`、`down`、`f1`〜`f20`。例: `ctrl+j`、`f6`、`shift+space`、`shift+left`、`ctrl+shift+r`。
 `left` / `right` は ←/→（kVK_LeftArrow 123、kVK_RightArrow 124）。↑↓ は kVK_DownArrow 125、kVK_UpArrow 126（ADR 0014 が ADR 0006 §16-11 の「割り当てない」を置き換えた）。`left` / `right` は文節の軸、`up` / `down` は候補の軸。
 
-### 4.2 プリセット（`macos/Resources/keymap/{macos,ms-ime}.tsv`）
-形式は `キー<TAB>操作`。F6〜F10 はどちらのプリセットにも入れる（spec の字種変換）。
+### 4.2 プリセット（`macos/Resources/keymap/{macos,ms-ime,atok}.tsv`）
+形式は `キー<TAB>操作`。F6〜F10 はどのプリセットにも入れる（spec の字種変換）。
 
-| 操作 | F キー | macos（既定） | ms-ime |
-| --- | --- | --- | --- |
-| `convert.hiragana` | F6 | `ctrl+j` | `ctrl+u` |
-| `convert.fullwidth_katakana` | F7 | `ctrl+k` | `ctrl+i` |
-| `convert.halfwidth_katakana` | F8 | `ctrl+;` | `ctrl+o` |
-| `convert.fullwidth_alnum` | F9 | `ctrl+l` | `ctrl+p` |
-| `convert.halfwidth_alnum` | F10 | （なし） | `ctrl+t` |
-| `segment.focus_left` | （なし） | `left` | `left` |
-| `segment.focus_right` | （なし） | `right` | `right` |
-| `segment.shrink` | （なし） | `shift+left` | `shift+left` |
-| `segment.expand` | （なし） | `shift+right` | `shift+right` |
-| `reconvert` | （なし） | `ctrl+shift+r` | `ctrl+shift+r` |
-| `candidate.next` | （なし） | `down` | `down` |
-| `candidate.previous` | （なし） | `up` | `up` |
+| 操作 | F キー | macos（既定） | ms-ime | atok |
+| --- | --- | --- | --- | --- |
+| `convert.hiragana` | F6 | `ctrl+j` | `ctrl+u` | `ctrl+u` |
+| `convert.fullwidth_katakana` | F7 | `ctrl+k` | `ctrl+i` | `ctrl+i` |
+| `convert.halfwidth_katakana` | F8 | `ctrl+;` | `ctrl+o` | `ctrl+o` |
+| `convert.fullwidth_alnum` | F9 | `ctrl+l` | `ctrl+p` | `ctrl+p` |
+| `convert.halfwidth_alnum` | F10 | （なし） | `ctrl+t` | `ctrl+@` |
+| `segment.focus_left` | （なし） | `left` | `left` | `left` |
+| `segment.focus_right` | （なし） | `right` | `right` | `right` |
+| `segment.shrink` | （なし） | `shift+left` | `shift+left` | `shift+left` |
+| `segment.expand` | （なし） | `shift+right` | `shift+right` | `shift+right` |
+| `reconvert` | （なし） | `ctrl+shift+r` | `ctrl+shift+r` | `ctrl+shift+y` |
+| `candidate.next` | （なし） | `down` | `down` | `down` |
+| `candidate.previous` | （なし） | `up` | `up` | `up` |
+
+`atok` は ms-ime を土台に、半角英数と再変換だけ ATOK スタイルのキーにしたもの（#62。文節の ←/→ と Shift+←/→ は ATOK と役割が逆だが、ikari の既定のまま）。`ctrl+@` は、コードの上では JIS 配列の @ キー（Shift なし）で一致する（実機は未確認）。US 配列では @ が Shift+2 なので `ctrl+shift+@` になり、一致しない（F10 を使う）。
 
 `candidate.next` / `candidate.previous`（↓/↑）は変換中だけ効き、Space / Shift+Space と同じ（ページの境目、広げる動き、`paging.wrap` も同じ）。文節のモードには入らない。idle は矢印をアプリに渡し、合成中は受け止めて何もしない。Shift+↑↓ は変換中は受け止めて何もしない。
 
-文節の操作と再変換（下の 5 つ。ADR 0006 §8.1、§16.1-7）は **両プリセットとも同じ**で、F キーの割り当てはない。ほかの操作と同じく `keymap.<操作>` で上書きでき（`none` で外せる）、設定アプリの画面に自動で並ぶ。
+文節の操作と再変換（下の 5 つ。ADR 0006 §8.1、§16.1-7）は **macos と ms-ime で同じ**で、F キーの割り当てはない。atok は文節の操作だけ同じで、再変換が `ctrl+shift+y`（ATOK の Ctrl+Shift+R は「確定のリピート」で別の操作なので避けた）。ほかの操作と同じく `keymap.<操作>` で上書きでき（`none` で外せる）、設定アプリの画面に自動で並ぶ。
 `segment.*` は変換中に、修飾キーの有無を問わず矢印のキーを割り当てで引く。`reconvert` は idle のとき、Ctrl / Option / Command を伴う文字キーを引く（今の字種変換と同じ場所）。
 **idle の矢印はアプリに渡す**（カーソル移動を奪わない）。合成中の矢印は今までどおり受け止めて何もしない。`segment.*` を矢印以外のキー（自作キーボードのレイヤーなど）に割り当てたときも、変換中だけ効く。
 

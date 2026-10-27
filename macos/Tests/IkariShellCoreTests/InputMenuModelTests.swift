@@ -24,7 +24,7 @@ import Testing
         let titles = build(profile: domains).map(\.title)
         #expect(
             titles == [
-                "キー割り当て: macOS 風", "キー割り当て: MS-IME 風", "",
+                "キー割り当て: macOS 風", "キー割り当て: MS-IME 風", "キー割り当て: ATOK 風", "",
                 "入力方式: ローマ字", "入力方式: かな", "",
                 "LM（zenz）で並べ替える", "",
                 "分野: IT・ソフトウェア", "分野: インフラ・クラウド（たまに）", "分野: 小説", "",
@@ -35,7 +35,7 @@ import Testing
     @Test(arguments: KeymapPreset.allCases)
     func exactlyOneKeymapPresetIsCheckedAndItIsTheCurrentOne(preset: KeymapPreset) {
         let items = radios(build(settings: Settings(keymapPreset: preset)), .keymapPreset)
-        #expect(items.count == 2)
+        #expect(items.count == KeymapPreset.allCases.count)
         #expect(items.filter(\.isChecked).count == 1)
         #expect(items.first(where: \.isChecked)?.command == .selectKeymapPreset(preset))
     }

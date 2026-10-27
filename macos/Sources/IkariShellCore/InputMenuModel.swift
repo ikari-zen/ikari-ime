@@ -34,7 +34,7 @@ public enum SettingsTab: String, Sendable, CaseIterable {
 
 /// 排他の選択の組。同じ組の項目は、ちょうど 1 つだけチェックが付く。
 public enum MenuRadioGroup: Sendable, Hashable, CaseIterable {
-    /// キー割り当て（macOS 風／MS-IME 風）
+    /// キー割り当て（macOS 風／MS-IME 風／ATOK 風）
     case keymapPreset
     /// 入力方式（ローマ字／かな）
     case inputMethod
@@ -110,6 +110,7 @@ public enum InputMenuModel {
     enum Title {
         static let keymapMacOS = "キー割り当て: macOS 風"
         static let keymapMSIME = "キー割り当て: MS-IME 風"
+        static let keymapATOK = "キー割り当て: ATOK 風"
         static let inputRomaji = "入力方式: ローマ字"
         static let inputKana = "入力方式: かな"
         static let lm = "LM（zenz）で並べ替える"
@@ -128,6 +129,7 @@ public enum InputMenuModel {
         let preset = state.settings.keymapPreset
         items.append(radio(.keymapPreset, Title.keymapMacOS, .selectKeymapPreset(.macos), checked: preset == .macos))
         items.append(radio(.keymapPreset, Title.keymapMSIME, .selectKeymapPreset(.msIme), checked: preset == .msIme))
+        items.append(radio(.keymapPreset, Title.keymapATOK, .selectKeymapPreset(.atok), checked: preset == .atok))
         items.append(.separator)
 
         let method = state.settings.inputMethod

@@ -137,6 +137,7 @@ public struct KeyChord: Sendable, Hashable {
 public enum KeymapPreset: String, Sendable, CaseIterable {
     case macos
     case msIme = "ms-ime"
+    case atok
 }
 
 public enum KeymapError: Error, Equatable, Sendable {

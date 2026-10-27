@@ -77,6 +77,28 @@ import Testing
         #expect(msIme.action(for: chord("ctrl+j")) == nil)
     }
 
+    /// ATOK 風は MS-IME 風を土台に、半角英数（ctrl+@）と再変換（ctrl+shift+y）だけ違う（#62）
+    @Test func atokPresetDiffersFromMsImeOnlyInHalfwidthAlnumAndReconvert() throws {
+        let atok = try Keymap(presetTSV: Harness.presetTSV(.atok), overrides: [:])
+        let msIme = try Keymap(presetTSV: Harness.presetTSV(.msIme), overrides: [:])
+        var expected = msIme.bindings
+        expected[chord("ctrl+t")] = nil
+        expected[chord("ctrl+shift+r")] = nil
+        expected[chord("ctrl+@")] = .toHalfwidthAlnum
+        expected[chord("ctrl+shift+y")] = .reconvert
+        #expect(atok.bindings == expected)
+        #expect(atok.action(for: chord("f10")) == .toHalfwidthAlnum)
+        #expect(atok.action(for: chord("ctrl+shift+r")) == nil)
+        #expect(atok.action(for: chord("ctrl+t")) == nil)
+    }
+
+    @Test func atokPresetSettingRoundTripsAndUnknownValuesStayDefault() {
+        #expect(KeymapPreset(rawValue: "atok") == .atok)
+        #expect(Settings.parse(tsv: "keymap.preset\tatok").settings.keymapPreset == .atok)
+        #expect(Settings.isAcceptable(key: "keymap.preset", value: "atok"))
+        #expect(Settings.parse(tsv: "keymap.preset\temacs").settings.keymapPreset == .macos)
+    }
+
     @Test func overridesReplaceCharacterKeysButFunctionKeysRemain() throws {
         let tsv = try Harness.presetTSV(.macos)
         let keymap = try Keymap(presetTSV: tsv, overrides: [.toHiragana: chord("ctrl+h")])
