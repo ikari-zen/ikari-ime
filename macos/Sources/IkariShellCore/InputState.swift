@@ -72,6 +72,9 @@ public struct ConvertingState: Sendable, Equatable {
     /// 非 nil の間は `segments` が読み全体の 1 文節で、候補・選択・確定は今までの変換と同じ（`page` / `commit`）。
     /// 区切りは表示（`markedClauseSegment`）にだけ使い、文節の操作のキーで文節のモードに入るとき `segments` に展開して nil にする
     public var wholeLayout: SegmentLayoutInfo?
+    /// 確信が高い変換で、1 位だけを下線つきで出して候補ウィンドウを出していない間（`candidate.hide_when_confident`。#69）。
+    /// 次の Space / ↓ / ↑ / 数字キー、文節の操作で一覧を出して false にする
+    public var candidatesHidden: Bool
 
     public init(
         reading: String,
@@ -86,7 +89,8 @@ public struct ConvertingState: Sendable, Equatable {
         focused: Int = 0,
         layoutRev: UInt32 = 0,
         origin: ConversionOrigin = .composing,
-        wholeLayout: SegmentLayoutInfo? = nil
+        wholeLayout: SegmentLayoutInfo? = nil,
+        candidatesHidden: Bool = false
     ) {
         self.reading = reading
         self.conversionID = conversionID
@@ -101,6 +105,7 @@ public struct ConvertingState: Sendable, Equatable {
         self.layoutRev = layoutRev
         self.origin = origin
         self.wholeLayout = wholeLayout
+        self.candidatesHidden = candidatesHidden
     }
 }
 
