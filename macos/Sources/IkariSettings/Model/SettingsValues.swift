@@ -21,6 +21,7 @@ enum SettingKey {
     static let postalTePrefix = Settings.postalTePrefixKey
     static let unicodeNotation = Settings.unicodeNotationKey
     static let dateWeekdayDates = Settings.dateWeekdayDatesKey
+    static let candidateHideWhenConfident = Settings.candidateHideWhenConfidentKey
     private static let keymapPrefix = "keymap."
 
     static func keymap(_ action: KeymapAction) -> String { keymapPrefix + action.rawValue }
@@ -72,6 +73,8 @@ struct SettingsValues: Equatable, Sendable {
     var unicodeNotation = Settings.defaultUnicodeNotation
     /// `date.weekday_dates`。曜日の読みに直近の日付の候補
     var dateWeekdayDates = Settings.defaultDateWeekdayDates
+    /// `candidate.hide_when_confident`。確信が高い変換では候補一覧を出さない
+    var candidateHideWhenConfident = Settings.defaultCandidateHideWhenConfident
 
     init() {}
 
@@ -133,6 +136,7 @@ struct SettingsValues: Equatable, Sendable {
         emojiSmallLetters = toggle(SettingKey.emojiSmallLetters, emojiSmallLetters)
         unicodeNotation = toggle(SettingKey.unicodeNotation, unicodeNotation)
         dateWeekdayDates = toggle(SettingKey.dateWeekdayDates, dateWeekdayDates)
+        candidateHideWhenConfident = toggle(SettingKey.candidateHideWhenConfident, candidateHideWhenConfident)
     }
 }
 
