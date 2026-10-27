@@ -84,6 +84,7 @@ IkariEngine.xpc（同梱の XPC サービス。App Sandbox、ネットワーク�
 - 1 行は `時刻ms 種類 所要us lm=<状態> err=<種類> [注記]`。注記は固定の語の `key=value` だけ（読み・候補・文脈は書かない。NFR-19）。
 - 書き込みは別スレッド `ikari-log`（有界のキュー 8192 行、64KB のバッファ、1 秒ごとに flush）。`Engine::handle` はキューに入れるだけでディスクに触らない。満杯なら捨てて、次に書けたときに `log_dropped n=N` の行を書く（[ADR 0034](adr/0034-diagnostic-log.md) §3.1）。
 - 4MB を超えるか、ローカルの日付が変わったら回し、`logs/engine-YYYYMMDD-HHMMSS.log.gz` にする。180 日か合計 100MB のどちらか先で古い順に消す（同 §3.2）。読むときは `cd ~/Library/Application\ Support/ikari-ime/logs && gzip -dc engine-*.log.gz | cat - engine.log | less`（名前の順が時刻の順。macOS の `zcat` は `.gz` を読まないので `gzip -dc` か `gzcat`）。
+- 変換の行を結ぶ番号（番号だけで文字ではない）: `convert` と `reconvert` に `session=<番号> conv=<変換の番号>`、`page` `segment_page` `resize_segment` `commit` `commit_segments` `cancel` に `conv=`。`sh_episode` も同じ `session=` を持つので、「どの変換で LM が効かなかったか」「LM なしの変換のまま確定したか」を、時刻の順と番号で結べる。
 - `convert` の注記: `segments=N`、`cache=hit|wait_hit|wait_miss|miss`、`lm_applied=1|0`（返事の `lm_applied`。3 つ目の項目の `lm=<状態>` とは別のキー）、外れ（`cache=miss`）なら `miss=reading|context|none`（同じセッションのキャッシュに、読みだけが違うもの／文脈の番号だけが違うものがある／近いものがない）。秘密の入力は `cache=miss miss=none`。
 - `prefetch_done` の注記: `lm_applied=1|0`（LM が間に合って使われたか）、`lm_calls=N`（その先行計算での LM 呼び出し回数。2 文節以上は 2）。
 - Space（`Convert`）で先行計算が計算中なら、**Space から最大 30ms**（`convert.rs` の `CONVERT_WAIT_MAX`。NFR-04）待つ。間に合わなければ LM なしでその場で変換する。以前の「Prefetch の受付＋`lm_budget`」は廃止。再変換・区切り直しは待たない（変更なし）。

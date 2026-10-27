@@ -253,6 +253,29 @@ fn convert_log_says_hit_with_the_lm() {
 }
 
 #[test]
+fn convert_and_commit_lines_share_a_conversion_number() {
+    let (e, dir) = logged_engine(0, LmBudget::default(), "log-conv");
+    begin(&e, 7, false);
+    let r = convert(&e, 7, READING, 0);
+    let reply = send(
+        &e,
+        envelope::Body::Commit(pb::Commit {
+            conversion_id: r.conversion_id,
+            candidate_index: 0,
+        }),
+    );
+    assert!(matches!(reply, envelope::Body::Ack(_)), "{reply:?}");
+    let convert_line = last_convert_line(&e, &dir);
+    let conv = format!("conv={}", r.conversion_id);
+    assert!(convert_line.contains("session=7"), "{convert_line}");
+    assert!(convert_line.contains(&conv), "{convert_line}");
+    let commit_line = log_lines(&e, &dir, "commit").pop().expect("a commit line");
+    assert!(commit_line.contains(&conv), "{commit_line}");
+    assert!(!commit_line.contains("session="), "{commit_line}");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn convert_log_says_wait_hit_and_wait_miss() {
     let (e, dir) = logged_engine(10, LmBudget::default(), "log-wait-hit");
     begin(&e, 1, false);
@@ -306,8 +329,9 @@ fn engine_log_never_contains_the_text() {
         assert!(!text.contains(secret), "{secret} leaked: {text}");
     }
     // 注記は固定の語（key=value）だけ
-    const KEYS: [&str; 21] = [
+    const KEYS: [&str; 22] = [
         "session",
+        "conv",
         "app",
         "ctx",
         "segments",
