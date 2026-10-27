@@ -306,6 +306,16 @@ public final class XPCEngineClient: EngineClient, @unchecked Sendable {
         return try EnvelopeCodec.emojiTable(env)
     }
 
+    /// 郵便番号（ASCII 数字 7 桁）の住所のリスト（ADR 0032 §9.1）。表にない番号は空。主スレッドの外で呼ぶ（返事を待つ）
+    public func postalLookup(code: String, timeout: Duration) throws -> [String] {
+        let env = try roundTrip(timeout: timeout) { env in
+            var request = Ikari_Engine_V1_PostalLookupRequest()
+            request.code = code
+            env.postalLookup = request
+        }
+        return try EnvelopeCodec.postalLookup(env)
+    }
+
     /// エンジンに保存して終了するよう頼む（返事は最大 1 秒待つ）。終了は異常として数えない。
     public func shutdown(reason: EngineShutdownReason) {
         condition.lock()

@@ -25,6 +25,8 @@ public enum RelayPolicy {
             .emojiTable, .emojiTableReply,
             // 診断ログ（ADR 0034）は殻の入力だけが送る。設定アプリから中継しない
             .diag,
+            // 英語のモードの郵便番号（ADR 0032 §9.1）は殻の入力だけが頼む。設定アプリから中継しない
+            .postalLookup, .postalLookupReply,
             nil:
             return false
         }

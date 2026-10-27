@@ -27,11 +27,14 @@ public struct EnglishTextOutcome: Sendable, Equatable {
     public var passKey: Bool
     /// 区切りで取り出した文脈のたまり。殻が `CommitText`（読みは空）としてエンジンに送る
     public var flushed: [String]
+    /// 郵便番号の住所を問い合わせる（ADR 0032 §9.1）。殻が主スレッドの外で 1 回だけ頼む
+    public var lookup: PostalLookupRequest?
 
-    public init(actions: [KeyAction] = [], passKey: Bool, flushed: [String] = []) {
+    public init(actions: [KeyAction] = [], passKey: Bool, flushed: [String] = [], lookup: PostalLookupRequest? = nil) {
         self.actions = actions
         self.passKey = passKey
         self.flushed = flushed
+        self.lookup = lookup
     }
 }
 
@@ -64,6 +67,7 @@ extension EnglishMode {
     public mutating func handleText(
         _ input: KeyInput, environment: EnglishShortcodeEnvironment, now: UInt64 = DispatchTime.now().uptimeNanoseconds
     ) -> EnglishTextOutcome {
+        if let postal = handlePostal(input, environment: environment) { return postal }
         let before = shortcode.phase
         let canEnter = Self.canEnterShortcode(environment: environment, last: lastCharacter)
         shortcode.smallLetters = environment.settings.emojiSmallLetters

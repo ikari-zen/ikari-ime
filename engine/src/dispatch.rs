@@ -48,6 +48,7 @@ pub(crate) fn request_kind(body: &envelope::Body) -> &'static str {
         envelope::Body::GetProfile(_) => "get_profile",
         envelope::Body::SetProfile(_) => "set_profile",
         envelope::Body::EmojiTable(_) => "emoji_table",
+        envelope::Body::PostalLookup(_) => "postal_lookup",
         envelope::Body::Diag(_) => diag::KIND_DIAG,
         _ => "other",
     }
@@ -174,10 +175,7 @@ impl Inner {
                     session.filter(|_| creates_conversion),
                     request_conv.or_else(|| reply_conversion(&reply)),
                 );
-                let note = join_notes(
-                    ids,
-                    join_notes(segments::log_note(&reply, resize), trace),
-                );
+                let note = join_notes(ids, join_notes(segments::log_note(&reply, resize), trace));
                 Processed {
                     reply: Envelope {
                         schema_version: SCHEMA_VERSION,
@@ -252,6 +250,8 @@ impl Inner {
             | envelope::Body::SetProfile(_) => self.admin(body),
             // 絵文字のショートコードの表（ADR 0027 §9.2）
             envelope::Body::EmojiTable(r) => Ok(self.emoji_table(r)),
+            // 英語のモードの郵便番号（ADR 0032 §9.1）
+            envelope::Body::PostalLookup(r) => self.postal_lookup(r),
             // 診断ログ（ADR 0034 §2.2。`diag.rs`）。返事は常に Ack
             envelope::Body::Diag(d) => Ok(self.diag(&d)),
             // 返事の種類や Error を要求として受けたとき
@@ -266,6 +266,36 @@ impl Inner {
         envelope::Body::EmojiTableReply((*reply).clone())
     }
 
+    /// 郵便番号 → 住所の問い合わせ（ADR 0032 §9.1）。code は ASCII 数字 7 桁だけ（違えば BAD_REQUEST）。
+    /// 表にない番号、表が未読み込みのときは空の配列。code はログに書かない（NFR-19）ので、エラーの文にも含めない。
+    pub(crate) fn postal_lookup(
+        &self,
+        request: pb::PostalLookupRequest,
+    ) -> Result<envelope::Body, Fail> {
+        let code = request.code;
+        if code.len() != POSTAL_CODE_DIGITS || !code.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(Fail::bad("postal code must be 7 ASCII digits"));
+        }
+        let number: u32 = code
+            .parse()
+            .map_err(|_| Fail::bad("postal code must be 7 ASCII digits"))?;
+        let stack = self.stack();
+        let addresses = stack
+            .postal
+            .as_ref()
+            .map(|table| {
+                table
+                    .by_code(number)
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(envelope::Body::PostalLookupReply(pb::PostalLookupReply {
+            addresses,
+        }))
+    }
+
     /// 文節の区切りの口。テストの上書きがなければ、Stack の Converter を呼ぶ
     pub(crate) fn seam(&self, stack: &Stack) -> Arc<dyn SegmentSeam> {
         if let Some(seam) = &self.seam_override {
@@ -274,6 +304,9 @@ impl Inner {
         Arc::new(RealSeam(Arc::clone(&stack.converter)))
     }
 }
+
+/// 郵便番号の桁数（ADR 0032）
+const POSTAL_CODE_DIGITS: usize = 7;
 
 /// `data_dir` の下の `emoji.tsv`。辞書と同じ `dict/` に置く（ADR 0027 §9.3）
 pub(crate) fn emoji_tsv_path_in(data_dir: &Path) -> PathBuf {
