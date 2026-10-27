@@ -62,7 +62,7 @@ import Testing
                 "emoji.shortcode_exclude=" + Settings.defaultEmojiShortcodeExclude.joined(separator: ","),
                 "emoji.small_letters=off",
                 "postal.japanese=on", "postal.english=off", "postal.te_prefix=off",
-                "unicode.notation=off", "date.weekday_dates=off",
+                "unicode.notation=off", "date.weekday_dates=off", "candidate.hide_when_confident=off",
             ])
     }
 

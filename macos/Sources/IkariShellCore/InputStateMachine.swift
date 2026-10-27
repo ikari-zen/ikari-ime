@@ -564,6 +564,8 @@ public final class InputStateMachine {
     /// 数字キー。1 文節なら、その候補を選んで全体を確定する。2 文節以上なら、フォーカスしている文節の候補を選ぶだけにして、
     /// 次の文節へフォーカスを進める（最後の文節では動かさない。ADR 0006 §16.1-3）
     private func selectNumber(_ number: Int) -> [KeyAction] {
+        // 一覧が見えていないので、番号で選ばず、一覧を出す（#69）
+        if let revealed = revealCandidatesIfHidden() { return revealed }
         guard case .converting(let current) = state, number - 1 < current.visibleCount(initial: settings.pageSize) else {
             return [.consume]
         }
@@ -575,7 +577,16 @@ public final class InputStateMachine {
         return selection
     }
 
+    /// 一覧を隠している変換中なら、一覧を出す（選択は動かさない）。隠していなければ nil
+    private func revealCandidatesIfHidden() -> [KeyAction]? {
+        guard case .converting(var current) = state, current.candidatesHidden else { return nil }
+        current.candidatesHidden = false
+        state = .converting(current)
+        return [.showCandidates(panelModel(for: current))]
+    }
+
     private func nextCandidate() -> [KeyAction] {
+        if let revealed = revealCandidatesIfHidden() { return revealed }
         guard case .converting(let current) = state else { return [.consume] }
         let segment = current.segments[current.focused]
         let visible = current.visibleCount(initial: settings.pageSize)
@@ -611,6 +622,7 @@ public final class InputStateMachine {
     }
 
     private func previousCandidate() -> [KeyAction] {
+        if let revealed = revealCandidatesIfHidden() { return revealed }
         guard case .converting(let current) = state else { return [.consume] }
         if current.selected > 0 {
             return select(current.selected - 1)
@@ -720,6 +732,11 @@ public final class InputStateMachine {
     private func segmentAction(_ action: KeymapAction) -> [KeyAction] {
         let actions = performSegmentAction(action)
         if actions != [.consume] {
+            // 文節の操作は候補ウィンドウを出す。隠していた印は下ろす
+            if case .converting(var current) = state, current.candidatesHidden {
+                current.candidatesHidden = false
+                state = .converting(current)
+            }
             switch action {
             case .segmentFocusLeft, .segmentFocusRight: episode?.segFocus += 1
             case .segmentShrink, .segmentExpand: episode?.segResize += 1
@@ -965,6 +982,14 @@ public final class InputStateMachine {
             wholeLayout: wholeLayout
         )
         converting.syncFocused()
+        // 確信が高い読み全体の変換は、1 位だけを出す。一覧は次の Space / ↓ で出す（#69）
+        if page.confident, settings.candidateHideWhenConfident, !session.secure, !isFallback, wholeLayout == nil,
+            !page.candidates.isEmpty
+        {
+            converting.candidatesHidden = true
+            state = .converting(converting)
+            return [.setMarkedText(markedText(for: converting))]
+        }
         state = .converting(converting)
         return [.setMarkedText(markedText(for: converting)), .showCandidates(panelModel(for: converting))]
     }

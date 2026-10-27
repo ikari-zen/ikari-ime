@@ -62,6 +62,42 @@ pub(crate) fn page_candidates(
     Ok((candidates, generated.len() > end))
 }
 
+/// 確信度の閾値: LM なしの変換で、1 位と 2 位の `Candidate.score` の差がこれ以上なら confident（#69）。
+/// 暫定。評価セットの測定（保守的の案）で決めた値で、診断ログの `gap=` を見て見直す。
+pub(crate) const CONFIDENT_GAP_WITHOUT_LM: i32 = 5000;
+/// 確信度の閾値: LM ありの変換（返事の `lm_applied`）。LM で差の目盛りが大きくなるため別にする（#69）。暫定
+pub(crate) const CONFIDENT_GAP_WITH_LM: i32 = 10000;
+
+/// 1 位と 2 位のスコアの差が閾値以上か（#69）
+pub(crate) fn is_confident(gap: i32, lm_applied: bool) -> bool {
+    let threshold = if lm_applied {
+        CONFIDENT_GAP_WITH_LM
+    } else {
+        CONFIDENT_GAP_WITHOUT_LM
+    };
+    gap >= threshold
+}
+
+/// 読み全体の候補の、1 位と 2 位のスコアの差（`page_candidates` のあとに呼ぶ）。
+/// 候補が 1 件だけ（次もない）なら None（一覧を出す意味がないので confident）
+fn top_gap(conv: &SharedConversion, has_next: bool) -> Gap {
+    let mut entry = lock_mutex(conv);
+    match entry.whole_mut().generated() {
+        [first, second, ..] => Gap::Known(second.score.saturating_sub(first.score)),
+        [_] if !has_next => Gap::Single,
+        _ => Gap::Unknown,
+    }
+}
+
+/// 1 位と 2 位の差の求まり方
+enum Gap {
+    Known(i32),
+    /// 候補が 1 件だけ
+    Single,
+    /// 候補がない（または締め切りで 2 件目まで届かなかった）
+    Unknown,
+}
+
 impl Inner {
     /// 文脈の番号と周辺テキストを記録し、番号が進んでいたら `ctx_change` の行を書く。
     /// 返すのは要求の行に添える `ctx_rev=N`（固定の語と数だけ。NFR-19）。secure では呼ばない
@@ -205,6 +241,12 @@ impl Inner {
         };
 
         let (candidates, has_next) = page_candidates(&conv, 0, page_size, Some(Instant::now()))?;
+        let gap = top_gap(&conv, has_next);
+        let (confident, gap_note) = match gap {
+            Gap::Known(g) => (is_confident(g, lm_applied), g.to_string()),
+            Gap::Single => (true, "na".to_string()),
+            Gap::Unknown => (false, "na".to_string()),
+        };
         let conversion_id = self.next_conversion.fetch_add(1, Ordering::Relaxed);
         let layout = {
             let mut entry = lock_mutex(&conv);
@@ -248,10 +290,15 @@ impl Inner {
             candidates,
             has_next,
             lm_applied,
+            confident,
             engine_micros: micros_u32(started),
             layout: Some(layout),
         });
-        let note = outcome.log_note(lm_applied);
+        let note = format!(
+            "{} gap={gap_note} confident={}",
+            outcome.log_note(lm_applied),
+            u8::from(confident)
+        );
         Ok((
             reply,
             Some(match trace {
@@ -287,6 +334,7 @@ impl Inner {
             candidates,
             has_next,
             lm_applied: self.lm_applied_since(before),
+            confident: false,
             engine_micros: micros_u32(started),
             // 区切りだけを添える（文節ごとのページは SegmentPage で引く）
             layout: Some(layout_reply(

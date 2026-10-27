@@ -40,6 +40,8 @@ public struct Settings: Sendable, Equatable {
     public var unicodeNotation: Bool
     /// `date.weekday_dates`。曜日の読みに、直近の日付の候補を出す（日本語。エンジンが読む。既定はオフ）
     public var dateWeekdayDates: Bool
+    /// `candidate.hide_when_confident`。エンジンが確信が高いと返した変換では、最初の Space で 1 位だけを下線つきで出し、一覧は 2 回目の Space か ↓ で出す（殻が使う。既定はオフ。#69）
+    public var candidateHideWhenConfident: Bool
 
     public init(
         inputMethod: InputMethodKind = .romaji,
@@ -57,7 +59,8 @@ public struct Settings: Sendable, Equatable {
         postalEnglish: Bool = Settings.defaultPostalEnglish,
         postalTePrefix: Bool = Settings.defaultPostalTePrefix,
         unicodeNotation: Bool = Settings.defaultUnicodeNotation,
-        dateWeekdayDates: Bool = Settings.defaultDateWeekdayDates
+        dateWeekdayDates: Bool = Settings.defaultDateWeekdayDates,
+        candidateHideWhenConfident: Bool = Settings.defaultCandidateHideWhenConfident
     ) {
         self.inputMethod = inputMethod
         self.keymapPreset = keymapPreset
@@ -75,6 +78,7 @@ public struct Settings: Sendable, Equatable {
         self.postalTePrefix = postalTePrefix
         self.unicodeNotation = unicodeNotation
         self.dateWeekdayDates = dateWeekdayDates
+        self.candidateHideWhenConfident = candidateHideWhenConfident
     }
 
     /// 既定値（ファイルがない、または読めないときに使う）
@@ -126,6 +130,9 @@ public struct Settings: Sendable, Equatable {
     /// 曜日の読みに直近の日付の候補（`げつようび` → 直近の月曜の日付）。値は `on` / `off`
     public static let dateWeekdayDatesKey = "date.weekday_dates"
     public static let defaultDateWeekdayDates = false
+    /// 確信が高い変換で候補一覧を隠す（#69）。値は `on` / `off`
+    public static let candidateHideWhenConfidentKey = "candidate.hide_when_confident"
+    public static let defaultCandidateHideWhenConfident = false
     /// `context.shared_exclude` の値の区切り
     public static let listSeparator: Character = ","
     private static let keymapKeyPrefix = "keymap."
@@ -238,6 +245,12 @@ public struct Settings: Sendable, Equatable {
                 } else {
                     warnings.append(invalid)
                 }
+            case candidateHideWhenConfidentKey:
+                if let on = parseSwitch(value) {
+                    settings.candidateHideWhenConfident = on
+                } else {
+                    warnings.append(invalid)
+                }
             case "input.method":
                 if let method = InputMethodKind(rawValue: value) {
                     settings.inputMethod = method
@@ -341,6 +354,7 @@ public struct Settings: Sendable, Equatable {
             (Self.postalTePrefixKey, Self.switchValue(postalTePrefix)),
             (Self.unicodeNotationKey, Self.switchValue(unicodeNotation)),
             (Self.dateWeekdayDatesKey, Self.switchValue(dateWeekdayDates)),
+            (Self.candidateHideWhenConfidentKey, Self.switchValue(candidateHideWhenConfident)),
         ]
         return entries
     }
@@ -351,7 +365,7 @@ public struct Settings: Sendable, Equatable {
         case "input.method", "keymap.preset", "paging.wrap", "paging.size", engineLMKey, engineIdleUnloadKey,
             contextSharedExcludeKey, emojiShortcodeKey, emojiShortcodeExcludeKey, emojiSmallLettersKey,
             postalJapaneseKey, postalEnglishKey, postalTePrefixKey,
-            unicodeNotationKey, dateWeekdayDatesKey:
+            unicodeNotationKey, dateWeekdayDatesKey, candidateHideWhenConfidentKey:
             return true
         default:
             return key.hasPrefix(keymapKeyPrefix)

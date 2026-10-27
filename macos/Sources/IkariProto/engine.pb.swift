@@ -999,6 +999,13 @@ public nonisolated struct Ikari_Engine_V1_ConvertReply: @unchecked Sendable {
   /// Clears the value of `layout`. Subsequent reads from it will return its default value.
   public mutating func clearLayout() {_uniqueStorage()._layout = nil}
 
+  /// 読み全体の候補の 1 位と 2 位の最終スコアの差が、閾値以上（#69。LM の有無で閾値が違う）。Convert の返事だけで意味を持つ
+  /// （Page の返事では false）。殻は、設定がオンのとき、true なら 1 位だけを出して一覧を出さない。古いエンジンは false
+  public var confident: Bool {
+    get {_storage._confident}
+    set {_uniqueStorage()._confident = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -2842,7 +2849,7 @@ nonisolated extension Ikari_Engine_V1_Candidate: SwiftProtobuf.Message, SwiftPro
 
 nonisolated extension Ikari_Engine_V1_ConvertReply: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ConvertReply"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}conversion_id\0\u{3}page_index\0\u{1}candidates\0\u{3}has_next\0\u{3}lm_applied\0\u{3}engine_micros\0\u{1}layout\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}conversion_id\0\u{3}page_index\0\u{1}candidates\0\u{3}has_next\0\u{3}lm_applied\0\u{3}engine_micros\0\u{1}layout\0\u{1}confident\0")
 
   fileprivate class _StorageClass {
     var _conversionID: UInt64 = 0
@@ -2852,6 +2859,7 @@ nonisolated extension Ikari_Engine_V1_ConvertReply: SwiftProtobuf.Message, Swift
     var _lmApplied: Bool = false
     var _engineMicros: UInt32 = 0
     var _layout: Ikari_Engine_V1_SegmentLayout? = nil
+    var _confident: Bool = false
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -2869,6 +2877,7 @@ nonisolated extension Ikari_Engine_V1_ConvertReply: SwiftProtobuf.Message, Swift
       _lmApplied = source._lmApplied
       _engineMicros = source._engineMicros
       _layout = source._layout
+      _confident = source._confident
     }
   }
 
@@ -2894,6 +2903,7 @@ nonisolated extension Ikari_Engine_V1_ConvertReply: SwiftProtobuf.Message, Swift
         case 5: try { try decoder.decodeSingularBoolField(value: &_storage._lmApplied) }()
         case 6: try { try decoder.decodeSingularUInt32Field(value: &_storage._engineMicros) }()
         case 7: try { try decoder.decodeSingularMessageField(value: &_storage._layout) }()
+        case 8: try { try decoder.decodeSingularBoolField(value: &_storage._confident) }()
         default: break
         }
       }
@@ -2927,6 +2937,9 @@ nonisolated extension Ikari_Engine_V1_ConvertReply: SwiftProtobuf.Message, Swift
       try { if let v = _storage._layout {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 7)
       } }()
+      if _storage._confident != false {
+        try visitor.visitSingularBoolField(value: _storage._confident, fieldNumber: 8)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -2943,6 +2956,7 @@ nonisolated extension Ikari_Engine_V1_ConvertReply: SwiftProtobuf.Message, Swift
         if _storage._lmApplied != rhs_storage._lmApplied {return false}
         if _storage._engineMicros != rhs_storage._engineMicros {return false}
         if _storage._layout != rhs_storage._layout {return false}
+        if _storage._confident != rhs_storage._confident {return false}
         return true
       }
       if !storagesAreEqual {return false}

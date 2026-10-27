@@ -169,6 +169,11 @@ final class SettingsModel {
         await apply(set: [(SettingKey.postalEnglish, enabled ? EngineToggle.on : EngineToggle.off)])
     }
 
+    func setCandidateHideWhenConfident(_ enabled: Bool) async {
+        guard enabled != values.candidateHideWhenConfident else { return }
+        await apply(set: [(SettingKey.candidateHideWhenConfident, enabled ? EngineToggle.on : EngineToggle.off)])
+    }
+
     func setUnicodeNotation(_ enabled: Bool) async {
         guard enabled != values.unicodeNotation else { return }
         await apply(set: [(SettingKey.unicodeNotation, enabled ? EngineToggle.on : EngineToggle.off)])

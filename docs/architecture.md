@@ -67,6 +67,7 @@ IkariEngine.xpc（同梱の XPC サービス。App Sandbox、ネットワーク�
 - 英語の文脈は、殻が `EnglishContextPool`（`IkariShellCore/EnglishMode.swift`、純関数）にためる。印字できる文字を足し、Backspace は末尾を消し、区切り（Return、Tab、矢印、Escape、F キー、Ctrl・Option・Command 付き、モードの切り替え、`deactivateServer`、2000 スカラー）で 1 件の `CommitText`（`reading` は空）として片道でエンジンに送る。エンジンは確定履歴に入れるだけで、学習しない。`reading` が空の項目は、履歴の読みを使う再変換（`core/src/converter/reconvert.rs`）が飛ばす。
 - ショートコード（ADR 0027）の英語のモードへの配線は B48、打鍵と確定文字列の統計は B45。
 - 英語のモードの郵便番号（ADR 0032 §9.1、設定 `postal.english`、既定 off）: 語頭の `te` + 数字 7 桁を殻の `PostalMachine`（`EnglishPostal.swift`）がためて、7 桁目で候補ウィンドウを自動で出す（下線なし。選ぶのは ↑/↓ だけ）。住所は、殻が主スレッドの外で `PostalLookupRequest` をエンジンへ 1 回送り（`EngineClient.postalLookup`。待ちの上限は暫定で 1 秒）、エンジンが `postal.tsv` の表（`stack().postal`）を引いて返す。返事が来たとき状態が同じ（同じコードと同じ候補の通し番号）なら候補に足し、違えば捨てる。設定アプリからは中継しない（`RelayPolicy`）。同じ状態機械が、`u+` + 16 進 4〜6 桁（設定 `unicode.notation`、既定 off。issue #28）も扱う。4 桁目で候補（そのまま、その文字）が出て、桁が増えるたびに更新する。問い合わせはなく、10FFFF を超える並び・制御文字・未割り当ては出さない。`u` の次は `+` が要る（`use`、`unit` などは素通し）。
+- 確信度が高い変換（#69、設定 `candidate.hide_when_confident`、既定 off）: エンジンが、読み全体の候補の 1 位と 2 位の最終スコアの差を見て、閾値以上なら `ConvertReply.confident = true` を返す（閾値は LM なし 5000、LM あり 10000。暫定。`convert` の行の `gap=` `confident=` で実利用の分布を見て見直す）。殻は、設定がオンで confident、1 文節のとき、最初の Space で 1 位だけを下線つきで出し、候補ウィンドウは出さない。もう一度 Space、↓、↑、数字キーで一覧を出す（選択は 0 番のまま）。Enter、Esc、BackSpace、文字入力は今までどおり。
 
 ## 3. データの置き場所
 
@@ -86,7 +87,7 @@ IkariEngine.xpc（同梱の XPC サービス。App Sandbox、ネットワーク�
 - 書き込みは別スレッド `ikari-log`（有界のキュー 8192 行、64KB のバッファ、1 秒ごとに flush）。`Engine::handle` はキューに入れるだけでディスクに触らない。満杯なら捨てて、次に書けたときに `log_dropped n=N` の行を書く（[ADR 0034](adr/0034-diagnostic-log.md) §3.1）。
 - 4MB を超えるか、ローカルの日付が変わったら回し、`logs/engine-YYYYMMDD-HHMMSS.log.gz` にする。180 日か合計 100MB のどちらか先で古い順に消す（同 §3.2）。読むときは `cd ~/Library/Application\ Support/ikari-ime/logs && gzip -dc engine-*.log.gz | cat - engine.log | less`（名前の順が時刻の順。macOS の `zcat` は `.gz` を読まないので `gzip -dc` か `gzcat`）。
 - 変換の行を結ぶ番号（番号だけで文字ではない）: `convert` と `reconvert` に `session=<番号> conv=<変換の番号>`、`page` `segment_page` `resize_segment` `commit` `commit_segments` `cancel` に `conv=`。`sh_episode` も同じ `session=` を持つので、「どの変換で LM が効かなかったか」「LM なしの変換のまま確定したか」を、時刻の順と番号で結べる。
-- `convert` の注記: `segments=N`、`cache=hit|wait_hit|wait_miss|miss`、`lm_applied=1|0`（返事の `lm_applied`。3 つ目の項目の `lm=<状態>` とは別のキー）、外れ（`cache=miss`）なら `miss=reading|context|none`（同じセッションのキャッシュに、読みだけが違うもの／文脈の番号だけが違うものがある／近いものがない）。秘密の入力は `cache=miss miss=none`。
+- `convert` の注記: `segments=N`、`cache=hit|wait_hit|wait_miss|miss`、`lm_applied=1|0`（返事の `lm_applied`。3 つ目の項目の `lm=<状態>` とは別のキー）、外れ（`cache=miss`）なら `miss=reading|context|none`（同じセッションのキャッシュに、読みだけが違うもの／文脈の番号だけが違うものがある／近いものがない）。秘密の入力は `cache=miss miss=none`。続けて `gap=<1 位と 2 位のスコアの差>`（候補が 1 件以下なら `na`）と `confident=1|0`（#69）。
 - `prefetch_done` の注記: `lm_applied=1|0`（LM が間に合って使われたか）、`lm_calls=N`（その先行計算での LM 呼び出し回数。2 文節以上は 2）。
 - Space（`Convert`）で先行計算が計算中なら、**Space から最大 30ms**（`convert.rs` の `CONVERT_WAIT_MAX`。NFR-04）待つ。間に合わなければ LM なしでその場で変換する。以前の「Prefetch の受付＋`lm_budget`」は廃止。再変換・区切り直しは待たない（変更なし）。
 
