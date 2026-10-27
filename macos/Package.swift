@@ -56,6 +56,8 @@ var targets: [Target] = [
     .testTarget(name: "IkariBridgeTests", dependencies: ["IkariBridge", "IkariProto", "IkariShellCore"]),
     .testTarget(name: "IkariSettingsTests", dependencies: ["IkariSettings", "IkariBridge", "IkariProto", "IkariShellCore", "IkariXPC"]),
     .testTarget(name: "IkariXPCTests", dependencies: ["IkariXPC", "IkariShellCore", "IkariProto"]),
+    // XPC サービスのエンジンの寿命（#51）。FFI なしで確かめられる部分だけ
+    .testTarget(name: "IkariEngineServiceTests", dependencies: ["IkariEngineService"]),
 ]
 
 if hasShellFFI {
