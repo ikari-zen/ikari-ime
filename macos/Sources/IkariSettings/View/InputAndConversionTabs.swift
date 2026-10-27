@@ -28,6 +28,7 @@ struct InputTab: View {
                 ) {
                     Text("macOS 風").tag(KeymapPreset.macos)
                     Text("MS-IME 風").tag(KeymapPreset.msIme)
+                    Text("ATOK 風").tag(KeymapPreset.atok)
                 }
                 .pickerStyle(.radioGroup)
             }

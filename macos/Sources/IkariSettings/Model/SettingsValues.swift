@@ -146,7 +146,7 @@ struct KeymapPresetTable: Sendable {
 
     init() {}
 
-    /// `read` は `macos` / `ms-ime` の TSV を返す。読めないプリセットは空のまま（画面に既定のキーを出さないだけ）
+    /// `read` は `macos` / `ms-ime` / `atok` の TSV を返す。読めないプリセットは空のまま（画面に既定のキーを出さないだけ）
     init(read: (KeymapPreset) -> String?) {
         for preset in KeymapPreset.allCases {
             guard let text = read(preset), let keymap = try? Keymap(presetTSV: text, overrides: [:]) else { continue }
