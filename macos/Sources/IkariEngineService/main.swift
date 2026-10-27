@@ -28,6 +28,9 @@ enum ServiceConstants {
     static let exitDelay: TimeInterval = 0.1
     /// エンジンを開けなかったあと、開き直すまでの最短の間隔（要求のたびに辞書を開かない）
     static let reopenInterval: Duration = .seconds(2)
+    /// close が処理中の要求の終わりを待つ上限（#51）。超えたらエンジンを解放せずに残す。
+    /// 暫定値（要確認）。Convert の締め切りと学習の保存より長く取る
+    static let closeDrainTimeout: TimeInterval = 5
 }
 
 typealias Envelope = Ikari_Engine_V1_Envelope
@@ -38,30 +41,26 @@ typealias Envelope = Ikari_Engine_V1_Envelope
 /// 間を空けて開き直す。ロックが空けば、XPC サービスを作り直さなくても変換できるようになる。
 final class EngineHost: @unchecked Sendable {
 #if IKARI_HAS_ENGINE_FFI
-    private let state = NSLock()
-    private var engine: OpaquePointer?
+    /// 処理中の数と closed を持つ。close は処理中の終わりを待ってから解放する（#51）
+    private let gate = EngineGate<OpaquePointer>()
+    /// `gate` のロックの中（`enter` の `open`）でだけ読み書きする
     private var lastOpenAttempt: ContinuousClock.Instant?
-    private var closed = false
 #endif
 
     init() {
 #if IKARI_HAS_ENGINE_FFI
-        _ = currentEngine()
+        // 起動時に開いておく（開けなければ、要求が来たときに開き直す）
+        if gate.enter(open: openIfDue) != nil { gate.leave() }
 #endif
     }
 
 #if IKARI_HAS_ENGINE_FFI
-    /// 開いているエンジン。なければ（前回から `reopenInterval` 以上たっていれば）開き直す
-    private func currentEngine() -> OpaquePointer? {
-        state.lock()
-        defer { state.unlock() }
-        if let engine { return engine }
-        if closed { return nil }
+    /// 前回から `reopenInterval` 以上たっていれば開く。`gate` のロックの中で呼ばれる
+    private func openIfDue() -> OpaquePointer? {
         let now = ContinuousClock.now
         if let last = lastOpenAttempt, now - last < ServiceConstants.reopenInterval { return nil }
         lastOpenAttempt = now
-        engine = openEngine()
-        return engine
+        return openEngine()
     }
 
     private func openEngine() -> OpaquePointer? {
@@ -94,26 +93,33 @@ final class EngineHost: @unchecked Sendable {
 
     func handle(_ request: Data) -> Data {
 #if IKARI_HAS_ENGINE_FFI
-        guard let engine = currentEngine() else { return Self.notReady(request) }
-        let buffer = request.withUnsafeBytes { raw in
-            ikari_engine_handle(engine, raw.bindMemory(to: UInt8.self).baseAddress, request.count)
+        // 処理中の数を増やしてから使う。close のあと（closed）は断る
+        let response: Data?? = gate.withResource(open: openIfDue) { engine in
+            let buffer = request.withUnsafeBytes { raw in
+                ikari_engine_handle(engine, raw.bindMemory(to: UInt8.self).baseAddress, request.count)
+            }
+            defer { ikari_buf_free(buffer) }
+            guard let pointer = buffer.ptr else { return nil }
+            return Data(bytes: pointer, count: buffer.len)
         }
-        defer { ikari_buf_free(buffer) }
-        guard let pointer = buffer.ptr else { return Self.notReady(request) }
-        return Data(bytes: pointer, count: buffer.len)
+        return (response ?? nil) ?? Self.notReady(request)
 #else
         return Self.notReady(request)
 #endif
     }
 
+    /// 新しい要求を断り、処理中の要求の終わりを待ってから解放する（待ちの上限は `closeDrainTimeout`）
     func close() {
 #if IKARI_HAS_ENGINE_FFI
-        state.lock()
-        let closing = engine
-        engine = nil
-        closed = true
-        state.unlock()
-        if let closing { ikari_engine_close(closing) }
+        switch gate.close(timeout: ServiceConstants.closeDrainTimeout) {
+        case .release(let closing):
+            ikari_engine_close(closing)
+        case .leaked:
+            // 処理中のまま上限を超えた。解放すると解放後の使用になるので、残す
+            FileHandle.standardError.write(Data("IkariEngine: close timed out; engine left open\n".utf8))
+        case .nothing:
+            break
+        }
 #endif
     }
 
