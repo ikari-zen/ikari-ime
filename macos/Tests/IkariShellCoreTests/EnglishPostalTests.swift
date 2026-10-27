@@ -283,3 +283,150 @@ private let chiyoda = "東京都千代田区千代田"
         #expect(fetchPostalAddresses(engine: engine, code: code).isEmpty)
     }
 }
+
+// Unicode 表記（ADR 0032 §9.1。issue #28）。`u+` + 16 進 4〜6 桁
+private let unicodeKinds: Set<PostalMachine.Kind> = [.unicode]
+
+private func feedUnicode(_ machine: inout PostalMachine, _ keys: [KeyInput]) -> PostalStep? {
+    var last: PostalStep?
+    for key in keys { last = machine.handle(key, canEnter: true, kinds: unicodeKinds) }
+    return last
+}
+
+@Suite struct UnicodeNotationMachineTests {
+    @Test func notTakenWhenTheKindIsOff() {
+        var machine = PostalMachine()
+        #expect(machine.handle(ch("u"), canEnter: true) == nil)
+        #expect(!machine.isActive)
+    }
+
+    @Test func plusIsRequiredAndOrdinaryWordsPass() {
+        // 2 文字目で形から外れて打ち直しになる（語の頭だけで入るので、その先は呼ぶ側が canEnter = false にする）
+        for word in ["use", "unit", "ubuntu", "u3042"] {
+            var machine = PostalMachine()
+            let step = feedUnicode(&machine, Array(chars(word).prefix(2)))
+            #expect(step?.passKey == true, "\(word)")
+            #expect(step?.committed == "u", "\(word)")
+            #expect(!machine.isActive, "\(word)")
+        }
+    }
+
+    @Test func opensOnTheFourthDigitWithoutUnderlineAndAsksNoLookup() {
+        var machine = PostalMachine()
+        let before = feedUnicode(&machine, chars("u+304"))
+        #expect(!showsCandidates(before))
+        #expect(!underlined(before))
+        let step = feedUnicode(&machine, [ch("2")])
+        #expect(showsCandidates(step))
+        #expect(!underlined(step))
+        #expect(step?.lookup == nil)
+        #expect(rows(machine) == ["u+3042", "あ"])
+    }
+
+    @Test func updatesOnTheFifthAndSixthDigitsThenRetypes() {
+        var machine = PostalMachine()
+        let five = feedUnicode(&machine, chars("u+01F60"))
+        #expect(showsCandidates(five))
+        #expect(rows(machine) == ["u+01F60", "\u{01F60}"])
+        let six = feedUnicode(&machine, [ch("0")])
+        #expect(showsCandidates(six))
+        #expect(rows(machine) == ["u+01F600", "😀"])
+        let seventh = feedUnicode(&machine, [ch("0")])
+        #expect(seventh?.passKey == true)
+        #expect(seventh?.committed == "u+01F600")
+    }
+
+    @Test func aboveTenFFFFSurrogatesAndControlsAreNotOffered() {
+        for typed in ["u+110000", "u+D800", "u+000A"] {
+            var machine = PostalMachine()
+            let step = feedUnicode(&machine, chars(typed))
+            #expect(!showsCandidates(step), "\(typed)")
+            #expect(rows(machine) == nil, "\(typed)")
+        }
+    }
+
+    @Test func upperAndLowerCaseHexBothWork() {
+        var machine = PostalMachine()
+        _ = feedUnicode(&machine, chars("u+30aB"))
+        #expect(rows(machine)?.last == "\u{30AB}")
+    }
+
+    @Test func onlyDownUpAndEnterSelect() {
+        var machine = PostalMachine()
+        _ = feedUnicode(&machine, chars("u+3042"))
+        let enter = feedUnicode(&machine, [KeyInput(key: .enter)])
+        #expect(enter?.committed == "u+3042")
+        var other = PostalMachine()
+        _ = feedUnicode(&other, chars("u+3042"))
+        _ = feedUnicode(&other, [KeyInput(key: .down)])
+        let pick = feedUnicode(&other, [KeyInput(key: .enter)])
+        #expect(pick?.committed == "あ")
+    }
+
+    @Test func spaceTabAndNonHexCommitTheTypedTextAndPassTheKey() {
+        for key in [KeyInput(key: .space), ch("\t"), ch("z"), ch("2")] {
+            var machine = PostalMachine()
+            _ = feedUnicode(&machine, chars("u+01F600"))
+            let step = feedUnicode(&machine, [key])
+            #expect(step?.passKey == true)
+            #expect(step?.committed == "u+01F600")
+        }
+    }
+
+    @Test func backspaceStepsBackAndClosesBelowFourDigits() {
+        var machine = PostalMachine()
+        _ = feedUnicode(&machine, chars("u+30420"))
+        let five = feedUnicode(&machine, [KeyInput(key: .backspace)])
+        #expect(showsCandidates(five))
+        #expect(rows(machine) == ["u+3042", "あ"])
+        let three = feedUnicode(&machine, [KeyInput(key: .backspace)])
+        #expect(three?.actions.contains(.hideCandidates) == true)
+        #expect(rows(machine) == nil)
+    }
+}
+
+@Suite struct UnicodeNotationModeTests {
+    private func environment(postal: Bool = false, unicode: Bool = true) -> EnglishShortcodeEnvironment {
+        var settings = Settings.default
+        settings.postalEnglish = postal
+        settings.unicodeNotation = unicode
+        return EnglishShortcodeEnvironment(settings: settings, clientBundleID: "com.apple.TextEdit", secure: false, isRepeat: false)
+    }
+
+    private func type(_ text: String, into mode: inout EnglishMode, environment: EnglishShortcodeEnvironment) -> EnglishTextOutcome? {
+        var last: EnglishTextOutcome?
+        for key in chars(text) { last = mode.handleText(key, environment: environment) }
+        return last
+    }
+
+    @Test func settingDefaultsToOff() {
+        #expect(Settings.default.unicodeNotation == false)
+        var mode = EnglishMode()
+        let outcome = type("u+3042", into: &mode, environment: environment(unicode: false))
+        #expect(outcome?.passKey == true)
+        #expect(!mode.isPostalActive)
+    }
+
+    @Test func opensWhenOnAndNeedsNoPostalSetting() {
+        var mode = EnglishMode()
+        let outcome = type("u+3042", into: &mode, environment: environment())
+        #expect(outcome?.passKey == false)
+        #expect(outcome?.lookup == nil)
+        #expect(mode.isPostalActive)
+    }
+
+    @Test func postalStaysOffWhenOnlyUnicodeIsOn() {
+        var mode = EnglishMode()
+        let outcome = type("te1000001", into: &mode, environment: environment())
+        #expect(outcome?.passKey == true)
+        #expect(!mode.isPostalActive)
+    }
+
+    @Test func turningTheSettingOffWhileTypingCommitsAndPassesTheKey() {
+        var mode = EnglishMode()
+        _ = type("u+30", into: &mode, environment: environment())
+        let outcome = mode.handleText(ch("4"), environment: environment(unicode: false))
+        #expect(outcome.passKey)
+        #expect(!mode.isPostalActive)
+    }
+}
