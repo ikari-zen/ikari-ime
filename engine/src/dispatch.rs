@@ -48,6 +48,7 @@ pub(crate) fn request_kind(body: &envelope::Body) -> &'static str {
         envelope::Body::GetProfile(_) => "get_profile",
         envelope::Body::SetProfile(_) => "set_profile",
         envelope::Body::EmojiTable(_) => "emoji_table",
+        envelope::Body::PostalLookup(_) => "postal_lookup",
         envelope::Body::Diag(_) => diag::KIND_DIAG,
         _ => "other",
     }
@@ -252,6 +253,10 @@ impl Inner {
             | envelope::Body::SetProfile(_) => self.admin(body),
             // 絵文字のショートコードの表（ADR 0027 §9.2）
             envelope::Body::EmojiTable(r) => Ok(self.emoji_table(r)),
+            // 英語のモードの郵便番号（ADR 0032 §9.1）。契約コミットでは空の返事（レーン E が表を引く）
+            envelope::Body::PostalLookup(_) => Ok(envelope::Body::PostalLookupReply(
+                pb::PostalLookupReply::default(),
+            )),
             // 診断ログ（ADR 0034 §2.2。`diag.rs`）。返事は常に Ack
             envelope::Body::Diag(d) => Ok(self.diag(&d)),
             // 返事の種類や Error を要求として受けたとき

@@ -33,6 +33,9 @@ message Envelope {
     // ---- 診断ログ（ADR 0034 §2.2。追加だけなので schema_version は 1 のまま）----
     DiagEvent diag = 33;                   // 殻 → エンジン。返事は Ack（殻は待たない）。secure のセッションでは送らない
 
+    // ---- 英語のモードの郵便番号（ADR 0032 §9.1。追加だけなので schema_version は 1 のまま）----
+    PostalLookupRequest postal_lookup = 34;  PostalLookupReply postal_lookup_reply = 35;
+
     // ---- 管理（ADR 0005 §8）。殻（メニュー）と、殻が中継する設定アプリだけが送る ----
     UserDictList list_user_dict = 40;      UserDictListReply user_dict_list_reply = 41;
     UserDictAdd add_user_dict = 42;        // 返事は UserDictListReply（変更後の一覧）
@@ -69,6 +72,11 @@ message Commit { uint64 conversion_id = 1; uint32 candidate_index = 2; }   // �
 message CommitText { uint64 session_id = 1; string reading = 2; string surface = 3; }
 message Cancel { uint64 conversion_id = 1; }
 message Ack {}
+// 英語のモードで `te` + 数字 7 桁がそろったときに、殻が非同期で 1 回だけ問い合わせる（ADR 0032 §9.1）。
+// code は ASCII 数字 7 桁（それ以外は BAD_REQUEST）。表にない番号は addresses が空（エラーにしない）。
+// secure のセッションでは送らない。ログには code を書かない（住所の手がかりになる。NFR-19）。
+message PostalLookupRequest { string code = 1; }
+message PostalLookupReply { repeated string addresses = 1; }   // 町ごとの住所（都道府県から）。表の順
 message Shutdown { ShutdownReason reason = 1; }   // reason を省略（UNSPECIFIED）したときの挙動は、今までの Shutdown と同じ
 enum ShutdownReason { SHUTDOWN_REASON_UNSPECIFIED = 0; VERSION_MISMATCH = 1; SETTINGS_CHANGED = 2; }
 message ErrorReply { ErrorCode code = 1; string message = 2; }   // message にユーザーの文字列を入れない

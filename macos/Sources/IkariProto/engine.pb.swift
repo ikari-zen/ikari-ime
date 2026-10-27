@@ -577,6 +577,23 @@ public nonisolated struct Ikari_Engine_V1_Envelope: Sendable {
     set {body = .diag(newValue)}
   }
 
+  /// ---- 英語のモードの郵便番号（ADR 0032 §9.1。追加だけなので schema_version は 1 のまま）----
+  public var postalLookup: Ikari_Engine_V1_PostalLookupRequest {
+    get {
+      if case .postalLookup(let v)? = body {return v}
+      return Ikari_Engine_V1_PostalLookupRequest()
+    }
+    set {body = .postalLookup(newValue)}
+  }
+
+  public var postalLookupReply: Ikari_Engine_V1_PostalLookupReply {
+    get {
+      if case .postalLookupReply(let v)? = body {return v}
+      return Ikari_Engine_V1_PostalLookupReply()
+    }
+    set {body = .postalLookupReply(newValue)}
+  }
+
   /// ---- 管理（ADR 0005 §8）。殻（メニュー）と、殻が中継する設定アプリだけが送る ----
   public var listUserDict: Ikari_Engine_V1_UserDictList {
     get {
@@ -731,6 +748,9 @@ public nonisolated struct Ikari_Engine_V1_Envelope: Sendable {
     case emojiTableReply(Ikari_Engine_V1_EmojiTableReply)
     /// ---- 診断ログ（ADR 0034 §2.2。追加だけなので schema_version は 1 のまま）----
     case diag(Ikari_Engine_V1_DiagEvent)
+    /// ---- 英語のモードの郵便番号（ADR 0032 §9.1。追加だけなので schema_version は 1 のまま）----
+    case postalLookup(Ikari_Engine_V1_PostalLookupRequest)
+    case postalLookupReply(Ikari_Engine_V1_PostalLookupReply)
     /// ---- 管理（ADR 0005 §8）。殻（メニュー）と、殻が中継する設定アプリだけが送る ----
     case listUserDict(Ikari_Engine_V1_UserDictList)
     case userDictListReply(Ikari_Engine_V1_UserDictListReply)
@@ -1032,6 +1052,33 @@ public nonisolated struct Ikari_Engine_V1_Ack: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// 英語のモードで `te` + 数字 7 桁がそろったときに、殻が非同期で 1 回だけ問い合わせる（ADR 0032 §9.1）。
+/// code は ASCII 数字 7 桁（それ以外は BAD_REQUEST）。表にない番号は addresses が空（エラーにしない）。
+/// secure のセッションでは送らない。ログには code を書かない（住所の手がかりになる。NFR-19）。
+public nonisolated struct Ikari_Engine_V1_PostalLookupRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var code: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Ikari_Engine_V1_PostalLookupReply: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var addresses: [String] = []
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -1669,7 +1716,7 @@ nonisolated extension Ikari_Engine_V1_ProfileWeightKind: SwiftProtobuf._ProtoNam
 
 nonisolated extension Ikari_Engine_V1_Envelope: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Envelope"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}schema_version\0\u{3}request_id\0\u{2}\u{8}hello\0\u{3}hello_reply\0\u{3}begin_session\0\u{1}ack\0\u{3}end_session\0\u{1}prefetch\0\u{1}convert\0\u{3}convert_reply\0\u{1}page\0\u{3}page_reply\0\u{1}commit\0\u{3}commit_text\0\u{1}cancel\0\u{1}shutdown\0\u{3}segment_page\0\u{3}segment_page_reply\0\u{3}resize_segment\0\u{3}segment_layout\0\u{3}commit_segments\0\u{1}reconvert\0\u{1}error\0\u{3}emoji_table\0\u{3}emoji_table_reply\0\u{1}diag\0\u{4}\u{7}list_user_dict\0\u{3}user_dict_list_reply\0\u{3}add_user_dict\0\u{3}remove_user_dict\0\u{3}learning_status\0\u{3}learning_status_reply\0\u{3}reset_learning\0\u{3}export_data\0\u{3}export_reply\0\u{3}import_data\0\u{3}import_reply\0\u{3}get_profile\0\u{3}profile_reply\0\u{3}set_profile\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}schema_version\0\u{3}request_id\0\u{2}\u{8}hello\0\u{3}hello_reply\0\u{3}begin_session\0\u{1}ack\0\u{3}end_session\0\u{1}prefetch\0\u{1}convert\0\u{3}convert_reply\0\u{1}page\0\u{3}page_reply\0\u{1}commit\0\u{3}commit_text\0\u{1}cancel\0\u{1}shutdown\0\u{3}segment_page\0\u{3}segment_page_reply\0\u{3}resize_segment\0\u{3}segment_layout\0\u{3}commit_segments\0\u{1}reconvert\0\u{1}error\0\u{3}emoji_table\0\u{3}emoji_table_reply\0\u{1}diag\0\u{3}postal_lookup\0\u{3}postal_lookup_reply\0\u{4}\u{5}list_user_dict\0\u{3}user_dict_list_reply\0\u{3}add_user_dict\0\u{3}remove_user_dict\0\u{3}learning_status\0\u{3}learning_status_reply\0\u{3}reset_learning\0\u{3}export_data\0\u{3}export_reply\0\u{3}import_data\0\u{3}import_reply\0\u{3}get_profile\0\u{3}profile_reply\0\u{3}set_profile\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1991,6 +2038,32 @@ nonisolated extension Ikari_Engine_V1_Envelope: SwiftProtobuf.Message, SwiftProt
           self.body = .diag(v)
         }
       }()
+      case 34: try {
+        var v: Ikari_Engine_V1_PostalLookupRequest?
+        var hadOneofValue = false
+        if let current = self.body {
+          hadOneofValue = true
+          if case .postalLookup(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.body = .postalLookup(v)
+        }
+      }()
+      case 35: try {
+        var v: Ikari_Engine_V1_PostalLookupReply?
+        var hadOneofValue = false
+        if let current = self.body {
+          hadOneofValue = true
+          if case .postalLookupReply(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.body = .postalLookupReply(v)
+        }
+      }()
       case 40: try {
         var v: Ikari_Engine_V1_UserDictList?
         var hadOneofValue = false
@@ -2285,6 +2358,14 @@ nonisolated extension Ikari_Engine_V1_Envelope: SwiftProtobuf.Message, SwiftProt
     case .diag?: try {
       guard case .diag(let v)? = self.body else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 33)
+    }()
+    case .postalLookup?: try {
+      guard case .postalLookup(let v)? = self.body else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 34)
+    }()
+    case .postalLookupReply?: try {
+      guard case .postalLookupReply(let v)? = self.body else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 35)
     }()
     case .listUserDict?: try {
       guard case .listUserDict(let v)? = self.body else { preconditionFailure() }
@@ -2990,6 +3071,66 @@ nonisolated extension Ikari_Engine_V1_Ack: SwiftProtobuf.Message, SwiftProtobuf.
   }
 
   public static func ==(lhs: Ikari_Engine_V1_Ack, rhs: Ikari_Engine_V1_Ack) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Ikari_Engine_V1_PostalLookupRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".PostalLookupRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}code\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.code) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.code.isEmpty {
+      try visitor.visitSingularStringField(value: self.code, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Ikari_Engine_V1_PostalLookupRequest, rhs: Ikari_Engine_V1_PostalLookupRequest) -> Bool {
+    if lhs.code != rhs.code {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Ikari_Engine_V1_PostalLookupReply: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".PostalLookupReply"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}addresses\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedStringField(value: &self.addresses) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.addresses.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.addresses, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Ikari_Engine_V1_PostalLookupReply, rhs: Ikari_Engine_V1_PostalLookupReply) -> Bool {
+    if lhs.addresses != rhs.addresses {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

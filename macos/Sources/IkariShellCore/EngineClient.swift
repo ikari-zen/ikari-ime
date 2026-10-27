@@ -276,10 +276,14 @@ public protocol EngineClient: Sendable {
     /// 診断ログの事象（ADR 0034 §2.2）。返事を待たない。secure のセッションでは呼ばない。
     /// 契約（D2）: 既定の実装は何もしない。`XPCEngineClient` で送るのは D4
     func diag(_ event: DiagEventValue)
+    /// 英語のモードの郵便番号（ADR 0032 §9.1）。`code` は ASCII 数字 7 桁。主スレッドの外で（非同期に）1 回だけ頼む。
+    /// 表にない番号は空の配列。契約: 既定の実装は空を返す。`XPCEngineClient` の実装はレーン E
+    func postalLookup(code: String, timeout: Duration) throws -> [String]
 }
 
 extension EngineClient {
     public func diag(_ event: DiagEventValue) {}
+    public func postalLookup(code: String, timeout: Duration) throws -> [String] { [] }
     public func emojiTable(timeout: Duration) throws -> EmojiTableInfo { .empty }
 }
 
