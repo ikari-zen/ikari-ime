@@ -32,7 +32,7 @@ public struct Settings: Sendable, Equatable {
     public var emojiSmallLetters: Bool
     /// `postal.japanese`。住所 ↔ 郵便番号の変換（日本語。エンジンが読む。ADR 0032）
     public var postalJapanese: Bool
-    /// `postal.english`。英語のモードで郵便番号の候補（殻が使う。ADR 0032 §9。実装は英語のモードの段階 3）
+    /// `postal.english`。英語のモードで郵便番号の候補（語頭の `te` + 数字 7 桁。殻が使う。ADR 0032 §9.1。`EnglishPostal.swift`）
     public var postalEnglish: Bool
     /// `postal.te_prefix`。「て」+ 郵便番号で〒つきの候補（日本語・英語の両方。エンジンが読む。ADR 0032 §8）
     public var postalTePrefix: Bool
