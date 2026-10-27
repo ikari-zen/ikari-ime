@@ -1,5 +1,6 @@
-// スパイク（捨てるコード。issue #27、#28。ADR 0032 §9）。英語のモードで、語頭の数字（郵便番号 7 桁）、`te` + 数字、
-// `u` + 16 進をためて、Tab / ↓ で候補ウィンドウを出せるかを実機で確かめる。検証用のフラグ（既定オフ）の裏でだけ働く。
+// スパイク（捨てるコード。issue #27、#28。ADR 0032 §9）。英語のモードで、語頭の `te` + 数字 7 桁、`u` + 16 進 4〜6 桁を
+// ためて、最後の桁を打った瞬間に候補ウィンドウを自動で出せるかを実機で確かめる（2026-10-28 のユーザー方針: 下線なし、
+// ↑/↓ だけで選ぶ、Space・Tab では選ばない、数字だけの 7 桁は対象外）。検証用のフラグ（既定オフ）の裏でだけ働く。
 // 住所の引き当ては固定のダミー表（公開の地名だけ）。本番の `PostalMachine` ではない。マージしない。
 // ログに出すのは状態の名前、キーの種類、長さ、時間だけ。文字は出さない（NFR-19）。
 import Foundation
@@ -63,7 +64,7 @@ public struct SpikeStep: Sendable, Equatable {
 }
 
 public struct SpikePostalMachine: Sendable, Equatable {
-    enum Kind: String, Sendable { case digits, te, unicode }
+    enum Kind: String, Sendable { case te, unicode }
 
     struct Choosing: Sendable, Equatable {
         var kind: Kind
@@ -131,9 +132,7 @@ public struct SpikePostalMachine: Sendable, Equatable {
             case .character(let text) = input.key, text.count == 1, let c = text.first
         else { return nil }
         let kind: Kind
-        if c.isASCII, c.isNumber {
-            kind = .digits
-        } else if text == "t" {
+        if text == "t" {
             kind = .te
         } else if text == "u" {
             kind = .unicode
@@ -152,8 +151,7 @@ public struct SpikePostalMachine: Sendable, Equatable {
             case .character(let text) where text.count == 1 && text != Self.tab && text != Self.backTab:
                 if let next = Self.append(text, to: buffer, kind: kind) {
                     keysIn += 1
-                    phase = .typing(kind, next)
-                    return typingStep(kind, next, result: "typing", from: "typing")
+                    return settle(kind, next, from: "typing")
                 }
             case .backspace:
                 keysIn += 1
@@ -162,13 +160,11 @@ public struct SpikePostalMachine: Sendable, Equatable {
                 if shorter.isEmpty {
                     phase = .inactive
                     return SpikeStep(
-                        actions: [Self.mark("")], passKey: false,
+                        actions: [Self.mark("", underlined: false)], passKey: false,
                         trace: trace(to: "inactive", result: "cancel", kind: kind, length: 0, marked: 0))
                 }
                 phase = .typing(kind, shorter)
                 return typingStep(kind, shorter, result: "typing", from: "typing")
-            case .down, .character(Self.tab):
-                if let opened = open(kind, buffer) { return opened }
             default:
                 break
             }
@@ -181,23 +177,30 @@ public struct SpikePostalMachine: Sendable, Equatable {
         guard plain else { return retype(kind: choosing.kind, buffer: choosing.buffer, hide: true) }
         keysIn += 1
         switch input.key {
-        case .down, .character(Self.tab):
-            let back = input.modifiers.contains(.shift) && input.key != .down
-            return move(choosing, by: back ? -1 : 1)
-        case .up, .character(Self.backTab):
+        case .down:
+            return move(choosing, by: 1)
+        case .up:
             return move(choosing, by: -1)
         case .enter:
             return commit(choosing, index: choosing.selected)
-        case .character(let text) where text.count == 1 && "123456789".contains(text):
-            let page = choosing.selected / Self.pageSize
-            let index = page * Self.pageSize + (Int(text) ?? 1) - 1
-            if choosing.rows.indices.contains(index) { return commit(choosing, index: index) }
-            return retype(kind: choosing.kind, buffer: choosing.buffer, hide: true)
-        case .escape, .backspace:
-            phase = .typing(choosing.kind, choosing.buffer)
-            var step = typingStep(choosing.kind, choosing.buffer, result: "typing", from: "choosing")
-            step.actions.append(.hideCandidates)
+        case .escape:
+            var step = retype(kind: choosing.kind, buffer: choosing.buffer, hide: true)
+            step.passKey = false
+            step.trace.result = "dismiss"
             return step
+        case .backspace:
+            var shorter = choosing.buffer
+            shorter.removeLast()
+            var step = settle(choosing.kind, shorter, from: "choosing")
+            if case .typing = phase { step.actions.append(.hideCandidates) }
+            return step
+        case .character(let text) where text.count == 1 && text != Self.tab && text != Self.backTab:
+            if let next = Self.append(text, to: choosing.buffer, kind: choosing.kind),
+                Self.baseRows(choosing.kind, next) != nil
+            {
+                return settle(choosing.kind, next, from: "choosing")
+            }
+            return retype(kind: choosing.kind, buffer: choosing.buffer, hide: true)
         default:
             return retype(kind: choosing.kind, buffer: choosing.buffer, hide: true)
         }
@@ -205,14 +208,20 @@ public struct SpikePostalMachine: Sendable, Equatable {
 
     // MARK: 遷移の部品
 
+    /// 形がそろったら候補を出し、そろっていなければ「ためている状態」にする
+    private mutating func settle(_ kind: Kind, _ buffer: String, from: String) -> SpikeStep {
+        if let opened = open(kind, buffer) { return opened }
+        phase = .typing(kind, buffer)
+        return typingStep(kind, buffer, result: "typing", from: from)
+    }
+
     private mutating func open(_ kind: Kind, _ buffer: String) -> SpikeStep? {
         guard let rows = Self.baseRows(kind, buffer) else { return nil }
         let code = Self.postalCode(kind, buffer)
         let choosing = Choosing(kind: kind, buffer: buffer, rows: rows, selected: 0, lookupCode: code)
-        keysIn += 1
         phase = .choosing(choosing)
         var step = SpikeStep(
-            actions: [Self.mark(rows[0]), .showCandidates(Self.model(choosing))], passKey: false,
+            actions: [Self.mark(rows[0], underlined: false), .showCandidates(Self.model(choosing))], passKey: false,
             trace: trace(to: "choosing", result: "choices", kind: kind, length: buffer.count, marked: rows[0].utf16.count))
         step.lookup = code
         return step
@@ -226,7 +235,7 @@ public struct SpikePostalMachine: Sendable, Equatable {
         let samePage = next.selected / Self.pageSize == choosing.selected / Self.pageSize
         let model = Self.model(next)
         return SpikeStep(
-            actions: [Self.mark(next.rows[next.selected]), samePage ? .moveSelection(model) : .showCandidates(model)],
+            actions: [Self.mark(next.rows[next.selected], underlined: false), samePage ? .moveSelection(model) : .showCandidates(model)],
             passKey: false,
             trace: trace(
                 to: "choosing", result: "move", kind: next.kind, length: next.buffer.count,
@@ -313,8 +322,6 @@ public struct SpikePostalMachine: Sendable, Equatable {
     static func append(_ text: String, to buffer: String, kind: Kind) -> String? {
         guard let c = text.first else { return nil }
         switch kind {
-        case .digits:
-            return c.isASCII && c.isNumber && buffer.count < postalLength ? buffer + text : nil
         case .te:
             if buffer == "t" { return text == "e" ? "te" : nil }
             return c.isASCII && c.isNumber && buffer.count - 2 < postalLength ? buffer + text : nil
@@ -325,11 +332,9 @@ public struct SpikePostalMachine: Sendable, Equatable {
         }
     }
 
-    /// Tab / ↓ で開ける形か。開けるなら、問い合わせ前の候補（0 番は「そのままの入力」）
+    /// 最後の桁がそろった形か（te は 7 桁、u は 4 桁以上）。そろっているなら、問い合わせ前の候補（0 番は「そのままの入力」）
     static func baseRows(_ kind: Kind, _ buffer: String) -> [String]? {
         switch kind {
-        case .digits:
-            return buffer.count == postalLength ? [buffer] : nil
         case .te:
             let code = String(buffer.dropFirst(2))
             guard code.count == postalLength else { return nil }
@@ -346,7 +351,6 @@ public struct SpikePostalMachine: Sendable, Equatable {
 
     static func postalCode(_ kind: Kind, _ buffer: String) -> String? {
         switch kind {
-        case .digits: buffer.count == postalLength ? buffer : nil
         case .te: String(buffer.dropFirst(2))
         case .unicode: nil
         }
@@ -386,7 +390,7 @@ public struct SpikePostalMachine: Sendable, Equatable {
         }
     }
 
-    private static func mark(_ text: String, underlined: Bool = true) -> KeyAction {
+    private static func mark(_ text: String, underlined: Bool) -> KeyAction {
         .setMarkedText(MarkedText(text: text, highlightedLength: text.utf16.count, underlined: underlined))
     }
 }
