@@ -392,6 +392,9 @@ public struct SpikePostalMachine: Sendable, Equatable {
 }
 
 extension EnglishMode {
+    /// 検証用: ためている状態か
+    public var isSpikePostalActive: Bool { spikePostal.isActive }
+
     /// 検証用: 打鍵を処理する。関係なければ nil（ショートコードの口に流す）
     mutating func handleSpikePostal(_ input: KeyInput, environment: EnglishShortcodeEnvironment, now: UInt64) -> EnglishTextOutcome? {
         guard environment.spikePostal, !shortcode.isActive else { return nil }

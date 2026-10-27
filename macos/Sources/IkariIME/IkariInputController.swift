@@ -374,6 +374,11 @@ final class IkariInputController: IMKInputController {
         // 診断ログ（合成の最初の 1 回だけ覚える）
         machine?.notePanelShown(source: anchor.source)
         english.notePanelShown(source: anchor.source)
+        if english.isSpikePostalActive, !IsSecureEventInputEnabled() {
+            // スパイク（#27）。位置の取り方だけ（座標は書かない）
+            AppContext.log.info(
+                "spike-postal app=\(self.clientBundleID, privacy: .public) ev=panel anchor=\(String(describing: anchor.source), privacy: .public)")
+        }
         let visibleFrame = Self.screen(containing: anchor.rect).visibleFrame
         let level = access.windowLevel
         let side = MainActor.assumeIsolated {
