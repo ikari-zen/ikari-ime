@@ -12,6 +12,8 @@ enum SettingKey {
     static let pagingSize = "paging.size"
     static let engineLM = "engine.lm"
     static let engineIdleUnloadSecs = "engine.idle_unload_secs"
+    static let engineLMDeadlineMs = "engine.lm_deadline_ms"
+    static let engineConvertWaitMs = "engine.convert_wait_ms"
     static let contextSharedExclude = Settings.contextSharedExcludeKey
     static let emojiShortcode = Settings.emojiShortcodeKey
     static let emojiShortcodeExclude = Settings.emojiShortcodeExcludeKey
@@ -47,6 +49,12 @@ struct SettingsValues: Equatable, Sendable {
     static let defaultIdleUnloadSecs = 300
     /// 画面で選べる秒数の上限（1 日）。`0` は解放しない
     static let idleUnloadRange = 0...86_400
+    /// `engine.lm_deadline_ms` の既定と範囲（暫定。エンジンも同じ範囲に丸める）
+    static let defaultLMDeadlineMs = Settings.defaultEngineLMDeadlineMs
+    static let lmDeadlineRange = 50...2000
+    /// `engine.convert_wait_ms` の既定と範囲（暫定。0 = 待たない）
+    static let defaultConvertWaitMs = Settings.defaultEngineConvertWaitMs
+    static let convertWaitRange = 0...200
 
     var inputMethod: InputMethodKind = Settings.default.inputMethod
     var keymapPreset: KeymapPreset = Settings.default.keymapPreset
@@ -55,6 +63,8 @@ struct SettingsValues: Equatable, Sendable {
     var pageSize: Int = Settings.default.pageSize
     var lmEnabled = true
     var idleUnloadSecs = SettingsValues.defaultIdleUnloadSecs
+    var lmDeadlineMs = SettingsValues.defaultLMDeadlineMs
+    var convertWaitMs = SettingsValues.defaultConvertWaitMs
     /// `context.shared_exclude`。ほかのアプリと文脈を貸し借りしないアプリの Bundle ID
     var contextSharedExclude = Settings.defaultContextSharedExclude
     /// `emoji.shortcode`。絵文字のショートコード（`:eyes:`）のオン・オフ
@@ -111,6 +121,12 @@ struct SettingsValues: Equatable, Sendable {
             Self.idleUnloadRange.contains(secs)
         {
             idleUnloadSecs = secs
+        }
+        if let text = snapshot[SettingKey.engineLMDeadlineMs], let ms = Int(text), Self.lmDeadlineRange.contains(ms) {
+            lmDeadlineMs = ms
+        }
+        if let text = snapshot[SettingKey.engineConvertWaitMs], let ms = Int(text), Self.convertWaitRange.contains(ms) {
+            convertWaitMs = ms
         }
         if let text = snapshot[SettingKey.contextSharedExclude], let list = Settings.parseBundleIDList(text) {
             contextSharedExclude = list

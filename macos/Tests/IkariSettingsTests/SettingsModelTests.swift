@@ -91,6 +91,26 @@ func makeSettingsModel(_ harness: Harness) async -> SettingsModel {
         #expect(harness.shell.state.snapshot.requestLog.contains("engine-restart"))
     }
 
+    @Test func lmTimeoutsAreWrittenAndClamped() async throws {
+        let harness = try await Harness.make()
+        defer { harness.close() }
+        let model = await makeSettingsModel(harness)
+        #expect(model.values.lmDeadlineMs == 300)
+        #expect(model.values.convertWaitMs == 30)
+        await model.setLMDeadlineMs(800)
+        await model.setConvertWaitMs(0)
+        #expect(model.values.lmDeadlineMs == 800)
+        #expect(model.values.convertWaitMs == 0)
+        await model.setLMDeadlineMs(1)
+        #expect(model.values.lmDeadlineMs == SettingsValues.lmDeadlineRange.lowerBound)
+        await model.setLMDeadlineMs(1_000_000)
+        #expect(model.values.lmDeadlineMs == SettingsValues.lmDeadlineRange.upperBound)
+        await model.setConvertWaitMs(-5)
+        #expect(model.values.convertWaitMs == 0)
+        await model.setConvertWaitMs(1_000)
+        #expect(model.values.convertWaitMs == SettingsValues.convertWaitRange.upperBound)
+    }
+
     @Test func pageSizeAndIdleSecondsAreClamped() async throws {
         let harness = try await Harness.make()
         defer { harness.close() }

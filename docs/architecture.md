@@ -90,7 +90,7 @@ IkariEngine.xpc（同梱の XPC サービス。App Sandbox、ネットワーク�
 - `convert` の注記: `segments=N`、`cache=hit|wait_hit|wait_miss|miss`、`lm_applied=1|0`（返事の `lm_applied`。3 つ目の項目の `lm=<状態>` とは別のキー）、外れ（`cache=miss`）なら `miss=reading|context|none`（同じセッションのキャッシュに、読みだけが違うもの／文脈の番号だけが違うものがある／近いものがない）。秘密の入力は `cache=miss miss=none`。続けて `gap=<1 位と 2 位のスコアの差>`（候補が 1 件以下なら `na`）と `confident=1|0`（#69）。
 - `prefetch_done` の注記: `lm_applied=1|0`（LM が間に合って使われたか）、`lm_calls=N`（その先行計算での LM 呼び出し回数。2 文節以上は 2）。
 - 先行計算の左文脈: 合成の最初の `contextRefreshKeystrokes` 打鍵は左文脈を読み直す（#1。変換中に次の文字を打つと、1 打鍵目の文脈は直前の確定がアプリに入る前に読まれるため）。文脈の番号（`contextRev`）が進んだら、その文脈で先行計算を送り直す。それより後の打鍵は読み直さず、Space で読み直す。
-- Space（`Convert`）で先行計算が計算中なら、**Space から最大 30ms**（`convert.rs` の `CONVERT_WAIT_MAX`。NFR-04）待つ。間に合わなければ LM なしでその場で変換する。以前の「Prefetch の受付＋`lm_budget`」は廃止。再変換・区切り直しは待たない（変更なし）。
+- Space（`Convert`）で先行計算が計算中なら、**Space から最大 30ms**（既定。`settings.tsv` の `engine.convert_wait_ms`、0〜200。`Engine::open` のときだけ読む。NFR-04）待つ。先行計算が LM を待てる締め切り（`LmBudget.max`）も既定 300ms で、`engine.lm_deadline_ms`（50〜2000）で変えられる。範囲は暫定。間に合わなければ LM なしでその場で変換する。以前の「Prefetch の受付＋`lm_budget`」は廃止。再変換・区切り直しは待たない（変更なし）。
 
 ## 4. スクリプト
 

@@ -265,6 +265,22 @@ struct ConversionTab: View {
                 }
                 .pickerStyle(.menu)
                 .disabled(!model.values.lmEnabled)
+                Stepper(
+                    "LM の先行計算の締め切り: \(model.values.lmDeadlineMs) ミリ秒",
+                    value: .asyncSetter(get: { model.values.lmDeadlineMs }, set: model.setLMDeadlineMs),
+                    in: SettingsValues.lmDeadlineRange, step: 50
+                )
+                .disabled(!model.values.lmEnabled)
+                Stepper(
+                    "Space で先行計算を待つ上限: \(model.values.convertWaitMs) ミリ秒",
+                    value: .asyncSetter(get: { model.values.convertWaitMs }, set: model.setConvertWaitMs),
+                    in: SettingsValues.convertWaitRange, step: 10
+                )
+                .disabled(!model.values.lmEnabled)
+                Text(
+                    "どちらも変えるとエンジンを起こし直します（既定は \(SettingsValues.defaultLMDeadlineMs) ミリ秒と \(SettingsValues.defaultConvertWaitMs) ミリ秒）。締め切りは \(SettingsValues.lmDeadlineRange.lowerBound)〜\(SettingsValues.lmDeadlineRange.upperBound)、待つ上限は \(SettingsValues.convertWaitRange.lowerBound)〜\(SettingsValues.convertWaitRange.upperBound)（0 は待たない）。"
+                )
+                .font(.caption).foregroundStyle(.secondary)
             }
             SharedExcludeSection(model: model)
             EmojiShortcodeSection(model: model)
