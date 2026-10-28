@@ -12,8 +12,9 @@ const DEFAULT_POOL_SIZE: usize = 30;
 const DEFAULT_MAX_ASTAR_POPS: usize = 20_000;
 /// Rewriter の候補を入れる位置の既定（辞書の候補を昇順に並べたときの番号。1 = 辞書の1位の直後）
 const DEFAULT_REWRITER_ANCHOR: usize = 1;
-/// 日付の Rewriter の候補を入れる位置の既定（`DEFAULT_REWRITER_ANCHOR` と同じ。#80）
-const DEFAULT_DATE_ANCHOR: usize = 1;
+/// 日付の Rewriter の候補を入れる位置の既定（辞書の候補を昇順に並べたときの番号。3 = 辞書の 3 位の直後。#80）。
+/// ユーザー決定（2026-10-28）: 最初の Space で見える 3 件が辞書の語だけになるように 3。掃引は PR #80 の説明にある
+const DEFAULT_DATE_ANCHOR: usize = 3;
 /// 日付の位置を `--ranker-config` で指す接頭辞とキー（`rewriter.date_anchor`）
 const DATE_ANCHOR_PREFIX: &str = "rewriter";
 const DATE_ANCHOR_KEYS: [&str; 1] = ["date_anchor"];
@@ -427,7 +428,7 @@ pub struct ConvertOptions {
     /// Rewriter の候補の base_cost = 辞書候補の base_cost を昇順に並べた `rewriter_anchor` 番目 + 1。既定 1
     pub rewriter_anchor: usize,
     /// 日付の Rewriter（`RewritePosition::AfterWords`）の候補の base_cost = 辞書候補の base_cost を昇順に並べた
-    /// `date_anchor` 番目 + 1。既定 1（`rewriter_anchor` と同じ。#80）。`--ranker-config` の `rewriter.date_anchor`
+    /// `date_anchor` 番目 + 1。既定 3（#80）。`--ranker-config` の `rewriter.date_anchor`
     pub date_anchor: usize,
     /// 変換1回あたりの LM の待ち時間の規則（`convert` と `page` が締め切りを作るのに使う）
     pub lm_budget: LmBudget,

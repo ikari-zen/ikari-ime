@@ -948,7 +948,7 @@ fn date_anchor_is_read_from_ranker_config() {
         std::collections::BTreeMap::from([("rewriter.date_anchor".to_owned(), v.to_owned())])
     };
     let opts = ConvertOptions::default();
-    assert_eq!(opts.date_anchor, 1);
+    assert_eq!(opts.date_anchor, 3);
     let four = opts.clone().with_date_anchor_kv(&kv("4")).unwrap();
     assert_eq!(four.date_anchor, 4);
     assert!(opts.clone().with_date_anchor_kv(&kv("x")).is_err());
