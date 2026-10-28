@@ -55,18 +55,12 @@ struct ClientAccess {
 
     // MARK: キャレットの矩形
 
-    /// アンカーにする矩形（スクリーン座標）。`characterOffset` は変換文字列の中の相対位置（UTF-16。フォーカスしている文節の先頭。
-    /// `anchorOffset(of:)`）。IMK の標準の `attributes(forCharacterIndex:lineHeightRectangle:)` に相対位置をそのまま渡す
+    /// アンカーにする矩形（スクリーン座標）。変換文字列の先頭の文字の矩形で、文節の移動では動かさない。
+    /// IMK の標準の `attributes(forCharacterIndex:lineHeightRectangle:)` に相対位置 0 を渡す
     /// （S0-3: VS Code では絶対位置ではなく相対位置で、その文字の矩形が取れる。`firstRect` は使えない）。
-    /// 文節の先頭が取れなければ、変換文字列の先頭にする（今のフォールバック。先頭は取れなければ `firstRect` を試す。
-    /// 長さ0の範囲に答えないクライアントがあるので、1文字ぶんでも試す）
-    func caretRect(characterOffset: Int = 0) -> CGRect? {
+    /// 取れなければ `firstRect` を試す。長さ0の範囲に答えないクライアントがあるので、1文字ぶんでも試す
+    func caretRect() -> CGRect? {
         var lineRect = NSRect.zero
-        if characterOffset > 0 {
-            _ = client.attributes(forCharacterIndex: characterOffset, lineHeightRectangle: &lineRect)
-            if isUsableAnchor(lineRect) { return lineRect }
-            lineRect = .zero
-        }
         _ = client.attributes(forCharacterIndex: 0, lineHeightRectangle: &lineRect)
         if isUsableAnchor(lineRect) { return lineRect }
 
