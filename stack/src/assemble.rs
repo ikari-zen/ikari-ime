@@ -82,8 +82,13 @@ pub(super) fn assemble_with(
     let eval = opts.mode == AssemblyMode::Eval;
     let cost = set == RankerSet::Cost;
     let full = set == RankerSet::Full;
+    // 日付の候補の位置は `rewriter.date_anchor` で上書きできる（#80）
+    let mut convert = opts
+        .convert
+        .clone()
+        .with_date_anchor_kv(&opts.ranker_config)
+        .map_err(|e| config_err("rewriter", e))?;
     // 変換のラティスの辺の補正は `--ranker-config` の `lattice.adverb_noun.*` で上書きできる（ADR 0008 §3.2）
-    let mut convert = opts.convert.clone();
     convert.adverb_noun = convert
         .adverb_noun
         .with_kv(&opts.ranker_config)

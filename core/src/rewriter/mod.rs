@@ -51,6 +51,15 @@ impl RewriteCandidate {
         }
     }
 
+    /// 位置は `AfterWords`（辞書の候補の `date_anchor` 番目の直後）。日付の Rewriter が使う（#80）。
+    pub fn after_words(surface: String, format: u16) -> Self {
+        Self {
+            surface,
+            format,
+            position: RewritePosition::AfterWords,
+        }
+    }
+
     /// 先頭（1 位）に置く候補。
     pub fn at_front(surface: String, format: u16) -> Self {
         Self {
@@ -72,6 +81,8 @@ pub enum RewritePosition {
     Anchor,
     /// 辞書の候補より前（1 位）
     Front,
+    /// 辞書の候補（最初のプール）の `date_anchor` 番目の直後。`Anchor` とは別の設定で動かす（#80。日付用）
+    AfterWords,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

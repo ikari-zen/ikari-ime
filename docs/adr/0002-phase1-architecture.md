@@ -351,6 +351,7 @@ pub struct ConvertOptions { /* 既存 */ pub rewriter_anchor: usize /* 既定 1 
 3. `lattice::build(key, dict, grammar, analysis.bos_right_id)`。ノードのコストは `cost.saturating_add(penalty)` にし、`penalty == IME_EXCLUDED` のエントリはノードにしない。
 4. 辞書の候補でプールを作る（既存の処理）。
 5. **Rewriter**: 各 Rewriter の候補を集め、表記が既に出ているものは捨てる。`base_cost = (プール内の辞書候補の base_cost を昇順に並べたときの rewriter_anchor 番目) + 1` で、`origin = Rewriter { name, format }`、セグメントは未知語のIDで1つとして、プールに加える（spec「辞書の上位候補より後ろ」）。
+   - 位置の指定は 3 種類（`RewritePosition`）。`Anchor`(`rewriter_anchor` 番目の直後。既定 1。数・記号・電卓など)、`Front`(1 位。郵便番号。ADR 0032 §8)、`AfterWords`(日付専用。同じ式を `date_anchor` で行う。既定 1。`--ranker-config` の `rewriter.date_anchor`。#80)。k を上げると日付は辞書の語の k 番目の後ろに下がる(最初のプールの中の k 番目。辞書の候補は `extend_chunk` で増えるので「全候補の後ろ」は作れない)。
 6. かなの候補を加え、Ranker を通し、安定ソートする（既存の処理）。
 
 `RankInput` に `analysis: &'a AnalyzedContext` と `dict: &'a dyn Dictionary` を追加する（契約）。

@@ -78,7 +78,7 @@ impl Rewriter for DateRewriter {
         out.extend(
             formats
                 .into_iter()
-                .map(|(format, surface)| RewriteCandidate::new(surface, format)),
+                .map(|(format, surface)| RewriteCandidate::after_words(surface, format)),
         );
     }
 }
@@ -86,12 +86,12 @@ impl Rewriter for DateRewriter {
 /// 元号 <-> 西暦（年だけ）。読み全体が `<元号><数字>ねん` か `<西暦>ねん` のときだけ働く
 fn rewrite_era(reading: &str, out: &mut Vec<RewriteCandidate>) {
     if let Some((format, surface)) = era::era_to_western(reading) {
-        out.push(RewriteCandidate::new(surface, format));
+        out.push(RewriteCandidate::after_words(surface, format));
     } else if let Some(year) = era::western_year(reading) {
         out.extend(
             year_formats(year)
                 .into_iter()
-                .map(|(format, surface)| RewriteCandidate::new(surface, format)),
+                .map(|(format, surface)| RewriteCandidate::after_words(surface, format)),
         );
     }
 }
@@ -226,6 +226,26 @@ mod tests {
 
     // 2026-10-11 は日曜日
     const SUNDAY: u8 = 6;
+
+    #[test]
+    fn every_candidate_uses_the_after_words_position() {
+        let ctx = Context::new();
+        for reading in ["きょう", "ことし", "いま", "2026ねん", "れいわ8ねん"] {
+            let input = RewriteInput {
+                reading,
+                context: &ctx,
+                now: at(2026, 10, 11, SUNDAY),
+            };
+            let mut out = Vec::new();
+            DateRewriter::new().rewrite(&input, &mut out);
+            assert!(!out.is_empty(), "{reading}");
+            assert!(
+                out.iter()
+                    .all(|c| c.position == crate::rewriter::RewritePosition::AfterWords),
+                "{reading}"
+            );
+        }
+    }
 
     #[test]
     fn today_has_all_six_formats_in_order() {
