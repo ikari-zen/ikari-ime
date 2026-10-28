@@ -1,4 +1,4 @@
-# ATOK 風プリセット(MS-IME 風を土台に、半角英数と再変換だけ ATOK のキー。#62)。形式は docs/phase2-contract.md §4。「キー<TAB>操作」
+# ATOK 風プリセット(MS-IME 風を土台に、半角英数と再変換だけ ATOK のキー。#62。US 配列では @ が Shift+2 なので ctrl+shift+@ も同じ操作にする)。形式は docs/phase2-contract.md §4。「キー<TAB>操作」
 f6	convert.hiragana
 f7	convert.fullwidth_katakana
 f8	convert.halfwidth_katakana
@@ -9,6 +9,7 @@ ctrl+i	convert.fullwidth_katakana
 ctrl+o	convert.halfwidth_katakana
 ctrl+p	convert.fullwidth_alnum
 ctrl+@	convert.halfwidth_alnum
+ctrl+shift+@	convert.halfwidth_alnum
 left	segment.focus_left
 right	segment.focus_right
 shift+left	segment.shrink

@@ -85,6 +85,8 @@ import Testing
         expected[chord("ctrl+t")] = nil
         expected[chord("ctrl+shift+r")] = nil
         expected[chord("ctrl+@")] = .toHalfwidthAlnum
+        // US 配列では @ が Shift+2 なので、ctrl+shift+@ も同じ操作にする
+        expected[chord("ctrl+shift+@")] = .toHalfwidthAlnum
         expected[chord("ctrl+shift+y")] = .reconvert
         #expect(atok.bindings == expected)
         #expect(atok.action(for: chord("f10")) == .toHalfwidthAlnum)
