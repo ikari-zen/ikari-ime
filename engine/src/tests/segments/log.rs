@@ -18,6 +18,7 @@ fn segment_log_lines_have_counts_and_directions_but_never_text() {
             data_dir: Some(dir.clone()),
             lm_requested: true,
             lm_budget: LmBudget::default(),
+            convert_wait: DEFAULT_CONVERT_WAIT,
             lock: None,
         },
         Some(seam.clone()),

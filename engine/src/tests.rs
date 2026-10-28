@@ -170,6 +170,7 @@ fn engine_with(mock: &Arc<MockLm>, learning_path: Option<&Path>) -> Engine {
         data_dir: None,
         lm_requested: true,
         lm_budget: LmBudget::default(),
+        convert_wait: DEFAULT_CONVERT_WAIT,
         lock: None,
     })
 }

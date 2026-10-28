@@ -126,6 +126,20 @@ final class SettingsModel {
         await apply(set: [(SettingKey.engineIdleUnloadSecs, String(clamped))])
     }
 
+    func setLMDeadlineMs(_ ms: Int) async {
+        let range = SettingsValues.lmDeadlineRange
+        let clamped = min(max(ms, range.lowerBound), range.upperBound)
+        guard clamped != values.lmDeadlineMs else { return }
+        await apply(set: [(SettingKey.engineLMDeadlineMs, String(clamped))])
+    }
+
+    func setConvertWaitMs(_ ms: Int) async {
+        let range = SettingsValues.convertWaitRange
+        let clamped = min(max(ms, range.lowerBound), range.upperBound)
+        guard clamped != values.convertWaitMs else { return }
+        await apply(set: [(SettingKey.engineConvertWaitMs, String(clamped))])
+    }
+
     /// 文脈を貸し借りしないアプリに Bundle ID を足す。空白は削る。使えない文字があれば足さずに、画面に断りを出す
     func addSharedExclude(_ rawID: String) async {
         guard let id = validBundleID(rawID), !values.contextSharedExclude.contains(id) else { return }

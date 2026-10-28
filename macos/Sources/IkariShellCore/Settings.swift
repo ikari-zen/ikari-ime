@@ -21,6 +21,10 @@ public struct Settings: Sendable, Equatable {
     public var engineLM: Bool
     /// `engine.idle_unload_secs`。LM を解放するまでの秒数（0 = 解放しない）
     public var engineIdleUnloadSecs: Int
+    /// `engine.lm_deadline_ms`。先行計算で LM を待てる締め切り（ミリ秒。エンジンが 50〜2000 に丸める。暫定）
+    public var engineLMDeadlineMs: Int
+    /// `engine.convert_wait_ms`。Space で先行計算の完了を待つ上限（ミリ秒。0 = 待たない。エンジンが 0〜200 に丸める。暫定）
+    public var engineConvertWaitMs: Int
     /// `context.shared_exclude`。ほかのアプリと文脈を貸し借りしないアプリの Bundle ID（ADR 0015 §3.5）。
     /// 順は保つ。空にすると除外なし
     public var contextSharedExclude: [String]
@@ -51,6 +55,8 @@ public struct Settings: Sendable, Equatable {
         pageSize: Int = defaultPageSize,
         engineLM: Bool = true,
         engineIdleUnloadSecs: Int = 300,
+        engineLMDeadlineMs: Int = Settings.defaultEngineLMDeadlineMs,
+        engineConvertWaitMs: Int = Settings.defaultEngineConvertWaitMs,
         contextSharedExclude: [String] = Settings.defaultContextSharedExclude,
         emojiShortcode: Bool = Settings.defaultEmojiShortcode,
         emojiShortcodeExclude: [String] = Settings.defaultEmojiShortcodeExclude,
@@ -69,6 +75,8 @@ public struct Settings: Sendable, Equatable {
         self.pageSize = pageSize
         self.engineLM = engineLM
         self.engineIdleUnloadSecs = engineIdleUnloadSecs
+        self.engineLMDeadlineMs = engineLMDeadlineMs
+        self.engineConvertWaitMs = engineConvertWaitMs
         self.contextSharedExclude = contextSharedExclude
         self.emojiShortcode = emojiShortcode
         self.emojiShortcodeExclude = emojiShortcodeExclude
@@ -139,12 +147,18 @@ public struct Settings: Sendable, Equatable {
     private static let engineKeyPrefix = "engine."
     private static let engineLMKey = "engine.lm"
     private static let engineIdleUnloadKey = "engine.idle_unload_secs"
+    private static let engineLMDeadlineKey = "engine.lm_deadline_ms"
+    private static let engineConvertWaitKey = "engine.convert_wait_ms"
+    /// `engine.lm_deadline_ms` の既定（エンジンの `DEFAULT_LM_DEADLINE_MS` と同じ）
+    public static let defaultEngineLMDeadlineMs = 300
+    /// `engine.convert_wait_ms` の既定（エンジンの `DEFAULT_CONVERT_WAIT_MS` と同じ）
+    public static let defaultEngineConvertWaitMs = 30
     private static let engineLMOn = "on"
     private static let engineLMOff = "off"
 
     /// TSV を読む。未知のキーと不正な値は無視して既定値を使い、`warnings` に積む（読み込みで入力を止めない）。
     /// 警告は行番号と設定のキー名だけで、値の文字列は含めない（ログにユーザーの文字列を残さない）。
-    /// `engine.lm` と `engine.idle_unload_secs` は殻も読む（メニューとエンジンの再起動の判定のため）。値が不正なら警告。
+    /// `engine.lm`、`engine.idle_unload_secs`、`engine.lm_deadline_ms`、`engine.convert_wait_ms` は殻も読む（メニューとエンジンの再起動の判定のため）。値が不正なら警告。
     /// それ以外の `engine.*` は無視する（警告も出さない）。
     public static func parse(tsv: String) -> (settings: Settings, warnings: [String]) {
         var settings = Settings.default
@@ -175,6 +189,18 @@ public struct Settings: Sendable, Equatable {
                 case engineIdleUnloadKey:
                     if let seconds = Int(value), seconds >= 0 {
                         settings.engineIdleUnloadSecs = seconds
+                    } else {
+                        warnings.append(invalid)
+                    }
+                case engineLMDeadlineKey:
+                    if let ms = Int(value), ms >= 0 {
+                        settings.engineLMDeadlineMs = ms
+                    } else {
+                        warnings.append(invalid)
+                    }
+                case engineConvertWaitKey:
+                    if let ms = Int(value), ms >= 0 {
+                        settings.engineConvertWaitMs = ms
                     } else {
                         warnings.append(invalid)
                     }
@@ -324,6 +350,7 @@ public struct Settings: Sendable, Equatable {
     /// `engine.*` と、エンジンが起動時に読む `postal.japanese`、`postal.te_prefix`、`unicode.notation`、`date.weekday_dates` のどれかが違う。違えば、殻はエンジンへ `Shutdown{SETTINGS_CHANGED}` を送って起こし直す（ADR 0005 §7.3）
     public func engineSettingsDiffer(from other: Settings) -> Bool {
         engineLM != other.engineLM || engineIdleUnloadSecs != other.engineIdleUnloadSecs
+            || engineLMDeadlineMs != other.engineLMDeadlineMs || engineConvertWaitMs != other.engineConvertWaitMs
             || postalJapanese != other.postalJapanese || postalTePrefix != other.postalTePrefix
             || unicodeNotation != other.unicodeNotation || dateWeekdayDates != other.dateWeekdayDates
     }
@@ -345,6 +372,8 @@ public struct Settings: Sendable, Equatable {
             ("paging.size", String(pageSize)),
             (Self.engineLMKey, engineLM ? Self.engineLMOn : Self.engineLMOff),
             (Self.engineIdleUnloadKey, String(engineIdleUnloadSecs)),
+            (Self.engineLMDeadlineKey, String(engineLMDeadlineMs)),
+            (Self.engineConvertWaitKey, String(engineConvertWaitMs)),
             (Self.contextSharedExcludeKey, contextSharedExclude.joined(separator: String(Self.listSeparator))),
             (Self.emojiShortcodeKey, emojiShortcode ? Self.engineLMOn : Self.engineLMOff),
             (Self.emojiShortcodeExcludeKey, emojiShortcodeExclude.joined(separator: String(Self.listSeparator))),
@@ -363,6 +392,7 @@ public struct Settings: Sendable, Equatable {
     public static func isKnownKey(_ key: String) -> Bool {
         switch key {
         case "input.method", "keymap.preset", "paging.wrap", "paging.size", engineLMKey, engineIdleUnloadKey,
+            engineLMDeadlineKey, engineConvertWaitKey,
             contextSharedExcludeKey, emojiShortcodeKey, emojiShortcodeExcludeKey, emojiSmallLettersKey,
             postalJapaneseKey, postalEnglishKey, postalTePrefixKey,
             unicodeNotationKey, dateWeekdayDatesKey, candidateHideWhenConfidentKey:

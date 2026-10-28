@@ -2,8 +2,11 @@
 
 use super::*;
 
-/// Space（Convert）で、計算中の先行計算を待つ最大の時間（NFR-04。Space から数える。ADR 0021 L1）
-pub(crate) const CONVERT_WAIT_MAX: Duration = Duration::from_millis(30);
+/// Space（Convert）で、計算中の先行計算を待つ最大の時間の既定（NFR-04。Space から数える。ADR 0021 L1）。
+/// `engine.convert_wait_ms` で変えられる
+#[cfg(test)]
+pub(crate) const DEFAULT_CONVERT_WAIT: Duration =
+    Duration::from_millis(settings::DEFAULT_CONVERT_WAIT_MS as u64);
 
 pub(crate) fn candidate_kind(origin: CandidateOrigin) -> pb::CandidateKind {
     match origin {
@@ -212,9 +215,9 @@ impl Inner {
             match entry {
                 None => (None, CacheOutcome::Miss(reason)),
                 Some(e) => {
-                    // 計算中なら、Space から CONVERT_WAIT_MAX まで待つ
+                    // 計算中なら、Space から `convert_wait` まで待つ
                     let computing = e.is_computing();
-                    let hit = e.wait_ready(Instant::now() + CONVERT_WAIT_MAX);
+                    let hit = e.wait_ready(Instant::now() + self.convert_wait);
                     let outcome = match (computing, hit.is_some()) {
                         (false, true) => CacheOutcome::Hit,
                         (true, true) => CacheOutcome::WaitHit,

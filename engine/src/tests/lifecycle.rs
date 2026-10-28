@@ -30,6 +30,7 @@ fn convert_prefetch_and_page_are_not_blocked_while_the_stack_is_rebuilt() {
         data_dir: Some(dir.clone()),
         lm_requested: true,
         lm_budget: LmBudget::default(),
+        convert_wait: DEFAULT_CONVERT_WAIT,
         lock: None,
     }));
     begin(&e, 1, false);
@@ -124,6 +125,7 @@ fn engine_holds_the_data_lock_while_alive() {
         data_dir: Some(dir.clone()),
         lm_requested: true,
         lm_budget: LmBudget::default(),
+        convert_wait: DEFAULT_CONVERT_WAIT,
         lock: Some(lock),
     });
     assert!(matches!(EngineLock::acquire(&dir), Err(LockError::Held)));
@@ -145,6 +147,7 @@ fn log_lines_never_contain_the_reading() {
         data_dir: Some(dir.clone()),
         lm_requested: true,
         lm_budget: LmBudget::default(),
+        convert_wait: DEFAULT_CONVERT_WAIT,
         lock: None,
     });
     begin(&e, 1, false);
@@ -193,4 +196,46 @@ fn concurrent_requests_are_safe() {
     for t in threads {
         t.join().unwrap();
     }
+}
+
+// ---- engine.lm_deadline_ms / engine.convert_wait_ms は Engine::open のときだけ読む ----
+
+#[test]
+fn open_reads_the_timeout_settings_and_clamps_them() {
+    let mut real = Real::new();
+    // 設定がなければ今の定数のまま
+    assert_eq!(real.e().inner.lm_budget, LmBudget::default());
+    assert_eq!(real.e().inner.convert_wait, DEFAULT_CONVERT_WAIT);
+
+    let write = |real: &Real, text: &str| {
+        std::fs::write(real.dir.join(SETTINGS_FILE_NAME), text).unwrap();
+    };
+    real.engine = None;
+    write(
+        &real,
+        "engine.lm_deadline_ms\t700\nengine.convert_wait_ms\t0\n",
+    );
+    real.open();
+    assert_eq!(real.e().inner.lm_budget.max, Duration::from_millis(700));
+    // max 以外（base、per_char）は変えない
+    assert_eq!(real.e().inner.lm_budget.base, LmBudget::default().base);
+    assert_eq!(real.e().inner.convert_wait, Duration::ZERO);
+
+    real.engine = None;
+    write(
+        &real,
+        "engine.lm_deadline_ms\t9\nengine.convert_wait_ms\t99999\n",
+    );
+    real.open();
+    assert_eq!(real.e().inner.lm_budget.max, Duration::from_millis(50));
+    assert_eq!(real.e().inner.convert_wait, Duration::from_millis(200));
+
+    real.engine = None;
+    write(
+        &real,
+        "engine.lm_deadline_ms\t-3\nengine.convert_wait_ms\tx\n",
+    );
+    real.open();
+    assert_eq!(real.e().inner.lm_budget, LmBudget::default());
+    assert_eq!(real.e().inner.convert_wait, DEFAULT_CONVERT_WAIT);
 }

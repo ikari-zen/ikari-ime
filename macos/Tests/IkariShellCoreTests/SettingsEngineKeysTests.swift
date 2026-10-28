@@ -17,7 +17,9 @@ import Testing
         #expect(parsed.warnings.isEmpty)
     }
 
-    @Test(arguments: ["engine.lm\ttrue", "engine.lm\t", "engine.idle_unload_secs\t-1", "engine.idle_unload_secs\tabc"])
+    @Test(arguments: ["engine.lm\ttrue", "engine.lm\t", "engine.idle_unload_secs\t-1", "engine.idle_unload_secs\tabc",
+            "engine.lm_deadline_ms\t-1", "engine.lm_deadline_ms\tabc", "engine.convert_wait_ms\t-1", "engine.convert_wait_ms\tabc",
+        ])
     func invalidEngineValuesWarnAndKeepTheDefault(line: String) {
         let parsed = Settings.parse(tsv: line)
         #expect(parsed.settings == .default)
@@ -45,6 +47,24 @@ import Testing
         var idle = base
         idle.engineIdleUnloadSecs = 60
         #expect(base.engineSettingsDiffer(from: idle))
+        var deadline = base
+        deadline.engineLMDeadlineMs = 500
+        #expect(base.engineSettingsDiffer(from: deadline))
+        var wait = base
+        wait.engineConvertWaitMs = 0
+        #expect(base.engineSettingsDiffer(from: wait))
+    }
+
+    @Test func timeoutKeysDefaultToTheCurrentConstantsAndParse() {
+        let none = Settings.parse(tsv: "").settings
+        #expect(none.engineLMDeadlineMs == 300)
+        #expect(none.engineConvertWaitMs == 30)
+        let parsed = Settings.parse(tsv: "engine.lm_deadline_ms\t800\nengine.convert_wait_ms\t0\n")
+        #expect(parsed.settings.engineLMDeadlineMs == 800)
+        #expect(parsed.settings.engineConvertWaitMs == 0)
+        #expect(parsed.warnings.isEmpty)
+        #expect(Settings.isAcceptable(key: "engine.lm_deadline_ms", value: "500"))
+        #expect(!Settings.isAcceptable(key: "engine.convert_wait_ms", value: "-1"))
     }
 
     @Test func effectiveEntriesListEveryKnownKeyInAFixedOrder() {
@@ -57,6 +77,7 @@ import Testing
                 "input.method=kana", "keymap.preset=ms-ime",
                 "keymap.convert.hiragana=ctrl+h", "keymap.convert.halfwidth_alnum=none",
                 "paging.wrap=false", "paging.size=5", "engine.lm=off", "engine.idle_unload_secs=300",
+                "engine.lm_deadline_ms=300", "engine.convert_wait_ms=30",
                 "context.shared_exclude=" + Settings.defaultContextSharedExclude.joined(separator: ","),
                 "emoji.shortcode=off",
                 "emoji.shortcode_exclude=" + Settings.defaultEmojiShortcodeExclude.joined(separator: ","),
@@ -91,7 +112,9 @@ import Testing
     }
 
     @Test func knownKeysAreTheDocumentedOnes() {
-        for key in ["input.method", "keymap.preset", "paging.wrap", "paging.size", "engine.lm", "engine.idle_unload_secs"] {
+        for key in ["input.method", "keymap.preset", "paging.wrap", "paging.size", "engine.lm", "engine.idle_unload_secs",
+            "engine.lm_deadline_ms", "engine.convert_wait_ms",
+        ] {
             #expect(Settings.isKnownKey(key), "\(key)")
         }
         for action in KeymapAction.allCases { #expect(Settings.isKnownKey("keymap.\(action.rawValue)")) }

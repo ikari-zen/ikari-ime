@@ -120,6 +120,7 @@ fn a_panicking_core_becomes_internal_errors_and_the_engine_keeps_serving() {
             data_dir: None,
             lm_requested: true,
             lm_budget: LmBudget::default(),
+            convert_wait: DEFAULT_CONVERT_WAIT,
             lock: None,
         },
         Some(Arc::new(PanickingSeam)),
@@ -242,6 +243,7 @@ fn a_panic_in_the_lookahead_thread_does_not_stop_later_lookaheads() {
             data_dir: None,
             lm_requested: true,
             lm_budget: LmBudget::default(),
+            convert_wait: DEFAULT_CONVERT_WAIT,
             lock: None,
         },
         Some(Arc::new(PanicOnceSeam {

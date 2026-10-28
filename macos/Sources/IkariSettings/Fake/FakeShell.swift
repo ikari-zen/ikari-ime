@@ -37,6 +37,8 @@ struct FakeState: Sendable {
         "paging.size": "3",
         "engine.lm": "on",
         "engine.idle_unload_secs": "300",
+        "engine.lm_deadline_ms": "300",
+        "engine.convert_wait_ms": "30",
         Settings.contextSharedExcludeKey: Settings.defaultContextSharedExclude.joined(
             separator: String(Settings.listSeparator)),
         Settings.emojiShortcodeKey: "off",
@@ -211,7 +213,8 @@ final class FakeShell: @unchecked Sendable {
         guard isKnown(key: key) else { return false }
         switch key {
         case "engine.lm": return value == "on" || value == "off"
-        case "engine.idle_unload_secs": return Int(value).map { $0 >= 0 } ?? false
+        case "engine.idle_unload_secs", "engine.lm_deadline_ms", "engine.convert_wait_ms":
+            return Int(value).map { $0 >= 0 } ?? false
         default:
             // 殻の `Settings.parse` が付ける警告が 0 のときだけ有効
             return Settings.parse(tsv: "\(key)\t\(value)").warnings.isEmpty

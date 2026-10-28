@@ -239,6 +239,7 @@ fn user_data_change_rebuilds_the_stack_and_keeps_the_learning_store() {
         data_dir: Some(dir.clone()),
         lm_requested: true,
         lm_budget: LmBudget::default(),
+        convert_wait: DEFAULT_CONVERT_WAIT,
         lock: None,
     });
     begin(&e, 1, false);
