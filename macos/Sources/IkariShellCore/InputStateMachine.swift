@@ -48,6 +48,8 @@ public final class InputStateMachine {
     /// 直近に取った周辺テキスト（Prefetch はこれを使い、打鍵のたびにクライアントへ問い合わせない）。secure のときは使わない
     private var cachedContext: SurroundingText?
     private var contextRev: UInt64 = 0
+    /// いまの合成の、文字を打った回数（左文脈の読み直しの回数を絞るのに使う。#1）
+    private var composingKeystrokes = 0
     private var lastPrefetchedReading: String?
 
     /// converting に入る前の状態。読みに戻るときの行き先
@@ -404,8 +406,20 @@ public final class InputStateMachine {
     private func composingStarted(fetch: () -> SurroundingText) -> [KeyAction] {
         guard !(composer.kana.isEmpty && composer.pending.isEmpty) else { return [.passThrough] }
         refreshContext(fetch: fetch)
+        composingKeystrokes = 1
         lastPrefetchedReading = nil
         return refreshComposing()
+    }
+
+    /// 合成の最初の数打鍵のあいだ、左文脈を読み直す（#1）。
+    /// 変換中に次の文字を打つと、確定の文字をアプリに入れる前に 1 打鍵目の文脈を読むので、その文脈には直前の確定が入っていない。
+    /// 2 打鍵目以降に読み直し、文脈が変わったら（番号が進んだら）、その文脈で先行計算を送り直す
+    private func refreshContextOnEarlyKeystroke(fetch: () -> SurroundingText) {
+        composingKeystrokes += 1
+        guard composingKeystrokes <= Self.contextRefreshKeystrokes, !session.secure else { return }
+        let before = contextRev
+        refreshContext(fetch: fetch)
+        if contextRev != before { lastPrefetchedReading = nil }
     }
 
     // MARK: composing
@@ -417,9 +431,11 @@ public final class InputStateMachine {
             guard isPrintable(text) else { return [.consume] }
             if isShiftedLetter(text, input) { return startAsciiRun(with: text, fetch: fetch) }
             feed(text)
+            refreshContextOnEarlyKeystroke(fetch: fetch)
             return refreshComposing()
         case .jis(let key):
             composer.pushJis(key: key, shift: input.modifiers.contains(.shift))
+            refreshContextOnEarlyKeystroke(fetch: fetch)
             return refreshComposing()
         case .space:
             return startConversion(reading: readingToConvert(), origin: .composing, fetch: fetch)
@@ -454,6 +470,10 @@ public final class InputStateMachine {
     }
 
     private static let trailingNPending = "n"
+
+    /// 合成の最初の何打鍵目まで、左文脈を読み直すか（1 打鍵目を含む）。
+    /// 暫定。#1。ログの miss=context で効果を測って見直す。値は計測で決める
+    static let contextRefreshKeystrokes = 3
 
     /// かなと pending から表示を作り、読み（かな）が変わったら Prefetch を投げる。空なら idle に戻す
     private func refreshComposing() -> [KeyAction] {
@@ -1168,6 +1188,7 @@ public final class InputStateMachine {
         mode = SegmentMode()
         restoreTarget = nil
         lastPrefetchedReading = nil
+        composingKeystrokes = 0
         // 確定すると左文脈が変わる。次の合成の始めに取り直す
         cachedContext = nil
     }
