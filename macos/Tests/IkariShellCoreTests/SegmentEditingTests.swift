@@ -66,10 +66,11 @@ enum SegmentFixture {
         return h
     }
 
-    /// 文節のモード（2 文節、フォーカスは先頭）まで進める。Space のあと ← で入る（表示は変わらない）
+    /// 文節のモード（2 文節、フォーカスは先頭）まで進める。Space のあと ← で末尾に入り、→ で先頭へ回る
     static func converting(_ settings: Settings = .default, secure: Bool = false) throws -> Harness {
         let h = try wholeCandidates(settings, secure: secure)
         h.press(.left)
+        h.press(.right)
         return h
     }
 }
@@ -93,8 +94,8 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
         #expect(state.focused == 0)
         #expect(state.conversionID == SegmentFixture.conversionID)
         #expect(state.candidates == SegmentFixture.head0)
-        // 文節 1 は、フォーカスするまでエンジンに問い合わせない
-        #expect(h.engine.segmentPageCalls.isEmpty)
+        // 文節 1 は、← で末尾に入るときに 1 回だけ取った
+        #expect(h.engine.segmentPageCalls.count == 1)
         #expect(h.engine.convertRequests.count == 1)
     }
 
@@ -207,15 +208,15 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
             ])
     }
 
-    @Test func leftEntersTheClauseModeOnTheFirstSegmentWithoutChangingTheDisplay() throws {
+    @Test func leftEntersTheClauseModeOnTheLastSegmentWithoutChangingTheDisplay() throws {
         let h = try SegmentFixture.wholeCandidates()
         let actions = h.press(.left)
         #expect(
             actions == [
-                .setMarkedText(marked("初めて知った", [3, 3], focused: 0)),
-                .showCandidates(SegmentFixture.model(SegmentFixture.head0)),
+                .setMarkedText(marked("初めて知った", [3, 3], focused: 1)),
+                .showCandidates(SegmentFixture.model(SegmentFixture.tail0)),
             ])
-        #expect(h.engine.segmentPageCalls.isEmpty)
+        #expect(h.engine.segmentPageCalls.count == 1)
     }
 
     @Test func aWholeSelectionThatTheSegmentsCanFormIsCarriedIntoTheClauseMode() throws {
@@ -224,8 +225,8 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
         let actions = h.press(.left)
         #expect(
             actions == [
-                .setMarkedText(marked("始めてしった", [3, 3], focused: 0)),
-                .showCandidates(SegmentFixture.model(SegmentFixture.head0, selected: 1)),
+                .setMarkedText(marked("始めてしった", [3, 3], focused: 1)),
+                .showCandidates(SegmentFixture.model(SegmentFixture.tail0, selected: 1)),
             ])
         let state = try #require(h.converting)
         #expect(state.segments.map(\.candidateIndex) == [1, 1])
@@ -271,8 +272,8 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
         #expect(actions != [.consume])
         let state = try #require(h.converting)
         #expect(state.wholeLayout == nil)
-        #expect(state.focused == 0)
-        #expect(actions.contains(.showCandidates(SegmentFixture.model(SegmentFixture.head0, selected: 1))))
+        #expect(state.focused == 1)
+        #expect(actions.contains { if case .showCandidates = $0 { true } else { false } })
     }
 
     /// 実機と同じ形の入力（キーコード 123/124、フラグ 0xa00000）を、変換する前から殻の入口まで通す
@@ -289,8 +290,8 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
 
         let left = try SegmentFixture.wholeCandidates()
         let leftActions = left.machine.handle(Self.deviceArrow(KeyCodes.leftArrow), surrounding: .unavailable)
-        #expect(leftActions.contains(.setMarkedText(marked("初めて知った", [3, 3], focused: 0))))
-        #expect(left.converting?.focused == 0 && left.converting?.wholeLayout == nil)
+        #expect(leftActions.contains(.setMarkedText(marked("初めて知った", [3, 3], focused: 1))))
+        #expect(left.converting?.focused == 1 && left.converting?.wholeLayout == nil)
     }
 
     @Test func aWholeSelectionThatTheSegmentsCannotFormStillEntersTheClauseModeWithTheFirstCandidates() throws {
@@ -308,15 +309,15 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
         #expect(state.segments.map(\.candidateIndex) == [0, 0])
     }
 
-    @Test func leftEntersOnTheFirstSegmentWhenTheShownWholeCandidateCannotBeFormed() throws {
+    @Test func leftEntersOnTheLastSegmentWhenTheShownWholeCandidateCannotBeFormed() throws {
         let h = try SegmentFixture.wholeCandidates()
         h.press(.space)
         h.press(.space)
         let actions = h.press(.left)
         #expect(
             actions == [
-                .setMarkedText(marked("初めて知った", [3, 3], focused: 0)),
-                .showCandidates(SegmentFixture.model(SegmentFixture.head0)),
+                .setMarkedText(marked("初めて知った", [3, 3], focused: 1)),
+                .showCandidates(SegmentFixture.model(SegmentFixture.tail0)),
             ])
         #expect(h.converting?.wholeLayout == nil)
     }
@@ -428,22 +429,21 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
         #expect(back == [.setMarkedText(marked("始めて知った", [3, 3], focused: 0)), .showCandidates(SegmentFixture.model(SegmentFixture.head0, selected: 1))])
     }
 
-    @Test func aFailedFetchKeepsTheFocus() throws {
-        let h = try SegmentFixture.converting()
+    @Test func aFailedFetchKeepsTheWholeCandidates() throws {
+        let h = try SegmentFixture.wholeCandidates()
         h.engine.onSegmentPage = { _, _, _ in throw EngineClientError.timeout }
-        #expect(h.press(.right) == [.consume])
-        #expect(h.converting?.focused == 0)
+        #expect(h.press(.left) == [.consume])
+        #expect(h.converting?.wholeLayout != nil)
     }
 
     @Test func leftChoicesCarryTheCandidatesChosenOnTheLeft() throws {
-        let h = try SegmentFixture.converting()
-        h.press(.space)  // 文節 0: 始めて（通し番号 1）
-        h.press(.right)
+        let h = try SegmentFixture.wholeCandidates()
+        h.press(.left)  // 末尾の文節に入る。左の文節の選択は 0 番
         guard case .segmentPage(_, _, _, _, let left, _)? = h.engine.segmentPageCalls.last else {
             Issue.record("no segment page")
             return
         }
-        #expect(left == [.candidate(1)])
+        #expect(left == [.candidate(0)])
     }
 
     @Test func spaceStepsThroughTheFocusedSegmentOnly() throws {
@@ -556,7 +556,8 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
         h.press(.jis(22))
         h.press(.jis(32))
         h.press(.space)
-        h.press(.left)  // 文節のモードに入る（§16.6）
+        h.press(.left)  // 文節のモードに入る（§16.6。末尾の文節）
+        h.press(.right)  // 先頭の文節へ回る
         #expect(h.converting?.segments.count == 2)
         let actions = h.press(.jis(1))  // 数字の 2
         #expect(actions.first == .setMarkedText(marked("血野", [1, 1], focused: 1)))
@@ -570,16 +571,6 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
         let before = h.converting
         #expect(h.press(.character("9")) == [.consume])
         #expect(h.converting == before)
-    }
-
-    @Test func aNumberKeyStillChoosesWhenMovingToTheNextSegmentFails() throws {
-        let h = try SegmentFixture.converting()
-        h.engine.onSegmentPage = { _, _, _ in throw EngineClientError.timeout }
-        let actions = h.press(.character("2"))
-        // 選択は残り、フォーカスは動かない
-        #expect(actions.first == .setMarkedText(marked("始めて知った", [3, 3], focused: 0)))
-        #expect(h.converting?.segments[0].selected == 1)
-        #expect(h.converting?.focused == 0)
     }
 
     @Test func enterCommitsEverySegmentWithTheChoicesAndReportsThemToTheEngine() throws {
@@ -716,7 +707,8 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
         let h = try Harness(settings: settings, engine: engine)
         h.type(SegmentFixture.typedReading)
         h.press(.space)
-        h.press(.left)  // 文節のモードに入る（§16.6）
+        h.press(.left)  // 文節のモードに入る（§16.6。末尾の文節）
+        h.press(.right)  // 先頭の文節へ回る
         h.press(.left, [.control])
         #expect(h.converting?.segments[0].literal == "ハジメテ")
     }

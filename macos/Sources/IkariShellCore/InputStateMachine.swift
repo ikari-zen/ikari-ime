@@ -779,7 +779,7 @@ public final class InputStateMachine {
     }
 
     /// 全体の候補を出している間に文節の操作のキーを受けたとき、文節のモードに入ってそのキーを実行する（ADR 0006 §16.6）。
-    /// - →: フォーカスは先頭の文節にあるものとして、2 番目の文節へ移す。←: 先頭の文節にフォーカスを置くだけ。
+    /// - →: フォーカスは先頭の文節にあるものとして、2 番目の文節へ移す。←: 末尾の文節にフォーカスを置くだけ（#87）。
     ///   どちらも表示している表記を変えない。いま選んでいる全体の候補が最初の区切りの表記と違うときは、各文節の
     ///   最初のページの候補の組み合わせで作れるならその選択を引き継ぎ、作れなければ入らずに何もしない
     /// - Shift+←/→: 先頭の文節の区切り直し。区切りの作り直しで選択はすべて 0 番に戻る（§4.2）ので、全体の候補の選択は捨てる
@@ -797,6 +797,8 @@ public final class InputStateMachine {
         state = .converting(next)
         switch action {
         case .segmentFocusLeft:
+            // キャレットは末尾にあったので、末尾の文節に入る（先頭から 1 つ左は端を回って末尾。#87）。文節が 1 つなら動かない
+            if next.segments.count > 1 { return moveFocus(by: -1) ?? restore() }
             return [.setMarkedText(markedText(for: next)), .showCandidates(panelModel(for: next))]
         case .segmentFocusRight:
             return moveFocus(by: 1) ?? restore()
