@@ -23,10 +23,10 @@ pub use analysis::{
 pub use candidate::{Candidate, CandidateOrigin, Segment};
 pub use context::{Commit, Context};
 pub use converter::{
-    AdverbNounRule, CommitEvent, Conversion, ConvertError, ConvertOptions, Converter,
-    ConverterBuilder, KatakanaLikeRule, LmBudget, NounSuffixRule, NounSuruRule, NumeralCounterRule,
-    NumeralCoverRule, Page, SegmentChoice, SegmentCommit, SegmentError, SegmentLayout, SegmentSpan,
-    Segmented, SegmentedOrigin, VolitionalRule,
+    AdverbNounRule, CommitEvent, CompoundWordRule, Conversion, ConvertError, ConvertOptions,
+    Converter, ConverterBuilder, KatakanaLikeRule, LmBudget, NounSuffixRule, NounSuruRule,
+    NumeralCounterRule, NumeralCoverRule, Page, SegmentChoice, SegmentCommit, SegmentError,
+    SegmentLayout, SegmentSpan, Segmented, SegmentedOrigin, VolitionalRule,
 };
 pub use dict::{
     ConjRule, DenseGrammar, DictError, Dictionary, DictionarySet, Grammar, GrammarFile,

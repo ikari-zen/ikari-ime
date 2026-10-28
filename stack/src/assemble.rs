@@ -113,6 +113,11 @@ pub(super) fn assemble_with(
         .katakana_like
         .with_kv(&opts.ranker_config)
         .map_err(|e| config_err("katakana_like", e))?;
+    // 仮名まじりの 1 語の複合名詞の補正（`lattice.compound_word.bonus`。ADR 0035 §12。#2）
+    convert.compound_word = convert
+        .compound_word
+        .with_kv(&opts.ranker_config)
+        .map_err(|e| config_err("lattice", e))?;
     // 名詞 → 接尾辞 の補正も同じ（`lattice.noun_suffix.*`。ADR 0008 §13）
     convert.noun_suffix = convert
         .noun_suffix
