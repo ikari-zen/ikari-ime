@@ -4,6 +4,7 @@ use super::*;
 
 /// Space（Convert）で、計算中の先行計算を待つ最大の時間の既定（NFR-04。Space から数える。ADR 0021 L1）。
 /// `engine.convert_wait_ms` で変えられる
+#[cfg(test)]
 pub(crate) const DEFAULT_CONVERT_WAIT: Duration =
     Duration::from_millis(settings::DEFAULT_CONVERT_WAIT_MS as u64);
 
