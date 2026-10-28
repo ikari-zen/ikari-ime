@@ -181,18 +181,20 @@ impl Conversion {
     /// Rewriter の候補をプールに足す（ADR 0002 §6.2-5）。表記が既に出ているものは捨てる。
     /// base_cost = 辞書の候補を base_cost の昇順に並べた `rewriter_anchor` 番目 + 1。
     /// 番号が候補数を超えれば最後の候補を基準にする。`rewriter_anchor = 0` は 1 として扱う。
+    /// 日付（`AfterWords`）は同じ規則を `date_anchor` で行う。
     fn add_rewriter_candidates(&mut self, pool: &mut Vec<Candidate>) {
         if self.rewriters.is_empty() {
             return;
         }
         let mut costs: Vec<i32> = pool.iter().map(|c| c.base_cost).collect();
         costs.sort_unstable();
-        let anchor = self.opts.rewriter_anchor.max(1).min(costs.len().max(1));
-        let base_cost = costs
-            .get(anchor - 1)
-            .copied()
-            .unwrap_or(0)
-            .saturating_add(1);
+        let cost_after = |n: usize| {
+            let n = n.max(1).min(costs.len().max(1));
+            costs.get(n - 1).copied().unwrap_or(0).saturating_add(1)
+        };
+        let base_cost = cost_after(self.opts.rewriter_anchor);
+        // `AfterWords` は `date_anchor` 番目の直後（日付用。#80）
+        let after_words_cost = cost_after(self.opts.date_anchor);
         // `Front` は辞書の候補で一番低いコストより 1 低くする（ADR 0032 §8）。
         // 同じコスト同士は足した順のまま並ぶ（score の安定ソート）。
         let front_cost = costs.first().copied().unwrap_or(0).saturating_sub(1);
@@ -219,6 +221,7 @@ impl Conversion {
             let cost = match cand.position {
                 RewritePosition::Anchor => base_cost,
                 RewritePosition::Front => front_cost,
+                RewritePosition::AfterWords => after_words_cost,
             };
             pool.push(self.single_segment_candidate(cand.surface, origin, cost));
         }

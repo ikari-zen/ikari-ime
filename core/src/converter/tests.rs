@@ -851,6 +851,18 @@ impl Rewriter for Fixed {
     }
 }
 
+/// `AfterWords` の位置で候補を 1 つ出す Rewriter（日付と同じ位置の指定）
+struct FixedAfterWords;
+
+impl Rewriter for FixedAfterWords {
+    fn name(&self) -> &'static str {
+        "after-words"
+    }
+    fn rewrite(&self, _: &crate::rewriter::RewriteInput<'_>, out: &mut Vec<RewriteCandidate>) {
+        out.push(RewriteCandidate::after_words("D".to_owned(), 1));
+    }
+}
+
 const NOW: LocalDateTime = LocalDateTime {
     year: 2026,
     month: 10,
@@ -896,6 +908,52 @@ fn rewriter_candidates_are_inserted_after_the_anchor() {
         let s = all_surfaces_of(&c, "あ", &Context::new());
         assert_eq!(s[..4], expected, "anchor={anchor}");
     }
+}
+
+#[test]
+fn after_words_candidates_follow_date_anchor_and_not_rewriter_anchor() {
+    // 既定（date_anchor = 1）は Anchor と同じ。k を上げると D が後ろへ下がる。
+    // Anchor の R は rewriter_anchor = 1 のまま動かない
+    for (date_anchor, expected) in [
+        (1, ["亜", "R", "D", "阿", "吾"]),
+        (2, ["亜", "R", "阿", "D", "吾"]),
+        (3, ["亜", "R", "阿", "吾", "D"]),
+        (0, ["亜", "R", "D", "阿", "吾"]),
+    ] {
+        let g = grammar();
+        let mut d = TestDict::new(g.grammar_id());
+        d.add("あ", "亜", ID_NOUN, ID_NOUN, 1000, 0);
+        d.add("あ", "阿", ID_NOUN, ID_NOUN, 1100, 0);
+        d.add("あ", "吾", ID_NOUN, ID_NOUN, 1200, 0);
+        let c = builder_for(g, d)
+            .rewriters(vec![
+                Fixed::new("fixed", &[("R", 7)]) as Arc<dyn Rewriter>,
+                Arc::new(FixedAfterWords),
+            ])
+            .clock(Arc::new(FixedClock(NOW)))
+            .options(ConvertOptions {
+                date_anchor,
+                ..ConvertOptions::default()
+            })
+            .build()
+            .unwrap();
+        let s = all_surfaces_of(&c, "あ", &Context::new());
+        assert_eq!(s[..5], expected, "date_anchor={date_anchor}");
+    }
+}
+
+#[test]
+fn date_anchor_is_read_from_ranker_config() {
+    let kv = |v: &str| {
+        std::collections::BTreeMap::from([("rewriter.date_anchor".to_owned(), v.to_owned())])
+    };
+    let opts = ConvertOptions::default();
+    assert_eq!(opts.date_anchor, 1);
+    let four = opts.clone().with_date_anchor_kv(&kv("4")).unwrap();
+    assert_eq!(four.date_anchor, 4);
+    assert!(opts.clone().with_date_anchor_kv(&kv("x")).is_err());
+    let unknown = std::collections::BTreeMap::from([("rewriter.nope".to_owned(), "1".to_owned())]);
+    assert!(opts.with_date_anchor_kv(&unknown).is_err());
 }
 
 #[test]

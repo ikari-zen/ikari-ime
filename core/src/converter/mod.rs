@@ -168,6 +168,7 @@ impl Converter {
             chunk_size: opts.chunk_size.max(1),
             max_astar_pops: opts.max_astar_pops,
             rewriter_anchor: opts.rewriter_anchor,
+            date_anchor: opts.date_anchor,
             lm_budget: opts.lm_budget,
             adverb_noun: opts.adverb_noun,
             noun_suru: opts.noun_suru,

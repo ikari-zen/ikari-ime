@@ -12,6 +12,11 @@ const DEFAULT_POOL_SIZE: usize = 30;
 const DEFAULT_MAX_ASTAR_POPS: usize = 20_000;
 /// Rewriter の候補を入れる位置の既定（辞書の候補を昇順に並べたときの番号。1 = 辞書の1位の直後）
 const DEFAULT_REWRITER_ANCHOR: usize = 1;
+/// 日付の Rewriter の候補を入れる位置の既定（`DEFAULT_REWRITER_ANCHOR` と同じ。#80）
+const DEFAULT_DATE_ANCHOR: usize = 1;
+/// 日付の位置を `--ranker-config` で指す接頭辞とキー（`rewriter.date_anchor`）
+const DATE_ANCHOR_PREFIX: &str = "rewriter";
+const DATE_ANCHOR_KEYS: [&str; 1] = ["date_anchor"];
 /// LM を待つ時間の既定（ADR 0004 §3.4、ADR 0003 §7.2）。`max(30ms, 読み1文字あたり 6ms)`、上限 300ms
 const DEFAULT_LM_BUDGET_BASE: Duration = Duration::from_millis(30);
 const DEFAULT_LM_BUDGET_PER_CHAR: Duration = Duration::from_millis(6);
@@ -421,6 +426,9 @@ pub struct ConvertOptions {
     pub max_astar_pops: usize,
     /// Rewriter の候補の base_cost = 辞書候補の base_cost を昇順に並べた `rewriter_anchor` 番目 + 1。既定 1
     pub rewriter_anchor: usize,
+    /// 日付の Rewriter（`RewritePosition::AfterWords`）の候補の base_cost = 辞書候補の base_cost を昇順に並べた
+    /// `date_anchor` 番目 + 1。既定 1（`rewriter_anchor` と同じ。#80）。`--ranker-config` の `rewriter.date_anchor`
+    pub date_anchor: usize,
     /// 変換1回あたりの LM の待ち時間の規則（`convert` と `page` が締め切りを作るのに使う）
     pub lm_budget: LmBudget,
     /// 副詞の直後の名詞の辺の補正（ADR 0008）
@@ -439,6 +447,18 @@ pub struct ConvertOptions {
     pub katakana_like: KatakanaLikeRule,
 }
 
+impl ConvertOptions {
+    /// `rewriter.date_anchor` で `date_anchor` を上書きする。この接頭辞で未知のキーや数でない値ならエラー。
+    pub fn with_date_anchor_kv(
+        mut self,
+        kv: &BTreeMap<String, String>,
+    ) -> Result<Self, RankerConfigError> {
+        let scope = ScopedKv::new(DATE_ANCHOR_PREFIX, &DATE_ANCHOR_KEYS, kv)?;
+        self.date_anchor = scope.get("date_anchor", self.date_anchor)?;
+        Ok(self)
+    }
+}
+
 impl Default for ConvertOptions {
     fn default() -> Self {
         Self {
@@ -447,6 +467,7 @@ impl Default for ConvertOptions {
             chunk_size: DEFAULT_PAGE_SIZE,
             max_astar_pops: DEFAULT_MAX_ASTAR_POPS,
             rewriter_anchor: DEFAULT_REWRITER_ANCHOR,
+            date_anchor: DEFAULT_DATE_ANCHOR,
             lm_budget: LmBudget::default(),
             adverb_noun: AdverbNounRule::default(),
             noun_suru: NounSuruRule::default(),
