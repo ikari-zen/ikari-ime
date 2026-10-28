@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use crate::candidate::Segment;
 use crate::converter::{
-    AdverbNounRule, NounSuffixRule, NounSuruRule, NumeralCounterRule, NumeralCoverRule,
-    VolitionalRule,
+    AdverbNounRule, CompoundWordRule, NounSuffixRule, NounSuruRule, NumeralCounterRule,
+    NumeralCoverRule, VolitionalRule,
 };
 use crate::dict::{Dictionary, Grammar, IME_EXCLUDED, WordId};
 
@@ -154,6 +154,32 @@ pub(crate) struct EdgeRules {
     numeral_counter: NumeralCounterRule,
     /// pos_id -> `COUNTER_*`（規則 C2 が止まっていれば空）
     counter_class: Arc<[u8]>,
+    /// 仮名まじりの 1 語の複合名詞の補正（ADR 0035 §12。#2）
+    compound_word: CompoundWordRule,
+}
+
+/// 仮名まじりの複合名詞（`CompoundWordRule`）の表記・読みの文字数の下限
+const COMPOUND_WORD_MIN_CHARS: usize = 3;
+
+fn is_hiragana(c: char) -> bool {
+    ('\u{3041}'..='\u{309F}').contains(&c)
+}
+
+fn is_kanji(c: char) -> bool {
+    ('\u{4E00}'..='\u{9FFF}').contains(&c) || ('\u{3400}'..='\u{4DBF}').contains(&c)
+}
+
+/// 表記の先頭と末尾が漢字で、途中に平仮名があり（見た目、結び目、立ち位置）、表記と読みがどちらも
+/// `COMPOUND_WORD_MIN_CHARS` 文字以上か。末尾が仮名の表記（想ぞう、家てい。常用外の字を開いた表記ゆれ）は除く
+fn is_kana_mixed_compound(surface: &str, reading_chars: usize) -> bool {
+    let (Some(first), Some(last)) = (surface.chars().next(), surface.chars().last()) else {
+        return false;
+    };
+    reading_chars >= COMPOUND_WORD_MIN_CHARS
+        && surface.chars().count() >= COMPOUND_WORD_MIN_CHARS
+        && is_kanji(first)
+        && is_kanji(last)
+        && surface.chars().any(is_hiragana)
 }
 
 /// 数詞 → 助数詞可能の名詞（#219）の品詞の分類
@@ -208,6 +234,19 @@ fn counter_class_of(name: &str) -> u8 {
     }
 }
 
+/// pos_id -> `POS_*`（品詞1 だけを見る）
+fn pos_class_table(grammar: &dyn Grammar) -> Arc<[u8]> {
+    (0..=u16::MAX)
+        .map_while(|id| grammar.pos_name(id))
+        .map(|name| match name.split(',').next() {
+            Some("副詞") => POS_ADVERB,
+            Some("名詞") => POS_NOUN,
+            Some("接尾辞") => POS_SUFFIX,
+            _ => POS_OTHER,
+        })
+        .collect()
+}
+
 impl EdgeRules {
     /// `grammar.pos_name` から品詞の表を作る（pos_id は 0 から連続し、範囲外は None を返す）。
     /// 規則が止まっている（`penalty == 0`）なら表を作らない。
@@ -242,15 +281,7 @@ impl EdgeRules {
     ) -> Self {
         let pos_class: Arc<[u8]> =
             if adverb_noun.is_enabled() || noun_suffix.is_enabled() || numeral_cover.is_enabled() {
-                (0..=u16::MAX)
-                    .map_while(|id| grammar.pos_name(id))
-                    .map(|name| match name.split(',').next() {
-                        Some("副詞") => POS_ADVERB,
-                        Some("名詞") => POS_NOUN,
-                        Some("接尾辞") => POS_SUFFIX,
-                        _ => POS_OTHER,
-                    })
-                    .collect()
+                pos_class_table(grammar)
             } else {
                 Arc::from([])
             };
@@ -301,7 +332,29 @@ impl EdgeRules {
             numeral_cover,
             numeral_class,
             suru_class,
+            compound_word: CompoundWordRule::disabled(),
         }
+    }
+
+    /// 仮名まじりの 1 語の複合名詞の補正を足す（既定は止まっている）。名詞を見分ける品詞の表がなければ作る
+    pub fn with_compound_word(mut self, grammar: &dyn Grammar, rule: CompoundWordRule) -> Self {
+        if rule.is_enabled() && self.pos_class.is_empty() {
+            self.pos_class = pos_class_table(grammar);
+        }
+        self.compound_word = rule;
+        self
+    }
+
+    /// 辞書の語のコストから引く値。名詞で、表記が仮名まじりの複合語（`is_kana_mixed_compound`）のときだけ 0 でない
+    #[inline]
+    fn compound_word_bonus(&self, pos_id: u16, surface: &str, reading_chars: usize) -> i32 {
+        if !self.compound_word.is_enabled()
+            || self.pos_class.get(usize::from(pos_id)).copied() != Some(POS_NOUN)
+            || !is_kana_mixed_compound(surface, reading_chars)
+        {
+            return 0;
+        }
+        self.compound_word.bonus
     }
 
     /// 補正なし（今までの変換と同じ）
@@ -319,6 +372,7 @@ impl EdgeRules {
             volitional_class: Arc::from([]),
             numeral_counter: NumeralCounterRule::disabled(),
             counter_class: Arc::from([]),
+            compound_word: CompoundWordRule::disabled(),
         }
     }
 
@@ -771,7 +825,10 @@ fn build_inner(
                 left_id: e.left_id,
                 right_id: e.right_id,
                 pos_id: e.pos_id,
-                cost: e.cost.saturating_add(e.penalty),
+                cost: e.cost.saturating_add(e.penalty).saturating_sub(
+                    i16::try_from(rules.compound_word_bonus(e.pos_id, e.surface, chars))
+                        .unwrap_or(i16::MAX),
+                ),
                 address_counter: counter_address
                     && ADDRESS_COUNTER_SURFACES
                         .iter()
@@ -2264,5 +2321,30 @@ mod tests {
         assert_eq!(extra("かこくご", 3, 5000), -600);
         assert_eq!(extra("かこくご", 3, 4000), 0);
         assert_eq!(extra("かげつご", 3, 5000), 0);
+    }
+
+    /// 見た目(1 語)と 見 + た + 目(3 語)。連接 0 で、1 語は 3 語より `gap` 高い
+    fn mitame_cost(bonus: i32, gap: i16, surface: &str) -> i32 {
+        let g = grammar();
+        let mut d = TestDict::new(g.grammar_id());
+        d.add("み", "見", ID_NOUN, ID_NOUN, 1000, POS_ID_NOUN);
+        d.add("た", "た", ID_NOUN, ID_NOUN, 1000, POS_ID_NOUN);
+        d.add("め", "目", ID_NOUN, ID_NOUN, 1000, POS_ID_NOUN);
+        d.add("みため", surface, ID_NOUN, ID_NOUN, 3000 + gap, POS_ID_NOUN);
+        let r = EdgeRules::none().with_compound_word(&g, CompoundWordRule { bonus });
+        let lat = build_r("みため", &d, &g, &r);
+        eos_best(&lat, &g).unwrap()
+    }
+
+    #[test]
+    fn compound_word_bonus_is_off_by_default_and_lowers_kana_mixed_nouns_only() {
+        // 既定(bonus 0)は変化なし: 3 語の経路 3000 が最小
+        assert_eq!(mitame_cost(0, 500, "見た目"), 3000);
+        // bonus を引くと、1 語(3500 - bonus)が勝つ
+        assert_eq!(mitame_cost(1000, 500, "見た目"), 2500);
+        // 末尾が仮名の表記ゆれ・漢字だけ・仮名だけには当てない
+        assert_eq!(mitame_cost(1000, 500, "見ため"), 3000);
+        assert_eq!(mitame_cost(1000, 500, "見多目"), 3000);
+        assert_eq!(mitame_cost(1000, 500, "みため"), 3000);
     }
 }

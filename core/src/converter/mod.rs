@@ -30,8 +30,8 @@ mod tests;
 pub use conversion::{CommitEvent, Conversion, Page};
 pub use katakana_like::KatakanaLikeRule;
 pub use options::{
-    AdverbNounRule, ConvertOptions, LmBudget, NounSuffixRule, NounSuruRule, NumeralCounterRule,
-    NumeralCoverRule, VolitionalRule,
+    AdverbNounRule, CompoundWordRule, ConvertOptions, LmBudget, NounSuffixRule, NounSuruRule,
+    NumeralCounterRule, NumeralCoverRule, VolitionalRule,
 };
 pub use segment::{
     SegmentChoice, SegmentCommit, SegmentError, SegmentLayout, SegmentSpan, Segmented,
@@ -177,6 +177,7 @@ impl Converter {
             volitional: opts.volitional,
             numeral_counter: opts.numeral_counter,
             katakana_like: opts.katakana_like,
+            compound_word: opts.compound_word,
         };
         let edge_rules = lattice::EdgeRules::new_with_volitional(
             &*grammar,
@@ -186,7 +187,8 @@ impl Converter {
             opts.numeral_cover,
             opts.volitional,
             opts.numeral_counter,
-        );
+        )
+        .with_compound_word(&*grammar, opts.compound_word);
         Ok(Self {
             dict,
             grammar,

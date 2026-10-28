@@ -52,6 +52,8 @@ const DEFAULT_NUMERAL_COUNTER_LANGUAGE_BONUS: i32 = 8000;
 const DEFAULT_NUMERAL_COUNTER_ORDINAL_BONUS: i32 = 8000;
 /// 上のうち、かな読みの数詞（さん → 三）からの辺の既定（ADR 0030 §13.5）
 const DEFAULT_NUMERAL_COUNTER_ADDRESS_KANA_BONUS: i32 = 6000;
+/// 仮名まじりの 1 語の複合名詞から引く値の既定。0 = 補正なし（ADR 0035 §12。掃引の結果をユーザーが見て決める。#2）
+const DEFAULT_COMPOUND_WORD_BONUS: i32 = 0;
 /// 番号ラベル 1〜9 に合わせた1ページの件数の上限
 pub(super) const MAX_PAGE_SIZE: usize = 9;
 
@@ -415,6 +417,47 @@ impl NumeralCounterRule {
     }
 }
 
+/// 変換のラティスの語の補正: 仮名まじりの 1 語の複合名詞の優先（ADR 0035 §12。#2。掃引用で、既定は止めてある）。
+///
+/// 辞書の名詞のうち、表記が漢字と平仮名の両方を含み、表記と読みがどちらも 3 文字以上のもの（見た目、推し活 など）の
+/// ノードのコストから `bonus` を引く。辞書の作成時の規則 F（漢字だけ 4 文字以上）が当てない仮名まじりの熟語が、
+/// 同じ読みの複数の短い語の経路（見 + た + 目）に負けるのを、変換時に直す。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CompoundWordRule {
+    /// ノードのコストから引く値。0 で規則を止める（既定）
+    pub bonus: i32,
+}
+
+impl Default for CompoundWordRule {
+    fn default() -> Self {
+        Self {
+            bonus: DEFAULT_COMPOUND_WORD_BONUS,
+        }
+    }
+}
+
+impl CompoundWordRule {
+    /// `--ranker-config` のキーの接頭辞
+    pub const CONFIG_PREFIX: &'static str = "lattice.compound_word";
+    const CONFIG_KEYS: [&'static str; 1] = ["bonus"];
+
+    pub fn disabled() -> Self {
+        Self { bonus: 0 }
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.bonus != 0
+    }
+
+    /// `lattice.compound_word.bonus` で `self` を上書きする（`VolitionalRule::with_kv` と同じ扱い）。
+    pub fn with_kv(self, kv: &BTreeMap<String, String>) -> Result<Self, RankerConfigError> {
+        let scope = ScopedKv::new(Self::CONFIG_PREFIX, &Self::CONFIG_KEYS, kv)?;
+        Ok(Self {
+            bonus: scope.get("bonus", self.bonus)?,
+        })
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ConvertOptions {
     /// 1..=9。既定 9（番号ラベル 1〜9）
@@ -446,6 +489,8 @@ pub struct ConvertOptions {
     pub numeral_counter: NumeralCounterRule,
     /// 未知語のカタカナの候補の補正（#271。既定は無効）
     pub katakana_like: KatakanaLikeRule,
+    /// 仮名まじりの 1 語の複合名詞の補正（ADR 0035 §12。#2。既定は無効）
+    pub compound_word: CompoundWordRule,
 }
 
 impl ConvertOptions {
@@ -477,6 +522,7 @@ impl Default for ConvertOptions {
             volitional: VolitionalRule::default(),
             numeral_counter: NumeralCounterRule::default(),
             katakana_like: KatakanaLikeRule::default(),
+            compound_word: CompoundWordRule::default(),
         }
     }
 }
@@ -484,6 +530,20 @@ impl Default for ConvertOptions {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compound_word_is_off_by_default_and_reads_its_key() {
+        let d = ConvertOptions::default().compound_word;
+        assert!(!d.is_enabled());
+        let r = d
+            .with_kv(&kv(&[("lattice.compound_word.bonus", "2000")]))
+            .unwrap();
+        assert_eq!(r.bonus, 2000);
+        assert!(
+            d.with_kv(&kv(&[("lattice.compound_word.nope", "1")]))
+                .is_err()
+        );
+    }
 
     fn kv(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
         pairs
