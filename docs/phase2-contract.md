@@ -76,7 +76,7 @@ Swift の定数は `macos/Sources/IkariXPC/Identifiers.swift`（`IkariIdentifier
 | `convert.fullwidth_katakana` | F7 | `ctrl+k` | `ctrl+i` | `ctrl+i` |
 | `convert.halfwidth_katakana` | F8 | `ctrl+;` | `ctrl+o` | `ctrl+o` |
 | `convert.fullwidth_alnum` | F9 | `ctrl+l` | `ctrl+p` | `ctrl+p` |
-| `convert.halfwidth_alnum` | F10 | （なし） | `ctrl+t` | `ctrl+@` |
+| `convert.halfwidth_alnum` | F10 | （なし） | `ctrl+t` | `ctrl+@`、`ctrl+shift+@`（US 配列） |
 | `segment.focus_left` | （なし） | `left` | `left` | `left` |
 | `segment.focus_right` | （なし） | `right` | `right` | `right` |
 | `segment.shrink` | （なし） | `shift+left` | `shift+left` | `shift+left` |
@@ -85,7 +85,7 @@ Swift の定数は `macos/Sources/IkariXPC/Identifiers.swift`（`IkariIdentifier
 | `candidate.next` | （なし） | `down` | `down` | `down` |
 | `candidate.previous` | （なし） | `up` | `up` | `up` |
 
-`atok` は ms-ime を土台に、半角英数と再変換だけ ATOK スタイルのキーにしたもの（#62。文節の ←/→ と Shift+←/→ は ATOK と役割が逆だが、ikari の既定のまま）。`ctrl+@` は、コードの上では JIS 配列の @ キー（Shift なし）で一致する（実機は未確認）。US 配列では @ が Shift+2 なので `ctrl+shift+@` になり、一致しない（F10 を使う）。
+`atok` は ms-ime を土台に、半角英数と再変換だけ ATOK スタイルのキーにしたもの（#62。文節の ←/→ と Shift+←/→ は ATOK と役割が逆だが、ikari の既定のまま）。`ctrl+@` は、コードの上では JIS 配列の @ キー（Shift なし）で一致する（実機は未確認）。US 配列では @ が Shift+2 なので `ctrl+shift+@` になる。両方を同じ操作に割り当てている（ユーザーの配列は US。2026-10-28）。
 
 `candidate.next` / `candidate.previous`（↓/↑）は変換中だけ効き、Space / Shift+Space と同じ（ページの境目、広げる動き、`paging.wrap` も同じ）。文節のモードには入らない。idle は矢印をアプリに渡し、合成中は受け止めて何もしない。Shift+↑↓ は変換中は受け止めて何もしない。
 

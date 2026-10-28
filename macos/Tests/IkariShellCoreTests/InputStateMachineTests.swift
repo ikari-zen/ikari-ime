@@ -427,13 +427,21 @@ import Testing
         #expect(h.converting?.candidates.first?.surface == expected)
     }
 
-    @Test(arguments: [("@", "ひんし"), ("u", "ひんし")])
-    func atokPresetBindsItsControlKeys(key: String, expected: String) throws {
+    private func atokConverts(key: String, modifiers: KeyModifiers) throws {
         let h = try Harness(preset: .atok)
         h.type("hinsi")
-        h.press(.character(key), [.control])
-        // ctrl+@ は半角英数、ctrl+u はひらがな。どちらも変換中になる（替え玉の字種変換は読みのまま返す）
-        #expect(h.converting?.candidates.first?.surface == expected)
+        h.press(.character(key), modifiers)
+        // 半角英数もひらがなも、変換中になる（替え玉の字種変換は読みのまま返す）
+        #expect(h.converting?.candidates.first?.surface == "ひんし")
+    }
+
+    @Test func atokPresetBindsCtrlAtForJisAndCtrlShiftAtForUs() throws {
+        try atokConverts(key: "@", modifiers: [.control])
+        try atokConverts(key: "@", modifiers: [.control, .shift])
+    }
+
+    @Test func atokPresetBindsCtrlU() throws {
+        try atokConverts(key: "u", modifiers: [.control])
     }
 
     @Test func presetKeysOfTheOtherPresetAreNotBound() throws {
