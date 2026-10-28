@@ -130,12 +130,13 @@ import Testing
         #expect(h.engine.convertRequests.isEmpty)
     }
 
-    @Test func surroundingTextIsFetchedAtTheStartAndBeforeConvertNotOnEveryKey() throws {
+    @Test func surroundingTextIsFetchedOnlyInTheEarlyKeystrokesAndBeforeConvertNotOnEveryKey() throws {
         let h = try Harness()
         h.type("hinsi")
-        #expect(h.surroundingFetches == 1)
+        // 最初の contextRefreshKeystrokes 打鍵だけ読む（#1）
+        #expect(h.surroundingFetches == InputStateMachine.contextRefreshKeystrokes)
         h.press(.space)
-        #expect(h.surroundingFetches == 2)
+        #expect(h.surroundingFetches == InputStateMachine.contextRefreshKeystrokes + 1)
     }
 
     @Test func prefetchAndConvertShareTheContextRevisionWhenTheTextDidNotChange() throws {

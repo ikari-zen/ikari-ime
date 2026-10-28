@@ -89,6 +89,7 @@ IkariEngine.xpc（同梱の XPC サービス。App Sandbox、ネットワーク�
 - 変換の行を結ぶ番号（番号だけで文字ではない）: `convert` と `reconvert` に `session=<番号> conv=<変換の番号>`、`page` `segment_page` `resize_segment` `commit` `commit_segments` `cancel` に `conv=`。`sh_episode` も同じ `session=` を持つので、「どの変換で LM が効かなかったか」「LM なしの変換のまま確定したか」を、時刻の順と番号で結べる。
 - `convert` の注記: `segments=N`、`cache=hit|wait_hit|wait_miss|miss`、`lm_applied=1|0`（返事の `lm_applied`。3 つ目の項目の `lm=<状態>` とは別のキー）、外れ（`cache=miss`）なら `miss=reading|context|none`（同じセッションのキャッシュに、読みだけが違うもの／文脈の番号だけが違うものがある／近いものがない）。秘密の入力は `cache=miss miss=none`。続けて `gap=<1 位と 2 位のスコアの差>`（候補が 1 件以下なら `na`）と `confident=1|0`（#69）。
 - `prefetch_done` の注記: `lm_applied=1|0`（LM が間に合って使われたか）、`lm_calls=N`（その先行計算での LM 呼び出し回数。2 文節以上は 2）。
+- 先行計算の左文脈: 合成の最初の `contextRefreshKeystrokes` 打鍵は左文脈を読み直す（#1。変換中に次の文字を打つと、1 打鍵目の文脈は直前の確定がアプリに入る前に読まれるため）。文脈の番号（`contextRev`）が進んだら、その文脈で先行計算を送り直す。それより後の打鍵は読み直さず、Space で読み直す。
 - Space（`Convert`）で先行計算が計算中なら、**Space から最大 30ms**（`convert.rs` の `CONVERT_WAIT_MAX`。NFR-04）待つ。間に合わなければ LM なしでその場で変換する。以前の「Prefetch の受付＋`lm_budget`」は廃止。再変換・区切り直しは待たない（変更なし）。
 
 ## 4. スクリプト
