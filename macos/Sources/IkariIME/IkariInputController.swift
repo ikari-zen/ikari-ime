@@ -15,11 +15,9 @@ final class IkariInputController: IMKInputController {
     private var applied: SettingsStore.Snapshot
     /// 状態機械に渡した絵文字の表の版（`AppContext.shortcodeTableSnapshot`）
     private var appliedEmojiVersion = 0
-    /// 候補ウィンドウのアンカー。フォーカスしている文節の先頭（1 文節なら変換文字列の先頭）に置き、
-    /// フォーカスが動くか `hideCandidates` するまで動かさない（ADR 0006 §8.4）
+    /// 候補ウィンドウのアンカー。変換文字列の先頭に置き、`hideCandidates` するまで動かさない
+    /// （文節の移動でも動かさない。#86）
     private var panelAnchor: PanelAnchor?
-    /// `panelAnchor` を取った文節の先頭（変換文字列の中の UTF-16 の相対位置）
-    private var panelAnchorOffset = 0
     /// 今の入力モード。`setValue(_:forTag:client:)` で macOS が教えてくる（ADR 0026 §5.2）。モードが替わってもコントローラ、
     /// セッション ID、`BeginSession` は変えない（確定履歴を切らさない）
     private var inputMode = InputMode.japanese
@@ -311,12 +309,6 @@ final class IkariInputController: IMKInputController {
                 break
             case .setMarkedText(let marked):
                 access.setMarkedText(marked)
-                // アンカーは、フォーカスしている文節の先頭。フォーカスが動いたときだけ取り直す（打鍵とページ送りでは動かさない）
-                let offset = anchorOffset(of: marked)
-                if offset != panelAnchorOffset {
-                    panelAnchor = nil
-                    panelAnchorOffset = offset
-                }
             case .commit(let text):
                 access.insert(text)
             case .showCandidates(let model):
@@ -365,7 +357,6 @@ final class IkariInputController: IMKInputController {
 
     private func hidePanel() {
         panelAnchor = nil
-        panelAnchorOffset = 0
         machine?.setPanelSide(.below)
         MainActor.assumeIsolated { SharedPanel.shared.panel.hide() }
     }
@@ -373,7 +364,7 @@ final class IkariInputController: IMKInputController {
     /// キャレットが取れないときのフォールバック: アクセシビリティ（権限があるときだけ）、同じアプリの最後の正常値、マウスのあるスクリーンの中央下
     private func resolveAnchor(_ access: ClientAccess) -> PanelAnchor {
         let bundleID = access.bundleIdentifier
-        let client = access.caretRect(characterOffset: panelAnchorOffset)
+        let client = access.caretRect()
         let accessibility = (client == nil) ? AccessibilityAnchor.focusedElementBottomLeft() : nil
         let anchor = IkariShellCore.resolveAnchor(
             client: client,

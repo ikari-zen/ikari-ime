@@ -49,12 +49,11 @@ enum SegmentFixture {
 
     /// 状態機械が作る候補ウィンドウの内容。次のページがあれば、位置を決める高さはページの上限（9）で見込む
     static func model(
-        _ candidates: [CandidateItem], selected: Int = 0, hasNext: Bool = true, pageCount: Int? = nil,
-        clauses: [String] = [], focused: Int? = nil
+        _ candidates: [CandidateItem], selected: Int = 0, hasNext: Bool = true, pageCount: Int? = nil
     ) -> CandidatePanelModel {
         CandidatePanelModel(
             candidates: candidates, selected: selected, annotation: candidates[selected].annotation,
-            reservedRows: hasNext ? Settings.enginePageSize : pageCount, clauses: clauses, focusedClause: focused)
+            reservedRows: hasNext ? Settings.enginePageSize : pageCount)
     }
 
     /// 最初の Space のあと（読み全体の候補を出している）まで進める
@@ -111,8 +110,7 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
                 .showCandidates(
                     SegmentFixture.model(
                         Array(SegmentFixture.wholeCandidates.prefix(Settings.defaultPageSize)), hasNext: false,
-                        pageCount: SegmentFixture.wholeCandidates.count,
-                        clauses: ["初めて", "知った"])),
+                        pageCount: SegmentFixture.wholeCandidates.count)),
             ])
         let state = try #require(h.converting)
         #expect(state.segments.count == 1)
@@ -139,14 +137,6 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
         }
         #expect(text.segments == [2, 3])
         #expect(text.segments.reduce(0, +) == text.text.utf16.count)
-    }
-
-    @Test func theAnchorOffsetFollowsTheFocusedSegmentInUtf16Units() {
-        #expect(anchorOffset(of: MarkedText(text: "ひんし", highlightedLength: 3)) == 0)
-        #expect(anchorOffset(of: marked("初めて知った", [3, 3], focused: 0)) == 0)
-        #expect(anchorOffset(of: marked("初めて知った", [3, 3], focused: 1)) == 3)
-        #expect(anchorOffset(of: marked("😀初めて知った", [2, 3, 3], focused: 2)) == 5)
-        #expect(anchorOffset(of: marked("あ", [1], focused: 4)) == 0)
     }
 
     @Test func aLayoutWhoseReadingsDoNotAddUpToTheTypedReadingIsIgnored() throws {
@@ -201,7 +191,7 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
         #expect(
             actions == [
                 .setMarkedText(marked("初めて知った", [3, 3], focused: 1)),
-                .showCandidates(SegmentFixture.model(SegmentFixture.tail0, clauses: ["初めて", "知った"], focused: 1)),
+                .showCandidates(SegmentFixture.model(SegmentFixture.tail0)),
             ])
         let state = try #require(h.converting)
         #expect(state.wholeLayout == nil)
@@ -223,7 +213,7 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
         #expect(
             actions == [
                 .setMarkedText(marked("初めて知った", [3, 3], focused: 0)),
-                .showCandidates(SegmentFixture.model(SegmentFixture.head0, clauses: ["初めて", "知った"], focused: 0)),
+                .showCandidates(SegmentFixture.model(SegmentFixture.head0)),
             ])
         #expect(h.engine.segmentPageCalls.isEmpty)
     }
@@ -235,7 +225,7 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
         #expect(
             actions == [
                 .setMarkedText(marked("始めてしった", [3, 3], focused: 0)),
-                .showCandidates(SegmentFixture.model(SegmentFixture.head0, selected: 1, clauses: ["始めて", "しった"], focused: 0)),
+                .showCandidates(SegmentFixture.model(SegmentFixture.head0, selected: 1)),
             ])
         let state = try #require(h.converting)
         #expect(state.segments.map(\.candidateIndex) == [1, 1])
@@ -272,7 +262,7 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
         #expect(state.wholeLayout == nil)
         #expect(state.focused == 1)
         #expect(h.engine.segmentPageCalls.count >= 1)
-        #expect(actions.contains(.showCandidates(SegmentFixture.model(SegmentFixture.tail0, clauses: ["始めて", "知った"], focused: 1))))
+        #expect(actions.contains(.showCandidates(SegmentFixture.model(SegmentFixture.tail0))))
     }
 
     @Test func leftEntersTheClauseModeEvenWhenTheShownWholeCandidateIsNotMadeOfTheSegments() throws {
@@ -282,7 +272,7 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
         let state = try #require(h.converting)
         #expect(state.wholeLayout == nil)
         #expect(state.focused == 0)
-        #expect(actions.contains(.showCandidates(SegmentFixture.model(SegmentFixture.head0, selected: 1, clauses: ["始めて", "知った"], focused: 0))))
+        #expect(actions.contains(.showCandidates(SegmentFixture.model(SegmentFixture.head0, selected: 1))))
     }
 
     /// 実機と同じ形の入力（キーコード 123/124、フラグ 0xa00000）を、変換する前から殻の入口まで通す
@@ -311,7 +301,7 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
         #expect(
             actions == [
                 .setMarkedText(marked("初めて知った", [3, 3], focused: 1)),
-                .showCandidates(SegmentFixture.model(SegmentFixture.tail0, clauses: ["初めて", "知った"], focused: 1)),
+                .showCandidates(SegmentFixture.model(SegmentFixture.tail0)),
             ])
         let state = try #require(h.converting)
         #expect(state.wholeLayout == nil)
@@ -326,7 +316,7 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
         #expect(
             actions == [
                 .setMarkedText(marked("初めて知った", [3, 3], focused: 0)),
-                .showCandidates(SegmentFixture.model(SegmentFixture.head0, clauses: ["初めて", "知った"], focused: 0)),
+                .showCandidates(SegmentFixture.model(SegmentFixture.head0)),
             ])
         #expect(h.converting?.wholeLayout == nil)
     }
@@ -399,7 +389,7 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
         #expect(
             actions == [
                 .setMarkedText(marked("初めて知った", [3, 3], focused: 1)),
-                .showCandidates(SegmentFixture.model(SegmentFixture.tail0, clauses: ["初めて", "知った"], focused: 1)),
+                .showCandidates(SegmentFixture.model(SegmentFixture.tail0)),
             ])
         #expect(h.converting?.focused == 1)
         #expect(
@@ -435,7 +425,7 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
         #expect(actions.first == .setMarkedText(marked("始めて知った", [3, 3], focused: 1)))
         let back = h.press(.left)
         // 戻ると、選んでいた候補が選ばれたまま
-        #expect(back == [.setMarkedText(marked("始めて知った", [3, 3], focused: 0)), .showCandidates(SegmentFixture.model(SegmentFixture.head0, selected: 1, clauses: ["始めて", "知った"], focused: 0))])
+        #expect(back == [.setMarkedText(marked("始めて知った", [3, 3], focused: 0)), .showCandidates(SegmentFixture.model(SegmentFixture.head0, selected: 1))])
     }
 
     @Test func aFailedFetchKeepsTheFocus() throws {
@@ -463,7 +453,7 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
         #expect(
             actions == [
                 .setMarkedText(marked("初めてしった", [3, 3], focused: 1)),
-                .moveSelection(SegmentFixture.model(SegmentFixture.tail0, selected: 1, clauses: ["初めて", "しった"], focused: 1)),
+                .moveSelection(SegmentFixture.model(SegmentFixture.tail0, selected: 1)),
             ])
         #expect(h.press(.space, [.shift]).first == .setMarkedText(marked("初めて知った", [3, 3], focused: 1)))
         // 文節 0 は動かない
@@ -524,7 +514,7 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
         #expect(
             actions == [
                 .setMarkedText(marked("始めて知った", [3, 3], focused: 1)),
-                .showCandidates(SegmentFixture.model(SegmentFixture.tail0, clauses: ["始めて", "知った"], focused: 1)),
+                .showCandidates(SegmentFixture.model(SegmentFixture.tail0)),
             ])
         #expect(h.converting?.segments[0].selected == 1)
         #expect(h.converting?.focused == 1)
@@ -540,7 +530,7 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
         #expect(
             actions == [
                 .setMarkedText(marked("初めて絞った", [3, 3], focused: 1)),
-                .moveSelection(SegmentFixture.model(SegmentFixture.tail0, selected: 2, clauses: ["初めて", "絞った"], focused: 1)),
+                .moveSelection(SegmentFixture.model(SegmentFixture.tail0, selected: 2)),
             ])
         #expect(h.converting?.focused == 1)
         #expect(h.machine.state != .idle)
@@ -694,7 +684,7 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
         h.press(.function(7))
         h.press(.right)
         let back = h.press(.left)
-        #expect(back == [.setMarkedText(marked("ハジメテ知った", [4, 3], focused: 0)), .showCandidates(SegmentFixture.model(SegmentFixture.head0, clauses: ["ハジメテ", "知った"], focused: 0))])
+        #expect(back == [.setMarkedText(marked("ハジメテ知った", [4, 3], focused: 0)), .showCandidates(SegmentFixture.model(SegmentFixture.head0))])
     }
 
     @Test func spaceAfterAScriptConversionChoosesTheNextCandidateAndReopensThePanel() throws {
@@ -704,7 +694,7 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
         #expect(
             actions == [
                 .setMarkedText(marked("始めて知った", [3, 3], focused: 0)),
-                .showCandidates(SegmentFixture.model(SegmentFixture.head0, selected: 1, clauses: ["始めて", "知った"], focused: 0)),
+                .showCandidates(SegmentFixture.model(SegmentFixture.head0, selected: 1)),
             ])
         #expect(h.converting?.segments[0].literal == nil)
     }
@@ -757,7 +747,7 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
         #expect(
             actions == [
                 .setMarkedText(marked("始め手しった", [2, 4], focused: 0)),
-                .showCandidates(SegmentFixture.model(state.candidates, hasNext: state.hasNext, clauses: ["始め", "手しった"], focused: 0)),
+                .showCandidates(SegmentFixture.model(state.candidates, hasNext: state.hasNext)),
             ])
     }
 
@@ -990,52 +980,5 @@ private func marked(_ text: String, _ lengths: [Int], focused: Int) -> MarkedTex
     @Test func anArrowWithACommandModifierWhileConvertingCommitsAndPassesThrough() throws {
         let h = try SegmentFixture.converting()
         #expect(h.press(.left, [.command]) == [.commit("初めて知った"), .hideCandidates, .passThrough])
-    }
-}
-
-/// 候補ウィンドウの先頭の行（#292）。2 文節以上のときだけ、文節ごとの表記とフォーカスを入れる
-@Suite struct ClauseHeaderTests {
-    private static func clauses(_ actions: [KeyAction]) -> (clauses: [String], focused: Int?)? {
-        for action in actions {
-            switch action {
-            case .showCandidates(let model), .moveSelection(let model): return (model.clauses, model.focusedClause)
-            default: continue
-            }
-        }
-        return nil
-    }
-
-    @Test func theFirstWholeCandidateCarriesTheClausesWithoutFocus() throws {
-        let engine = MockEngine()
-        SegmentFixture.install(on: engine)
-        let h = try Harness(engine: engine)
-        h.type(SegmentFixture.typedReading)
-        let header = try #require(Self.clauses(h.press(.space)))
-        #expect(header.clauses == ["初めて", "知った"])
-        #expect(header.focused == nil)
-    }
-
-    @Test func aWholeCandidateOtherThanTheFirstHasNoHeader() throws {
-        let h = try SegmentFixture.wholeCandidates()
-        let header = try #require(Self.clauses(h.press(.space)))
-        #expect(header.clauses.isEmpty)
-        #expect(header.focused == nil)
-    }
-
-    @Test func theFocusedClauseFollowsTheFocusAndTheChosenCandidate() throws {
-        let h = try SegmentFixture.converting()
-        let right = try #require(Self.clauses(h.press(.right)))
-        #expect(right.clauses == ["初めて", "知った"] && right.focused == 1)
-        let space = try #require(Self.clauses(h.press(.space)))
-        #expect(space.clauses == ["初めて", "しった"] && space.focused == 1)
-        let left = try #require(Self.clauses(h.press(.left)))
-        #expect(left.clauses == ["初めて", "しった"] && left.focused == 0)
-    }
-
-    @Test func aSingleSegmentHasNoHeader() throws {
-        let h = try Harness()
-        h.type("hinsi")
-        let header = try #require(Self.clauses(h.press(.space)))
-        #expect(header.clauses.isEmpty && header.focused == nil)
     }
 }

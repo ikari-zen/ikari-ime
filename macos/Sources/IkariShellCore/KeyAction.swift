@@ -93,17 +93,10 @@ public struct CandidatePanelModel: Sendable, Equatable {
     /// 位置を決めるときに見込む行の数。このあと広がる、またはページが進み得るなら 9、そうでなければページの件数。
     /// 広げたときの高さの変化で、候補ウィンドウの上下が入れ替わらないようにする（ADR 0014 §2.2）
     public var reservedRows: Int
-    /// 候補ウィンドウの先頭の行に出す、変換結果の文節ごとの表記。2 文節以上のときだけ入れる（空なら行を出さない。#292）
-    public var clauses: [String]
-    /// `clauses` のうちフォーカスしている文節。全体の候補を出している間は nil
-    public var focusedClause: Int?
 
     public init(
-        candidates: [CandidateItem], selected: Int, annotation: String, reservedRows: Int? = nil,
-        clauses: [String] = [], focusedClause: Int? = nil
+        candidates: [CandidateItem], selected: Int, annotation: String, reservedRows: Int? = nil
     ) {
-        self.clauses = clauses
-        self.focusedClause = focusedClause
         self.candidates = candidates
         self.selected = selected
         self.annotation = annotation

@@ -92,14 +92,6 @@ public func placePanel(anchor: CGRect, panelSize: CGSize, visibleFrame: CGRect) 
     layoutPanel(anchor: anchor, panelSize: panelSize, visibleFrame: visibleFrame).frame
 }
 
-/// 候補ウィンドウのアンカーにする位置。変換文字列の中の、フォーカスしている文節の先頭（UTF-16 の相対位置。ADR 0006 §8.4）。
-/// `attributes(forCharacterIndex:)` にこの値をそのまま渡す（S0-3: 絶対位置ではなく変換文字列の中の位置を取る）。
-/// 文節に分かれていない（1 文節、合成中）、または `focused` が範囲外なら 0（変換文字列の先頭）
-public func anchorOffset(of marked: MarkedText) -> Int {
-    guard let focused = marked.focused, marked.segments.indices.contains(focused) else { return 0 }
-    return marked.segments[..<focused].reduce(0, +)
-}
-
 /// 使うアンカーを選ぶ。順は、クライアント、アクセシビリティ、同じアプリで最後に取れた正常値、マウスのあるスクリーンの中央下。
 /// `mouseScreenVisibleFrame` はマウスのあるスクリーンの `visibleFrame`。
 public func resolveAnchor(

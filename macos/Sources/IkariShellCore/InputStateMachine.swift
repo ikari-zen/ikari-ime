@@ -1445,26 +1445,12 @@ public final class InputStateMachine {
         // ページの上限で見込む（広げたときに上下が入れ替わらないように。ADR 0014 §2.2）
         let visible = state.visibleCount(initial: settings.pageSize)
         let mayGrow = state.hasNext || state.pageIndex > 0
-        let clauseHeader = clauseHeader(for: state)
         return CandidatePanelModel(
             candidates: Array(state.candidates.prefix(visible)),
             selected: state.selected,
             annotation: state.candidates[state.selected].annotation,
-            reservedRows: mayGrow ? Settings.enginePageSize : state.candidates.count,
-            clauses: clauseHeader.clauses, focusedClause: clauseHeader.focused
+            reservedRows: mayGrow ? Settings.enginePageSize : state.candidates.count
         )
-    }
-
-    /// 候補ウィンドウの先頭の行に出す文節（#292）。2 文節以上のときだけ。規則は `markedText(for:)` と同じ
-    private func clauseHeader(for state: ConvertingState) -> (clauses: [String], focused: Int?) {
-        let surfaces = state.segments.map(displayedSurface)
-        if let layout = state.wholeLayout {
-            let parts = layout.segments.map(\.surface)
-            guard parts.count > 1, parts.joined() == (surfaces.first ?? "") else { return ([], nil) }
-            return (parts, nil)
-        }
-        guard surfaces.count > 1 else { return ([], nil) }
-        return (surfaces, state.focused)
     }
 
     private func kind(of script: KeymapAction) -> CandidateKind {

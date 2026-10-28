@@ -59,7 +59,7 @@ final class CandidatePanel {
         view.model = model
         let size = view.preferredSize
         let placement = layoutPanel(
-            anchor: anchor, panelSize: size, reservedHeight: CandidateView.height(rows: model.reservedRows, hasHeader: !model.clauses.isEmpty),
+            anchor: anchor, panelSize: size, reservedHeight: CandidateView.height(rows: model.reservedRows),
             visibleFrame: visibleFrame)
         view.side = placement.side
         panel.setFrame(placement.frame, display: true)
@@ -83,20 +83,6 @@ final class CandidateView: NSView {
     static let minimumWidth: CGFloat = 160
     static let minimumSize = NSSize(width: minimumWidth, height: rowHeight)
 
-    // 先頭の行（変換結果の全文を 1 行で出し、文節ごとに下線を引く。#292）
-    static let headerHeight: CGFloat = 28
-    /// 先頭の行の幅の上限（長い文では右を切る）
-    static let headerMaxWidth: CGFloat = 560
-    /// 文節ごとの下線の太さ。フォーカスの文節は太くする
-    static let clauseUnderline: CGFloat = 1
-    static let focusedClauseUnderline: CGFloat = 3
-    /// 隣り合う文節の下線の間の隙間
-    static let clauseGap: CGFloat = 2
-    /// 下線の下端が、行の下端から離れる距離
-    static let underlineBottomInset: CGFloat = 4
-    /// フォーカスの文節がないとき（全体の候補）の下線は、フォーカスなしの文節を同じ濃さで引く
-    static let unfocusedClauseAlpha: CGFloat = 0.55
-
     private let candidateFont = NSFont.systemFont(ofSize: 15)
     private let labelFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
     private let trailingFont = NSFont.systemFont(ofSize: 11)
@@ -115,12 +101,9 @@ final class CandidateView: NSView {
 
     override var isFlipped: Bool { true }
 
-    /// 先頭の行がないときは、これまでと同じ高さ
-    static func height(rows: Int, hasHeader: Bool = false) -> CGFloat {
-        CGFloat(max(rows, 1)) * rowHeight + (hasHeader ? headerHeight : 0)
+    static func height(rows: Int) -> CGFloat {
+        CGFloat(max(rows, 1)) * rowHeight
     }
-
-    private var headerTotalHeight: CGFloat { model.clauses.isEmpty ? 0 : Self.headerHeight }
 
     /// 新しく出すとき（変換の始まりやフォーカスの移動）に幅の記憶を捨てる
     func resetWidth() {
@@ -139,29 +122,19 @@ final class CandidateView: NSView {
             let trailingWidth = trailing.isEmpty ? 0 : Self.trailingLabelGap + width(of: trailing, font: trailingFont)
             return Self.cellPadding * 2 + label + Self.labelGap + surface + trailingWidth
         }.max() ?? 0
-        let header = model.clauses.isEmpty ? 0 : min(Self.headerMaxWidth, headerTextWidth() + Self.cellPadding * 2)
-        return max(Self.minimumWidth, widest, header)
-    }
-
-    /// 先頭の行の文節ごとの幅。隙間は文節の間にだけ入れる
-    private func clauseWidths() -> [CGFloat] {
-        model.clauses.map { width(of: $0, font: candidateFont) }
-    }
-
-    private func headerTextWidth() -> CGFloat {
-        clauseWidths().reduce(0, +) + CGFloat(max(model.clauses.count - 1, 0)) * Self.clauseGap
+        return max(Self.minimumWidth, widest)
     }
 
     /// 幅は見せた候補のいちばん長いものに合わせ、この変換の間は縮めない。高さは見せている件数ぶん
     var preferredSize: NSSize {
         widestSoFar = max(widestSoFar, contentWidth())
-        return NSSize(width: widestSoFar, height: Self.height(rows: model.candidates.count, hasHeader: !model.clauses.isEmpty))
+        return NSSize(width: widestSoFar, height: Self.height(rows: model.candidates.count))
     }
 
     /// `index` 番目の候補の行の矩形。上に置いたときは、1 位が下になる
     private func rowRect(_ index: Int) -> NSRect {
         let slot = side == .above ? model.candidates.count - 1 - index : index
-        return NSRect(x: 0, y: headerTotalHeight + CGFloat(slot) * Self.rowHeight, width: bounds.width, height: Self.rowHeight)
+        return NSRect(x: 0, y: CGFloat(slot) * Self.rowHeight, width: bounds.width, height: Self.rowHeight)
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -171,8 +144,6 @@ final class CandidateView: NSView {
         NSColor.separatorColor.setStroke()
         background.lineWidth = 0.5
         background.stroke()
-
-        drawHeader()
 
         for (index, candidate) in model.candidates.enumerated() {
             let row = rowRect(index)
@@ -205,29 +176,6 @@ final class CandidateView: NSView {
                     .fill()
             }
         }
-    }
-
-    /// 先頭の行。文節ごとに文字を並べ、それぞれの下に下線を引く。フォーカスの文節は太く、強い色にする
-    private func drawHeader() {
-        guard !model.clauses.isEmpty else { return }
-        let row = NSRect(x: 0, y: 0, width: bounds.width, height: Self.headerHeight)
-        NSGraphicsContext.saveGraphicsState()
-        NSBezierPath(rect: row.insetBy(dx: Self.cellPadding, dy: 0)).addClip()
-        var x = row.minX + Self.cellPadding
-        for (index, clause) in model.clauses.enumerated() {
-            let isFocused = index == model.focusedClause
-            let color: NSColor = isFocused || model.focusedClause == nil ? .labelColor : .secondaryLabelColor
-            draw(clause, font: candidateFont, color: color, at: x, in: row)
-            let clauseWidth = width(of: clause, font: candidateFont)
-            let thickness = isFocused ? Self.focusedClauseUnderline : Self.clauseUnderline
-            let underline = isFocused ? NSColor.controlAccentColor : NSColor.labelColor.withAlphaComponent(Self.unfocusedClauseAlpha)
-            underline.setFill()
-            NSRect(x: x, y: row.maxY - Self.underlineBottomInset - thickness, width: clauseWidth, height: thickness).fill()
-            x += clauseWidth + Self.clauseGap
-        }
-        NSGraphicsContext.restoreGraphicsState()
-        NSColor.separatorColor.setFill()
-        NSRect(x: Self.separatorInset, y: row.maxY - 0.5, width: bounds.width - Self.separatorInset * 2, height: 0.5).fill()
     }
 
     private func draw(_ text: String, font: NSFont, color: NSColor, at x: CGFloat, in row: NSRect) {
