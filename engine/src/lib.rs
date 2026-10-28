@@ -29,6 +29,8 @@ mod log;
 mod mock_seam;
 mod segments;
 mod session;
+#[cfg(test)]
+use crate::convert::DEFAULT_CONVERT_WAIT;
 mod settings;
 mod workers;
 
@@ -145,12 +147,13 @@ pub struct EngineParts {
     /// LM を使うはずか（使えなければ `LM_FAILED`、使わない設定なら `LM_DISABLED`）
     pub lm_requested: bool,
     pub lm_budget: LmBudget,
+    /// Space で計算中の先行計算を待つ上限（`engine.convert_wait_ms`。既定は `DEFAULT_CONVERT_WAIT`）
+    pub convert_wait: Duration,
     pub lock: Option<EngineLock>,
 }
 
 /// エンジンの Stack の設定。`idle_unload_secs == 0` は解放しない。
-pub fn stack_options(idle_unload_secs: u32) -> StackOptions {
-    let budget = LmBudget::default();
+pub fn stack_options(idle_unload_secs: u32, budget: LmBudget) -> StackOptions {
     let unload = if idle_unload_secs == 0 {
         NEVER_UNLOAD_SECS
     } else {
@@ -180,7 +183,7 @@ impl Engine {
     /// 辞書、vectors、学習、LM を読み込み、LM の warm_up を別スレッドで始める。
     ///
     /// `data_dir`（ADR 0004 §2 の配置）の `dict/` を開く。`settings.tsv` の `engine.lm` と
-    /// `engine.idle_unload_secs` があれば `cfg` より優先する。LM のモデル（`models/` の GGUF）がない、
+    /// `engine.idle_unload_secs`、`engine.lm_deadline_ms`、`engine.convert_wait_ms` があれば `cfg` より優先する。LM のモデル（`models/` の GGUF）がない、
     /// またはこのビルドに LM がないときは、LM なしで動く（`HelloReply.lm = LM_FAILED`）。
     pub fn open(cfg: &EngineConfig) -> Result<Engine, EngineError> {
         if cfg.data_dir.is_empty() {
@@ -205,7 +208,11 @@ impl Engine {
             lm_model,
             no_packs: settings.pack_it == Some(false),
         };
-        let mut opts = stack_options(idle_unload_secs);
+        let lm_budget = LmBudget {
+            max: settings.lm_deadline_or_default(),
+            ..LmBudget::default()
+        };
+        let mut opts = stack_options(idle_unload_secs, lm_budget);
         // 住所 ↔ 郵便番号の設定（表は <dict>/postal.tsv。ADR 0032）
         opts.postal = PostalOptions {
             japanese: settings.postal_japanese_or_default(),
@@ -224,7 +231,8 @@ impl Engine {
             rebuild: Some(rebuild),
             data_dir: Some(data_dir),
             lm_requested,
-            lm_budget: LmBudget::default(),
+            lm_budget,
+            convert_wait: settings.convert_wait_or_default(),
             lock: Some(lock),
         }))
     }
@@ -245,6 +253,7 @@ impl Engine {
             data_dir,
             lm_requested,
             lm_budget,
+            convert_wait,
             lock,
         } = parts;
         let log = data_dir
@@ -279,6 +288,7 @@ impl Engine {
             next_conversion: AtomicU64::new(1),
             lm_requested,
             lm_budget,
+            convert_wait,
             warming: Arc::new(AtomicBool::new(false)),
             log: Arc::new(log),
             diag: diag::DiagState::new(),
@@ -400,6 +410,8 @@ struct Inner {
     next_conversion: AtomicU64,
     lm_requested: bool,
     lm_budget: LmBudget,
+    /// Space で計算中の先行計算を待つ上限
+    convert_wait: Duration,
     warming: Arc<AtomicBool>,
     log: Arc<EngineLog>,
     diag: diag::DiagState,

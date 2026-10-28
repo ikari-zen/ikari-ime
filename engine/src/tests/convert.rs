@@ -1,7 +1,7 @@
 //! 先行計算、変換、ページ
 
 use super::*;
-use crate::convert::CONVERT_WAIT_MAX;
+use crate::convert::DEFAULT_CONVERT_WAIT;
 
 #[test]
 fn prefetch_then_convert_hits_the_cache() {
@@ -209,6 +209,7 @@ fn logged_engine(delay_ms: u64, budget: LmBudget, tag: &str) -> (Engine, PathBuf
         data_dir: Some(dir.clone()),
         lm_requested: true,
         lm_budget: budget,
+        convert_wait: DEFAULT_CONVERT_WAIT,
         lock: None,
     });
     (e, dir)
@@ -526,8 +527,36 @@ fn convert_never_waits_more_than_30ms() {
     let waited = started.elapsed();
     assert!(!r.lm_applied);
     assert_eq!(surfaces(&r)[0], BASE_TOP);
-    assert!(waited >= CONVERT_WAIT_MAX, "{waited:?}");
+    assert!(waited >= DEFAULT_CONVERT_WAIT, "{waited:?}");
     // 30ms の待ちとその場の変換。余裕を見ても、計算の 300ms には届かない
     assert!(waited < Duration::from_millis(150), "{waited:?}");
     let _ = std::fs::remove_dir_all(dir);
+}
+
+/// `convert_wait` を設定で変えると、その長さだけ待つ（0 なら待たずにその場の変換）
+#[test]
+fn convert_uses_the_configured_wait() {
+    let run = |wait: Duration, tag: &str| {
+        let dir = temp_dir(tag);
+        let mock = MockLm::new(Duration::from_millis(80));
+        let e = Engine::from_parts(EngineParts {
+            stack: mock_stack(&mock, None),
+            rebuild: None,
+            data_dir: Some(dir.clone()),
+            lm_requested: true,
+            lm_budget: LmBudget::default(),
+            convert_wait: wait,
+            lock: None,
+        });
+        begin(&e, 1, false);
+        prefetch(&e, 1, READING, 0);
+        let r = convert(&e, 1, READING, 0);
+        let _ = std::fs::remove_dir_all(dir);
+        r.lm_applied
+    };
+    assert!(
+        run(Duration::from_millis(200), "wait-cfg-long"),
+        "waits for 80ms"
+    );
+    assert!(!run(Duration::ZERO, "wait-cfg-zero"), "does not wait");
 }

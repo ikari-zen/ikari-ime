@@ -4,6 +4,7 @@
 //! （入力を止めない）。ファイルがなければ既定値。
 
 use std::path::Path;
+use std::time::Duration;
 
 pub const SETTINGS_FILE_NAME: &str = "settings.tsv";
 
@@ -11,6 +12,8 @@ const COMMENT_PREFIX: char = '#';
 const SEPARATOR: char = '\t';
 const KEY_LM: &str = "engine.lm";
 const KEY_IDLE_UNLOAD_SECS: &str = "engine.idle_unload_secs";
+const KEY_LM_DEADLINE_MS: &str = "engine.lm_deadline_ms";
+const KEY_CONVERT_WAIT_MS: &str = "engine.convert_wait_ms";
 const KEY_PACK_IT: &str = "dict.pack_it";
 const KEY_POSTAL_JAPANESE: &str = "postal.japanese";
 const KEY_POSTAL_ENGLISH: &str = "postal.english";
@@ -31,6 +34,15 @@ pub const DEFAULT_UNICODE_NOTATION: bool = false;
 /// `date.weekday_dates` の既定（曜日の読みに直近の日付の候補を足す。#265）
 pub const DEFAULT_DATE_WEEKDAY_DATES: bool = false;
 
+/// `engine.lm_deadline_ms` の既定（先行計算で LM を待つ締め切り。`LmBudget.max` の既定と同じ）
+pub const DEFAULT_LM_DEADLINE_MS: u32 = 300;
+/// `engine.lm_deadline_ms` の範囲（暫定）。範囲外は丸める
+pub const LM_DEADLINE_MS_RANGE: (u32, u32) = (50, 2000);
+/// `engine.convert_wait_ms` の既定（Space で先行計算を待つ上限）
+pub const DEFAULT_CONVERT_WAIT_MS: u32 = 30;
+/// `engine.convert_wait_ms` の範囲（暫定。0 = 待たない）。範囲外は丸める
+pub const CONVERT_WAIT_MS_RANGE: (u32, u32) = (0, 200);
+
 fn parse_switch(value: &str) -> Option<bool> {
     match value {
         VALUE_ON => Some(true),
@@ -46,6 +58,10 @@ pub struct Settings {
     pub lm: Option<bool>,
     /// `engine.idle_unload_secs`（0 = 解放しない）
     pub idle_unload_secs: Option<u32>,
+    /// `engine.lm_deadline_ms`（書かれた値のまま。丸めは `lm_deadline_or_default`）
+    pub lm_deadline_ms: Option<u32>,
+    /// `engine.convert_wait_ms`（書かれた値のまま。丸めは `convert_wait_or_default`）
+    pub convert_wait_ms: Option<u32>,
     /// `dict.pack_it`（IT の語彙集。既定は on。ADR 0012 B20-4）
     pub pack_it: Option<bool>,
     /// `postal.japanese`（既定は on。ADR 0032）
@@ -61,6 +77,20 @@ pub struct Settings {
 }
 
 impl Settings {
+    /// 先行計算で LM を待てる締め切り。範囲外は範囲に丸める
+    pub fn lm_deadline_or_default(&self) -> Duration {
+        let (lo, hi) = LM_DEADLINE_MS_RANGE;
+        let ms = self.lm_deadline_ms.unwrap_or(DEFAULT_LM_DEADLINE_MS);
+        Duration::from_millis(u64::from(ms.clamp(lo, hi)))
+    }
+
+    /// Space で先行計算を待つ上限。範囲外は範囲に丸める
+    pub fn convert_wait_or_default(&self) -> Duration {
+        let (lo, hi) = CONVERT_WAIT_MS_RANGE;
+        let ms = self.convert_wait_ms.unwrap_or(DEFAULT_CONVERT_WAIT_MS);
+        Duration::from_millis(u64::from(ms.clamp(lo, hi)))
+    }
+
     pub fn postal_japanese_or_default(&self) -> bool {
         self.postal_japanese.unwrap_or(DEFAULT_POSTAL_JAPANESE)
     }
@@ -115,6 +145,8 @@ pub fn parse(text: &str) -> Settings {
                     settings.idle_unload_secs = Some(secs);
                 }
             }
+            KEY_LM_DEADLINE_MS => settings.lm_deadline_ms = value.parse().ok(),
+            KEY_CONVERT_WAIT_MS => settings.convert_wait_ms = value.parse().ok(),
             _ => {}
         }
     }
@@ -203,6 +235,34 @@ mod tests {
             Some(0)
         );
         assert_eq!(parse("engine.lm\ton\r\n").lm, Some(true));
+    }
+
+    #[test]
+    fn timeout_keys_default_to_the_current_constants() {
+        let none = parse("");
+        assert_eq!(none.lm_deadline_ms, None);
+        assert_eq!(none.lm_deadline_or_default(), Duration::from_millis(300));
+        assert_eq!(none.convert_wait_or_default(), Duration::from_millis(30));
+    }
+
+    #[test]
+    fn timeout_keys_are_read_and_clamped() {
+        let s = parse("engine.lm_deadline_ms\t500\nengine.convert_wait_ms\t0\n");
+        assert_eq!(s.lm_deadline_or_default(), Duration::from_millis(500));
+        assert_eq!(s.convert_wait_or_default(), Duration::ZERO);
+        let low = parse("engine.lm_deadline_ms\t1\n");
+        assert_eq!(low.lm_deadline_or_default(), Duration::from_millis(50));
+        let high = parse("engine.lm_deadline_ms\t99999\nengine.convert_wait_ms\t99999\n");
+        assert_eq!(high.lm_deadline_or_default(), Duration::from_millis(2000));
+        assert_eq!(high.convert_wait_or_default(), Duration::from_millis(200));
+    }
+
+    #[test]
+    fn bad_timeout_values_fall_back_to_the_default() {
+        let s = parse("engine.lm_deadline_ms\t-1\nengine.convert_wait_ms\tabc\n");
+        assert_eq!(s, Settings::default());
+        assert_eq!(s.lm_deadline_or_default(), Duration::from_millis(300));
+        assert_eq!(s.convert_wait_or_default(), Duration::from_millis(30));
     }
 
     #[test]

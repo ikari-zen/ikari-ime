@@ -18,6 +18,7 @@ fn logged(tag: &str) -> (Engine, Arc<MockLm>, PathBuf) {
         data_dir: Some(dir.clone()),
         lm_requested: true,
         lm_budget: LmBudget::default(),
+        convert_wait: DEFAULT_CONVERT_WAIT,
         lock: None,
     });
     (e, mock, dir)

@@ -33,6 +33,7 @@ fn lm_state_is_disabled_or_failed_without_a_handle() {
             data_dir: None,
             lm_requested: requested,
             lm_budget: LmBudget::default(),
+            convert_wait: DEFAULT_CONVERT_WAIT,
             lock: None,
         });
         let envelope::Body::HelloReply(h) = send(&e, envelope::Body::Hello(pb::Hello::default()))

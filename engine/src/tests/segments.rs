@@ -36,6 +36,7 @@ fn seg_engine_with(
             data_dir: None,
             lm_requested: true,
             lm_budget: LmBudget::default(),
+            convert_wait: DEFAULT_CONVERT_WAIT,
             lock: None,
         },
         Some(seam.clone()),
