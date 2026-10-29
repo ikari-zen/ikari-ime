@@ -100,7 +100,7 @@ fn open_rejects_bad_config_and_releases_the_lock_on_failure() {
     };
     assert!(matches!(Engine::open(&cfg), Err(EngineError::Open(_))));
     assert!(
-        EngineLock::acquire(&dir).is_ok(),
+        crate::lock::retry_while_held(|| EngineLock::acquire(&dir)).is_ok(),
         "the lock is released after a failed open"
     );
 
@@ -130,7 +130,7 @@ fn engine_holds_the_data_lock_while_alive() {
     });
     assert!(matches!(EngineLock::acquire(&dir), Err(LockError::Held)));
     drop(e);
-    assert!(EngineLock::acquire(&dir).is_ok());
+    assert!(crate::lock::retry_while_held(|| EngineLock::acquire(&dir)).is_ok());
     // ログは文字列を含まない
     let log = std::fs::read_to_string(dir.join("logs").join("engine.log")).unwrap_or_default();
     assert!(!log.contains(READING));

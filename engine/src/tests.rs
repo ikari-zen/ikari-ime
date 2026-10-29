@@ -417,10 +417,12 @@ impl Real {
 
     fn open(&mut self) {
         self.engine = Some(
-            Engine::open(&EngineConfig {
-                data_dir: self.dir.to_string_lossy().into_owned(),
-                enable_lm: false,
-                idle_unload_secs: 300,
+            crate::lock::retry_while_held(|| {
+                Engine::open(&EngineConfig {
+                    data_dir: self.dir.to_string_lossy().into_owned(),
+                    enable_lm: false,
+                    idle_unload_secs: 300,
+                })
             })
             .expect("open the engine"),
         );
