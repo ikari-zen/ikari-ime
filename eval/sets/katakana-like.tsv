@@ -1,4 +1,4 @@
-# カタカナ語らしさの補正（#271）の評価セット。公開の語だけ。辞書にない／弱い外来語は 1 位のカタカナ、擬音語・擬態語・和語はひらがな（守る側）。期待はユーザーの確認待ち。
+# カタカナ語らしさの補正（#271）と、未知語のカタカナのコスト（K1。ADR 0037, #100）の評価セット。公開の語だけ。辞書にない／弱い外来語は 1 位のカタカナ、擬音語・擬態語・和語はひらがな（守る側）。期待はユーザーの確認待ち（kl-split と kl-dict-23〜27、kl-guard-53〜56 は ADR 0037 §6.4 で承認済み。kl-guard-57〜59 は短い読みの例として agent が選んだ）。
 # split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev。調整は dev だけで行う。
 id	kind	tags	profile	context	reading	expected	note	split	source
 kl-weak-01	カタカナ語(弱い)	katakana-like,weak			ぺねとれーしょん	ペネトレーション	辞書にない／弱いカタカナ語。期待は 1 位のカタカナ	dev	agent-271
@@ -88,3 +88,19 @@ kl-guard-49	擬音語・和語	katakana-like,guard			ぽきぽき	ぽきぽき	�
 kl-guard-50	擬音語・和語	katakana-like,guard			ぐふふ	ぐふふ	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
 kl-guard-51	擬音語・和語	katakana-like,guard			ふふふ	ふふふ	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
 kl-guard-52	擬音語・和語	katakana-like,guard			ぷぷぷ	ぷぷぷ	ひらがなが正しい語。カタカナに奪われないこと（守る）	dev	agent-271
+kl-split-01	カタカナ語(分割負け)	katakana-like,split			ばーじょにんぐ	バージョニング	辞書にない語（#100）。分割の経路に負ける型。K1 の対象。期待は 1 位のカタカナ	dev	agent-100
+kl-split-02	カタカナ語(分割負け)	katakana-like,split		APIの	ばーじょにんぐ	バージョニング	辞書にない語（#100）。文脈つき。分割の経路に負ける型。K1 の対象。期待は 1 位のカタカナ	dev	agent-100
+kl-split-03	カタカナ語(分割負け)	katakana-like,split			しゃーでぃんぐ	シャーディング	sharding。2026-10-29 に main で 1 位（ADR 0037 §11）。K1 で悪化しないことを見張る	test	agent-100
+kl-split-04	カタカナ語(分割負け)	katakana-like,split,reference			てざりんぐ	テザリング	参考例。辞書に固有名詞があるが分割に負ける型で、K1 では直らない（ADR 0037 §6.4）。改善の数には数えない	dev	agent-100
+kl-dict-23	カタカナ語(辞書)	katakana-like,dict			ちゃんきんぐ	チャンキング	辞書の チャン + キング の分割で同じ表記。今も 1 位であること（守る）	test	agent-100
+kl-dict-24	カタカナ語(辞書)	katakana-like,dict			ふぁじんぐ	ファジング	辞書にあるカタカナ語。今も 1 位であること（守る）	test	agent-100
+kl-dict-25	カタカナ語(辞書)	katakana-like,dict			ぱーてぃしょにんぐ	パーティショニング	辞書にあるカタカナ語。今も 1 位であること（守る）	dev	agent-100
+kl-dict-26	カタカナ語(辞書)	katakana-like,dict			ろーからいず	ローカライズ	辞書にあるカタカナ語。今も 1 位であること（守る）	dev	agent-100
+kl-dict-27	カタカナ語(辞書)	katakana-like,dict			でぃれくとりー	ディレクトリー	辞書にあるカタカナ語。今も 1 位であること（守る）	dev	agent-100
+kl-guard-53	擬音語・和語	katakana-like,guard			およぐ	泳ぐ	語尾が ぐ の動詞。カタカナに奪われないこと（守る）	test	agent-100
+kl-guard-54	擬音語・和語	katakana-like,guard			いそぐ	急ぐ	語尾が ぐ の動詞。カタカナに奪われないこと（守る）	dev	agent-100
+kl-guard-55	擬音語・和語	katakana-like,guard			ふせぐ	防ぐ	語尾が ぐ の動詞。カタカナに奪われないこと（守る）	dev	agent-100
+kl-guard-56	擬音語・和語	katakana-like,guard			かつぐ	担ぐ	語尾が ぐ の動詞。カタカナに奪われないこと（守る）	test	agent-100
+kl-guard-57	擬音語・和語	katakana-like,guard,short			むら	村	短い読み（3 字以下）の和語。カタカナに奪われないこと（守る）	dev	agent-100
+kl-guard-58	擬音語・和語	katakana-like,guard,short			ぶた	豚	短い読み（3 字以下）の和語。カタカナに奪われないこと（守る）	dev	agent-100
+kl-guard-59	擬音語・和語	katakana-like,guard,short			ふゆ	冬	短い読み（3 字以下）の和語。カタカナに奪われないこと（守る）	test	agent-100
