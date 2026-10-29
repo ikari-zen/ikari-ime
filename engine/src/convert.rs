@@ -379,7 +379,7 @@ impl Inner {
                 store.record(&event, stack.vectors.as_deref(), today_unix_day());
                 lock_mutex(&self.save).dirty = true;
             }
-            lock_mutex(&self.ctx_trace).note_commit(session, surface.chars().count());
+            lock_mutex(&self.ctx_trace).note_commit(session, &surface);
             self.push_history(session, reading, surface);
         }
         Ok((envelope::Body::Ack(pb::Ack {}), note))
@@ -393,7 +393,7 @@ impl Inner {
         }
         let (secure, _) = self.session_info(c.session_id)?;
         if !secure && !c.surface.is_empty() {
-            lock_mutex(&self.ctx_trace).note_commit(c.session_id, c.surface.chars().count());
+            lock_mutex(&self.ctx_trace).note_commit(c.session_id, &c.surface);
             self.push_history(c.session_id, c.reading, c.surface);
         }
         Ok(envelope::Body::Ack(pb::Ack {}))

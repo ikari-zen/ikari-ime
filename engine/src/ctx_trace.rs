@@ -18,10 +18,21 @@ struct Seen {
     available: bool,
 }
 
-/// 最後の確定の時刻と文字数（番号のずれが確定の反映の遅れかを見分ける。#249）
+/// 最後の確定の時刻、文字数、表記、確定のときに見ていた left（番号のずれが確定の反映の遅れかを見分ける。#249。
+/// 表記と left は先行計算の left を補うための比べる相手で、メモリだけに持つ。ログにもディスクにも出さない。ADR 0038 §5）
 struct LastCommit {
     at: Instant,
     chars: usize,
+    /// 直前の確定の表記（末尾 `MAX_SURFACE_CHARS` 字まで）
+    surface: String,
+    /// その確定のときに、そのセッションで最後に見た left。見ていなければ None
+    left_before: Option<String>,
+}
+
+/// left に直前の確定を補った周辺テキストと、補った字数（ADR 0038 §2）
+pub struct FilledSurrounding {
+    pub surrounding: pb::SurroundingText,
+    pub chars: usize,
 }
 
 #[derive(Default)]
@@ -69,15 +80,37 @@ fn change_note(
 }
 
 impl ContextTrace {
-    /// 確定の時刻と文字数だけを覚える（文字列は持たない）。secure では呼ばない
-    pub fn note_commit(&mut self, session: u64, chars: usize) {
+    /// 確定の時刻、文字数、表記、そのとき見ていた left を覚える（メモリだけ。ログには文字数と経過時間だけ）。
+    /// secure では呼ばない。表記が空なら補う元にならないので、時刻と文字数だけ覚える
+    pub fn note_commit(&mut self, session: u64, surface: &str) {
+        let chars = surface.chars().count();
+        let left_before = self.seen.get(&session).map(|s| s.left.clone());
         self.commits.insert(
             session,
             LastCommit {
                 at: Instant::now(),
                 chars,
+                surface: crate::tail_chars(surface, crate::MAX_SURFACE_CHARS).to_owned(),
+                left_before,
             },
         );
+    }
+
+    /// 先行計算の周辺テキストに、直前の確定を補う（ADR 0038 §2 の F1〜F4）。補わないときは None。
+    /// - F1: 周辺テキストが取れている（`available`）
+    /// - F2: 直前の確定がある（表記が空でない）
+    /// - F3: 受け取った left が、その確定のときに見ていた left と同じ（アプリがまだ確定を反映していない）
+    /// - F4: 受け取った left が、確定の表記で終わっていない
+    ///
+    /// 補った left は末尾 `MAX_CONTEXT_CHARS` 字に切る。secure では `note_commit` が呼ばれないので補わない
+    pub fn fill_left(
+        &self,
+        session: u64,
+        surrounding: Option<&pb::SurroundingText>,
+    ) -> Option<FilledSurrounding> {
+        // 契約のスタブ: 実装は次のコミット
+        let _ = (session, surrounding, &self.commits);
+        None
     }
 
     /// 要求の周辺テキストを記録する。番号が前回と違うときだけ、`ctx_change` の行の注記を返す

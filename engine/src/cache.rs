@@ -5,6 +5,7 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use ikari_core::Context;
+use ikari_proto::v1 as pb;
 
 use crate::segments::SegEntry;
 
@@ -87,17 +88,64 @@ enum EntryState {
     Abandoned,
 }
 
+/// 先行計算に使った周辺テキスト（補ったあとの left、right、available）と、補った字数。メモリだけに持つ。
+/// ログには出さない（字数と一致の有無だけ。ADR 0038 §5、NFR-19）
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PrefetchContext {
+    /// 末尾 `MAX_CONTEXT_CHARS` 字
+    pub left: String,
+    /// 先頭 `MAX_CONTEXT_CHARS` 字
+    pub right: String,
+    pub available: bool,
+    /// left に補った字数（0 なら補っていない）
+    pub filled: usize,
+}
+
+impl PrefetchContext {
+    /// 変換の文脈になる形（`build_context_borrowing` と同じ切り方）にそろえる。
+    /// Prefetch と Convert を同じ形で比べるため、どちらもここを通す
+    pub fn new(surrounding: Option<&pb::SurroundingText>, filled: usize) -> PrefetchContext {
+        let (left, right, available) = match surrounding {
+            Some(s) => (s.left.as_str(), s.right.as_str(), s.available),
+            None => ("", "", false),
+        };
+        PrefetchContext {
+            left: crate::tail_chars(left, crate::MAX_CONTEXT_CHARS).to_owned(),
+            right: crate::head_chars(right, crate::MAX_CONTEXT_CHARS).to_owned(),
+            available,
+            filled,
+        }
+    }
+
+    /// 中身（left、right、available）が同じか。補った字数は比べない。
+    /// 周辺テキストが取れていないときは変換の文脈が確定履歴になり、中身では決まらないので、同じとは言わない
+    pub fn same_content(&self, other: &PrefetchContext) -> bool {
+        self.available && other.available && self.left == other.left && self.right == other.right
+    }
+}
+
 /// 先行計算の1件。計算中は `Convert` が締め切りまで待てる。
 pub struct CacheEntry {
     pub key: CacheKey,
+    /// 先行計算に使った周辺テキスト。None はテストなどで作ったもの（中身では当てない）
+    pub ctx: Option<PrefetchContext>,
     state: Mutex<EntryState>,
     ready: Condvar,
 }
 
 impl CacheEntry {
     pub fn new(key: CacheKey) -> Arc<CacheEntry> {
+        Self::build(key, None)
+    }
+
+    pub fn with_context(key: CacheKey, ctx: PrefetchContext) -> Arc<CacheEntry> {
+        Self::build(key, Some(ctx))
+    }
+
+    fn build(key: CacheKey, ctx: Option<PrefetchContext>) -> Arc<CacheEntry> {
         Arc::new(CacheEntry {
             key,
+            ctx,
             state: Mutex::new(EntryState::Computing),
             ready: Condvar::new(),
         })
@@ -164,6 +212,32 @@ impl PrefetchCache {
         let item = self.items.iter_mut().find(|i| i.entry.key == *key)?;
         item.last_used = Instant::now();
         Some(Arc::clone(&item.entry))
+    }
+
+    /// 同じ session・reading で、先行計算に使った周辺テキストの中身が `ctx` と同じ最新の 1 件（ADR 0038 §2 の 2）。
+    /// 番号は見ない。「最新」は入れた順
+    pub fn find_by_content(
+        &mut self,
+        session: u64,
+        reading: &str,
+        ctx: &PrefetchContext,
+    ) -> Option<Arc<CacheEntry>> {
+        let item = self.items.iter_mut().rev().find(|i| {
+            i.entry.key.session == session
+                && i.entry.key.reading == reading
+                && i.entry.ctx.as_ref().is_some_and(|c| c.same_content(ctx))
+        })?;
+        item.last_used = Instant::now();
+        Some(Arc::clone(&item.entry))
+    }
+
+    /// 同じ session・reading で、いちばん新しい 1 件（ログ用。使った印は付けない）
+    pub fn latest(&self, session: u64, reading: &str) -> Option<Arc<CacheEntry>> {
+        self.items
+            .iter()
+            .rev()
+            .find(|i| i.entry.key.session == session && i.entry.key.reading == reading)
+            .map(|i| Arc::clone(&i.entry))
     }
 
     /// `key` に当たるものがなかった理由。同じセッションの中で、読みだけ／文脈の番号だけが違うものを探す
