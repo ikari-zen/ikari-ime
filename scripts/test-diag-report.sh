@@ -76,4 +76,25 @@ for row in \
   printf '%s\n' "$fillout" | grep -qxF "$row" || die "fill の集計に期待の行がありません: $row"
 done
 
+# アプリ別の convert と miss=context（#109）: 行の app= を優先し、なければ session= で begin_session の app= に結ぶ。結べない行は (不明)
+appd="$(mktemp -d)"
+trap 'rm -rf "$noapp" "$fill" "$appd"' EXIT
+printf '%s\n' \
+  "1793114850000 convert 40us lm=ready err=- session=9 conv=1 segments=1 cache=miss lm_applied=0 miss=context" \
+  "1793114850500 begin_session 5us lm=ready err=- session=1 app=com.example.Editor" \
+  "1793114851000 convert 40us lm=ready err=- session=1 conv=2 segments=1 cache=miss lm_applied=0 miss=context" \
+  "1793114852000 convert 40us lm=ready err=- session=1 conv=3 segments=1 cache=hit lm_applied=1" \
+  "1793114853000 convert 40us lm=ready err=- session=1 conv=4 segments=1 cache=miss lm_applied=0 miss=reading" \
+  "1793114854000 convert 40us lm=ready err=- session=1 conv=5 segments=1 cache=miss lm_applied=0 miss=context app=com.example.Terminal" \
+  "1793114855000 convert 40us lm=ready err=- session=7 conv=6 segments=1 cache=hit lm_applied=1 app=none" \
+  "1793114856000 convert 40us lm=ready err=- session=8 conv=7 segments=1 cache=hit lm_applied=1" > "$appd/engine.log"
+appout="$(python3 -I "$REPORT" "$appd")"
+for row in \
+  '| com.example.Editor | 3 | 1 | 33.3% | 2 | 66.7% |' \
+  '| (不明) | 2 | 1 | 50.0% | 1 | 50.0% |' \
+  '| com.example.Terminal | 1 | 1 | 100.0% | 1 | 100.0% |' \
+  '| none | 1 | 0 | 0.0% | 0 | 0.0% |'; do
+  printf '%s\n' "$appout" | grep -qxF "$row" || die "アプリ別の集計に期待の行がありません: $row"
+done
+
 log "diag-report のテスト: OK"

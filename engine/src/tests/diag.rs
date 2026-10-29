@@ -194,7 +194,7 @@ fn paused_session_events_are_still_written() {
 }
 
 #[test]
-fn bundle_id_is_written_only_on_the_begin_session_line() {
+fn bundle_id_is_written_only_on_the_begin_session_and_convert_lines() {
     let (e, _, dir) = logged("diag-app");
     begin_app(&e, 1, BUNDLE_ID, false);
     begin_app(&e, 2, "com.example.あ", false);
@@ -219,8 +219,61 @@ fn bundle_id_is_written_only_on_the_begin_session_line() {
         ]
     );
     let text = log_of(&e, &dir);
-    assert_eq!(count_lines(&text, BUNDLE_ID), 1, "{text}");
+    // begin_session の行と convert の行だけ（prefetch、sh_mode には書かない）
+    assert_eq!(count_lines(&text, BUNDLE_ID), 2, "{text}");
     assert!(!text.contains("Bank"), "{text}");
+    for l in text.lines().filter(|l| l.contains(BUNDLE_ID)) {
+        let kind = l.split_whitespace().nth(1);
+        assert!(matches!(kind, Some("begin_session" | "convert")), "{l}");
+    }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// convert の行の `app=` の終わりの語（なければ None）
+fn convert_app(e: &Engine, dir: &Path) -> Vec<Option<String>> {
+    lines_of(e, dir, "convert")
+        .iter()
+        .map(|l| {
+            l.split_whitespace()
+                .find_map(|w| w.strip_prefix("app="))
+                .map(str::to_owned)
+        })
+        .collect()
+}
+
+#[test]
+fn convert_line_carries_app_except_secure() {
+    let (e, _, dir) = logged("diag-convert-app");
+    begin_app(&e, 1, BUNDLE_ID, false);
+    begin_app(&e, 2, "", false);
+    begin_app(&e, 3, "com.example.あ b", false);
+    begin_app(&e, 4, "com.example.Bank", true);
+    for s in 1..=4 {
+        convert(&e, s, READING, 0);
+    }
+    assert_eq!(
+        convert_app(&e, &dir),
+        [
+            Some(BUNDLE_ID.to_owned()),
+            Some("none".to_owned()),
+            Some("invalid".to_owned()),
+            None,
+        ]
+    );
+    let text = log_of(&e, &dir);
+    assert!(!text.contains("Bank") && !text.contains("あ b"), "{text}");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn convert_app_follows_a_resumed_session() {
+    let (e, _, dir) = logged("diag-convert-resume");
+    begin_app(&e, 1, BUNDLE_ID, false);
+    convert(&e, 1, READING, 0);
+    // secure に替わると、Bundle ID を持ち越さない
+    begin_app(&e, 1, "com.example.Bank", true);
+    convert(&e, 1, READING, 0);
+    assert_eq!(convert_app(&e, &dir), [Some(BUNDLE_ID.to_owned()), None]);
     let _ = std::fs::remove_dir_all(dir);
 }
 

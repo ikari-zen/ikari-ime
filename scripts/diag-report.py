@@ -45,16 +45,18 @@ SSTATE_LIVE = "begin_session のあとで end_session なし"
 GAP_BUCKETS = ((1_000, "1 秒未満"), (10_000, "10 秒未満"), (60_000, "1 分未満"), (600_000, "10 分未満"))
 GAP_LAST = "10 分以上"
 GAP_NONE = "なし"
+APP_UNKNOWN = "(不明)"  # begin_session に結べない行（ログの先頭が欠けた、secure、古い版の行）
 BURST_GAP_MS = 5_000  # この間隔より空いたら別のかたまり
 
 
 class Event:
-    __slots__ = ("ms", "kind", "us", "lm", "err", "kv", "epoch", "smoke", "sstate")
+    __slots__ = ("ms", "kind", "us", "lm", "err", "kv", "epoch", "smoke", "sstate", "app")
 
     def __init__(self, ms, kind, us, lm, err, kv):
         self.ms, self.kind, self.us, self.lm, self.err, self.kv = ms, kind, us, lm, err, kv
         self.epoch = 0  # エンジンの起動（hello の並びか shutdown で区切る）の通し番号
         self.sstate = None  # UNKNOWN_SESSION の行の session= の状態（SSTATE_*）
+        self.app = None  # convert の行の app=、なければ session= で結んだ begin_session の app=（Bundle ID）。どちらもなければ None
         self.smoke = False  # smoke のセッション（または smoke だけのエンジンの起動）の行
 
     def num(self, key, default=0):
@@ -169,6 +171,8 @@ def split_epochs(events):
         if e.kind == "lm_unload" and e.kv.get("reason") == SHUTDOWN_REASON:
             pending = True
         sid = e.kv.get("session")
+        if e.kind == "convert" and e.kv.get("app") is not None:
+            e.app = e.kv["app"]  # 2026-10-30 以降の版は convert の行が app= を持つ（ADR 0034 §9-1）。これを優先する
         if sid is None:
             continue
         key = (epoch, sid)
@@ -191,6 +195,8 @@ def split_epochs(events):
         elif cur is None:
             instances += 1  # begin_session が見えない（ログの先頭が欠けた、起動後に begin されなかった）
             cur = live[key] = [instances, None, False, False]
+        if e.app is None:
+            e.app = cur[1]  # app= のない古い行は、session= で結んだ begin_session の app=
         if e.err == "UNKNOWN_SESSION" and e.kind != "begin_session":
             e.sstate = SSTATE_NO_BEGIN if not cur[3] else SSTATE_ENDED if cur[2] else SSTATE_LIVE
         if e.kind == "end_session":
@@ -454,6 +460,25 @@ def section_perf(events):
     return perf, ("cache と LM", ("項目", "件数", "率など"), r2)
 
 
+def section_app_miss(events):
+    """アプリ別の convert 件数と miss=context の割合（#109）。app は行の app=、なければ session= で begin_session の app= に結ぶ。"""
+    per = collections.defaultdict(lambda: [0, 0, 0])  # app -> [convert, miss=context, lm_applied=0]
+    for e in events:
+        if e.kind != "convert" or e.err != "-":
+            continue
+        row = per[e.app or APP_UNKNOWN]
+        row[0] += 1
+        if e.kv.get("miss") == "context":
+            row[1] += 1
+        if e.kv.get("lm_applied") == "0":
+            row[2] += 1
+    rows = [
+        (app, n, ctx, pct(ctx, n), nolm, pct(nolm, n))
+        for app, (n, ctx, nolm) in sorted(per.items(), key=lambda kv: (-kv[1][0], kv[0]))
+    ]
+    return ("アプリ別の convert と miss=context", ("app", "convert", "miss=context", "率", "lm_applied=0", "率"), rows)
+
+
 def section_health(events, malformed, files, info):
     rows = [
         ("読んだファイル", len(files)),
@@ -484,6 +509,7 @@ def build_report(events, malformed, files, info):
         section_usage(events),
         section_trouble(events),
         section_unknown_session(events),
+        section_app_miss(events),
         perf,
         cache,
         section_health(events, malformed, files, info),
