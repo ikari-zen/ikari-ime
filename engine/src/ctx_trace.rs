@@ -108,9 +108,26 @@ impl ContextTrace {
         session: u64,
         surrounding: Option<&pb::SurroundingText>,
     ) -> Option<FilledSurrounding> {
-        // 契約のスタブ: 実装は次のコミット
-        let _ = (session, surrounding, &self.commits);
-        None
+        let s = surrounding.filter(|s| s.available)?;
+        let commit = self.commits.get(&session)?;
+        if commit.surface.is_empty() {
+            return None;
+        }
+        if commit.left_before.as_deref() != Some(s.left.as_str()) {
+            return None;
+        }
+        if s.left.ends_with(commit.surface.as_str()) {
+            return None;
+        }
+        let joined = format!("{}{}", s.left, commit.surface);
+        Some(FilledSurrounding {
+            surrounding: pb::SurroundingText {
+                left: crate::tail_chars(&joined, crate::MAX_CONTEXT_CHARS).to_owned(),
+                right: s.right.clone(),
+                available: true,
+            },
+            chars: commit.surface.chars().count(),
+        })
     }
 
     /// 要求の周辺テキストを記録する。番号が前回と違うときだけ、`ctx_change` の行の注記を返す

@@ -591,6 +591,24 @@ fn convert_with(
     }
 }
 
+/// 確定の前に打っていた別の読みの先行計算（同じ読みだと、確定のあとの先行計算がキーで重なる）
+fn prefetch_other_reading(
+    e: &Engine,
+    session: u64,
+    rev: u64,
+    context: Option<pb::SurroundingText>,
+) {
+    send(
+        e,
+        envelope::Body::Prefetch(pb::Prefetch {
+            session_id: session,
+            reading: "せってい".into(),
+            context,
+            context_rev: rev,
+        }),
+    );
+}
+
 fn fill_engine(tag: &str) -> (Engine, Arc<MockLm>, PathBuf) {
     let dir = temp_dir(tag);
     let mock = MockLm::new(Duration::ZERO);
@@ -613,7 +631,7 @@ fn settle(e: &Engine) {
 /// 「前の文」を見た状態で「設定」を確定する（アプリはまだ反映していない）
 fn commit_setting(e: &Engine, secure: bool) {
     begin(e, 1, secure);
-    prefetch_with(e, 1, 1, surrounding(FILL_BEFORE, "", true));
+    prefetch_other_reading(e, 1, 1, surrounding(FILL_BEFORE, "", true));
     send(
         e,
         envelope::Body::CommitText(pb::CommitText {
@@ -727,7 +745,7 @@ fn fill_truncates_to_the_context_limit() {
     let (e, mock, dir) = fill_engine("fill-trunc");
     begin(&e, 1, false);
     let long = "い".repeat(crate::MAX_CONTEXT_CHARS);
-    prefetch_with(&e, 1, 1, surrounding(&long, "", true));
+    prefetch_other_reading(&e, 1, 1, surrounding(&long, "", true));
     send(
         &e,
         envelope::Body::CommitText(pb::CommitText {
