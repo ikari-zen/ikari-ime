@@ -54,4 +54,26 @@ printf '%s\n' \
   "1793114852000 end_session 3us lm=ready err=- session=1" > "$noapp/engine.log"
 python3 -I "$REPORT" "$noapp" > /dev/null || die "app の無い begin_session で diag-report.py が落ちました"
 
+# 先行計算に補った left（ADR 0038）の集計: fill_eq、fill_tail、fill_dleft、by=content
+fill="$(mktemp -d)"
+trap 'rm -rf "$noapp" "$fill"' EXIT
+printf '%s\n' \
+  "1793114850000 convert 40us lm=ready err=- session=1 conv=1 segments=1 cache=hit lm_applied=1 by=content gap=900 confident=0 fill=2 fill_eq=1 fill_tail=1 fill_dleft=+0 ctx_rev=2" \
+  "1793114851000 convert 40us lm=ready err=- session=1 conv=2 segments=1 cache=miss lm_applied=0 miss=context gap=900 confident=0 fill=2 fill_eq=0 fill_tail=0 fill_dleft=+1 ctx_rev=3" \
+  "1793114852000 convert 40us lm=ready err=- session=1 conv=3 segments=1 cache=miss lm_applied=0 miss=context gap=900 confident=0 fill=3 fill_eq=0 fill_tail=1 fill_dleft=-2 ctx_rev=4" \
+  "1793114853000 convert 40us lm=ready err=- session=1 conv=4 segments=1 cache=hit lm_applied=1 gap=900 confident=0 ctx_rev=4" > "$fill/engine.log"
+fillout="$(python3 -I "$REPORT" "$fill")"
+for row in \
+  '| by=content | 1 | 25.0% |' \
+  '| LM なし（lm_applied=0） | 2 | 50.0% |' \
+  '| fill のある convert | 3 | 75.0% |' \
+  '| fill_eq=1 | 1 | 33.3% |' \
+  '| fill_eq=0 | 2 | 66.7% |' \
+  '| fill_eq=0 fill_tail=1 | 1 | 50.0% |' \
+  '| fill_eq=0 fill_tail=0 | 1 | 50.0% |' \
+  '| fill_eq=0 fill_dleft=-2 | 1 | 50.0% |' \
+  '| fill_eq=0 fill_dleft=+1 | 1 | 50.0% |'; do
+  printf '%s\n' "$fillout" | grep -qxF "$row" || die "fill の集計に期待の行がありません: $row"
+done
+
 log "diag-report のテスト: OK"

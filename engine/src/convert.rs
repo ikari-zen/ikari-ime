@@ -101,6 +101,24 @@ enum Gap {
     Unknown,
 }
 
+/// 補った先行計算に対する Convert の文脈の一致を、ログの注記にする（固定の語と数だけ。ADR 0038 §5）。
+/// 補っていない先行計算なら None
+fn fill_note_for(prefetched: &PrefetchContext, convert: &PrefetchContext) -> Option<String> {
+    if prefetched.filled == 0 {
+        return None;
+    }
+    let count = |s: &str| i64::try_from(s.chars().count()).unwrap_or(i64::MAX);
+    // 補った文字列は、補ったあとの left の末尾
+    let filled_text = crate::tail_chars(&prefetched.left, prefetched.filled);
+    Some(format!(
+        "fill={} fill_eq={} fill_tail={} fill_dleft={:+}",
+        prefetched.filled,
+        u8::from(prefetched.same_content(convert)),
+        u8::from(convert.left.ends_with(filled_text)),
+        count(&convert.left) - count(&prefetched.left),
+    ))
+}
+
 impl Inner {
     /// 文脈の番号と周辺テキストを記録し、番号が進んでいたら `ctx_change` の行を書く。
     /// 返すのは要求の行に添える `ctx_rev=N`（固定の語と数だけ。NFR-19）。secure では呼ばない
@@ -145,13 +163,20 @@ impl Inner {
             }
             return ack;
         }
-        let trace = self.trace_context(
+        let mut trace = self.trace_context(
             p.session_id,
             p.context_rev,
             p.context.as_ref(),
             "prefetch",
             &p.reading,
         );
+        // 直前の確定をアプリがまだ反映していないなら、left に補って先行計算を作る（ADR 0038）。
+        // 番号の記録（上）は殻が送った周辺テキストのまま
+        let filled = lock_mutex(&self.ctx_trace).fill_left(p.session_id, p.context.as_ref());
+        let filled_chars = filled.as_ref().map_or(0, |f| f.chars);
+        if filled_chars > 0 {
+            trace.push_str(&format!(" fill={filled_chars}"));
+        }
         let ack = Ok((envelope::Body::Ack(pb::Ack {}), Some(trace)));
         // アイドル解放のあとの最初の Prefetch で、読み込みを別スレッドで始める（読み込み済みなら何もしない）
         self.ensure_warm();
@@ -164,8 +189,11 @@ impl Inner {
             return ack;
         }
         let stack = self.stack();
-        let ctx = self.context_for(&stack, p.session_id, false, history, p.context.as_ref());
-        let entry = CacheEntry::new(key);
+        let surrounding = filled
+            .as_ref()
+            .map_or(p.context.as_ref(), |f| Some(&f.surrounding));
+        let ctx = self.context_for(&stack, p.session_id, false, history, surrounding);
+        let entry = CacheEntry::with_context(key, PrefetchContext::new(surrounding, filled_chars));
         lock_mutex(&self.cache).insert(Arc::clone(&entry));
         if let Some(replaced) = self.queue.submit(entry, ctx) {
             lock_mutex(&self.cache).remove(&replaced);
@@ -197,6 +225,8 @@ impl Inner {
             )
         });
 
+        let mut by_content = false;
+        let mut fill_note = None;
         let (cached, outcome) = if secure {
             (None, CacheOutcome::Miss(MissReason::None))
         } else {
@@ -205,11 +235,22 @@ impl Inner {
                 reading: c.reading.clone(),
                 context_rev: c.context_rev,
             };
+            let convert_ctx = PrefetchContext::new(c.context.as_ref(), 0);
             let (entry, reason) = {
                 let mut cache = lock_mutex(&self.cache);
+                fill_note = cache
+                    .latest(c.session_id, &c.reading)
+                    .and_then(|e| e.ctx.as_ref().and_then(|p| fill_note_for(p, &convert_ctx)));
                 match cache.find(&key) {
                     Some(e) => (Some(e), MissReason::None),
-                    None => (None, cache.miss_reason(&key)),
+                    // 番号が違っても、先行計算に使った文脈の中身が同じなら当てる（ADR 0038 §2 の 2）
+                    None => match cache.find_by_content(c.session_id, &c.reading, &convert_ctx) {
+                        Some(e) => {
+                            by_content = true;
+                            (Some(e), MissReason::None)
+                        }
+                        None => (None, cache.miss_reason(&key)),
+                    },
                 }
             };
             match entry {
@@ -297,11 +338,23 @@ impl Inner {
             engine_micros: micros_u32(started),
             layout: Some(layout),
         });
-        let note = format!(
+        let mut note = format!(
             "{} gap={gap_note} confident={}",
             outcome.log_note(lm_applied),
             u8::from(confident)
         );
+        // 中身で当たったときだけ印を付ける（番号で当たったときは今どおり）
+        if by_content && matches!(outcome, CacheOutcome::Hit | CacheOutcome::WaitHit) {
+            note = note.replacen(
+                &format!("lm_applied={}", u8::from(lm_applied)),
+                &format!("lm_applied={} by=content", u8::from(lm_applied)),
+                1,
+            );
+        }
+        if let Some(fill) = fill_note {
+            note.push(' ');
+            note.push_str(&fill);
+        }
         Ok((
             reply,
             Some(match trace {
@@ -379,7 +432,7 @@ impl Inner {
                 store.record(&event, stack.vectors.as_deref(), today_unix_day());
                 lock_mutex(&self.save).dirty = true;
             }
-            lock_mutex(&self.ctx_trace).note_commit(session, surface.chars().count());
+            lock_mutex(&self.ctx_trace).note_commit(session, &surface);
             self.push_history(session, reading, surface);
         }
         Ok((envelope::Body::Ack(pb::Ack {}), note))
@@ -393,7 +446,7 @@ impl Inner {
         }
         let (secure, _) = self.session_info(c.session_id)?;
         if !secure && !c.surface.is_empty() {
-            lock_mutex(&self.ctx_trace).note_commit(c.session_id, c.surface.chars().count());
+            lock_mutex(&self.ctx_trace).note_commit(c.session_id, &c.surface);
             self.push_history(c.session_id, c.reading, c.surface);
         }
         Ok(envelope::Body::Ack(pb::Ack {}))

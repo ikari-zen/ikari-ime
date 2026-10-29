@@ -28,6 +28,7 @@ fn prefetch_then_convert_hits_the_cache() {
     );
 }
 
+/// 文脈の中身も違う（周辺テキストなし）ので、番号が違えば外れる。中身で当てる ADR 0038 の当て方の対象外
 #[test]
 fn different_context_rev_misses_the_cache() {
     let (e, _mock) = engine(0);
@@ -358,7 +359,7 @@ fn engine_log_never_contains_the_text() {
         assert!(!text.contains(secret), "{secret} leaked: {text}");
     }
     // 注記は固定の語（key=value）だけ
-    const KEYS: [&str; 24] = [
+    const KEYS: [&str; 29] = [
         "session",
         "conv",
         "app",
@@ -383,6 +384,11 @@ fn engine_log_never_contains_the_text() {
         "tail",
         "gap",
         "confident",
+        "by",
+        "fill",
+        "fill_eq",
+        "fill_tail",
+        "fill_dleft",
     ];
     for line in text.lines() {
         for token in line.split_whitespace().skip(4) {
@@ -559,4 +565,254 @@ fn convert_uses_the_configured_wait() {
         "waits for 80ms"
     );
     assert!(!run(Duration::ZERO, "wait-cfg-zero"), "does not wait");
+}
+
+// ---- ADR 0038: 先行計算の left に直前の確定を補い、Convert では中身で当てる ----
+
+const FILL_BEFORE: &str = "前の文";
+const FILL_SURFACE: &str = "設定";
+
+fn convert_with(
+    e: &Engine,
+    session: u64,
+    rev: u64,
+    context: Option<pb::SurroundingText>,
+) -> pb::ConvertReply {
+    let body = envelope::Body::Convert(pb::Convert {
+        session_id: session,
+        reading: READING.into(),
+        context,
+        context_rev: rev,
+        page_size: 0,
+    });
+    match send(e, body) {
+        envelope::Body::ConvertReply(r) => r,
+        other => panic!("unexpected: {other:?}"),
+    }
+}
+
+/// 確定の前に打っていた別の読みの先行計算（同じ読みだと、確定のあとの先行計算がキーで重なる）
+fn prefetch_other_reading(
+    e: &Engine,
+    session: u64,
+    rev: u64,
+    context: Option<pb::SurroundingText>,
+) {
+    send(
+        e,
+        envelope::Body::Prefetch(pb::Prefetch {
+            session_id: session,
+            reading: "せってい".into(),
+            context,
+            context_rev: rev,
+        }),
+    );
+}
+
+fn fill_engine(tag: &str) -> (Engine, Arc<MockLm>, PathBuf) {
+    let dir = temp_dir(tag);
+    let mock = MockLm::new(Duration::ZERO);
+    let e = Engine::from_parts(EngineParts {
+        stack: mock_stack(&mock, None),
+        rebuild: None,
+        data_dir: Some(dir.clone()),
+        lm_requested: true,
+        lm_budget: LmBudget::default(),
+        convert_wait: DEFAULT_CONVERT_WAIT,
+        lock: None,
+    });
+    (e, mock, dir)
+}
+
+fn settle(e: &Engine) {
+    wait_until(|| !lock_mutex(&e.inner.cache).any_computing());
+}
+
+/// 「前の文」を見た状態で「設定」を確定する（アプリはまだ反映していない）
+fn commit_setting(e: &Engine, secure: bool) {
+    begin(e, 1, secure);
+    prefetch_other_reading(e, 1, 1, surrounding(FILL_BEFORE, "", true));
+    send(
+        e,
+        envelope::Body::CommitText(pb::CommitText {
+            session_id: 1,
+            reading: "せってい".into(),
+            surface: FILL_SURFACE.into(),
+        }),
+    );
+}
+
+fn last_prefetch_line(e: &Engine, dir: &Path) -> String {
+    log_lines(e, dir, "prefetch")
+        .pop()
+        .expect("a prefetch line")
+}
+
+fn joined(parts: &[&str]) -> String {
+    parts.concat()
+}
+
+/// 今の `miss=context` の型: 未反映の left で先行計算 → 伸びた left と進んだ番号で Convert。LM つきで返る
+#[test]
+fn fill_lets_a_grown_left_hit_by_content_with_the_lm() {
+    let (e, mock, dir) = fill_engine("fill-hit");
+    commit_setting(&e, false);
+    prefetch_with(&e, 1, 1, surrounding(FILL_BEFORE, "", true));
+    settle(&e);
+    assert!(
+        last_prefetch_line(&e, &dir).contains(" fill=2"),
+        "{}",
+        last_prefetch_line(&e, &dir)
+    );
+    let grown = joined(&[FILL_BEFORE, FILL_SURFACE]);
+    let r = convert_with(&e, 1, 2, surrounding(&grown, "", true));
+    assert!(r.lm_applied);
+    assert_eq!(surfaces(&r)[0], BOOSTED);
+    let line = last_convert_line(&e, &dir);
+    assert!(line.contains("cache=hit lm_applied=1 by=content"), "{line}");
+    assert!(
+        line.contains("fill=2 fill_eq=1 fill_tail=1 fill_dleft=+0"),
+        "{line}"
+    );
+    assert_eq!(mock.last_context.lock().unwrap().clone().unwrap().0, grown);
+    let text = log_text(&e, &dir);
+    for secret in [FILL_BEFORE, FILL_SURFACE] {
+        assert!(!text.contains(secret), "{secret} leaked");
+    }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// 補わない 4 つの型（反映済み、left が確定の前と違う、secure、available=false）
+#[test]
+fn fill_is_skipped_when_a_condition_fails() {
+    // F4: すでに確定で終わっている
+    let (e, _mock, dir) = fill_engine("fill-skip-f4");
+    commit_setting(&e, false);
+    let reflected = joined(&[FILL_BEFORE, FILL_SURFACE]);
+    prefetch_with(&e, 1, 2, surrounding(&reflected, "", true));
+    assert!(!last_prefetch_line(&e, &dir).contains("fill="));
+    let _ = std::fs::remove_dir_all(dir);
+
+    // F3: カーソルを動かして left が確定の前と違う
+    let (e, _mock, dir) = fill_engine("fill-skip-f3");
+    commit_setting(&e, false);
+    prefetch_with(&e, 1, 2, surrounding("別の場所", "", true));
+    assert!(!last_prefetch_line(&e, &dir).contains("fill="));
+    let _ = std::fs::remove_dir_all(dir);
+
+    // F1: secure
+    let (e, _mock, dir) = fill_engine("fill-skip-secure");
+    commit_setting(&e, true);
+    prefetch_with(&e, 1, 2, surrounding(FILL_BEFORE, "", true));
+    assert!(!log_text(&e, &dir).contains("fill"));
+    let _ = std::fs::remove_dir_all(dir);
+
+    // F1: available=false
+    let (e, _mock, dir) = fill_engine("fill-skip-unavailable");
+    commit_setting(&e, false);
+    prefetch_with(&e, 1, 2, surrounding("", "", false));
+    assert!(!last_prefetch_line(&e, &dir).contains("fill="));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// 補ったが Convert の left が違う（自動整形のまね）。外れて、今どおり LM なしで返る
+#[test]
+fn fill_mismatch_falls_back_to_the_current_behaviour() {
+    let (e, _mock, dir) = fill_engine("fill-mismatch");
+    commit_setting(&e, false);
+    prefetch_with(&e, 1, 1, surrounding(FILL_BEFORE, "", true));
+    settle(&e);
+    let formatted = joined(&[FILL_BEFORE, FILL_SURFACE, "。"]);
+    let r = convert_with(&e, 1, 2, surrounding(&formatted, "", true));
+    assert!(!r.lm_applied);
+    assert_eq!(surfaces(&r)[0], BASE_TOP);
+    let line = last_convert_line(&e, &dir);
+    assert!(
+        line.contains("cache=miss lm_applied=0 miss=context"),
+        "{line}"
+    );
+    assert!(
+        line.contains("fill=2 fill_eq=0 fill_tail=0 fill_dleft=+1"),
+        "{line}"
+    );
+    assert!(!line.contains("by=content"), "{line}");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// 補った left が 2000 字を超えるときは頭を切り、末尾 2000 字の Convert の left と一致する
+#[test]
+fn fill_truncates_to_the_context_limit() {
+    let (e, mock, dir) = fill_engine("fill-trunc");
+    begin(&e, 1, false);
+    let long = "い".repeat(crate::MAX_CONTEXT_CHARS);
+    prefetch_other_reading(&e, 1, 1, surrounding(&long, "", true));
+    send(
+        &e,
+        envelope::Body::CommitText(pb::CommitText {
+            session_id: 1,
+            reading: "せってい".into(),
+            surface: FILL_SURFACE.into(),
+        }),
+    );
+    prefetch_with(&e, 1, 1, surrounding(&long, "", true));
+    settle(&e);
+    let expected = joined(&[
+        &"い".repeat(crate::MAX_CONTEXT_CHARS - FILL_SURFACE.chars().count()),
+        FILL_SURFACE,
+    ]);
+    let r = convert_with(&e, 1, 2, surrounding(&expected, "", true));
+    assert!(r.lm_applied);
+    let line = last_convert_line(&e, &dir);
+    assert!(line.contains("by=content"), "{line}");
+    assert!(
+        line.contains("fill_eq=1 fill_tail=1 fill_dleft=+0"),
+        "{line}"
+    );
+    assert_eq!(
+        mock.last_context.lock().unwrap().clone().unwrap().0,
+        expected
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// 番号が同じ（Space でもアプリが未反映）なら、補った先行計算がキーで当たる（`by=content` は付かない）
+#[test]
+fn fill_hit_by_key_when_the_rev_stays() {
+    let (e, mock, dir) = fill_engine("fill-key");
+    commit_setting(&e, false);
+    prefetch_with(&e, 1, 1, surrounding(FILL_BEFORE, "", true));
+    settle(&e);
+    let r = convert_with(&e, 1, 1, surrounding(FILL_BEFORE, "", true));
+    assert!(r.lm_applied);
+    let line = last_convert_line(&e, &dir);
+    assert!(line.contains("cache=hit lm_applied=1"), "{line}");
+    assert!(!line.contains("by=content"), "{line}");
+    assert!(line.contains("fill=2 fill_eq=0"), "{line}");
+    assert_eq!(
+        mock.last_context.lock().unwrap().clone().unwrap().0,
+        joined(&[FILL_BEFORE, FILL_SURFACE])
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// 中身で当てた変換を確定すると、学習に渡る文脈は Convert の文脈と同じ（先行計算の文脈が Convert のものと同一）
+#[test]
+fn content_hit_commit_uses_the_convert_context() {
+    let (e, mock, dir) = fill_engine("fill-learn");
+    commit_setting(&e, false);
+    prefetch_with(&e, 1, 1, surrounding(FILL_BEFORE, "", true));
+    settle(&e);
+    let grown = joined(&[FILL_BEFORE, FILL_SURFACE]);
+    let r = convert_with(&e, 1, 2, surrounding(&grown, "", true));
+    let reply = send(
+        &e,
+        envelope::Body::Commit(pb::Commit {
+            conversion_id: r.conversion_id,
+            candidate_index: 0,
+        }),
+    );
+    assert!(matches!(reply, envelope::Body::Ack(_)), "{reply:?}");
+    // 変換を作った文脈 = Convert の文脈。確定の学習はこの変換の解析で記録される
+    assert_eq!(mock.last_context.lock().unwrap().clone().unwrap().0, grown);
+    let _ = std::fs::remove_dir_all(dir);
 }

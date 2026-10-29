@@ -58,7 +58,7 @@ use prost::Message;
 
 use crate::cache::{
     CacheEntry, CacheKey, CacheOutcome, ConversionTable, Job, MissReason, PrefetchCache,
-    PrefetchQueue, SharedConversion, lock as lock_mutex,
+    PrefetchContext, PrefetchQueue, SharedConversion, lock as lock_mutex,
 };
 use crate::context_limits::ContextLimits;
 use crate::convert::candidate_kind;

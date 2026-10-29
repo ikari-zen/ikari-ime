@@ -656,12 +656,12 @@ impl crate::Inner {
                 crate::lock_mutex(&self.save).dirty = true;
             }
         }
-        let chars = commit
+        let surface: String = commit
             .events
             .iter()
-            .map(|e| e.candidate.surface.chars().count())
-            .sum();
-        crate::lock_mutex(&self.ctx_trace).note_commit(session, chars);
+            .map(|e| e.candidate.surface.as_str())
+            .collect();
+        crate::lock_mutex(&self.ctx_trace).note_commit(session, &surface);
         if origin == SegmentedOrigin::Convert {
             for item in commit.history {
                 self.push_history(session, item.reading, item.surface);

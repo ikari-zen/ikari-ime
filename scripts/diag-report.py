@@ -427,6 +427,23 @@ def section_perf(events):
     r2.append(("lm_applied=1", lm_on, pct(lm_on, len(conv))))
     for k, n in sorted(misses.items()):
         r2.append((f"miss={k}", n, pct(n, len(conv))))
+    # ADR 0038 §7: 先行計算の left に直前の確定を補った効果と弱点
+    no_lm = sum(1 for e in conv if e.kv.get("lm_applied") == "0")
+    r2.append(("LM なし（lm_applied=0）", no_lm, pct(no_lm, len(conv))))
+    by_content = sum(1 for e in conv if e.kv.get("by") == "content")
+    r2.append(("by=content", by_content, pct(by_content, len(conv))))
+    filled = [e for e in conv if "fill" in e.kv]
+    r2.append(("fill のある convert", len(filled), pct(len(filled), len(conv))))
+    for eq in ("1", "0"):
+        group = [e for e in filled if e.kv.get("fill_eq") == eq]
+        r2.append((f"fill_eq={eq}", len(group), pct(len(group), len(filled))))
+    mismatched = [e for e in filled if e.kv.get("fill_eq") == "0"]
+    for tail in ("1", "0"):
+        group = [e for e in mismatched if e.kv.get("fill_tail") == tail]
+        r2.append((f"fill_eq=0 fill_tail={tail}", len(group), pct(len(group), len(mismatched))))
+    dleft = collections.Counter(e.kv.get("fill_dleft", "-") for e in mismatched)
+    for k, n in sorted(dleft.items(), key=lambda kv: (not kv[0].lstrip("+-").isdigit(), int(kv[0]) if kv[0].lstrip("+-").isdigit() else 0)):
+        r2.append((f"fill_eq=0 fill_dleft={k}", n, pct(n, len(mismatched))))
     stats = sorted(e.num("rss_kb") for e in events if e.kind == "stat" and "rss_kb" in e.kv)
     r2.append(("stat rss_kb 中央値", fmt(percentile(stats, 50)), ""))
     r2.append(("stat rss_kb 最大", fmt(stats[-1] if stats else None), ""))
