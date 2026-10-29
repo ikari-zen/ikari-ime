@@ -5,6 +5,7 @@ import csv
 import glob
 import json
 import os
+import re
 import subprocess
 
 FNV_OFFSET, FNV_PRIME, MASK = 0xCBF29CE484222325, 0x100000001B3, (1 << 64) - 1
@@ -55,8 +56,12 @@ def read_cases(path):
     return out
 
 
-def run_eval(repo, dict_dir, set_path, out_path, split="dev", set_format="ikari", kv=None, lm=None, extra=None):
-    cmd = [os.path.join(repo, "target/release/ikari-eval"), "--dict", dict_dir, "--ranker", "full",
+LM_TIMEOUT_RE = re.compile(r"^- LM: 呼び出し (\d+) / 時間切れ (\d+)", re.M)
+LM_MAX_ATTEMPTS = 3
+
+
+def run_eval(repo, dict_dir, set_path, out_path, split="dev", set_format="ikari", kv=None, lm=None, extra=None, eval_bin=None):
+    cmd = [eval_bin or os.path.join(repo, "target/release/ikari-eval"), "--dict", dict_dir, "--ranker", "full",
            "--set", set_path, "--split", split, "--repeat", "1", "--out-cases", out_path]
     if set_format != "ikari":
         cmd += ["--set-format", set_format]
@@ -91,3 +96,15 @@ def set_list(repo):
 def dump(path, obj):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False)
+
+
+def run_eval_lm(repo, dict_dir, set_path, out_path, lm, eval_bin, **kw):
+    """LM あり。時間切れが 0 になるまで最大 LM_MAX_ATTEMPTS 回流し直す。戻りは (rc, 呼び出し, 時間切れ, 試行回数)"""
+    calls = timeouts = None
+    for attempt in range(1, LM_MAX_ATTEMPTS + 1):
+        rc, so, se = run_eval(repo, dict_dir, set_path, out_path, lm=lm, eval_bin=eval_bin, **kw)
+        m = LM_TIMEOUT_RE.search(so)
+        calls, timeouts = (int(m.group(1)), int(m.group(2))) if m else (None, None)
+        if rc == 0 and timeouts == 0:
+            return rc, calls, timeouts, attempt
+    return rc, calls, timeouts, LM_MAX_ATTEMPTS

@@ -45,6 +45,18 @@ def grid():
     return pts
 
 
+def grid_ext():
+    """格子の外の追加 (辺の確認): 不採用でない点が格子の端 (base 24000、per_char 2500) にあったので、その外を strong 5000、weak 0 で測る"""
+    pts = []
+    for p in list(range(1000, 3001, 250)):
+        for b in range(26000, 32001, 2000):
+            pts.append((b, p, 5000, 0))
+    for p in (2750, 3000):
+        for b in BASES:
+            pts.append((b, p, 5000, 0))
+    return pts
+
+
 def main_target_ids(loo_out_tsv):
     """S0 と同じ定義: homophone-left を除き、カタカナの候補があり、(カタカナの順位 != 1 または 期待の順位 != 1)"""
     ids = []
@@ -152,8 +164,8 @@ def cmd_prep(a):
 def cmd_sweep(a):
     base = load_base(a)
     main_ids = [l.strip() for l in open(os.path.join(a.scratch, "main900.txt"), encoding="utf-8") if l.strip()]
-    pts = grid()
-    res_path = os.path.join(a.scratch, "sweep.jsonl")
+    pts = grid_ext() if a.ext else grid()
+    res_path = os.path.join(a.scratch, "sweep-ext.jsonl" if a.ext else "sweep.jsonl")
     done = set()
     if os.path.exists(res_path):
         for l in open(res_path, encoding="utf-8"):
@@ -182,9 +194,75 @@ def cmd_sweep(a):
                   "main_top1", rec.get("main_dev_top1"), rec["sec"], file=sys.stderr, flush=True)
 
 
+def make_loo_limited(a):
+    """疑似の LM あり用: dev の疑似から FNV-1a64(id + 種) の小さい順に LM_TARGET_LIMIT 件"""
+    path = os.path.join(a.scratch, "loo", "loo-lm1000.tsv")
+    with open(a.loo_tsv, encoding="utf-8") as f:
+        lines = f.read().split("\n")
+    head, rows = lines[0], [l for l in lines[1:] if l.strip()]
+    dev = [l for l in rows if l.split("\t")[8] == "dev"]
+    dev.sort(key=lambda l: (L.fnv(l.split("\t")[0] + L.SEED), l))
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(head + "\n" + "\n".join(dev[:LM_TARGET_LIMIT]) + "\n")
+    return path
+
+
+def eval_all_lm(a, kv, outdir, loo_path):
+    os.makedirs(outdir, exist_ok=True)
+    jobs = [(os.path.basename(p)[:-4], p, "ikari", a.dict, "dev") for p in L.set_list(a.repo)]
+    jobs.append((AJIMEE_NAME, a.ajimee, "ajimee", a.dict, "all"))
+    jobs.append((LOO_NAME, loo_path, "ikari", a.loo_dict, "dev"))
+    res, errs, stats = {}, [], {}
+    for name, path, fmt, dd, split in jobs:
+        out = os.path.join(outdir, name + ".tsv")
+        rc, calls, timeouts, attempts = L.run_eval_lm(a.repo, dd, path, out, a.lm_gguf, a.eval_bin, split=split, set_format=fmt, kv=kv)
+        stats[name] = (calls, timeouts, attempts)
+        if rc != 0 or not os.path.exists(out) or timeouts != 0:
+            errs.append((name, rc, "timeouts=%s" % timeouts))
+        if os.path.exists(out):
+            res[name] = L.read_cases(out)
+    return res, errs, stats
+
+
+def cmd_lm(a):
+    loo_path = make_loo_limited(a)
+    main_ids = [l.strip() for l in open(os.path.join(a.scratch, "main900.txt"), encoding="utf-8") if l.strip()]
+    names = [n for n in a.points.split(",") if n]
+    t = time.time()
+    lmbase_dir = os.path.join(a.scratch, "lmbase")
+    base, errs, stats = eval_all_lm(a, None, lmbase_dir, loo_path)
+    print("LM 基準", round(time.time() - t, 1), "秒、異常", errs, file=sys.stderr, flush=True)
+    res_path = os.path.join(a.scratch, "lm.jsonl")
+    with open(res_path, "a", encoding="utf-8") as fo:
+        fo.write(json.dumps({"name": "BASE", "errs": errs, "stats": stats, "top1": {n: sum(1 for v in c.values() if v["rank_i"] == 1) for n, c in base.items()}}, ensure_ascii=False) + "\n")
+
+    def one(name):
+        b, per, st, w = [int(x[1:]) for x in name.split("_")]
+        kv = os.path.join(a.scratch, "kv", name + ".kv")
+        L.write_kv(kv, b, per, st, w)
+        outdir = os.path.join(a.scratch, "lmout", name)
+        t = time.time()
+        cur, errs, stats = eval_all_lm(a, kv, outdir, loo_path)
+        rec = summarize(base, cur, main_ids, errs)
+        rec.update(name=name, base=b, per_char=per, strong=st, weak=w, stats=stats, sec=round(time.time() - t, 1))
+        return rec
+
+    with ThreadPoolExecutor(a.lm_jobs) as ex, open(res_path, "a", encoding="utf-8") as fo:
+        for rec in ex.map(one, names):
+            fo.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            fo.flush()
+            print(rec["name"], "sets_reg", rec["reg_sets_total"], "loo_reg", rec.get("loo_guard_reg"), "main_top1", rec.get("main_dev_top1"),
+                  "/", rec.get("main_dev_n"), "base", rec.get("main_dev_top1_base"), "kl", rec.get("kl_target_top1"), "errs", rec["errs"], rec["sec"], file=sys.stderr, flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("sub", choices=["prep", "sweep"])
+    ap.add_argument("sub", choices=["prep", "sweep", "lm"])
+    ap.add_argument("--ext", action="store_true")
+    ap.add_argument("--lm-gguf")
+    ap.add_argument("--eval-bin")
+    ap.add_argument("--points", default="")
+    ap.add_argument("--lm-jobs", type=int, default=1)
     ap.add_argument("--repo", required=True)
     ap.add_argument("--scratch", required=True)
     ap.add_argument("--dict", required=True)
@@ -194,7 +272,7 @@ def main():
     ap.add_argument("--ajimee")
     ap.add_argument("--jobs", type=int, default=8)
     a = ap.parse_args()
-    {"prep": cmd_prep, "sweep": cmd_sweep}[a.sub](a)
+    {"prep": cmd_prep, "sweep": cmd_sweep, "lm": cmd_lm}[a.sub](a)
 
 
 if __name__ == "__main__":
