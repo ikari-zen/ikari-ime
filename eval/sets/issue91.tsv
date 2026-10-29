@@ -1,0 +1,10 @@
+# #91: きがするから が 木がするから（LM なし）、のごへんかん が の御変換 になる。
+# 期待は issue どおり（ユーザー報告 2026-10-28）。左文脈はユーザーが Claude に書いた直前の文章そのもの。短い文脈・文脈なしの行は、LM の寄与が文脈の長さで揺れるかを見るため。
+# split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev。調整は dev だけで行う。
+id	kind	tags	profile	context	reading	expected	note	split	source
+i91-ki-s	単独	issue91,ga-suru			きがするから	気がするから	LM なし（cost）では 木がする から が 1 位	test	issue91
+i91-ki-c	文脈	issue91,ga-suru		誤変換の報告を楽にする仕組みです。これは確かに欲しい。でもこのClaudeに書いているときにもっとも誤変換が出てくるし、一番書いているのはClaudeへの文章のときな	きがするから	気がするから	実機の文脈。実機の 1 位は 木（LM なしで返った可能性）。CLI の LM ありでは 1 位が 気	dev	issue91
+i91-ki-m	文脈	issue91,ga-suru		誤変換の報告を楽にする仕組みです。	きがするから	気がするから	短い文脈	dev	issue91
+i91-go-s	単独	issue91,prefix-go			のごへんかん	の誤変換	の + 御 + 変換 の経路が 誤変換（1 語）より安い	dev	issue91
+i91-go-c	文脈	issue91,prefix-go		誤変換の報告を楽にする仕組みです。これは確かに欲しい。でもこのClaudeに書いているときにもっとも誤変換が出てくるし、一番書いているのはClaudeへの文章のときな気がするから別に要らないかも？	のごへんかん	の誤変換	実機の文脈。長い文脈では 誤変換 が 2 位、短い文脈・なしでは 御変換 が 1 位	dev	issue91
+i91-go-m	文脈	issue91,prefix-go		誤変換の報告を楽にする仕組みです。	のごへんかん	の誤変換	短い文脈	test	issue91

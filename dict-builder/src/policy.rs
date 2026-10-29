@@ -40,9 +40,10 @@ pub const OFFICIAL_KA_COUNTER: &str = "official_ka_counter";
 pub const KATAKANA_PLACE_PEER: &str = "katakana_place_peer";
 pub const DEFAULT_COST_HOMOPHONE: &str = "default_cost_homophone";
 pub const RARE_KANJI_VARIANT: &str = "rare_kanji_variant";
+pub const HONORIFIC_GO_KANJI: &str = "honorific_go_kanji";
 
 /// 述語の一覧。添字が `Verdict::hit_mask` のビット位置。
-pub const PREDICATES: [&str; 23] = [
+pub const PREDICATES: [&str; 24] = [
     ASCII_LOWER,
     ASCII_OTHER,
     NUMERIC_SURFACE,
@@ -66,6 +67,7 @@ pub const PREDICATES: [&str; 23] = [
     KATAKANA_PLACE_PEER,
     DEFAULT_COST_HOMOPHONE,
     RARE_KANJI_VARIANT,
+    HONORIFIC_GO_KANJI,
 ];
 const IDX_ASCII_LOWER: usize = 0;
 const IDX_ASCII_OTHER: usize = 1;
@@ -90,6 +92,7 @@ const IDX_OFFICIAL_KA_COUNTER: usize = 19;
 const IDX_KATAKANA_PLACE_PEER: usize = 20;
 const IDX_DEFAULT_COST_HOMOPHONE: usize = 21;
 const IDX_RARE_KANJI_VARIANT: usize = 22;
+const IDX_HONORIFIC_GO_KANJI: usize = 23;
 
 const POS_SEPARATOR: char = ',';
 /// 長音記号「ー」(U+30FC)
@@ -98,6 +101,10 @@ const POS1_SYMBOL: &str = "記号";
 const POS2_NUMERAL: &str = "数詞";
 const POS2_PROPER_NOUN: &str = "固有名詞";
 const POS1_NOUN: &str = "名詞";
+const POS1_PREFIX: &str = "接頭辞";
+/// 敬語の接頭語の漢字（`honorific_go_kanji`）と、その読み
+const HONORIFIC_PREFIX_KANJI: &str = "御";
+const HONORIFIC_PREFIX_READINGS: [&str; 2] = ["ご", "お"];
 const POS2_COMMON_NOUN: &str = "普通名詞";
 const POS3_PERSON_NAME: &str = "人名";
 const POS3_PLACE_NAME: &str = "地名";
@@ -596,6 +603,7 @@ impl Policy {
             && row.surface != row.lemma
             && row.surface.chars().any(is_han);
         hit[IDX_RARE_KANJI_VARIANT] = row.rare_kanji_variant;
+        hit[IDX_HONORIFIC_GO_KANJI] = is_honorific_go_kanji(row, pos1);
         hit[IDX_WAVE_DASH] =
             row.surface.chars().count() > 1 && row.surface.chars().any(is_wave_dash);
         hit[IDX_KATAKANA_ANALYSIS] = is_katakana_analysis(row, pos1, pos2, chive_vocab);
@@ -926,6 +934,14 @@ fn is_katakana_analysis(
     own_rank >= KATAKANA_ANALYSIS_MIN_RANK
         && (own_rank as f64 + 1.0).log10() - (peer_rank as f64 + 1.0).log10()
             >= KATAKANA_ANALYSIS_MIN_DECADE_GAP
+}
+
+/// 接頭辞の「御」（読みは ご・お）か。公用文の書き表し方では敬語の接頭語の「ご」「お」は仮名書き（ご案内、お願い）で、
+/// 「御」は Sudachi の解析用の表記。「の + 御 + 変換」が 「の + 誤変換」に勝つ（#91）。熟語（御社、御礼）は別の行で、対象にしない
+fn is_honorific_go_kanji(row: &PolicyRow<'_>, pos1: &str) -> bool {
+    pos1 == POS1_PREFIX
+        && row.surface == HONORIFIC_PREFIX_KANJI
+        && HONORIFIC_PREFIX_READINGS.contains(&row.reading)
 }
 
 /// CJK 統合漢字（拡張A を含む）と々。
@@ -1443,6 +1459,23 @@ mod tests {
         assert!(!is_rare_kanji_variant(noun, "担", "舁", false, rare));
         // 異字同訓の表にある lemma は、表の規則が決める
         assert!(!is_rare_kanji_variant(verb, "担ぐ", "舁ぐ", true, rare));
+    }
+
+    #[test]
+    fn honorific_go_kanji_needs_the_prefix_surface_with_go_or_o_reading() {
+        let p = Policy::parse("honorific_go_kanji\t1500\n").unwrap();
+        let prefix = "接頭辞,*,*,*,*,*";
+        let eval = |surface, reading, pos| eval_with_reading(&p, surface, reading, pos);
+        // 敬語の接頭語の 御（ご・お）に当たる
+        let go = eval("御", "ご", prefix);
+        assert_eq!(go.penalty, 1500);
+        assert!(go.hits(HONORIFIC_GO_KANJI));
+        assert_eq!(eval("御", "お", prefix).penalty, 1500);
+        // 仮名の ご、ほかの読み（おん）、名詞の熟語（御社）、名詞の 御 は対象外
+        assert_eq!(eval("ご", "ご", prefix).penalty, 0);
+        assert_eq!(eval("御", "おん", prefix).penalty, 0);
+        assert_eq!(eval("御社", "おんしゃ", NOUN).penalty, 0);
+        assert_eq!(eval("御", "ご", NOUN).penalty, 0);
     }
 
     #[test]
