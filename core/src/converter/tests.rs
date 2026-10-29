@@ -1231,3 +1231,54 @@ fn kanji_with_small_kana_is_shown_only_when_reading_has_it() {
     // 読みに小書き仮名があれば辞書の表記が出る
     assert!(surfaces("わりぃ").contains(&"悪ぃ".to_owned()));
 }
+
+/// K1（ADR 0037）の統合: 未知語のカタカナだけに上限が掛かる。ひらがなと、辞書に同じ表記の 1 語があるカタカナは動かない。
+#[test]
+fn k1_caps_only_unknown_katakana() {
+    let k1 = |base: i32, per_char: i32| ConvertOptions {
+        pool_size: 2,
+        katakana_like: KatakanaLikeRule {
+            base,
+            per_char,
+            ..KatakanaLikeRule::default()
+        },
+        ..ConvertOptions::default()
+    };
+    let cost_of = |opts: ConvertOptions, reading: &str, origin: CandidateOrigin| {
+        let mut g = grammar();
+        g.set(ID_NOUN, ID_NOUN, 800);
+        let mut d = InMemoryDictionary::new(g.grammar_id());
+        d.insert("へんかん", "変換", ID_NOUN, ID_NOUN, 1000, 0);
+        d.insert("へんか", "変化", ID_NOUN, ID_NOUN, 1100, 0);
+        d.insert("かたかな", "カタカナ", ID_NOUN, ID_NOUN, 3000, 0);
+        let c = conv_with(g, d, cost_ranker(), opts);
+        let mut conv = c.convert(reading, &Context::new());
+        all_surfaces(&mut conv);
+        conv.generated()
+            .iter()
+            .find(|c| c.origin == origin)
+            .map(|c| c.base_cost)
+    };
+    // 無効（0/0）: 今と同じ（辞書の最大 + 1。ひらがなと同じ値）
+    let off = cost_of(k1(0, 0), "へんかん", CandidateOrigin::Katakana).unwrap();
+    assert!(off > 400);
+    // 有効: 100 × 4 文字 = 400。ひらがなは動かない
+    assert_eq!(
+        cost_of(k1(0, 100), "へんかん", CandidateOrigin::Katakana),
+        Some(400)
+    );
+    assert_eq!(
+        cost_of(k1(0, 100), "へんかん", CandidateOrigin::Hiragana),
+        Some(off)
+    );
+    // 上限が最大 + 1 より高ければ変わらない
+    assert_eq!(
+        cost_of(k1(0, 100_000), "へんかん", CandidateOrigin::Katakana),
+        Some(off)
+    );
+    // 辞書に同じ表記の 1 語（かたかな → カタカナ）は辞書の候補のまま（K1 の影響を受けない）
+    let dict_off = cost_of(k1(0, 0), "かたかな", CandidateOrigin::Dictionary);
+    let dict_on = cost_of(k1(0, 1), "かたかな", CandidateOrigin::Dictionary);
+    assert!(dict_off.is_some());
+    assert_eq!(dict_off, dict_on);
+}
