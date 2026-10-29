@@ -1418,18 +1418,27 @@ mod tests {
     }
 
     #[test]
-    fn is_rare_kanji_variant_needs_an_inflecting_verb_or_adjective_with_a_rare_kanji_that_differs_from_the_lemma() {
+    fn is_rare_kanji_variant_needs_an_inflecting_verb_or_adjective_with_a_rare_kanji_that_differs_from_the_lemma()
+     {
         let verb = "動詞,一般,*,*,五段-ガ行,連用形-イ音便";
         let adjective = "形容詞,一般,*,*,形容詞,連体形-一般";
         let noun = "名詞,普通名詞,一般,*,*,*";
         let rare = |c: char| c == '舁';
         // 辞書形の表記が lemma と違い、語彙にない漢字を含む（活用形の行でも、辞書形で見る）
         assert!(is_rare_kanji_variant(verb, "担ぐ", "舁ぐ", false, rare));
-        assert!(is_rare_kanji_variant(adjective, "担ぐ", "舁い", false, rare));
+        assert!(is_rare_kanji_variant(
+            adjective, "担ぐ", "舁い", false, rare
+        ));
         // lemma と同じ表記は対象外
         assert!(!is_rare_kanji_variant(verb, "担ぐ", "担ぐ", false, rare));
         // 漢字がすべて語彙にある（捕らわれる/囚われる、挙げる/上げる）なら対象外
-        assert!(!is_rare_kanji_variant(verb, "捕らわれる", "囚われる", false, rare));
+        assert!(!is_rare_kanji_variant(
+            verb,
+            "捕らわれる",
+            "囚われる",
+            false,
+            rare
+        ));
         // 活用しない語（variant_surface の担当）と、動詞・形容詞でない語は対象外
         assert!(!is_rare_kanji_variant(noun, "担", "舁", false, rare));
         // 異字同訓の表にある lemma は、表の規則が決める
