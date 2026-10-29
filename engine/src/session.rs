@@ -6,6 +6,9 @@ pub(crate) struct Session {
     pub(crate) secure: bool,
     /// ほかのアプリと文脈を貸し借りしてよいか（`BeginSession.share_context`。D6）
     pub(crate) share: bool,
+    /// ログの `app=` に書く語（`diag::app_word` で確かめ済みの Bundle ID、`invalid`、`none`。メモリにだけ持つ。
+    /// ADR 0034 §9-1 の 2026-10-30 の改め）。secure では None（NFR-18）
+    pub(crate) app: Option<String>,
     pub(crate) history: Vec<ikari_core::Commit>,
     pub(crate) last_used: Instant,
     /// `EndSession` を受けた時刻。Some の間は休止中で、要求には答えず、同じ ID の `BeginSession` で再開する（D1）
@@ -34,9 +37,9 @@ impl Inner {
     }
 
     pub(crate) fn begin_session(&self, b: pb::BeginSession) -> Result<envelope::Body, Fail> {
-        // client_bundle_id は保存しない（アプリごとのプロファイルは将来の候補）。ログには、この要求の行の
-        // `app=` にだけ書く（ADR 0034 §7・§9-1。ユーザー決定 2026-10-25。`diag::begin_session_note`。
-        // 文字の種類と長さを確かめ、secure では書かない）。ほかの行には書かない
+        // client_bundle_id そのものは保存しない（アプリごとのプロファイルは将来の候補）。ログの `app=` に
+        // 書く語（文字の種類と長さを確かめたもの。secure では None）だけを、メモリ上のセッションに持つ。
+        // 書く行は `begin_session` と `convert`（ADR 0034 §7・§9-1。2026-10-25、2026-10-30 の改め）
         let mut sessions = lock_mutex(&self.sessions);
         if !sessions.contains_key(&b.session_id) && sessions.len() >= SESSION_LIMIT {
             let oldest = sessions
@@ -51,10 +54,12 @@ impl Inner {
             }
         }
         let now = Instant::now();
+        let app = diag::session_app(&b);
         match sessions.get_mut(&b.session_id) {
             // 同じ ID で secure が同じなら、履歴を残して再開する（D1）
             Some(s) if s.secure == b.secure => {
                 s.share = b.share_context;
+                s.app = app;
                 s.paused_at = None;
                 s.last_used = now;
             }
@@ -65,6 +70,7 @@ impl Inner {
                     Session {
                         secure: b.secure,
                         share: b.share_context,
+                        app,
                         history: Vec::new(),
                         last_used: now,
                         paused_at: None,
@@ -95,6 +101,13 @@ impl Inner {
         lock_mutex(&self.cache).remove_session(session);
         lock_mutex(&self.ctx_trace).remove_session(session);
         lock_mutex(&self.conversions).remove_session(session);
+    }
+
+    /// `convert` の行に足す `app=<語>`。secure、セッションがなければ None
+    pub(crate) fn app_note(&self, id: u64) -> Option<String> {
+        lock_mutex(&self.sessions)
+            .get(&id)
+            .and_then(|s| s.app.as_ref().map(|a| format!("app={a}")))
     }
 
     /// (secure, 確定履歴)。セッションがなければ `UNKNOWN_SESSION`。

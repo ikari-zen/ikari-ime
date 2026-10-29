@@ -180,7 +180,7 @@ message DiagTag { string key = 1; string value = 2; }
 - `DiagEvent` の行には、エンジンが `session=<id>` を先頭に足す（`begin_session` の行の `session=` `app=` と結ぶため。殻は送らない）。許可リストを 1 つでも外れたら行ごと捨てる。
 - `diag_reject` は事象ごとに `n=1 reason=<語> [kind=<許可リストの kind>]` を 1 行（1 分ごとのまとめはしない。集計は `n` の合計で足りる）。理由の語は `kind` `too_many` `too_long` `num_key` `tag_key` `tag_value` `dup_key` `no_session`。送られた文字列は書かない。secure のセッションは何も書かずに捨てる。休止中（`EndSession` のあと）のセッションの事象は書く。
 - `begin_session` の行は `session=N app=<Bundle ID>`（`[A-Za-z0-9.-]` で 128 バイトまで。外れたら `invalid`、空なら `none`）。secure は `session=N` だけ（Bundle ID を書かない。NFR-18）。
-- **アプリ別の集計（#109）**: Bundle ID は `begin_session` の行だけに書く決定（§9-1）のまま、`convert` の行は `session=N` で `begin_session` の `app=` に結ぶ（行に `app=` は足さない）。`diag-report.py` は `(epoch, session=)` で結び、結べない行（ログの先頭が欠けた、secure、`session=` のない古い行）は `(不明)` に数える。
+- **`convert` の行の `app=`（#109。2026-10-30 のユーザー決定。§9-1 を改める）**: `convert` の行にも `app=<語>` を足す。語は `begin_session` と同じ規則（`[A-Za-z0-9.-]` で 128 バイトまで。外れたら `invalid`、空なら `none`）で、エンジンがセッションに確かめ済みの語だけを持つ（Bundle ID そのものは持たない）。secure のセッションは `begin_session` と同じく `app=` を書かない（NFR-18。パスワード欄などのアプリを残さない）。入力した文字・変換結果は書かない。`prefetch` などほかの行には足さない。`diag-report.py` は行の `app=` を優先し、ない行（古い版）は `(epoch, session=)` で `begin_session` の `app=` に結ぶ。どちらでも分からない行（ログの先頭が欠けた、secure、`session=` のない古い行）は `(不明)`。
 - `end_session` の行には `session=N` を足す。`err=UNKNOWN_SESSION` の行にも、要求が持つ `session=N` を足す（`prefetch` `convert` `commit_text` `reconvert`。番号だけ。#313）。集計が、セッションの区切りと、知らないと言われた番号の状態（begin なし / end のあと）を調べるため。
 - `rw=` は `commit` `commit_segments` の確定した候補の Rewriter の名前（複数の文節なら `,` でつなぐ）。`ctx=0` は `convert` `prefetch` で周辺テキストがない（`available = false` または送られなかった）とき。
 - `lm_load` は暖機のスレッドが読み込みを終えたとき（失敗は `err=lm_load_failed`）。`lm_unload` の `idle` は見回りが「読み込み済み → 未読み込み」を見つけたとき（最大 1 秒の遅れ）、`settings` は Stack の差し替えで読み込み済みの LM が替わったとき、`shutdown` は `Engine` を閉じるとき。
@@ -219,7 +219,7 @@ message DiagTag { string key = 1; string value = 2; }
 | 入力の流れ | `rlen`、`keys_to_conv`、`dur_ms`、`pick_ms` の p50 / p90。`sh_mode` の 1 日あたりの回数 |
 | 不具合の手がかり | `ctx` の内訳と `convert` の `ctx=0` の率、`panel` の内訳、`sh_engine` の合計、`err` が `-` でない行の kind 別の件数 |
 | 機能の利用 | `pick_kind` の件数（`emoji` `small_letter` `rewriter` など）、`rw` の内訳、`mode=shortcode_*` の合成の件数と `end=shortcode_pick` の率 |
-| アプリ別 | `convert`（`err=-`）の件数、`miss=context` と `lm_applied=0` の件数と率を、`session=` で結んだ `app=` ごとに（結べないものは `(不明)`） |
+| アプリ別 | `convert`（`err=-`）の件数、`miss=context` と `lm_applied=0` の件数と率を、行の `app=`（古い行は `session=` で結んだ `begin_session` の `app=`）ごとに（分からないものは `(不明)`） |
 | 性能 | `convert` の所要の p50 / p95 / p99（`cache` × `lm_applied` 別）、`wait_us` の p50 / p99、`stat` の `rss_kb` の中央値と最大、`lm_load` の回数と所要、`lm_unload` の理由 |
 | ログの健全性 | `log_dropped` と `diag_reject` の合計、日ごとの行数 |
 
@@ -269,6 +269,12 @@ message DiagTag { string key = 1; string value = 2; }
 1. **Bundle ID を書く**: そのまま、`begin_session` の行だけに書く（案 7-1）。session.rs の「保存もログもしない」の決定は、この点だけ改める。
 2. **保持**: **180 日、合計 100MB まで**（どちらか先に来た方で古い順に消す）。見積もり（180 日で 40〜45MB。推測）は、1 週間の実測で見直す。
 3. **圧縮**: **gzip（flate2）。日ごとの集計は作らない**。
+
+
+**2026-10-30 の改め(#109)**: ユーザー決定「診断ログで convert したときのアプリも行単位で分かった方がよい」。§9-1 の「`begin_session` の行だけ」を、**`begin_session` と `convert` の行**に改める。
+- 元の決定の理由: Bundle ID を書く行を 1 つに絞り、NFR-19（固定の語と数だけ）の例外を小さく保つ。他の行は `session=` で結べる。
+- 変える理由: ログの先頭側が欠けると `begin_session` が見えず、`miss=context` の 370 件のうち 255 件がアプリ不明になった。`session=` の結びは、ログの回転、古い行、エンジンの再起動に弱く、行だけで偏りを調べられない。
+- 守るもの: 文字の種類と長さの確認は同じ。secure では書かない。入力した文字・変換結果は書かない。例外はこの 2 つの行の `app=` だけ。
 
 ---
 

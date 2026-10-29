@@ -355,6 +355,11 @@ impl Inner {
             note.push(' ');
             note.push_str(&fill);
         }
+        // アプリ別の偏りを行単位で見られるように（ADR 0034 §9-1。2026-10-30）。secure は書かない
+        if let Some(app) = self.app_note(c.session_id) {
+            note.push(' ');
+            note.push_str(&app);
+        }
         Ok((
             reply,
             Some(match trace {
