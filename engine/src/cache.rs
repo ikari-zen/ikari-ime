@@ -134,6 +134,7 @@ pub struct CacheEntry {
 }
 
 impl CacheEntry {
+    #[cfg(test)]
     pub fn new(key: CacheKey) -> Arc<CacheEntry> {
         Self::build(key, None)
     }

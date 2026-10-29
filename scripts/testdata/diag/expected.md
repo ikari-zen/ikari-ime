@@ -144,6 +144,13 @@
 | cache=miss | 1 | 33.3% |
 | lm_applied=1 | 2 | 66.7% |
 | miss=context | 1 | 33.3% |
+| LM なし（lm_applied=0） | 1 | 33.3% |
+| by=content | 0 | 0.0% |
+| fill のある convert | 0 | 0.0% |
+| fill_eq=1 | 0 | - |
+| fill_eq=0 | 0 | - |
+| fill_eq=0 fill_tail=1 | 0 | - |
+| fill_eq=0 fill_tail=0 | 0 | - |
 | stat rss_kb 中央値 | 300000 |  |
 | stat rss_kb 最大 | 300000 |  |
 | lm_load 回数 | 1 | p50=800000us |
