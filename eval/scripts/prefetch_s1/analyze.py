@@ -45,7 +45,7 @@ def load_cases(path):
     d = {}
     with open(path, encoding="utf-8") as fh:
         for row in csv.DictReader(fh, delimiter="\t", quoting=csv.QUOTE_NONE):
-            d[row["id"]] = int(row["rank"]) == 1
+            d[row["id"]] = row["rank"] == "1"  # 空（候補にない）は外れ
     return d
 
 
@@ -57,6 +57,8 @@ def main():
         with open(f"{OUT}/units-{scheme}.tsv", encoding="utf-8") as fh:
             next(fh)
             for line in fh:
+                if line.startswith("set\t"):
+                    continue
                 s, i, n, u = line.rstrip("\n").split("\t")
                 units.append((s, i, int(n)))
         top = {"X": {}, "Y": {}, "Z": {}}

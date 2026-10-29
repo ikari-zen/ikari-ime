@@ -12,6 +12,7 @@ ADR が根拠として参照しているレポートは、リンクを壊さな�
 | ファイル | 日付 | 区分 | 何の数値か | 今のコードで再現できるか |
 | --- | --- | --- | --- | --- |
 | [path-loses-250.md](path-loses-250.md) | 2026-10-25 | 判断の根拠（凍結） | 経路が負ける型（看守役、異常気象、設計仕様変更、推し活）のコスト補正（[ADR 0035](../../docs/adr/0035-path-loses-cost-adjust.md) の規則 F・F2・H）の掃引。全 30 セットの 1 位（LM なし・あり 2000ms）、path-loses セット（39 件）、学習のシナリオ、当たった行数（#250） | 採用の点は再現できる（`scripts/build-dict.sh`）。ほかの点はスパイクのコード（コミットしていない）で、定数を書き換えて作る |
+| [prefetch-s1.md](prefetch-s1.md) | 2026-10-29 | 判断の根拠（凍結） | 先行計算の左文脈の伸び（[ADR 0038](../../docs/adr/0038-prefetch-context-tolerance.md) S1）。文脈の末尾から確定の単位を取り除いたセットで、X（今）・Y（案 1）・Z（案 4 の上限）の 1 位を比較。切り方 A・B、セット別、単位の長さ別、`commit_chars` の重み付き。Y 対 X は基準を満たさない | 再現できる（`eval/scripts/prefetch_s1/`。実機の dict と zenz が要る。コマンドはレポートの付録） |
 | [phase2-q.md](phase2-q.md) | 2026-10-12 | 現行の基準 | フェーズ2の変換の質と締め切り。§9 の表が今の回帰の数値（homophones、ext、hiragana、AJIMEE。LM なし／あり） | 再現できる。ただし §8 の `eos_weight` の実験は、削除前のコミット 6a58b73 で |
 | [phase3-segments.md](phase3-segments.md) | 2026-10-13 | 現行の基準（雛形。数値は lane C のマージ後） | 文節の区切りの F1、打鍵数（今の UI と文節の UI）、再変換の読みの推定の一致率（[ADR 0006](../../docs/adr/0006-segment-editing.md) §7）。segments セット（145 件） | lane C のマージ後に再現できる（`ikari-eval segments` / `ops` / `reading`。コマンドはレポートの §2） |
 | [phase3-compound.md](phase3-compound.md) | 2026-10-13 | 現行の基準 | 機能語の装飾表記（YO、〜）、読みに対応しない記号の固定の規則、漢数字のゼロ、複合語のコスト（具体例）の前後。5つのセット、区切りの F1、再変換の読みの推定 | 再現できる（`scripts/build-dict.sh`。基準の辞書は上の変更を戻して作る） |
