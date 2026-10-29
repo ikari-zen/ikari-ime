@@ -18,6 +18,8 @@ set -euo pipefail
 
 # shellcheck source=lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+# shellcheck source=check-record.sh
+source "$(dirname "${BASH_SOURCE[0]}")/check-record.sh"
 cd "$IKARI_ROOT"
 
 readonly EDGE_MODEL_FILE="kanakanji-edge-33m-Q8_0.gguf"
@@ -42,6 +44,21 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+# 終了時に「CHECK_EXIT=<コード>」を出し、結果を記録する（.claude/hooks/guard-pr-merge.sh が gh pr merge の前に読む。issue #107）。
+# --docs-only は一部の検査しか流さないので記録しない。未コミットの変更があるときも記録しない（scripts/check-record.sh）
+on_exit() {
+  local code=$?
+  trap - EXIT
+  if [[ "$DOCS_ONLY" -eq 0 ]]; then
+    local scope="full"
+    [[ "$WITH_SWIFT" -eq 1 ]] || scope="no-swift"
+    check_record_write "$IKARI_ROOT" "$code" "$scope"
+  fi
+  printf 'CHECK_EXIT=%s\n' "$code"
+  exit "$code"
+}
+trap on_exit EXIT
 
 # ---------------------------------------------------------------- 文書とスクリプト
 
@@ -140,7 +157,7 @@ check_audit() {
 check_shell_syntax() {
   log "シェルスクリプトの構文"
   local script
-  for script in scripts/*.sh macos/scripts/*.sh eval/scripts/*.sh; do
+  for script in scripts/*.sh macos/scripts/*.sh eval/scripts/*.sh .claude/hooks/*.sh; do
     bash -n "$script" || die "$script に構文エラーがあります"
   done
 }
@@ -238,6 +255,7 @@ check_leaks
 check_adr_status
 check_shell_syntax
 scripts/test-diag-report.sh
+scripts/test-hooks.sh
 if [[ "$DOCS_ONLY" -eq 1 ]]; then
   log "完了（--docs-only）"
   exit 0

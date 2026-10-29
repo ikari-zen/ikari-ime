@@ -23,6 +23,7 @@
 ## ブランチと PR（main への直接コミットと push は禁止）
 - 作業は必ずブランチで行う（`feat/…`、`fix/…`、`docs/…`）。main への反映は GitHub の PR を通してだけ行う。
 - 手元でもフックで止めている（`.githooks/`。`git config core.hooksPath .githooks` で有効）。フックを外したり `--no-verify` で回避したりしない。
+- Claude Code のフック（`.claude/settings.json`。`.claude/hooks/`）: `gh pr merge` は、PR の先頭コミットで `scripts/check.sh` が `CHECK_EXIT=0` だった記録がないと止まる。`.rs` の編集のあとは `cargo fmt` を流す。回避は、Claude Code の起動前に `IKARI_ALLOW_UNCHECKED_MERGE=1` を設定する（ユーザーだけ）。
 - レーンの worktree のブランチは、リードが統合用のブランチにまとめ、そこから PR を作る。
 - コミットの末尾には、システムが指定する Co-Authored-By の行を付ける。
 - **こまめにコミットする**。意味のある小さな単位ごとにコミットし、作業の終わりにまとめない。
