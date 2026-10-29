@@ -1,0 +1,9 @@
+# #90: いみなのに が 意味ナノに（ナノ は名詞。「意味 + ナノ + に」の経路が「意味 + な + のに」より安い）、へんかんせいど が 変換制度 になる。
+# 期待は issue どおり（ユーザー報告 2026-10-28）。左文脈はユーザーが Claude に書いた文章そのもの（i90-imi-c）。文脈なしの行は、LM が働かないときの順位を見るため。
+# split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev。調整は dev だけで行う。
+id	kind	tags	profile	context	reading	expected	note	split	source
+i90-imi-s	単独	issue90,short-word			いみなのに	意味なのに	ナノ（名詞）が 意味 + ナノ + に の経路で安い	dev	issue90
+i90-imi-c	文脈	issue90,short-word		過去にも同じことを聞かれているけど、※で変換ができなかったことを報告しても、文脈を書いているのにも関わらず記録してくれない。文脈は私がClaudeに話したことそのものだという	いみなのに	意味なのに	実機の文脈（Claude に書いた文章）。LM ありでも 意味ナノに が 1 位	dev	issue90
+i90-imi-m	文脈	issue90,short-word		文脈を書いているのに記録してくれない。	いみなのに	意味なのに	短い文脈	dev	issue90
+i90-seido-s	単独	issue90,precision			へんかんせいど	変換精度	制度（4974）は 精度（7370）より安い	test	issue90
+i90-seido-c	文脈	issue90,precision		問題は優先度は高め。	へんかんせいど	変換精度	文脈 優先度・問題（issue の文脈から固有名詞の部分を除いた）	dev	issue90
