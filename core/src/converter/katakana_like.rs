@@ -21,6 +21,9 @@ const DEFAULT_WEAK_CHARS: &str = "ぱぴぷぺぽふぐむー";
 const DEFAULT_STRONG_BONUS: i32 = 5000;
 const DEFAULT_WEAK_BONUS: i32 = 0;
 const DEFAULT_BELOW_BEST: i32 = 500;
+/// K1 の既定は無効（0/0）。値は掃引の後に決める（ADR 0037 §5）
+const DEFAULT_BASE: i32 = 0;
+const DEFAULT_PER_CHAR: i32 = 0;
 /// 弱い手がかりを数え始める個数の既定
 const DEFAULT_WEAK_MIN_COUNT: u32 = 1;
 
@@ -39,6 +42,10 @@ pub struct KatakanaLikeRule {
     pub weak_min_count: u32,
     /// 下げた base_cost の下限 = 辞書の候補の最小 base_cost - この値。既定 500（0 だと同値で後に回るので上がらない）
     pub below_best: i32,
+    /// K1（ADR 0037）: 未知語のカタカナの base_cost の上限 = `base + per_char × 読みの文字数`。この定数項。既定 0
+    pub base: i32,
+    /// K1: 読み 1 文字あたりの値。`base` と両方 0 なら K1 は働かない（既定。今と同じ）
+    pub per_char: i32,
 }
 
 impl Default for KatakanaLikeRule {
@@ -50,6 +57,8 @@ impl Default for KatakanaLikeRule {
             weak_chars: Arc::from(DEFAULT_WEAK_CHARS),
             weak_min_count: DEFAULT_WEAK_MIN_COUNT,
             below_best: DEFAULT_BELOW_BEST,
+            base: DEFAULT_BASE,
+            per_char: DEFAULT_PER_CHAR,
         }
     }
 }
@@ -57,13 +66,15 @@ impl Default for KatakanaLikeRule {
 impl KatakanaLikeRule {
     /// `--ranker-config` のキーの接頭辞
     pub const CONFIG_PREFIX: &'static str = "katakana_like";
-    const CONFIG_KEYS: [&'static str; 6] = [
+    const CONFIG_KEYS: [&'static str; 8] = [
         "strong_bonus",
         "weak_bonus",
         "strong_chars",
         "weak_chars",
         "weak_min_count",
         "below_best",
+        "base",
+        "per_char",
     ];
 
     pub fn is_enabled(&self) -> bool {
@@ -80,7 +91,26 @@ impl KatakanaLikeRule {
             weak_chars: scope.get_arc_str("weak_chars", &self.weak_chars),
             weak_min_count: scope.get("weak_min_count", self.weak_min_count)?,
             below_best: scope.get("below_best", self.below_best)?,
+            base: scope.get("base", self.base)?,
+            per_char: scope.get("per_char", self.per_char)?,
         })
+    }
+
+    /// K1（ADR 0037）が働くか。`base` と `per_char` が両方 0 なら働かない。
+    pub fn is_unknown_cost_enabled(&self) -> bool {
+        self.base != 0 || self.per_char != 0
+    }
+
+    /// K1: 未知語のカタカナの base_cost。`cost`（辞書の最大 + 1）より高くはしない。
+    /// 辞書に同じ表記の 1 語があるカタカナには使わない（呼び出し側で分ける）。
+    /// 文字数は読みのひらがなの文字数（拗音・長音も 1）。
+    pub fn unknown_cost(&self, reading: &str, cost: i32) -> i32 {
+        if !self.is_unknown_cost_enabled() {
+            return cost;
+        }
+        let n = i32::try_from(reading.chars().count()).unwrap_or(i32::MAX);
+        let cap = self.base.saturating_add(self.per_char.saturating_mul(n));
+        cost.min(cap)
     }
 
     /// 読み（ひらがな）から下げる値。反復の読み（ぷんぷん、ぽかぽか）は擬音語・擬態語なので 0。
@@ -206,6 +236,69 @@ mod tests {
         // 下げ幅が小さければその分だけ
         let r = rule(100, 0);
         assert_eq!(r.lowered_cost("ふぁ", 9000, 1000), 8900);
+    }
+
+    fn k1(base: i32, per_char: i32) -> KatakanaLikeRule {
+        KatakanaLikeRule {
+            base,
+            per_char,
+            ..rule(0, 0)
+        }
+    }
+
+    #[test]
+    fn unknown_cost_is_disabled_by_default() {
+        let r = KatakanaLikeRule::default();
+        assert!(!r.is_unknown_cost_enabled());
+        assert_eq!((r.base, r.per_char), (0, 0));
+        assert_eq!(r.unknown_cost("ばーじょにんぐ", 9000), 9000);
+    }
+
+    #[test]
+    fn unknown_cost_caps_by_char_count_and_never_exceeds_cost() {
+        let r = k1(1000, 500);
+        // ばーじょにんぐ は 7 文字: 1000 + 500 * 7 = 4500
+        assert_eq!(r.unknown_cost("ばーじょにんぐ", 9000), 4500);
+        // 拗音（ょ）も 1 文字
+        assert_eq!(r.unknown_cost("きょ", 9000), 2000);
+        // 上限が cost より高ければ cost のまま（最大 + 1 を超えない）
+        assert_eq!(r.unknown_cost("ばーじょにんぐ", 3000), 3000);
+        // 桁あふれしない
+        let big = k1(i32::MAX, i32::MAX);
+        assert_eq!(big.unknown_cost("あい", 9000), 9000);
+    }
+
+    #[test]
+    fn unknown_cost_is_applied_before_katakana_like_discount() {
+        let r = KatakanaLikeRule {
+            base: 1000,
+            per_char: 500,
+            ..rule(1000, 0)
+        };
+        let capped = r.unknown_cost("ふぁい", 9000);
+        assert_eq!(capped, 2500);
+        assert_eq!(r.lowered_cost("ふぁい", capped, 1000), 1500);
+    }
+
+    #[test]
+    fn with_kv_overrides_k1_and_rejects_bad_input() {
+        let base = KatakanaLikeRule::default();
+        let r = base
+            .clone()
+            .with_kv(&kv(&[
+                ("katakana_like.base", "1200"),
+                ("katakana_like.per_char", "300"),
+            ]))
+            .unwrap();
+        assert_eq!((r.base, r.per_char), (1200, 300));
+        assert!(r.is_unknown_cost_enabled());
+        for bad in [
+            ("katakana_like.base", "x"),
+            ("katakana_like.per_char", "1.5"),
+            ("katakana_like.per_char", ""),
+        ] {
+            assert!(base.clone().with_kv(&kv(&[bad])).is_err(), "{bad:?}");
+        }
     }
 
     #[test]

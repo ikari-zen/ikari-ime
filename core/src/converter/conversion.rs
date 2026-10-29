@@ -144,7 +144,9 @@ impl Conversion {
         // 辞書に同じ表記の 1 語の候補があるときは、その候補のコストを下げる
         // （ファイル + メイ のように複数の語に分かれる経路は動かさない）
         let like = &self.opts.katakana_like;
-        let katakana_cost = like.lowered_cost(&hiragana, kana_cost, best_cost);
+        // K1（ADR 0037）: 未知語のカタカナ（辞書に同じ表記の 1 語がないとき）は、読みの文字数で上限を掛けてから下げる
+        let katakana_cost =
+            like.lowered_cost(&hiragana, like.unknown_cost(&hiragana, kana_cost), best_cost);
         for c in pool
             .iter_mut()
             .filter(|c| c.surface == katakana && c.segments.len() == 1)
