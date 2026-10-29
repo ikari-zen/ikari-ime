@@ -1,0 +1,8 @@
+# #119: かつぐ の 1 位が 舁ぐ（難読字）で 担ぐ が 2 位。かついで も同じ型（舁いで が 2 位、担いで が 4 位）。期待は issue どおり（担ぐ が自然。ユーザー確認済みの前提）。
+# 単独（読みだけ）と、文脈つき（お神輿を。issue のコメントの再現と同じ）。kl-guard-56（katakana-like.tsv）も同じ読み。
+# split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev。調整は dev だけで行う。
+id	kind	tags	profile	context	reading	expected	note	split	source
+i119-kagu-s	単独	issue119,variant-verb			かつぐ	担ぐ	難読字の 舁ぐ が 1 位になる型。担ぐ が自然	test	issue119
+i119-kagu-c	文脈	issue119,variant-verb		お神輿を	かつぐ	担ぐ	文脈つき（LM あり・なしとも 舁ぐ が 1 位だった）	dev	issue119
+i119-katsuide-s	単独	issue119,variant-verb			かついで	担いで	連用形。かつ + いで の分割が 1 位、舁いで が 2 位だった（分割は別の問題）	dev	issue119
+i119-katsuide-c	文脈	issue119,variant-verb		お神輿を	かついで	担いで	連用形・文脈つき	test	issue119
