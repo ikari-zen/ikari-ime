@@ -42,9 +42,10 @@ pub const DEFAULT_COST_HOMOPHONE: &str = "default_cost_homophone";
 pub const RARE_KANJI_VARIANT: &str = "rare_kanji_variant";
 pub const HONORIFIC_GO_KANJI: &str = "honorific_go_kanji";
 pub const SHORT_KATAKANA_COUNTER: &str = "short_katakana_counter";
+pub const PERSON_NAME_KANJI: &str = "person_name_kanji";
 
 /// 述語の一覧。添字が `Verdict::hit_mask` のビット位置。
-pub const PREDICATES: [&str; 25] = [
+pub const PREDICATES: [&str; 26] = [
     ASCII_LOWER,
     ASCII_OTHER,
     NUMERIC_SURFACE,
@@ -70,6 +71,7 @@ pub const PREDICATES: [&str; 25] = [
     RARE_KANJI_VARIANT,
     HONORIFIC_GO_KANJI,
     SHORT_KATAKANA_COUNTER,
+    PERSON_NAME_KANJI,
 ];
 const IDX_ASCII_LOWER: usize = 0;
 const IDX_ASCII_OTHER: usize = 1;
@@ -96,6 +98,7 @@ const IDX_DEFAULT_COST_HOMOPHONE: usize = 21;
 const IDX_RARE_KANJI_VARIANT: usize = 22;
 const IDX_HONORIFIC_GO_KANJI: usize = 23;
 const IDX_SHORT_KATAKANA_COUNTER: usize = 24;
+const IDX_PERSON_NAME_KANJI: usize = 25;
 
 const POS_SEPARATOR: char = ',';
 /// 長音記号「ー」(U+30FC)
@@ -599,6 +602,8 @@ impl Policy {
         hit[IDX_SYMBOL_KANA] = pos1 == POS1_SYMBOL;
         hit[IDX_PROPER_NOUN] = pos2 == POS2_PROPER_NOUN;
         hit[IDX_PERSON_NAME] = pos3 == POS3_PERSON_NAME;
+        // 漢字で書く人名（田所、浩二）。カタカナの人名（スズキ、ハル）は対象にしない（ブランド名・普通名詞との比較が崩れる）
+        hit[IDX_PERSON_NAME_KANJI] = pos3 == POS3_PERSON_NAME && row.surface.chars().any(is_han);
         hit[IDX_PLACE_NAME] = pos2 == POS2_PROPER_NOUN && pos3 == POS3_PLACE_NAME;
         hit[IDX_OFFICIAL_KA_COUNTER] = is_official_ka_counter(row, pos1, pos2, pos3);
         hit[IDX_KATAKANA_PLACE_PEER] =
@@ -1382,7 +1387,8 @@ mod tests {
             eval(&p, "更生", "更生", PLACE).penalty,
             1000 + PLACE_NAME_ADD
         );
-        assert_eq!(eval(&p, "更生", "更生", PERSON).penalty, 2000);
+        // 漢字の人名: 1000 + 1000 + person_name_kanji（-500）
+        assert_eq!(eval(&p, "更生", "更生", PERSON).penalty, 1500);
         assert_eq!(eval(&p, "更生", "更生", NOUN).penalty, 0);
         // カタカナの人名: 5000 + 1000 + 1000
         assert_eq!(eval(&p, "ナッ", "なっ", PERSON).penalty, 7000);
@@ -1513,6 +1519,30 @@ mod tests {
         assert_eq!(eval("御", "おん", prefix).penalty, 0);
         assert_eq!(eval("御社", "おんしゃ", NOUN).penalty, 0);
         assert_eq!(eval("御", "ご", NOUN).penalty, 0);
+    }
+
+    #[test]
+    fn person_name_kanji_adds_to_person_name_only_for_surfaces_with_kanji() {
+        let p = Policy::parse("proper_noun\t1000\nperson_name\t1000\nperson_name_kanji\t-500\n")
+            .unwrap();
+        let name = "名詞,固有名詞,人名,名,*,*";
+        // 漢字の人名: 1000 + 1000 - 500
+        let kanji = eval_with_reading(&p, "浩二", "こうじ", name);
+        assert_eq!(kanji.penalty, 1500);
+        assert!(kanji.hits(PERSON_NAME_KANJI));
+        // カタカナ・ひらがなの人名は person_name までで、変わらない
+        assert_eq!(
+            eval_with_reading(&p, "コウジ", "こうじ", name).penalty,
+            2000
+        );
+        assert_eq!(
+            eval_with_reading(&p, "こうじ", "こうじ", name).penalty,
+            2000
+        );
+        // 人名でない固有名詞（地名）と普通名詞には当たらない
+        let place = "名詞,固有名詞,地名,一般,*,*";
+        assert!(!eval_with_reading(&p, "梅田", "うめだ", place).hits(PERSON_NAME_KANJI));
+        assert_eq!(eval_with_reading(&p, "工事", "こうじ", NOUN).penalty, 0);
     }
 
     #[test]
