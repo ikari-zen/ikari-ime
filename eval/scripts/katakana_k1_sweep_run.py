@@ -71,17 +71,17 @@ def main_target_ids(loo_out_tsv):
     return ids
 
 
-def eval_all(a, kv, outdir, lm=None):
+def eval_all(a, kv, outdir, lm=None, split="dev"):
     """全評価対象を流して {名前: cases} を返す。戻りの 2 つ目は異常の一覧"""
     os.makedirs(outdir, exist_ok=True)
     res, errs = {}, []
-    jobs = [(os.path.basename(p)[:-4], p, "ikari", a.dict, "dev") for p in L.set_list(a.repo)]
+    jobs = [(os.path.basename(p)[:-4], p, "ikari", a.dict, split) for p in L.set_list(a.repo)]
     if a.ajimee:
         jobs.append((AJIMEE_NAME, a.ajimee, "ajimee", a.dict, "all"))
-    jobs.append((LOO_NAME, a.loo_tsv, "ikari", a.loo_dict, "dev"))
-    for name, path, fmt, dd, split in jobs:
+    jobs.append((LOO_NAME, a.loo_tsv, "ikari", a.loo_dict, split))
+    for name, path, fmt, dd, sp in jobs:
         out = os.path.join(outdir, name + ".tsv")
-        rc, so, se = L.run_eval(a.repo, dd, path, out, split=split, set_format=fmt, kv=kv, lm=lm)
+        rc, so, se = L.run_eval(a.repo, dd, path, out, split=sp, set_format=fmt, kv=kv, lm=lm)
         if rc != 0 or not os.path.exists(out):
             errs.append((name, rc, se[-300:]))
             continue
@@ -194,6 +194,28 @@ def cmd_sweep(a):
                   "main_top1", rec.get("main_dev_top1"), rec["sec"], file=sys.stderr, flush=True)
 
 
+def cmd_test(a):
+    """test を採る点について 1 回だけ流す (ADR 0037 §6.3)。名前は --points に 1 つ"""
+    name = a.points
+    b, per, st, w = [int(x[1:]) for x in name.split("_")]
+    main_ids = [l.strip() for l in open(os.path.join(a.scratch, "main900.txt"), encoding="utf-8") if l.strip()]
+    base, errs0 = eval_all(a, None, os.path.join(a.scratch, "test-base"), split="test")
+    kv = os.path.join(a.scratch, "kv", name + ".kv")
+    L.write_kv(kv, b, per, st, w)
+    cur, errs = eval_all(a, kv, os.path.join(a.scratch, "test-out"), split="test")
+    rec = summarize(base, cur, main_ids, errs0 + errs)
+    rec["name"] = name
+    rec["split"] = "test"
+    for n in ("katakana-like",):
+        reg, imp = L.diff(base[n], cur[n])
+        rec["kl_reg"], rec["kl_imp"] = reg, imp
+    lreg, limp = L.diff(base[LOO_NAME], cur[LOO_NAME])
+    rec["loo_reg_list"] = lreg
+    with open(os.path.join(a.scratch, "test.jsonl"), "a", encoding="utf-8") as fo:
+        fo.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    print(json.dumps({k: rec[k] for k in rec if k not in ("reg_examples",)}, ensure_ascii=False)[:3000])
+
+
 def make_loo_limited(a):
     """疑似の LM あり用: dev の疑似から FNV-1a64(id + 種) の小さい順に LM_TARGET_LIMIT 件"""
     path = os.path.join(a.scratch, "loo", "loo-lm1000.tsv")
@@ -257,7 +279,7 @@ def cmd_lm(a):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("sub", choices=["prep", "sweep", "lm"])
+    ap.add_argument("sub", choices=["prep", "sweep", "lm", "test"])
     ap.add_argument("--ext", action="store_true")
     ap.add_argument("--lm-gguf")
     ap.add_argument("--eval-bin")
@@ -272,7 +294,7 @@ def main():
     ap.add_argument("--ajimee")
     ap.add_argument("--jobs", type=int, default=8)
     a = ap.parse_args()
-    {"prep": cmd_prep, "sweep": cmd_sweep, "lm": cmd_lm}[a.sub](a)
+    {"prep": cmd_prep, "sweep": cmd_sweep, "lm": cmd_lm, "test": cmd_test}[a.sub](a)
 
 
 if __name__ == "__main__":

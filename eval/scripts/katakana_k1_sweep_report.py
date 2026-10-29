@@ -21,7 +21,34 @@ def rejected(r):
     return why
 
 
+def grid_table(rs, strong, weak):
+    """行 = base、列 = per_char。セルは「回帰の件数(全セット+疑似の守る側) / 疑似の主の dev で 1 位になった数」。回帰 0 は太字"""
+    pts = {(r["base"], r["per_char"]): r for r in rs if r["strong"] == strong and r["weak"] == weak}
+    pcs = sorted({p for _, p in pts})
+    bases = sorted({b for b, _ in pts})
+    lines = ["| base＼per_char | " + " | ".join(str(p) for p in pcs) + " |", "|" + " --- |" * (len(pcs) + 1)]
+    for b in bases:
+        cells = []
+        for p in pcs:
+            r = pts.get((b, p))
+            if r is None:
+                cells.append("")
+                continue
+            reg = r["reg_sets_total"] + r.get("loo_guard_reg", 0)
+            cell = f'{reg} / {r["main_dev_top1"]}'
+            cells.append(f"**{cell}**" if reg == 0 else cell)
+        lines.append(f"| {b} | " + " | ".join(cells) + " |")
+    return "\n".join(lines)
+
+
 def main():
+    if sys.argv[1] == "--table":
+        rs = load(sys.argv[2]) + (load(sys.argv[3]) if len(sys.argv) > 3 else [])
+        for sw in ((5000, 0), (5000, 2000), (0, 0), (0, 2000)):
+            print(f"strong={sw[0]} weak={sw[1]}")
+            print(grid_table(rs, *sw))
+            print()
+        return
     rs = load(sys.argv[1])
     print("点の数", len(rs))
     ok = [r for r in rs if not rejected(r)]
