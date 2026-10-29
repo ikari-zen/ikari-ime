@@ -1,0 +1,5 @@
+# #89: 人名（姓 + 名）が上に出にくい。期待は issue の例だけ（ユーザー了承済み。実在の特定の個人の名前ではない）。
+# 例の語は issue にあるものだけ。単独の こうじ（工事 が自然）は期待にしない。
+# split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev。調整は dev だけで行う。
+id	kind	tags	profile	context	reading	expected	note	split	source
+i89-tadokoro-s	単独	issue89,person-name			たどころこうじ	田所浩二	issue の例。姓 + 名の 2 語	test	issue89
