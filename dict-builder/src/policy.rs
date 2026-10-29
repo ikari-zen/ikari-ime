@@ -41,9 +41,10 @@ pub const KATAKANA_PLACE_PEER: &str = "katakana_place_peer";
 pub const DEFAULT_COST_HOMOPHONE: &str = "default_cost_homophone";
 pub const RARE_KANJI_VARIANT: &str = "rare_kanji_variant";
 pub const HONORIFIC_GO_KANJI: &str = "honorific_go_kanji";
+pub const SHORT_KATAKANA_COUNTER: &str = "short_katakana_counter";
 
 /// 述語の一覧。添字が `Verdict::hit_mask` のビット位置。
-pub const PREDICATES: [&str; 24] = [
+pub const PREDICATES: [&str; 25] = [
     ASCII_LOWER,
     ASCII_OTHER,
     NUMERIC_SURFACE,
@@ -68,6 +69,7 @@ pub const PREDICATES: [&str; 24] = [
     DEFAULT_COST_HOMOPHONE,
     RARE_KANJI_VARIANT,
     HONORIFIC_GO_KANJI,
+    SHORT_KATAKANA_COUNTER,
 ];
 const IDX_ASCII_LOWER: usize = 0;
 const IDX_ASCII_OTHER: usize = 1;
@@ -93,6 +95,7 @@ const IDX_KATAKANA_PLACE_PEER: usize = 20;
 const IDX_DEFAULT_COST_HOMOPHONE: usize = 21;
 const IDX_RARE_KANJI_VARIANT: usize = 22;
 const IDX_HONORIFIC_GO_KANJI: usize = 23;
+const IDX_SHORT_KATAKANA_COUNTER: usize = 24;
 
 const POS_SEPARATOR: char = ',';
 /// 長音記号「ー」(U+30FC)
@@ -184,6 +187,8 @@ const KATAKANA_ANALYSIS_MAX_CHARS: usize = 3;
 /// `katakana_analysis` の対象にする、カタカナ語自身の chiVe の頻度順位の下限。
 /// 1 万位より上（ドル、ピン、タブ、テンポ。実際に使うカタカナ語）は対象にしない
 const KATAKANA_ANALYSIS_MIN_RANK: usize = 10_000;
+/// `short_katakana_counter` の対象にする表記の長さの上限（文字数）
+const SHORT_KATAKANA_MAX_CHARS: usize = 2;
 /// `katakana_analysis` の対象にする、同じ読みの漢字の語との頻度の差（`log10(順位 + 1)` の差。1.0 = 10 倍）
 const KATAKANA_ANALYSIS_MIN_DECADE_GAP: f64 = 1.0;
 /// `cheap_rare_homophone` の対象にする表記の長さの下限（文字数）
@@ -524,6 +529,7 @@ impl Policy {
             || self.effects[IDX_KATAKANA_PLACE_PEER].is_some()
             || self.effects[IDX_DEFAULT_COST_HOMOPHONE].is_some()
             || self.effects[IDX_RARE_KANJI_VARIANT].is_some()
+            || self.effects[IDX_SHORT_KATAKANA_COUNTER].is_some()
     }
 
     /// 異字同訓の表の述語（`kun_*`）が書かれているか。
@@ -604,6 +610,8 @@ impl Policy {
             && row.surface.chars().any(is_han);
         hit[IDX_RARE_KANJI_VARIANT] = row.rare_kanji_variant;
         hit[IDX_HONORIFIC_GO_KANJI] = is_honorific_go_kanji(row, pos1);
+        hit[IDX_SHORT_KATAKANA_COUNTER] =
+            is_short_katakana_counter(row, (pos1, pos2, pos3), chive_vocab);
         hit[IDX_WAVE_DASH] =
             row.surface.chars().count() > 1 && row.surface.chars().any(is_wave_dash);
         hit[IDX_KATAKANA_ANALYSIS] = is_katakana_analysis(row, pos1, pos2, chive_vocab);
@@ -944,6 +952,34 @@ fn is_honorific_go_kanji(row: &PolicyRow<'_>, pos1: &str) -> bool {
         && HONORIFIC_PREFIX_READINGS.contains(&row.reading)
 }
 
+/// 同じ読みの漢字の語がなくても、Sudachi の解析用に安い、短いカタカナの助数詞可能の名詞か（ナノ: コスト 2607。
+/// 「意味 + ナノ + に」が 「意味 + な + のに」に勝つ。#90）。`is_katakana_analysis` と同じ形（普通名詞、表記 = lemma、
+/// 長音記号を含むカタカナだけの短い語、自身の chiVe の順位が低い）で、同じ読みの漢字の語との頻度の差を要らない代わりに、
+/// 助数詞可能（ナノ、ギガ、ケタ など）に絞る。広げると カタカナの未知語（ファイナリゼーション）の分割に副作用が出る（eval/reports/short-katakana-90.md）。
+/// `is_katakana_analysis` に当たる行は、そちらで後ろに回しているので除く
+fn is_short_katakana_counter(
+    row: &PolicyRow<'_>,
+    (pos1, pos2, pos3): (&str, &str, &str),
+    chive_vocab: Option<&ChiveVocab>,
+) -> bool {
+    let Some(vocab) = chive_vocab else {
+        return false;
+    };
+    let len = row.surface.chars().count();
+    pos3 == POS3_COUNTABLE
+        && pos1 == POS1_NOUN
+        && pos2 == POS2_COMMON_NOUN
+        && row.surface == row.lemma
+        && len > 0
+        && len <= SHORT_KATAKANA_MAX_CHARS
+        && row
+            .surface
+            .chars()
+            .all(|c| is_katakana(c) || c == PROLONGED_SOUND_MARK)
+        && vocab.rank_or_last(row.lemma) >= KATAKANA_ANALYSIS_MIN_RANK
+        && !is_katakana_analysis(row, pos1, pos2, chive_vocab)
+}
+
 /// CJK 統合漢字（拡張A を含む）と々。
 pub(crate) fn is_han(c: char) -> bool {
     matches!(c, '\u{3400}'..='\u{4DBF}' | '\u{4E00}'..='\u{9FFF}' | '々')
@@ -1249,6 +1285,7 @@ mod tests {
                 KATAKANA_PLACE_PEER,
                 DEFAULT_COST_HOMOPHONE,
                 RARE_KANJI_VARIANT,
+                SHORT_KATAKANA_COUNTER,
             ]
             .contains(n)
         }) {
@@ -2079,6 +2116,8 @@ mod tests {
             (4_000, "ペン"),
             (9_999, "ドル"),
             (15_500, "メモリ"),
+            (16_000, "ナノ"),
+            (16_001, "ナノナ"),
         ] {
             keys[rank] = lemma.to_string();
         }
@@ -2159,6 +2198,42 @@ mod tests {
             rare_kanji_variant: false,
         };
         assert_eq!(p.evaluate(&variant, Some(&analysis_vocab())).penalty, 0);
+    }
+
+    #[test]
+    fn short_katakana_counter_hits_only_rare_short_katakana_countable_nouns_without_a_kanji_peer_rule()
+     {
+        let p = Policy::parse("short_katakana_counter\t3000\n").unwrap();
+        assert!(p.uses_chive_vocab());
+        const COUNTABLE: &str = "名詞,普通名詞,助数詞可能,*,*,*";
+        // ナノ（16000 位）は、同じ読みの漢字の語がなくても当たる
+        assert_eq!(analysis_penalty(&p, "ナノ", COUNTABLE, None), 3000);
+        // 助数詞可能でない普通名詞（メイ）、1 万位より上（ペン、ドル）、3 文字以上（ナノナ）は対象外
+        assert_eq!(analysis_penalty(&p, "メイ", NOUN, None), 0);
+        assert_eq!(analysis_penalty(&p, "ペン", COUNTABLE, None), 0);
+        assert_eq!(analysis_penalty(&p, "ナノナ", COUNTABLE, None), 0);
+        // 漢字の語が桁違いに頻度が高いものは katakana_analysis の担当（二重に足さない）
+        let both =
+            Policy::parse("short_katakana_counter\t3000\nkatakana_analysis\t4000\n").unwrap();
+        assert_eq!(analysis_penalty(&both, "メイ", COUNTABLE, Some(10)), 4000);
+        // 語彙がなければ当たらない
+        let row = PolicyRow {
+            surface: "ナノ",
+            lemma: "ナノ",
+            reading: "ー",
+            pos: COUNTABLE,
+            kanji_peer_rank: None,
+            noun_peer_rank: None,
+            place_peer_rank: None,
+            place_peer_total: None,
+            compound_parts_rank: None,
+            default_cost_peer_total: None,
+            notcore: None,
+            homophone: HomophoneInfo::default(),
+            kun: KunInfo::default(),
+            rare_kanji_variant: false,
+        };
+        assert_eq!(p.evaluate(&row, None).penalty, 0);
     }
 
     #[test]
