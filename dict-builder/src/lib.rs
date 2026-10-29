@@ -357,6 +357,41 @@ fn place_peer_totals<'a>(
 }
 
 /// 行ごとの `PolicyRow::compound_parts_rank`（ADR 0035 規則 F）。`is_homophone_peer` の 4 文字以上（`COMPOUND_PARTS_MIN_CHARS`）の行について、
+/// 辞書の全行の `PolicyRow::rare_kanji_variant`（`lexicon.rows` と同じ並び）。辞書形の表記は、行の辞書形 ID から引く（`lexicon.inflect`）。
+/// 引けなければ行自身の表記を使う（`kun::kun_infos` と同じ）
+fn rare_kanji_variant_flags(
+    lexicon: &lex::Lexicon,
+    kun_table: &KunTable,
+    vocab: Option<&ChiveVocab>,
+) -> Vec<bool> {
+    let Some(vocab) = vocab else {
+        return vec![false; lexicon.rows.len()];
+    };
+    lexicon
+        .rows
+        .iter()
+        .map(|(row, pos_id)| {
+            let dict_surface = row
+                .dict_form
+                .and_then(|id| {
+                    lexicon
+                        .inflect
+                        .binary_search_by_key(&id, |r| r.id)
+                        .ok()
+                        .map(|k| lexicon.inflect[k].surface.as_str())
+                })
+                .unwrap_or(row.surface.as_str());
+            policy::is_rare_kanji_variant(
+                &lexicon.pos[usize::from(*pos_id)].name,
+                &row.lemma,
+                dict_surface,
+                kun_table.get(&row.lemma).is_some(),
+                |c| !vocab.contains(c.encode_utf8(&mut [0; 4])),
+            )
+        })
+        .collect()
+}
+
 /// 表記と読みを、前と後がどちらも辞書の `is_homophone_peer` の行になるように 2 つに切る切り方を探し、
 /// 切り方ごとの部品の lemma の chiVe の順位の大きいほうの最小値を求める。語彙がなければすべて `None`。
 fn compound_parts_ranks(lexicon: &lex::Lexicon, vocab: Option<&ChiveVocab>) -> Vec<Option<usize>> {
@@ -380,6 +415,7 @@ fn compound_parts_ranks(lexicon: &lex::Lexicon, vocab: Option<&ChiveVocab>) -> V
             notcore: None,
             homophone: HomophoneInfo::default(),
             kun: KunInfo::default(),
+            rare_kanji_variant: false,
         }
     };
     // (表記, 読み) -> 部品になれる行の lemma の順位の最小
@@ -529,6 +565,7 @@ fn peer_ranks_by(
                     notcore: None,
                     homophone: HomophoneInfo::default(),
                     kun: KunInfo::default(),
+                    rare_kanji_variant: false,
                 })
             })
             .map(|(row, _)| {
@@ -648,6 +685,11 @@ pub fn build_with(cfg: &BuildConfig, opts: &BuildOptions) -> Result<BuildReport,
     } else {
         vec![KunInfo::default(); lexicon.rows.len()]
     };
+    let rare_kanji_variant = if opts.policy.effect(policy::RARE_KANJI_VARIANT).is_some() {
+        rare_kanji_variant_flags(&lexicon, opts.policy.kun_table(), opts.chive_vocab.as_ref())
+    } else {
+        vec![false; lexicon.rows.len()]
+    };
     let parts_ranks = compound_parts_ranks(&lexicon, opts.chive_vocab.as_ref());
     let make_row =
         |i: usize, place_peer_total: Option<i32>, default_cost_peer_total: Option<i32>| {
@@ -671,6 +713,7 @@ pub fn build_with(cfg: &BuildConfig, opts: &BuildOptions) -> Result<BuildReport,
                     peer_rank: homophone_ranks[i],
                 },
                 kun: kun[i],
+                rare_kanji_variant: rare_kanji_variant[i],
             }
         };
     // `katakana_place_peer` が総コストをそろえる基準（同じ読みの最安の、頻度が高い漢字の地名の総コスト）
