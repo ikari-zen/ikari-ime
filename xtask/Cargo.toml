@@ -8,3 +8,4 @@ description = "ビルドと検証の道具（cargo xtask。ADR 0043）"
 
 [dependencies]
 clap.workspace = true
+serde_json.workspace = true
