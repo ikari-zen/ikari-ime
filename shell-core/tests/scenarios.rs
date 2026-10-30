@@ -11,11 +11,16 @@ use std::time::Duration;
 use ikari_proto::v1;
 use ikari_proto::v1::envelope::Body;
 use ikari_shell_core::controller::BackgroundMode;
-use ikari_shell_core::scenario::{self, EngineScript, ScenarioSurrounding, ScriptPage};
+use ikari_shell_core::english::InputMode;
+use ikari_shell_core::panel::PanelSide;
+use ikari_shell_core::scenario::{
+    self, EngineScript, HostCall, ScenarioSurrounding, ScriptLayout, ScriptPage,
+    ScriptSegmentCandidates,
+};
 use ikari_shell_core::{
-    CandidateKind, Clock, EngineError, EngineErrorCode, EngineTransport, SelectedText,
-    SettingsSource, Shell, ShellConfig, ShellEvent, SurroundingText, TextAccess, TransportError,
-    TransportHandle,
+    CandidateItem, CandidateKind, Clock, EngineError, EngineErrorCode, EngineTransport,
+    SelectedText, SettingsSource, Shell, ShellConfig, ShellEvent, SurroundingText, TextAccess,
+    TransportError, TransportHandle,
 };
 use prost::Message;
 use serde_json::{Map, Value, json};
@@ -112,6 +117,22 @@ fn run(setup: &scenario::ResolvedSetup, scenario: &scenario::Scenario) -> Result
         for event in events {
             actions.extend(shell.dispatch(event, &mut text));
         }
+        if let Some(call) = &step.host {
+            actions.extend(host_call(&mut shell, call).map_err(|error| format!("{at}: {error}"))?);
+        }
+        let requested = shell.take_mode_request();
+        if let Some(expected) = &step.mode_request {
+            let actual = match requested {
+                Some(InputMode::Japanese) => "japanese",
+                Some(InputMode::English) => "english",
+                None => "none",
+            };
+            if actual != expected {
+                return Err(format!(
+                    "{at}: mode request differs: expected {expected}, actual {actual}"
+                ));
+            }
+        }
         if let Some(expected) = &step.expect
             && &actions != expected
         {
@@ -138,6 +159,31 @@ fn run(setup: &scenario::ResolvedSetup, scenario: &scenario::Scenario) -> Result
         }
     }
     Ok(())
+}
+
+/// `ShellEvent` で表せない OS とのやりとり。
+fn host_call(
+    shell: &mut Shell,
+    call: &HostCall,
+) -> Result<Vec<ikari_shell_core::ShellAction>, String> {
+    Ok(match call {
+        HostCall::InputModeChanged { mode_id } => shell.input_mode_changed(mode_id),
+        HostCall::CommitComposition => shell.commit_composition(),
+        HostCall::AbsorbModeKey => shell.absorb_mode_key(),
+        HostCall::PanelShown { side } => {
+            let side = match side.as_str() {
+                "above" => PanelSide::Above,
+                "below" => PanelSide::Below,
+                other => return Err(format!("unknown panel side {other}")),
+            };
+            shell.panel_shown(side, None);
+            Vec::new()
+        }
+        HostCall::PanelHidden => {
+            shell.panel_hidden();
+            Vec::new()
+        }
+    })
 }
 
 // ---------------------------------------------------------------- ホストの替え玉
@@ -276,11 +322,49 @@ fn answer(script: &EngineScript, body: &Body) -> Body {
             Some(page) => Body::PageReply(convert_reply(page)),
             None => error_reply(EngineErrorCode::BadRequest),
         },
-        Body::SegmentPage(_) | Body::ResizeSegment(_) | Body::Reconvert(_) => {
-            error_reply(EngineErrorCode::BadRequest)
+        Body::SegmentPage(request) => match script.segment_page(request.segment, request.index) {
+            Some(page) => Body::SegmentPageReply(segment_page_reply(
+                page.segment,
+                &ScriptSegmentCandidates {
+                    page_index: page.page_index,
+                    candidates: page.candidates.clone(),
+                    has_next: page.has_next,
+                },
+            )),
+            None => error_reply(EngineErrorCode::BadRequest),
+        },
+        Body::ResizeSegment(request) => {
+            match script.resize(request.segment, request.delta, request.layout_rev) {
+                Some(layout) => Body::SegmentLayout(layout_reply(layout)),
+                None => error_reply(EngineErrorCode::BadRequest),
+            }
         }
-        Body::PostalLookup(_) => Body::PostalLookupReply(v1::PostalLookupReply::default()),
-        Body::EmojiTable(_) => Body::EmojiTableReply(v1::EmojiTableReply::default()),
+        Body::Reconvert(_) => match &script.reconvert {
+            Some(layout) => Body::SegmentLayout(layout_reply(layout)),
+            None => error_reply(EngineErrorCode::BadRequest),
+        },
+        Body::PostalLookup(request) => Body::PostalLookupReply(v1::PostalLookupReply {
+            addresses: script
+                .postal
+                .get(&request.code)
+                .cloned()
+                .unwrap_or_default(),
+        }),
+        Body::EmojiTable(_) => Body::EmojiTableReply(v1::EmojiTableReply {
+            entries: script
+                .emoji_table
+                .iter()
+                .map(|entry| v1::EmojiEntry {
+                    name: entry.name.clone(),
+                    emoji: entry.emoji.clone(),
+                })
+                .collect(),
+            data_label: if script.emoji_table.is_empty() {
+                String::new()
+            } else {
+                "scenario".into()
+            },
+        }),
         _ => Body::Ack(v1::Ack {}),
     }
 }
@@ -289,19 +373,54 @@ fn convert_reply(page: &ScriptPage) -> v1::ConvertReply {
     v1::ConvertReply {
         conversion_id: page.conversion_id,
         page_index: page.page_index,
-        candidates: page
-            .candidates
-            .iter()
-            .map(|candidate| v1::Candidate {
-                surface: candidate.surface.clone(),
-                annotation: candidate.annotation.clone(),
-                kind: candidate_kind(candidate.kind) as i32,
-            })
-            .collect(),
+        candidates: candidates(&page.candidates),
         has_next: page.has_next,
         lm_applied: page.lm_applied,
         confident: page.confident,
+        layout: page.layout.as_ref().map(layout_reply),
         ..Default::default()
+    }
+}
+
+fn candidates(items: &[CandidateItem]) -> Vec<v1::Candidate> {
+    items
+        .iter()
+        .map(|candidate| v1::Candidate {
+            surface: candidate.surface.clone(),
+            annotation: candidate.annotation.clone(),
+            kind: candidate_kind(candidate.kind) as i32,
+        })
+        .collect()
+}
+
+fn segment_page_reply(segment: u32, page: &ScriptSegmentCandidates) -> v1::SegmentPageReply {
+    v1::SegmentPageReply {
+        segment,
+        page_index: page.page_index,
+        candidates: candidates(&page.candidates),
+        has_next: page.has_next,
+        ..Default::default()
+    }
+}
+
+fn layout_reply(layout: &ScriptLayout) -> v1::SegmentLayout {
+    v1::SegmentLayout {
+        conversion_id: layout.conversion_id,
+        layout_rev: layout.layout_rev,
+        segments: layout
+            .segments
+            .iter()
+            .map(|segment| v1::SegmentInfo {
+                reading: segment.reading.clone(),
+                surface: segment.surface.clone(),
+            })
+            .collect(),
+        focused: layout.focused,
+        focused_page: layout
+            .focused_page
+            .as_ref()
+            .map(|page| segment_page_reply(layout.focused, page)),
+        engine_micros: 0,
     }
 }
 
