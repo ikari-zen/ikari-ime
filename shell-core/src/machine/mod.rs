@@ -1468,7 +1468,7 @@ impl InputStateMachine {
             let request = v1::Convert {
                 session_id: self.session.session_id,
                 reading: reading.clone(),
-                context: Some(self.context_proto()),
+                context: Some(self.context_for_request().to_proto()),
                 context_rev: self.context_rev,
                 page_size: ENGINE_PAGE_SIZE,
             };
@@ -2010,12 +2010,10 @@ impl InputStateMachine {
 
     // MARK: - 文脈と先行計算
 
-    /// 要求に載せる文脈。保持している文脈を 1 回だけ写す（`ContextText` を作ってから写さない）
-    fn context_proto(&self) -> v1::SurroundingText {
-        self.cached_context.as_ref().map_or_else(
-            || ContextText::unavailable().to_proto(),
-            ContextText::to_proto,
-        )
+    fn context_for_request(&self) -> ContextText {
+        self.cached_context
+            .clone()
+            .unwrap_or_else(ContextText::unavailable)
     }
 
     fn refresh_context(&mut self, text: &mut dyn TextAccess) {
@@ -2045,7 +2043,7 @@ impl InputStateMachine {
         self.engine.prefetch(v1::Prefetch {
             session_id: self.session.session_id,
             reading: reading.to_string(),
-            context: Some(self.context_proto()),
+            context: Some(self.context_for_request().to_proto()),
             context_rev: self.context_rev,
         });
     }
@@ -2392,16 +2390,13 @@ fn drop_last_grapheme(text: &str) -> String {
 }
 
 fn suffix_graphemes(text: &str, limit: usize) -> String {
-    // 末尾から数える（全体を数えて、また先頭から歩くことをしない）。見た目の文字は 1 文字 1 バイト以上なので、
-    // バイト数が上限以下なら数えなくてよい
-    if text.len() <= limit {
+    let count = grapheme_count(text);
+    if count <= limit {
         return text.to_string();
     }
-    match text.grapheme_indices(true).rev().nth(limit) {
-        // `nth(limit)` は末尾から数えて limit + 1 番目。その次の文字の先頭から残す
-        Some((start, grapheme)) => text[start + grapheme.len()..].to_string(),
-        None => text.to_string(),
-    }
+    text.grapheme_indices(true)
+        .nth(count - limit)
+        .map_or_else(String::new, |(start, _)| text[start..].to_string())
 }
 
 fn prefix_graphemes(text: &str, limit: usize) -> String {
