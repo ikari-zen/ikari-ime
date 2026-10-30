@@ -144,7 +144,8 @@ mod tests {
         shell
             .engine()
             .notify_down(TransportHandle(1), DownKind::Interrupted);
-        assert!(settings::validate("").is_err());
-        assert!(settings::rewrite("", &SettingsChanges::default()).is_err());
+        // L-C が実装したので、settings は Ok を返す（stub の間は Err だった）
+        assert!(settings::validate("").is_ok());
+        assert!(settings::rewrite("", &SettingsChanges::default()).is_ok());
     }
 }
