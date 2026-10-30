@@ -13,6 +13,7 @@ use crate::data::run::{
 };
 
 mod docs;
+mod frameworks;
 mod record;
 
 const SWIFT_TEST_TIMEOUT_ENV: &str = "IKARI_SWIFT_TEST_TIMEOUT";
@@ -110,6 +111,8 @@ fn steps(root: &Path, plan: &Plan) -> Result<(), Failure> {
         rust_lm(root)?;
     }
     if plan.swift {
+        // 古い XCFramework のまま swift test が通ったり落ちたりしないよう、先に鮮度を確かめる（#148）
+        frameworks::verify(root)?;
         swift_test(root)?;
     }
     if plan.real {

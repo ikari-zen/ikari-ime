@@ -182,7 +182,10 @@ fn parse_metadata(json: &str) -> Option<Vec<Package>> {
                 .as_array()?
                 .iter()
                 // path を持つものが workspace の中の依存。dev-dependencies は staticlib に入らない
-                .filter(|dep| dep.get("path").is_some() && dep.get("kind").is_none_or(|k| k.is_null() || k == "build"))
+                .filter(|dep| {
+                    dep.get("path").is_some()
+                        && dep.get("kind").is_none_or(|k| k.is_null() || k == "build")
+                })
                 .filter_map(|dep| Some(dep.get("name")?.as_str()?.to_owned()))
                 .collect();
             Some(Package {
@@ -255,8 +258,13 @@ mod tests {
             let dir = tempfile::tempdir().unwrap();
             let fx = Self { dir };
             std::fs::create_dir_all(fx.framework().join("macos-arm64/Headers/Mod")).unwrap();
+            std::fs::create_dir_all(fx.header().parent().unwrap()).unwrap();
             std::fs::write(fx.header(), "v1").unwrap();
-            std::fs::write(fx.framework().join("macos-arm64/Headers/Mod/ikari_x.h"), "v1").unwrap();
+            std::fs::write(
+                fx.framework().join("macos-arm64/Headers/Mod/ikari_x.h"),
+                "v1",
+            )
+            .unwrap();
             std::fs::write(fx.framework().join("macos-arm64/libx.a"), "lib").unwrap();
             std::fs::create_dir_all(fx.source().parent().unwrap()).unwrap();
             std::fs::write(fx.source(), "fn main() {}").unwrap();
@@ -282,7 +290,12 @@ mod tests {
             } else {
                 base + Duration::from_secs(offset_secs.unsigned_abs())
             };
-            File::options().write(true).open(path).unwrap().set_modified(time).unwrap();
+            File::options()
+                .write(true)
+                .open(path)
+                .unwrap()
+                .set_modified(time)
+                .unwrap();
         }
         fn reason(&self) -> Option<String> {
             std::fs::create_dir_all(self.header().parent().unwrap()).unwrap();
@@ -330,7 +343,10 @@ mod tests {
           {"name":"b","manifest_path":"/w/b/Cargo.toml","dependencies":[]},
           {"name":"d","manifest_path":"/w/d/Cargo.toml","dependencies":[]}]}"#;
         let packages = parse_metadata(json).unwrap();
-        let names: Vec<&str> = closure(&packages, "a").iter().map(|p| p.name.as_str()).collect();
+        let names: Vec<&str> = closure(&packages, "a")
+            .iter()
+            .map(|p| p.name.as_str())
+            .collect();
         assert_eq!(names, ["a", "b"]);
     }
 
@@ -347,8 +363,20 @@ mod tests {
         files.sort();
         let names: Vec<_> = files
             .iter()
-            .map(|p| p.strip_prefix(dir.path()).unwrap().to_string_lossy().into_owned())
+            .map(|p| {
+                p.strip_prefix(dir.path())
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned()
+            })
             .collect();
         assert_eq!(names, ["Cargo.toml", "src/lib.rs"]);
+    }
+
+    /// 実物の確認（macos/scripts/build.sh のあとで、`cargo test -p xtask -- --ignored real_frameworks`）。
+    #[test]
+    #[ignore = "macos/Frameworks が要る"]
+    fn real_frameworks_are_fresh_after_build() {
+        verify(&crate::data::run::repo_root()).unwrap();
     }
 }
