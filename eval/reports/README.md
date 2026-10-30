@@ -11,6 +11,7 @@ ADR が根拠として参照しているレポートは、リンクを壊さな�
 
 | ファイル | 日付 | 区分 | 何の数値か | 今のコードで再現できるか |
 | --- | --- | --- | --- | --- |
+| [shell-perf/](shell-perf/README.md)（[baseline.json](shell-perf/baseline.json)） | 2026-10-30 | 現行の基準 | Rust 移行の前（Swift 版の殻）の性能の基準値（ADR 0041 §6.3 の P1 キー 1 回、P3 殻の起動、P4 メモリ、P5 エンジンとコアの性能）。各指標は 5 回の中央値と最小・最大、計測した SHA・機械・OS・負荷つき。許す幅は未決 | 再現できる（`cargo xtask perf shell --impl swift`、`perf engine`。手順は README） |
 | [variant-verb-119.md](variant-verb-119.md) | 2026-10-30 | 判断の根拠（凍結） | 活用する動詞・形容詞の難読字の別表記（舁ぐ/担ぐ）を後ろに回す述語 `rare_kanji_variant` の掃引（#119）。広い案（辞書形の表記が lemma と違うもの全部。1 位の悪化 1〜5）と、採った案（chiVe の語彙にない漢字を含むもの。悪化 0）。全セット・AJIMEE の LM なし・あり、snapshot の前後 | 再現できる（`scripts/build-dict.sh`。chive.tsv の `rare_kanji_variant` を消すと基準） |
 | [honorific-go-91.md](honorific-go-91.md) | 2026-10-30 | 判断の根拠（凍結） | 接頭辞の 御（ご・お）を後ろに回す述語 `honorific_go_kanji` の掃引（#91。のごへんかん）。500〜3000 は全セット・AJIMEE の LM なし・あり 1 位の悪化 0。きがするから が直らない理由（`lemma_rank` の無料の桁数の試作）。snapshot の前後 | 再現できる（`scripts/build-dict.sh`。ポリシーの述語を消すと基準） |
 | [short-katakana-90.md](short-katakana-90.md) | 2026-10-30 | 判断の根拠（凍結） | 短いカタカナの助数詞可能の名詞（ナノ など 26 行）を後ろに回す述語 `short_katakana_counter` の掃引（#90。いみなのに）。広い案（500 行。悪化 2）と、採った案（悪化 0）。へんかんせいど が直らない理由。snapshot の前後 | 再現できる（`scripts/build-dict.sh`。ポリシーの述語を消すと基準） |
