@@ -10,6 +10,7 @@
 use std::collections::BTreeMap;
 
 use ikari_proto::shell::v1 as pb;
+use ikari_shell_core::panel::{AnchorSource, PanelSide, Rect};
 use ikari_shell_core::{
     CandidateItem, CandidateKind, CandidatePanelModel, ConnId, InputMethodKind, KeyInput, KeyKind,
     KeymapPreset, MarkedText, MenuCommand, MenuItem, MenuItemKind, MenuModel, MenuRadioGroup,
@@ -199,12 +200,19 @@ fn key_from_pb(key: pb::KeyInput) -> Result<KeyInput> {
             number: small(key.function, "KeyInput.function")?,
         },
         pb::KeyKind::Other => KeyKind::Other,
+        pb::KeyKind::Eisu => KeyKind::Eisu,
+        pb::KeyKind::Kana => KeyKind::Kana,
     };
+    // layout_text は JIS のキーにだけ意味がある（ほかでは捨てる）
+    let layout_text = matches!(kind, KeyKind::Jis { .. })
+        .then_some(key.layout_text)
+        .flatten();
     Ok(KeyInput {
         key: kind,
         modifiers: modifiers_from_pb(key.modifiers),
         is_repeat: key.is_repeat,
         secure: key.secure,
+        layout_text,
     })
 }
 
@@ -213,6 +221,7 @@ fn key_to_pb(key: &KeyInput) -> pb::KeyInput {
         modifiers: modifiers_to_pb(&key.modifiers),
         is_repeat: key.is_repeat,
         secure: key.secure,
+        layout_text: key.layout_text.clone(),
         ..Default::default()
     };
     let kind = match &key.key {
@@ -237,6 +246,8 @@ fn key_to_pb(key: &KeyInput) -> pb::KeyInput {
             pb::KeyKind::Function
         }
         KeyKind::Other => pb::KeyKind::Other,
+        KeyKind::Eisu => pb::KeyKind::Eisu,
+        KeyKind::Kana => pb::KeyKind::Kana,
     };
     message.kind = kind.into();
     message
@@ -497,6 +508,7 @@ fn event_from_pb(event: pb::ShellEvent) -> Result<ShellEvent> {
             Event::Key(key) => ShellEvent::Key(key_from_pb(key)?),
             Event::Activate(activate) => ShellEvent::Activate {
                 bundle_id: activate.bundle_id,
+                secure: activate.secure,
             },
             Event::Deactivate(_) => ShellEvent::Deactivate,
             Event::MenuCommand(command) => ShellEvent::MenuCommand {
@@ -510,6 +522,19 @@ fn event_from_pb(event: pb::ShellEvent) -> Result<ShellEvent> {
                 conn: ConnId(frame.conn),
                 frame: frame.frame,
             },
+            Event::InputModeChanged(changed) => ShellEvent::InputModeChanged {
+                mode_id: changed.mode_id,
+                secure: changed.secure,
+            },
+            Event::CommitComposition(_) => ShellEvent::CommitComposition,
+            Event::PanelShown(shown) => ShellEvent::PanelShown {
+                side: side_from_pb(shown.side)?,
+                source: source_from_pb(shown.source)?,
+            },
+            Event::PanelHidden(_) => ShellEvent::PanelHidden,
+            Event::BridgeClosed(closed) => ShellEvent::BridgeClosed {
+                conn: ConnId(closed.conn),
+            },
         },
     )
 }
@@ -518,8 +543,9 @@ fn event_to_pb(event: &ShellEvent) -> pb::ShellEvent {
     use pb::shell_event::Event;
     let event = match event {
         ShellEvent::Key(key) => Event::Key(key_to_pb(key)),
-        ShellEvent::Activate { bundle_id } => Event::Activate(pb::Activate {
+        ShellEvent::Activate { bundle_id, secure } => Event::Activate(pb::Activate {
             bundle_id: bundle_id.clone(),
+            secure: *secure,
         }),
         ShellEvent::Deactivate => Event::Deactivate(pb::Empty {}),
         ShellEvent::MenuCommand { command } => Event::MenuCommand(menu_command_to_pb(command)),
@@ -529,6 +555,19 @@ fn event_to_pb(event: &ShellEvent) -> pb::ShellEvent {
             conn: conn.0,
             frame: frame.clone(),
         }),
+        ShellEvent::InputModeChanged { mode_id, secure } => {
+            Event::InputModeChanged(pb::InputModeChanged {
+                mode_id: mode_id.clone(),
+                secure: *secure,
+            })
+        }
+        ShellEvent::CommitComposition => Event::CommitComposition(pb::Empty {}),
+        ShellEvent::PanelShown { side, source } => Event::PanelShown(pb::PanelShown {
+            side: side_to_pb(*side).into(),
+            source: source_to_pb(*source).into(),
+        }),
+        ShellEvent::PanelHidden => Event::PanelHidden(pb::Empty {}),
+        ShellEvent::BridgeClosed { conn } => Event::BridgeClosed(pb::BridgeClosed { conn: conn.0 }),
     };
     pb::ShellEvent { event: Some(event) }
 }
@@ -564,6 +603,10 @@ fn action_to_pb(action: &ShellAction) -> pb::ShellAction {
             frame: frame.clone(),
         }),
         ShellAction::OpenSettings { tab } => Action::OpenSettings(tab_to_pb(*tab)),
+        ShellAction::SelectMode { mode_id } => Action::SelectMode(pb::SelectMode {
+            mode_id: mode_id.clone(),
+        }),
+        ShellAction::BridgeClose { conn } => Action::BridgeClose(pb::BridgeClose { conn: conn.0 }),
     };
     pb::ShellAction {
         action: Some(action),
@@ -617,8 +660,67 @@ fn action_from_pb(action: pb::ShellAction) -> Result<ShellAction> {
             Action::OpenSettings(open) => ShellAction::OpenSettings {
                 tab: tab_from_pb(open.tab)?,
             },
+            Action::SelectMode(select) => ShellAction::SelectMode {
+                mode_id: select.mode_id,
+            },
+            Action::BridgeClose(close) => ShellAction::BridgeClose {
+                conn: ConnId(close.conn),
+            },
         },
     )
+}
+
+// ---------------------------------------------------------------- 候補ウィンドウ（L-E）
+
+pub fn side_from_pb(value: i32) -> Result<PanelSide> {
+    match enum_value::<pb::PanelSide>(value, "PanelSide")? {
+        pb::PanelSide::Unspecified => Err(ConvertError::OutOfRange("PanelSide")),
+        pb::PanelSide::Below => Ok(PanelSide::Below),
+        pb::PanelSide::Above => Ok(PanelSide::Above),
+    }
+}
+
+pub fn side_to_pb(side: PanelSide) -> pb::PanelSide {
+    match side {
+        PanelSide::Below => pb::PanelSide::Below,
+        PanelSide::Above => pb::PanelSide::Above,
+    }
+}
+
+/// UNSPECIFIED は「今回は新しく取っていない」（`None`）
+pub fn source_from_pb(value: i32) -> Result<Option<AnchorSource>> {
+    Ok(
+        match enum_value::<pb::AnchorSource>(value, "AnchorSource")? {
+            pb::AnchorSource::Unspecified => None,
+            pb::AnchorSource::Client => Some(AnchorSource::Client),
+            pb::AnchorSource::Accessibility => Some(AnchorSource::Accessibility),
+            pb::AnchorSource::LastKnown => Some(AnchorSource::LastKnown),
+            pb::AnchorSource::MouseScreen => Some(AnchorSource::MouseScreen),
+        },
+    )
+}
+
+pub fn source_to_pb(source: Option<AnchorSource>) -> pb::AnchorSource {
+    match source {
+        None => pb::AnchorSource::Unspecified,
+        Some(AnchorSource::Client) => pb::AnchorSource::Client,
+        Some(AnchorSource::Accessibility) => pb::AnchorSource::Accessibility,
+        Some(AnchorSource::LastKnown) => pb::AnchorSource::LastKnown,
+        Some(AnchorSource::MouseScreen) => pb::AnchorSource::MouseScreen,
+    }
+}
+
+pub fn rect_from_pb(rect: Option<pb::Rect>) -> Option<Rect> {
+    rect.map(|r| Rect::new(r.x, r.y, r.width, r.height))
+}
+
+pub fn rect_to_pb(rect: &Rect) -> pb::Rect {
+    pb::Rect {
+        x: rect.origin.x,
+        y: rect.origin.y,
+        width: rect.size.width,
+        height: rect.size.height,
+    }
 }
 
 // ---------------------------------------------------------------- 設定
@@ -723,6 +825,7 @@ mod tests {
                     },
                     is_repeat: true,
                     secure: false,
+                    layout_text: None,
                 })
             })
             .collect();
@@ -732,10 +835,33 @@ mod tests {
                 modifiers: Modifiers::NONE,
                 is_repeat: false,
                 secure: true,
+                layout_text: None,
             }),
+            ShellEvent::Key(KeyInput {
+                layout_text: Some("a".into()),
+                ..KeyInput::new(KeyKind::Jis { code: 22 })
+            }),
+            ShellEvent::Key(KeyInput::new(KeyKind::Eisu)),
+            ShellEvent::Key(KeyInput::new(KeyKind::Kana)),
             ShellEvent::Activate {
                 bundle_id: "com.apple.TextEdit".into(),
+                secure: true,
             },
+            ShellEvent::InputModeChanged {
+                mode_id: "io.github.ikari-zen.inputmethod.ikari.English".into(),
+                secure: false,
+            },
+            ShellEvent::CommitComposition,
+            ShellEvent::PanelShown {
+                side: PanelSide::Above,
+                source: Some(AnchorSource::Accessibility),
+            },
+            ShellEvent::PanelShown {
+                side: PanelSide::Below,
+                source: None,
+            },
+            ShellEvent::PanelHidden,
+            ShellEvent::BridgeClosed { conn: ConnId(3) },
             ShellEvent::Deactivate,
             ShellEvent::SettingsFileChanged,
             ShellEvent::Timer { id: TimerId(7) },
@@ -876,6 +1002,10 @@ mod tests {
             ShellAction::OpenSettings {
                 tab: Some(SettingsTab::About),
             },
+            ShellAction::SelectMode {
+                mode_id: "io.github.ikari-zen.inputmethod.ikari.Japanese".into(),
+            },
+            ShellAction::BridgeClose { conn: ConnId(9) },
         ]
     }
 

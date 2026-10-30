@@ -1,10 +1,14 @@
 // IMK のクライアント（入力欄を持つアプリ）への問い合わせ。周辺テキストとキャレットの矩形（ADR 0004 §6.4、§6.5）。
+// 値を取って shell-core の形にするだけ。「取れた」と言ってよいか（左が空で文書の長さも 0）と切り詰めは shell-core が決める。
 import AppKit
 import ApplicationServices
-import IkariShellCore
+import IkariProto
 import InputMethodKit
 
-struct ClientAccess {
+/// 主スレッドでだけ使う（IMK のクライアントは主スレッドから呼ぶ）
+struct ClientAccess: @unchecked Sendable {
+    /// 左の文脈を読む上限（エンジンに渡す上限と同じ。OS から読み過ぎないため）
+    static let leftContextLimit = 2000
     /// 変換文字列のあとの文脈として取る長さ。左を主、右は補助（spec の「文脈の取得元」）
     static let rightContextLimit = 200
 
@@ -14,10 +18,10 @@ struct ClientAccess {
 
     // MARK: 周辺テキスト
 
-    /// 選択範囲（変換文字列があればその）の手前を最大2000文字。取れなければ `unavailable`（ターミナル、一部の Electron）
-    func surroundingText() -> SurroundingText {
+    /// 選択範囲（変換文字列があればその）の手前と後ろと、文書の長さ。取れなければ nil（ターミナル、一部の Electron）
+    func surroundingText() -> Ikari_Shell_V1_SurroundingText? {
         let selected = client.selectedRange()
-        guard selected.location != NSNotFound else { return .unavailable }
+        guard selected.location != NSNotFound else { return nil }
 
         // 変換中の下線つきの文字列は文脈に含めない
         let marked = client.markedRange()
@@ -25,27 +29,19 @@ struct ClientAccess {
         let leftEnd = hasMarked ? marked.location : selected.location
         let rightStart = hasMarked ? marked.location + marked.length : selected.location + selected.length
 
-        var left = ""
+        var text = Ikari_Shell_V1_SurroundingText()
         if leftEnd > 0 {
-            let start = max(0, leftEnd - SurroundingText.maxCharacters)
-            guard let text = string(NSRange(location: start, length: leftEnd - start)) else { return .unavailable }
-            left = text
+            let start = max(0, leftEnd - Self.leftContextLimit)
+            guard let left = string(NSRange(location: start, length: leftEnd - start)) else { return nil }
+            text.left = left
         }
         let total = client.length()
-        var right = ""
         if total > rightStart {
             let length = min(Self.rightContextLimit, total - rightStart)
-            right = string(NSRange(location: rightStart, length: length)) ?? ""
+            text.right = string(NSRange(location: rightStart, length: length)) ?? ""
         }
-        // 左が空で、文書の長さも 0 のアプリは、文脈を返せていない（長さを返さないアプリ）。
-        // 本当に空の文書とは区別できないが、「取れた」と言うより「取れていない」と言うほうが安全（ADR 0015 D2）
-        guard Self.isAvailable(left: left, documentLength: total) else { return .unavailable }
-        return SurroundingText(left: left, right: right, available: true)
-    }
-
-    /// 周辺テキストを「取れた」と言ってよいか。左が空で `length()` も 0 なら取れていない
-    static func isAvailable(left: String, documentLength: Int) -> Bool {
-        !(left.isEmpty && documentLength <= 0)
+        text.documentLength = UInt32(clamping: max(0, total))
+        return text
     }
 
     private func string(_ range: NSRange) -> String? {
@@ -58,21 +54,22 @@ struct ClientAccess {
     /// アンカーにする矩形（スクリーン座標）。変換文字列の先頭の文字の矩形で、文節の移動では動かさない。
     /// IMK の標準の `attributes(forCharacterIndex:lineHeightRectangle:)` に相対位置 0 を渡す
     /// （S0-3: VS Code では絶対位置ではなく相対位置で、その文字の矩形が取れる。`firstRect` は使えない）。
-    /// 取れなければ `firstRect` を試す。長さ0の範囲に答えないクライアントがあるので、1文字ぶんでも試す
-    func caretRect() -> CGRect? {
+    /// 取れなければ `firstRect` を試す（長さ 0 の範囲に答えないクライアントがあるので、1 文字ぶんでも試す）。
+    /// 使えるか（ゼロ、NaN など）は shell-core が決めるので、取れた値を順に返す
+    func caretRects() -> [CGRect] {
+        var rects: [CGRect] = []
         var lineRect = NSRect.zero
         _ = client.attributes(forCharacterIndex: 0, lineHeightRectangle: &lineRect)
-        if isUsableAnchor(lineRect) { return lineRect }
+        rects.append(lineRect)
 
         let marked = client.markedRange()
-        guard marked.location != NSNotFound else { return nil }
+        guard marked.location != NSNotFound else { return rects }
         for length in [0, 1] {
             var actual = NSRange(location: 0, length: 0)
-            let rect = client.firstRect(
-                forCharacterRange: NSRange(location: marked.location, length: length), actualRange: &actual)
-            if isUsableAnchor(rect) { return rect }
+            rects.append(
+                client.firstRect(forCharacterRange: NSRange(location: marked.location, length: length), actualRange: &actual))
         }
-        return nil
+        return rects
     }
 
     var windowLevel: NSWindow.Level {
@@ -87,24 +84,24 @@ struct ClientAccess {
         client.insertText(text, replacementRange: Self.notFound)
     }
 
-    /// 変換中の文字列を置く。文節に分かれているとき（`marked.segments`）は、文節ごとに `markedClauseSegment` を付け、
-    /// フォーカスしている文節を太い下線、ほかを細い下線にする（ADR 0006 §8.3）。そうでなければ今までの見た目
-    /// （全体を細い下線、`highlightedLength` の先頭を太い下線）。`replacementRange` があるとき（再変換の始まり）だけ、
+    /// 変換中の文字列を置く（見た目は `MarkedTextAttributes`）。`replacementRange` があるとき（再変換の始まり）だけ、
     /// 選択していた範囲を置き換える
-    func setMarkedText(_ marked: MarkedText) {
+    func setMarkedText(_ marked: Ikari_Shell_V1_MarkedText) {
         let attributed = MarkedTextAttributes.attributedString(for: marked)
-        let replacement = marked.replacementRange.map { NSRange(location: $0.location, length: $0.length) } ?? Self.notFound
+        let replacement =
+            marked.hasReplacementRange
+            ? NSRange(location: Int(marked.replacementRange.location), length: Int(marked.replacementRange.length))
+            : Self.notFound
         client.setMarkedText(
             attributed, selectionRange: NSRange(location: attributed.length, length: 0), replacementRange: replacement)
     }
 
     /// 元の文字列を、変換中の範囲を置き換える 1 回の `insertText` で書き戻す。前後に `setMarkedText("")` も `unmarkText` も呼ばない
     /// （Electron の「元に戻す」の履歴に変換中の状態を残しにくくする。ADR 0006 §16.3）。
-    /// 範囲は状態機械が渡した `replacing`（再変換を始めた位置と表示中の長さ）を使う。`client.markedRange()` は、
-    /// アプリによって相対位置や空を返すことがあり、そのまま使うと別の場所を書き換えるか、変換中の文字列が残る。
+    /// 範囲は shell-core が渡した `replacing` を使う。`client.markedRange()` は、アプリによって相対位置や空を返すことがある。
     /// 食い違うときは、長さだけを記録する（文字は残さない）
-    func restore(_ text: String, replacing: IkariShellCore.TextRange) {
-        let range = NSRange(location: replacing.location, length: replacing.length)
+    func restore(_ text: String, replacing: Ikari_Shell_V1_Utf16Range) {
+        let range = NSRange(location: Int(replacing.location), length: Int(replacing.length))
         let marked = client.markedRange()
         if marked != range {
             AppContext.log.notice(
@@ -115,17 +112,20 @@ struct ClientAccess {
 
     // MARK: 選択範囲と取り残された変換中の文字列
 
-    /// 再変換の対象。`reconvert` のキーのときだけ呼ぶ。選択がない、取れない、アプリが別の範囲を返した（`actualRange` が違う）、
-    /// 再変換を始めないアプリのときは nil（長さなどの断りは状態機械が判断する。ADR 0006 §9.2）
-    func selectedText() -> SelectedText? {
-        guard !Self.reconversionDeniedBundleIDs.contains(bundleIdentifier) else { return nil }
+    /// 再変換の対象。shell-core が要るときだけ呼ぶ。選択がない、取れない、アプリが別の範囲を返した（`actualRange` が違う）ときは nil
+    /// （長さなどの断りは shell-core が判断する。ADR 0006 §9.2）
+    func selectedText() -> Ikari_Shell_V1_SelectedText? {
         let selected = client.selectedRange()
         guard Self.isValid(selected) else { return nil }
         var actual = NSRange(location: 0, length: 0)
         guard let text = client.string(from: selected, actualRange: &actual), !text.isEmpty, actual == selected else {
             return nil
         }
-        return SelectedText(range: TextRange(location: selected.location, length: selected.length), text: text)
+        var result = Ikari_Shell_V1_SelectedText()
+        result.range.location = UInt32(clamping: selected.location)
+        result.range.length = UInt32(clamping: selected.length)
+        result.text = text
+        return result
     }
 
     /// 何も入力していないのにクライアントに残っている変換中の文字列（ADR 0006 §16.3）。なければ nil
@@ -145,15 +145,11 @@ struct ClientAccess {
     private static func isValid(_ range: NSRange) -> Bool {
         range.location != NSNotFound && range.length != NSNotFound && range.length > 0
     }
-
-    /// `setMarkedText(replacementRange:)` で選択を置き換えられないことが分かったアプリ（Bundle ID）。再変換を始めない
-    /// （ADR 0006 §9.5、S0-5）。S0 では TextEdit、VS Code、Chrome で効くことを確かめた。見つかったら足す
-    static let reconversionDeniedBundleIDs: Set<String> = []
 }
 
 /// `MarkedText` から下線つきの属性文字列を作る（AppKit だけで決まるのでテストできる）
 enum MarkedTextAttributes {
-    static func attributedString(for marked: MarkedText) -> NSAttributedString {
+    static func attributedString(for marked: Ikari_Shell_V1_MarkedText) -> NSAttributedString {
         let attributed = NSMutableAttributedString(string: marked.text)
         let full = NSRange(location: 0, length: attributed.length)
         guard full.length > 0 else { return attributed }
@@ -166,18 +162,19 @@ enum MarkedTextAttributes {
 
         if marked.segments.isEmpty {
             attributed.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: full)
-            let highlight = NSRange(location: 0, length: min(max(0, marked.highlightedLength), full.length))
+            let highlight = NSRange(location: 0, length: min(Int(marked.highlightedLength), full.length))
             if highlight.length > 0 {
                 attributed.addAttribute(.underlineStyle, value: NSUnderlineStyle.thick.rawValue, range: highlight)
             }
             return attributed
         }
 
+        let focused: Int? = marked.hasFocused ? Int(marked.focused) : nil
         var location = 0
         for (index, length) in marked.segments.enumerated() {
-            let range = NSRange(location: location, length: min(max(0, length), full.length - location))
+            let range = NSRange(location: location, length: min(Int(length), full.length - location))
             guard range.length > 0 else { break }
-            let style: NSUnderlineStyle = index == marked.focused ? .thick : .single
+            let style: NSUnderlineStyle = index == focused ? .thick : .single
             attributed.addAttribute(.underlineStyle, value: style.rawValue, range: range)
             attributed.addAttribute(.markedClauseSegment, value: index, range: range)
             location += range.length

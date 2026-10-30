@@ -42,8 +42,8 @@ private func host(_ probe: Probe? = nil) -> ShellHost {
         event.key = key
         let result = shell.dispatch(event)
         #expect(result.status == .ok)
-        // Shell::dispatch は L-A2 まで stub（空の列）
-        #expect(result.actions.isEmpty)
+        // 何も入力していないときの Space はアプリへ（L-A2 で stub の空の列から本物になった）
+        #expect(result.actions.contains { if case .passThrough? = $0.action { true } else { false } })
         shell.downNotifier.engineDown(generation: 1, kind: .invalidated)
     }
 

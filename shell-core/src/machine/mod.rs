@@ -644,7 +644,9 @@ impl InputStateMachine {
             | KeyKind::Up
             | KeyKind::Down
             | KeyKind::Function { .. }
-            | KeyKind::Other => vec![ShellAction::PassThrough],
+            | KeyKind::Other
+            | KeyKind::Eisu
+            | KeyKind::Kana => vec![ShellAction::PassThrough],
         }
     }
 
@@ -730,7 +732,9 @@ impl InputStateMachine {
             | KeyKind::Up
             | KeyKind::Down
             | KeyKind::Function { .. }
-            | KeyKind::Other => vec![ShellAction::Consume],
+            | KeyKind::Other
+            | KeyKind::Eisu
+            | KeyKind::Kana => vec![ShellAction::Consume],
         }
     }
 
@@ -832,7 +836,9 @@ impl InputStateMachine {
             | KeyKind::Up
             | KeyKind::Down
             | KeyKind::Function { .. }
-            | KeyKind::Other => vec![ShellAction::Consume],
+            | KeyKind::Other
+            | KeyKind::Eisu
+            | KeyKind::Kana => vec![ShellAction::Consume],
         }
     }
 
@@ -914,7 +920,9 @@ impl InputStateMachine {
             | KeyKind::Up
             | KeyKind::Down
             | KeyKind::Function { .. }
-            | KeyKind::Other => vec![ShellAction::Consume],
+            | KeyKind::Other
+            | KeyKind::Eisu
+            | KeyKind::Kana => vec![ShellAction::Consume],
         }
     }
 

@@ -1,43 +1,39 @@
-// 周辺テキストを「取れた」と言ってよいか（ADR 0015 D2）。左が空で、文書の長さも 0 なら取れていない。
+// 周辺テキストの読み取り（ADR 0015 D2）。「取れた」と言ってよいか（左が空で文書の長さも 0 なら取れていない）は shell-core が
+// 決める（`machine::is_available` とそのテスト）。ここは、クライアントから読んだ生の値をそのまま渡すことを確かめる。
 import Foundation
+import IkariProto
 import Testing
 
 @testable import IkariIME
-@testable import IkariShellCore
 
 @Suite struct SurroundingAvailabilityTests {
-    @Test func emptyLeftWithZeroLengthIsNotAvailable() {
-        #expect(!ClientAccess.isAvailable(left: "", documentLength: 0))
+    @Test func noCaretMeansTheHostCannotReadTheText() {
+        let client = FakeTextClient(document: "あいう")
+        #expect(ClientAccess(client: client).surroundingText() == nil)
     }
 
-    @Test func emptyLeftWithNonZeroLengthIsAvailable() {
-        // 本当に文頭（右に文がある）
-        #expect(ClientAccess.isAvailable(left: "", documentLength: 12))
-    }
-
-    @Test func nonEmptyLeftIsAvailable() {
-        #expect(ClientAccess.isAvailable(left: "あ", documentLength: 0))
-    }
-
-    @Test func surroundingTextReportsUnavailableForAnAppThatReturnsNothing() {
+    @Test func anAppThatReturnsNothingPassesEmptyLeftAndZeroLength() {
         let client = FakeTextClient(document: "")
         client.selected = NSRange(location: 0, length: 0)
-        #expect(ClientAccess(client: client).surroundingText() == .unavailable)
+        let text = ClientAccess(client: client).surroundingText()
+        #expect(text?.left == "")
+        #expect(text?.documentLength == 0)
     }
 
-    @Test func surroundingTextIsAvailableAtTheStartOfADocument() {
+    @Test func theStartOfADocumentHasTheRightTextAndTheLength() {
         let client = FakeTextClient(document: "あいう")
         client.selected = NSRange(location: 0, length: 0)
         let text = ClientAccess(client: client).surroundingText()
-        #expect(text.available)
-        #expect(text.left.isEmpty)
-        #expect(text.right == "あいう")
+        #expect(text?.left == "")
+        #expect(text?.right == "あいう")
+        #expect(text?.documentLength == 3)
     }
 
     @Test func surroundingTextReturnsTheLeftText() {
         let client = FakeTextClient(document: "あいう")
         client.selected = NSRange(location: 2, length: 0)
         let text = ClientAccess(client: client).surroundingText()
-        #expect(text == SurroundingText(left: "あい", right: "う", available: true))
+        #expect(text?.left == "あい")
+        #expect(text?.right == "う")
     }
 }

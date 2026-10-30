@@ -454,7 +454,7 @@ impl ShortcodeMachine {
             KeyKind::Left | KeyKind::Right | KeyKind::Function { .. } => {
                 return self.commit(&choosing, selected, PassKey);
             }
-            KeyKind::Other => {
+            KeyKind::Other | KeyKind::Eisu | KeyKind::Kana => {
                 return if english {
                     self.commit(&choosing, selected, PassKey)
                 } else {
@@ -624,6 +624,7 @@ mod tests {
             modifiers,
             is_repeat: false,
             secure: false,
+            layout_text: None,
         }
     }
 

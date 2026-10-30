@@ -62,7 +62,8 @@ impl Rect {
 }
 
 /// アンカーの矩形がどこから取れたか。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum AnchorSource {
     /// `client.firstRect(forCharacterRange:)`
     Client,
@@ -104,7 +105,8 @@ pub fn is_usable_anchor(rect: &Rect) -> bool {
 
 /// パネルをアンカーのどちら側に置いたか。`Above` のときは、候補の並びを上下逆にして 1 位を下（アンカーに近い側）に描く
 /// （ADR 0014 §2.2。user-feedback の決定: カーソルに近い側が 1 位）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum PanelSide {
     Below,
     Above,

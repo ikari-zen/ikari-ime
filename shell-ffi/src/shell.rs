@@ -369,7 +369,14 @@ fn dispatch(s: *const IkariShell, event: &[u8]) -> (i32, Vec<u8>) {
         };
         #[cfg(test)]
         tests::maybe_panic();
-        Ok(shell.dispatch(event, &mut HostText(&slot.host)))
+        let mut actions = shell.dispatch(event, &mut HostText(&slot.host));
+        // キー割り当てで頼んだモードは、OS に選んでもらう（動作の最後。今の `selectMode` の順）
+        if let Some(mode) = shell.take_mode_request() {
+            actions.push(ShellAction::SelectMode {
+                mode_id: mode.mode_id().to_string(),
+            });
+        }
+        Ok(actions)
     }));
     match ran {
         Ok(Ok(actions)) => (IKARI_SHELL_OK, convert::encode_actions(&actions)),

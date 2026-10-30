@@ -28,6 +28,8 @@ enum KeyKind {
   KEY_KIND_DOWN = 10;
   KEY_KIND_FUNCTION = 11;   // KeyInput.function（1〜20）
   KEY_KIND_OTHER = 12;
+  KEY_KIND_EISU = 13;       // JIS の英数キー（L-E で追加）
+  KEY_KIND_KANA = 14;       // JIS のかなキー（L-E で追加）
 }
 
 message KeyInput {
@@ -38,6 +40,9 @@ message KeyInput {
   Modifiers modifiers = 5;
   bool is_repeat = 6;
   bool secure = 7;
+  // KEY_KIND_JIS のときだけ。OS の配列がそのキーで出す文字（Shift だけを適用）。ないキーは空。
+  // かな入力でないとき、英語のモード、Ctrl / Option / Command つきのとき、shell-core が文字のキーとして読む（L-E で追加）
+  optional string layout_text = 8;
 }
 
 // ホストの口の返事（IkariShellHost.surrounding / selection。§4.4）
@@ -138,9 +143,35 @@ message MenuModel { repeated MenuItem items = 1; }
 
 // ---------------------------------------------------------------- イベント（ikari_shell_dispatch の入力）
 
-message Activate { string bundle_id = 1; }
+message Activate { string bundle_id = 1; bool secure = 2; }
 message TimerFired { uint32 id = 1; }
 message BridgeFrame { uint64 conn = 1; bytes frame = 2; }
+
+// ---- L-E で追加（ADR 0041 §4.1 の口で表せなかった OS とのやりとり）
+
+// OS が入力モードを替えた（macOS の setValue(_:forTag: kTextServiceInputModePropertyTag)。値はモードの ID）
+message InputModeChanged { string mode_id = 1; bool secure = 2; }
+
+enum PanelSide {
+  PANEL_SIDE_UNSPECIFIED = 0;
+  PANEL_SIDE_BELOW = 1;
+  PANEL_SIDE_ABOVE = 2;
+}
+
+// UNSPECIFIED は「分からない・今回は新しく取っていない」
+enum AnchorSource {
+  ANCHOR_SOURCE_UNSPECIFIED = 0;
+  ANCHOR_SOURCE_CLIENT = 1;
+  ANCHOR_SOURCE_ACCESSIBILITY = 2;
+  ANCHOR_SOURCE_LAST_KNOWN = 3;
+  ANCHOR_SOURCE_MOUSE_SCREEN = 4;
+}
+
+// 候補ウィンドウを出した・動かした（OS が位置を決めたあと）
+message PanelShown { PanelSide side = 1; AnchorSource source = 2; }
+
+// 設定アプリとの接続が切れた
+message BridgeClosed { uint64 conn = 1; }
 
 message ShellEvent {
   oneof event {
@@ -151,6 +182,12 @@ message ShellEvent {
     Empty settings_file_changed = 5;
     TimerFired timer = 6;
     BridgeFrame bridge_frame = 7;
+    // L-E で追加
+    InputModeChanged input_mode_changed = 8;
+    Empty commit_composition = 9;     // IMK の commitComposition（クリックなどで外から確定させられた）
+    PanelShown panel_shown = 10;
+    Empty panel_hidden = 11;
+    BridgeClosed bridge_closed = 12;
   }
 }
 
@@ -162,6 +199,8 @@ message Prefetch { string reading = 1; }
 message ScheduleTimer { uint32 id = 1; uint32 after_ms = 2; }
 message CancelTimer { uint32 id = 1; }
 message BridgeReply { uint64 conn = 1; bytes frame = 2; }
+message SelectMode { string mode_id = 1; }   // OS にモードを選んでもらう（macOS の client.selectMode）。L-E で追加
+message BridgeClose { uint64 conn = 1; }     // 設定アプリとの接続を閉じる。L-E で追加
 
 message ShellAction {
   oneof action {
@@ -180,11 +219,38 @@ message ShellAction {
     CancelTimer cancel_timer = 13;
     BridgeReply bridge_reply = 14;
     OpenSettings open_settings = 15;
+    // L-E で追加
+    SelectMode select_mode = 16;
+    BridgeClose bridge_close = 17;
   }
 }
 
 // ikari_shell_dispatch の戻り値
 message ShellActions { repeated ShellAction actions = 1; }
+
+// ---------------------------------------------------------------- 候補ウィンドウの配置（ikari_panel_*。状態を持たない。L-E で追加）
+// 座標は AppKit と同じ（左下が原点、y は上向き）
+
+message Rect { double x = 1; double y = 2; double width = 3; double height = 4; }
+
+// ikari_panel_resolve_anchor の入力。取れなかったものは省く
+message PanelAnchorRequest {
+  Rect client = 1;
+  Rect accessibility = 2;
+  Rect last_known = 3;
+  Rect mouse_screen_visible_frame = 4;
+}
+message PanelAnchor { Rect rect = 1; AnchorSource source = 2; }
+
+// ikari_panel_layout の入力
+message PanelLayoutRequest {
+  Rect anchor = 1;
+  double width = 2;
+  double height = 3;
+  optional double reserved_height = 4;
+  Rect visible_frame = 5;
+}
+message PanelPlacement { Rect frame = 1; PanelSide side = 2; }
 
 // ---------------------------------------------------------------- 設定（ikari_settings_validate / rewrite。ADR 0041 §2.3）
 

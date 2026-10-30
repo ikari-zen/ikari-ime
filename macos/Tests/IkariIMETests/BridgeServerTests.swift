@@ -1,53 +1,58 @@
-// IkariIME の BridgeServer と SettingsStore の試験（ADR 0005 §6.3、§7）。
-// 実際の Unix ソケットで、設定アプリ役のクライアントをつなぐ。署名の確認は `peerValidator` で差し替える以外は本物
-// （`realPeerCheckSeesThisProcess` は本物の `LOCAL_PEERTOKEN` と SecCode を使う）。
-//
-// このディレクトリは Package.swift にテストターゲットが宣言されて初めて動く（契約ファイルなのでレーン S3 は変えない）:
-//   .testTarget(name: "IkariIMETests", dependencies: ["IkariIME", "IkariBridge", "IkariProto", "IkariShellCore", "IkariXPC"])
-// IkariIME の定義 IKARI_HAS_BRIDGE と、IkariIME の IkariBridge・IkariProto への依存も要る。
+// IkariIME の BridgeServer（輸送）と、shell-core のブリッジの判断（ADR 0005 §6.3、§7、ADR 0041 L-E）を、本物どうしでつなぐ試験。
+// 実際の Unix ソケットで、設定アプリ役のクライアントをつなぐ。枠は `ShellDriver` から shell-core（FFI）に渡る。
+// 署名の確認は `peerValidator` で差し替える以外は本物（`realPeerCheckSeesThisProcess` は本物の `LOCAL_PEERTOKEN` と SecCode を使う）。
+// shell-ffi の XCFramework がないビルドでは飛ばす。
 import Darwin
 import Foundation
 import Security
 import IkariBridge
 import IkariProto
-import IkariShellCore
+import IkariShellABI
 import IkariXPC
 import Testing
 
 @testable import IkariIME
 
-private final class StubEngine: EngineClient, @unchecked Sendable {
+#if IKARI_HAS_SHELL_FFI
+
+/// 替え玉のエンジン（shell-core のホストの口 `engine_*`）。管理の要求には分野 1 つのプロファイルで答える
+private final class StubEngine: EngineHost, @unchecked Sendable {
     let lock = NSLock()
-    var relayed: [Data] = []
-    /// 非 nil なら、relay はこの合図が出るまで止まる（同時数の試験用）
-    var hold: DispatchSemaphore?
-    func hello(shellVersion: String, timeout: Duration) throws -> EngineHello { EngineHello(engineVersion: "t", dictLabel: "t", lm: .ready) }
-    func beginSession(_ session: SessionInfo) {}
-    func endSession(sessionID: UInt64) {}
-    func prefetch(_ request: ConversionRequest) {}
-    func convert(_ request: ConversionRequest, timeout: Duration) throws -> ConversionPage { throw EngineClientError.unavailable }
-    func page(conversionID: UInt64, index: Int, timeout: Duration) throws -> ConversionPage { throw EngineClientError.unavailable }
-    func commit(conversionID: UInt64, candidateIndex: Int) {}
-    func commitText(sessionID: UInt64, reading: String, surface: String) {}
-    func cancel(conversionID: UInt64) {}
-    func segmentPage(conversionID: UInt64, layoutRev: UInt32, segment: Int, index: Int, left: [SegmentChoiceValue], timeout: Duration) throws -> SegmentPage { throw EngineClientError.unavailable }
-    func resize(conversionID: UInt64, layoutRev: UInt32, segment: Int, delta: Int, left: [SegmentChoiceValue], timeout: Duration) throws -> SegmentLayoutInfo { throw EngineClientError.unavailable }
-    func commitSegments(conversionID: UInt64, layoutRev: UInt32, choices: [SegmentChoiceValue]) {}
-    func reconvert(_ request: ReconvertRequest, timeout: Duration) throws -> SegmentLayoutInfo { throw EngineClientError.unavailable }
-    func shutdown(reason: EngineShutdownReason) {}
-    func relay(_ request: Data, timeout: Duration) throws -> Data {
-        lock.withLock { relayed.append(request) }
-        hold?.wait()
-        var reply = Ikari_Engine_V1_Envelope()
-        var profile = Ikari_Engine_V1_ProfileReply()
-        var d = Ikari_Engine_V1_ProfileDomainState()
-        d.id = "it"
-        d.name = "IT"
-        d.weight = .profileWeightOften
-        profile.domains = [d]
-        reply.profileReply = profile
-        return try reply.serializedData()
+    private var _relayed: [Ikari_Engine_V1_Envelope] = []
+    private var _hold: DispatchSemaphore?
+    /// 中継された要求（`Hello` などの殻の要求は数えない）
+    var relayed: [Ikari_Engine_V1_Envelope] { lock.withLock { _relayed } }
+    /// 非 nil なら、管理の要求はこの合図が出るまで止まる（同時数の試験用）
+    var hold: DispatchSemaphore? {
+        get { lock.withLock { _hold } }
+        set { lock.withLock { _hold = newValue } }
     }
+
+    func connect() -> UInt64 { 1 }
+    func request(_ connection: UInt64, _ bytes: Data, timeoutMs: UInt32) -> ShellTransportResult {
+        guard let request = try? Ikari_Engine_V1_Envelope(serializedBytes: bytes) else { return .unavailable }
+        switch request.body {
+        case .getProfile?, .commit?:
+            lock.withLock { _relayed.append(request) }
+            hold?.wait()
+            var reply = Ikari_Engine_V1_Envelope()
+            reply.schemaVersion = request.schemaVersion
+            reply.requestID = request.requestID
+            var profile = Ikari_Engine_V1_ProfileReply()
+            var d = Ikari_Engine_V1_ProfileDomainState()
+            d.id = "it"
+            d.name = "IT"
+            d.weight = .profileWeightOften
+            profile.domains = [d]
+            reply.profileReply = profile
+            return (try? reply.serializedData()).map { .ok($0) } ?? .unavailable
+        default:
+            return .unavailable
+        }
+    }
+    func post(_ connection: UInt64, _ bytes: Data) {}
+    func close(_ connection: UInt64) {}
+    func pid(_ connection: UInt64) -> Int32 { 0 }
 }
 
 private func connectClient(_ path: String) throws -> FileDescriptorTransport {
@@ -64,6 +69,9 @@ private func connectClient(_ path: String) throws -> FileDescriptorTransport {
     guard rc == 0 else { throw BridgeTransportError.io(errno) }
     return FileDescriptorTransport(descriptor: fd)
 }
+
+/// 中継の同時数の上限（shell-core の `bridge::relay_gate::MAX_CONCURRENT_RELAYS`）
+private let maxConcurrentRelays = 4
 
 /// 返事を待つ上限。閉じられたときは待たずに戻るので、長くしても遅くならない（負荷が高くても落ちないように）
 private let replyTimeoutSeconds: Double = 15
@@ -86,23 +94,49 @@ private func helloFrame(version: UInt32 = 1) -> Frame {
     return f
 }
 
+/// 殻（shell-core）とブリッジを本物でつなぐ。shell-core は主スレッドの代わりに直列のキューで回す
 private struct Rig {
     let dir: URL
-    let store: SettingsStore
     let engine = StubEngine()
+    let queue = DispatchQueue(label: "ikari.test.shell")
+    let driver: ShellDriver
     let server: BridgeServer
+    /// 切れた接続の番号
+    let closed = LockedBox<[UInt64]>([])
     var settingsFile: URL { dir.appendingPathComponent("settings.tsv") }
 
     init(validator: (@Sendable (Int32) -> Bool)? = { _ in true }, initial: String = "# note\nengine.lm\ton\n") throws {
         dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("ikari-bridge-\(UUID().uuidString.prefix(6))")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try initial.write(to: dir.appendingPathComponent("settings.tsv"), atomically: true, encoding: .utf8)
-        store = SettingsStore(fileURL: dir.appendingPathComponent("settings.tsv"), loadKeymap: { _ in Keymap() })
-        server = BridgeServer(
-            directory: dir, store: store, engine: engine, signing: .adhoc, shellVersion: "t", peerValidator: validator)
+        driver = ShellDriver(
+            config: .init(shellVersion: "t", settingsPath: dir.appendingPathComponent("settings.tsv").path, resourcesDir: ""),
+            engine: engine, queue: queue)
+        server = BridgeServer(directory: dir, signing: .adhoc, peerValidator: validator)
+        let driver = driver
+        let closed = closed
+        server.onFrame = { connection, frame in driver.bridgeFrame(frame, connection: connection) }
+        server.onClosed = { connection in
+            closed.set(closed.get() + [connection])
+            driver.bridgeClosed(connection: connection)
+        }
+        driver.bridge = server
         #expect(server.start())
-        let server = server
-        store.onChange = { _, _ in server.notifySettingsChanged() }
+    }
+
+    /// shell-core のキューの上でイベントを渡す
+    func dispatch(_ event: Ikari_Shell_V1_ShellEvent) {
+        queue.sync { _ = driver.dispatch(event, session: nil) }
+    }
+
+    func openTab(_ tab: Ikari_Shell_V1_SettingsTab) {
+        var open = Ikari_Shell_V1_OpenSettings()
+        open.tab = tab
+        var command = Ikari_Shell_V1_MenuCommand()
+        command.openSettings = open
+        var event = Ikari_Shell_V1_ShellEvent()
+        event.menuCommand = command
+        dispatch(event)
     }
 }
 
@@ -221,7 +255,7 @@ private struct Rig {
         let c = try connectClient(rig.server.socketPath)
         try c.send(helloFrame()); _ = recv(c)
 
-        let limit = BridgeServer.maxConcurrentRelays
+        let limit = maxConcurrentRelays
         let flood = limit + 20
         for i in 0..<flood {
             var env = Ikari_Engine_V1_Envelope(); env.schemaVersion = 1; env.getProfile = Ikari_Engine_V1_ProfileGet()
@@ -237,7 +271,7 @@ private struct Rig {
             refused += 1
         }
         #expect(refused == flood - limit)
-        #expect(rig.engine.lock.withLock { rig.engine.relayed.count } <= limit)
+        #expect(rig.engine.relayed.count <= limit)
 
         // 止めを外すと、受け付けた分だけが返る。その後は、また受け付ける
         for _ in 0..<limit { hold.signal() }
@@ -252,15 +286,6 @@ private struct Rig {
         let again = try #require(recv(c))
         guard case .engine? = again.body else { Issue.record("not accepted after release"); return }
         c.close()
-    }
-
-    @Test func relayGateLimitsLargeRequestsToOne() {
-        let gate = RelayGate(maxConcurrent: 4, maxLarge: 1)
-        #expect(gate.tryEnter(large: true))
-        #expect(!gate.tryEnter(large: true))
-        #expect(gate.tryEnter(large: false))
-        gate.leave(large: true)
-        #expect(gate.tryEnter(large: true))
     }
 
     @Test func secondConnectionIsRejectedWhileOneIsActive() throws {
@@ -308,17 +333,11 @@ private struct Rig {
     @Test func openTabEventReachesTheConnectedApp() throws {
         let rig = try Rig()
         defer { rig.server.stop() }
-        #expect(!rig.server.sendOpenTab(.userDictionary))  // つながっていない
+        rig.openTab(.userDictionary)  // つながっていない（送る先がない）
         let c = try connectClient(rig.server.socketPath)
         try c.send(helloFrame()); _ = recv(c)
-        // サーバーは hello の返事を送ってから「準備できた」にするので、その直後は false になりうる。つながるまで繰り返す
-        var sent = false
-        let deadline = Date().addingTimeInterval(replyTimeoutSeconds)
-        while !sent && Date() < deadline {
-            sent = rig.server.sendOpenTab(.userDictionary)
-            if !sent { Thread.sleep(forTimeInterval: 0.01) }
-        }
-        #expect(sent)
+        // 握手は shell-core が返事を作った時点で済んでいるので、続けて送れる
+        rig.openTab(.userDictionary)
         let frame = try #require(recv(c))
         guard case .event(let ev)? = frame.body, case .openTab(let t)? = ev.kind else { Issue.record("no event"); return }
         #expect(t.tab == "dictionary")
@@ -333,31 +352,22 @@ private struct Rig {
         defer { c.close() }
         try c.send(helloFrame()); _ = recv(c)
         // 以後、c は読まない
-        var connected = false
-        let readyDeadline = Date().addingTimeInterval(replyTimeoutSeconds)
-        while !connected && Date() < readyDeadline {
-            connected = rig.server.sendOpenTab(.userDictionary)
-            if !connected { Thread.sleep(forTimeInterval: 0.01) }
-        }
-        #expect(connected)
-
         // 送信バッファが埋まって時間切れになり、殻が切るまで送り続ける。止まったら失敗にする（固まらないように別のスレッドで）
-        let server = rig.server
         let disconnected = LockedBox<Bool>(false)
         let slowest = LockedBox<Duration>(.zero)
         let done = DispatchSemaphore(value: 0)
+        let closed = rig.closed
+        nonisolated(unsafe) let sender = rig
         Thread {
             let clock = ContinuousClock()
             let deadline = Date().addingTimeInterval(replyTimeoutSeconds)
-            var stillConnected = true
-            while stillConnected && Date() < deadline {
-                for _ in 0..<1000 {
-                    let elapsed = clock.measure { server.notifySettingsChanged() }
+            while closed.get().isEmpty && Date() < deadline {
+                for _ in 0..<200 {
+                    let elapsed = clock.measure { sender.openTab(.userDictionary) }
                     if elapsed > slowest.get() { slowest.set(elapsed) }
                 }
-                stillConnected = server.sendOpenTab(.userDictionary)
             }
-            disconnected.set(!stillConnected)
+            disconnected.set(!closed.get().isEmpty)
             done.signal()
         }.start()
         #expect(done.wait(timeout: .now() + replyTimeoutSeconds * 2) == .success)  // 送る側が止まらない
@@ -368,14 +378,22 @@ private struct Rig {
     @Test func handEditIsNoticedByReloadAndNotifiesTheApp() throws {
         let rig = try Rig()
         defer { rig.server.stop() }
-        let seen = LockedBox<Bool>(false)
-        rig.store.onChange = { old, new in seen.set(new.pageSize == 4 && old.pageSize == 3) }
+        let c = try connectClient(rig.server.socketPath)
+        try c.send(helloFrame()); _ = recv(c)
         try "paging.size\t4\n".write(to: rig.settingsFile, atomically: true, encoding: .utf8)
-        rig.store.reloadIfFileChanged()
-        #expect(seen.get())
-        #expect(rig.store.snapshot.version == 1)
-        rig.store.reloadIfFileChanged()
-        #expect(rig.store.snapshot.version == 1)  // 変わっていなければ読み直さない
+        var reload = Ikari_Shell_V1_ShellEvent()
+        reload.settingsFileChanged = Ikari_Shell_V1_Empty()
+        rig.dispatch(reload)
+        let frame = try #require(recv(c))
+        guard case .event(let ev)? = frame.body, case .settingsChanged? = ev.kind else { Issue.record("no event"); return }
+        // 変わっていなければ知らせない（次に届くのは、頼んだ設定の一式）
+        rig.dispatch(reload)
+        var get = Frame(); get.requestID = 5; get.getSettings = Ikari_Bridge_V1_GetSettings()
+        try c.send(get)
+        let snapshot = try #require(recv(c))
+        guard case .settings(let s)? = snapshot.body else { Issue.record("expected the snapshot first"); return }
+        #expect(s.effective.contains { $0.key == "paging.size" && $0.value == "4" })
+        c.close()
     }
 
     @Test func realPeerCheckSeesThisProcess() throws {
@@ -414,6 +432,8 @@ private struct Rig {
         #expect(!BridgeServer.peerSatisfies(requirement: SigningRequirements.settingsApp(mode: .adhoc), descriptor: accepted))
     }
 }
+
+#endif
 
 final class LockedBox<T: Sendable>: @unchecked Sendable {
     private let lock = NSLock()

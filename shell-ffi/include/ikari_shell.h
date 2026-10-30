@@ -217,6 +217,15 @@ int32_t ikari_settings_validate(IkariStr settings, IkariShellBuf *out);
 // protobuf を入れる（成功なら text、警告が増えるなら issues_added。どちらも IKARI_SHELL_OK）。
 int32_t ikari_settings_rewrite(IkariStr file, IkariStr changes, IkariShellBuf *out);
 
+// ---------------------------------------------------------------- 候補ウィンドウの配置（L-E で追加）
+// 状態を持たない純関数。どのスレッドからでも呼べる。入出力は protobuf。IKARI_SHELL_OK 以外では *out は空。
+
+// request（PanelAnchorRequest）から使うアンカーを選び、*out に PanelAnchor を入れる。
+int32_t ikari_panel_resolve_anchor(IkariStr request, IkariShellBuf *out);
+
+// request（PanelLayoutRequest）からパネルの位置と上下を決め、*out に PanelPlacement を入れる。
+int32_t ikari_panel_layout(IkariStr request, IkariShellBuf *out);
+
 #ifdef __cplusplus
 }
 #endif

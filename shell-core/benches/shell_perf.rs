@@ -236,6 +236,7 @@ fn measure_keys(options: &Options) -> Result<Measured, String> {
                 shell.dispatch(
                     ShellEvent::Activate {
                         bundle_id: setup.client.bundle_id.clone(),
+                        secure: false,
                     },
                     &mut text,
                 );
@@ -319,6 +320,7 @@ fn measure_startup(options: &Options) -> Result<Measured, String> {
         let actions = shell.dispatch(
             ShellEvent::Activate {
                 bundle_id: "com.apple.TextEdit".into(),
+                secure: false,
             },
             &mut text,
         );

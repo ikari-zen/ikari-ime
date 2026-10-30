@@ -75,14 +75,15 @@ impl SettingsBackend {
         }
     }
 
-    /// 値を書く（今の `SettingsStore.update(set:reset:)`）。
+    /// 値を書き（`set`）、行を消す（`reset`。既定に戻す）。今の `SettingsStore.update(set:reset:)`。
     pub(crate) fn update(
         &mut self,
         set: Vec<SettingsEntry>,
+        reset: Vec<String>,
     ) -> Result<Option<SettingsChange>, UpdateFailed> {
         match self {
             Self::File(store) => store
-                .update(set, Vec::new())
+                .update(set, reset)
                 .map(|updated| updated.change)
                 .map_err(|error| match error {
                     crate::settings::StoreError::Rejected { .. } => UpdateFailed::Rejected,
@@ -93,10 +94,7 @@ impl SettingsBackend {
                 snapshot,
                 version,
             } => {
-                let changes = SettingsChanges {
-                    set,
-                    reset: Vec::new(),
-                };
+                let changes = SettingsChanges { set, reset };
                 let updated = rewrite(text, &changes).map_err(|_| UpdateFailed::Rejected)?;
                 let next = validate(&updated)
                     .map(|validation| validation.snapshot)

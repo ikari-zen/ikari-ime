@@ -8,10 +8,12 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use ikari_proto::v1;
 
+use crate::bridge::{Frame, RelayJob};
 use crate::engine::{EngineAdmin, EngineLink, lm_state};
 use crate::menu::{EngineLmState, ProfileDomain, ProfileWeight};
 use crate::postal::PostalLookupRequest;
 use crate::timeouts;
+use crate::types::ConnId;
 
 /// 絵文字のショートコードの表の待ち（主スレッドの外で待つ。ADR 0027 §8.2）。
 pub const EMOJI_TABLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
@@ -28,7 +30,7 @@ pub enum BackgroundMode {
 }
 
 /// 頼む仕事。
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) enum Job {
     EmojiTable,
     /// `Hello` で起動を前倒しし、LM の状態を取る。`attempt == 0` なら分野も取る。`shutdown_first` は設定の変更の起こし直し
@@ -41,6 +43,11 @@ pub(crate) enum Job {
     SetProfileDomain {
         id: String,
         included: bool,
+    },
+    /// 設定アプリの管理の要求をエンジンへ中継する（L-E）
+    Relay {
+        conn: ConnId,
+        job: RelayJob,
     },
 }
 
@@ -59,6 +66,11 @@ pub(crate) enum JobResult {
         addresses: Vec<String>,
     },
     Profile(Option<Vec<ProfileDomain>>),
+    /// 中継の返事の枠
+    Relay {
+        conn: ConnId,
+        frame: Frame,
+    },
 }
 
 /// 仕事の出し入れ。
@@ -184,5 +196,9 @@ fn run(engine: &EngineLink, shell_version: &str, job: Job) -> JobResult {
             };
             JobResult::Profile(EngineAdmin::new(engine).set_weight(weight, &id).ok())
         }
+        Job::Relay { conn, job } => JobResult::Relay {
+            conn,
+            frame: job.run(engine),
+        },
     }
 }

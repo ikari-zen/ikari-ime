@@ -9,6 +9,7 @@
 //! ヘッダと一致させること（シグネチャの変更は契約の変更）。
 
 pub mod convert;
+mod panel;
 mod settings;
 mod shell;
 
