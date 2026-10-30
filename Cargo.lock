@@ -511,7 +511,6 @@ dependencies = [
 name = "ikari-shell-ffi"
 version = "0.1.0"
 dependencies = [
- "ikari-input",
  "ikari-proto",
  "ikari-shell-core",
  "prost",

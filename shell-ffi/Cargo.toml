@@ -8,7 +8,6 @@ license.workspace = true
 crate-type = ["staticlib", "rlib"]
 
 [dependencies]
-ikari-input.workspace = true
 ikari-proto.workspace = true
 ikari-shell-core.workspace = true
 prost.workspace = true
