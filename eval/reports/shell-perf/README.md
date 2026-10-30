@@ -2,11 +2,13 @@
 
 `baseline.json` は、移行の前（Swift 版の殻）の性能。Rust 版の各レーンを統合するたびに、同じ計測を流して比べる（`cargo xtask perf compare --baseline eval/reports/shell-perf/baseline.json`）。
 
+**Swift 版の値（`swift.*`）は固定で、もう取り直せない。** Swift 版の測り手（`IkariShellBench`）は、測る相手の Swift の状態機械（`IkariShellCore`）と一緒に、移行の片付け（M5、#138）で消した。`perf compare` は、今の Rust 版をこの保存済みの値と比べる。`perf shell --impl swift` は誤りになる。
+
 ## 指標
 
 | 指標 | 中身 | 道具 |
 | --- | --- | --- |
-| P1 | キー 1 回の殻の時間（Convert など返事を待つ要求を送ったキーを除く）。p50、p99、max。共通のシナリオ（`shell-core/scenarios/`）を替え玉のエンジンで再生し、全部を 100 回くり返す | `perf shell`。Swift 版は `macos/Sources/IkariShellBench/`、Rust 版は `shell-core/benches/shell_perf.rs` |
+| P1 | キー 1 回の殻の時間（Convert など返事を待つ要求を送ったキーを除く）。p50、p99、max。共通のシナリオ（`shell-core/scenarios/`）を替え玉のエンジンで再生し、全部を 100 回くり返す | `perf shell`。Rust 版は `shell-core/benches/shell_perf.rs`（Swift 版の測り手 `IkariShellBench` は M5 で消した） |
 | P3 | 殻の起動（設定の解釈、キー割り当ての読み込み、ショートコードの表 2000 件、状態機械の生成、エンジンへの hello）。100 回 | 同上 |
 | P4 | 最大 RSS（P1 のプロセス） | 同上 |
 | P5 | エンジンとコアの性能（`check.sh --perf` の中身）。実辞書が要る | `perf engine` |
@@ -16,12 +18,13 @@
 
 ## 基準値を取り直す手順
 
+殻の区間（`swift.*`）は取り直せない（上）。エンジンとコアの区間（P5）だけを取り直せる。
+
 ```sh
-cargo xtask perf shell --impl swift --out eval/reports/shell-perf/baseline.json
 IKARI_DICT_DIR="$HOME/Library/Application Support/ikari-ime/dict" cargo xtask perf engine --out eval/reports/shell-perf/baseline.json
 ```
 
-どちらも、ほかの区間の指標を残して混ぜる。ほかのレーンのビルドと CPU を取り合うと、ばらつきが増える。`meta.sections.<区間>` に、測っている間の負荷平均と、見えた重いプロセス（cargo、rustc、swift など）を記録している。
+ほかの区間の指標を残して混ぜる。ほかのレーンのビルドと CPU を取り合うと、ばらつきが増える。`meta.sections.<区間>` に、測っている間の負荷平均と、見えた重いプロセス（cargo、rustc、swift など）を記録している。
 
 ## 読むときの注意
 

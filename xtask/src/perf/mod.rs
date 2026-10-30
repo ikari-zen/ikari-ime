@@ -1,6 +1,6 @@
 //! `cargo xtask perf`（ADR 0041 §6.3、ADR 0043 §3。レーン L-P）。
 //!
-//! - `perf shell`（P1 キー 1 回、P3 殻の起動、P4 メモリ。Swift 版と Rust 版の測り手を呼ぶ）
+//! - `perf shell`（P1 キー 1 回、P3 殻の起動、P4 メモリ。Rust 版の測り手を呼ぶ。Swift 版の測り手は M5 で消した）
 //! - `perf engine`（P5。今の `check.sh --perf` の `run_perf` を包む）
 //! - `perf smoke`（P2。`--allow-smoke` のときだけ）
 //! - `perf compare --baseline <file>`（表を出し、`tolerance.toml` の幅を超えたら 0 以外で終わる）
