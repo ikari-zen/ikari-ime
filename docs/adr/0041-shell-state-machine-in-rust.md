@@ -153,6 +153,7 @@ IkariShellBuf ikari_settings_rewrite(IkariStr file, IkariStr changes);
 - 確かめること: (1) TextEdit、Safari、VS Code でキーが届き、確定できる。(2) `Info.plist` の `InputMethodServerControllerClass` で、Rust が登録したクラスを IMK が見つける。(3) `NSEvent` の keyCode と修飾が取れ、マークした文字列（`setMarkedText`）が出せる。(4) cargo だけでバンドルを作り、Apple Development の署名で入力ソースに出せる。(5) panic を `catch_unwind` で止めたとき、IMK のプロセスが落ちない。
 - 見立て（**未検証**）: `objc2` で Objective-C のクラスを定義する仕組みはある（`define_class!`）。InputMethodKit の生成済みの binding の crate があるかは確かめていない（手元の cargo の cache には `objc2` 本体だけ）。なければ、使う 5〜10 個のメソッドを手で宣言する。山は (2) と、IMK が呼ぶメソッドの名前と引数の型（`handleEvent:client:` など）を正しく合わせられるか。作れる見込みは高いと見るが、前例を確かめていないので推測に留まる。
 - 成ったときの分岐: 入口（キー、IMK の呼び出し、XPC のトランスポート、Bridge の待ち受け）を Rust にし、IME のプロセスの中の Swift ↔ Rust の境界をなくす。候補窓とメニューをどうするかは §11 の Q2。
+- **結果（2026-10-30。ブランチ `spike/rust-imk-entry`。実機の人の確認は未了）**: クラスの登録、IMKServer の起動、偽のクライアントでの keyCode・修飾・`setMarkedText`・`insertText`、panic の `catch_unwind` での停止、Apple Development での署名と、入力ソースの一覧への表示（無効のまま）は通った。TextEdit などで実際に打つ確認と、IMK が Rust のクラスを実際に生成するかは、人の操作待ち（手順は `spike/rust-imk/README.md`）。分かったこと: `objc2-input-method-kit` 0.3.2 に必要な宣言がそろう（足りないのは `IMKTextInput` だけで、client は `AnyObject` のまま `msg_send!`）。`define_class!` のクラスは、最初に `class()` を呼んだときに登録されるので、IMKServer より先に呼ぶ。入口のメソッドはすべて `catch_unwind` で包む（objc2 は `extern "C-unwind"` で呼ぶ）。cargo だけでは .app を組めないので、正式版は `cargo xtask bundle`。推測（未検証）: 実際のクライアントは別プロセスの代理オブジェクトなので、debug ビルドの `msg_send!` の型の照合が引っかかるかもしれない。
 - だめだったときの分岐: §4.4 の C ABI と Swift の薄い入口で続ける。`shell-core` の設計は変わらないので、M1 以降は M0-b の結果を待たずに進める。
 - 打ち切り: (1)〜(3) が通らなければ、だめと判断して Swift の入口にする（時間の上限はリードが決める）。
 - 入れ替えるのは作者の実機ではなく、別の入力ソースとして入れる。smoke は使わない。
@@ -265,15 +266,16 @@ M1-b 契約（C ABI。M0-a の後）──────┤
 - Windows の TIP は、`shell-core` の M1-a の型と trait ができれば、最小の口（読み、Space、確定）で W1 を作れる。W0（コアの Windows のビルド）は本 ADR と並べてよい（触るファイルが重ならない）が、本 ADR の移行を先にする（#138 が最優先）。
 
 ## 11. ユーザーに聞くこと
-- **Q1. 設定アプリの Model をどこまで Rust にするか**。推す: §2.3 のとおり、検証、整形、ファイルの読み書き、既定値、管理の要求の組み立てまで。`@Observable` の画面の状態は Swift に残す。理由: 画面の状態は UI の一部（ADR 0042 §1-4）で、Rust に置くと値の写しが境界を何度もまたぐ。
-- **Q2. M0-b が成ったとき、候補窓とメニューも Rust（`objc2-app-kit`）で描くか**。推す: M0-b の結果を見てから決める。既定は「Swift の UI を残す」（ADR 0042 §1-4。きれいさを優先してよい所。境界は描く内容を渡す 1 本だけになる）。
-- **Q3. 性能の許す幅（§6.3）**。推す: M0-c と M1-a の基準値（5 回のばらつき）を見せた後に、指標ごとに決めてもらう。決まるまでは、統合のたびに比較の表を見せて了解を取る。
+なし（2026-10-30 に Q1〜Q3 の回答を得た。下の 11.1）。性能の許す幅は、基準値が出たあとに決める（§6.3）。
 
 ### 11.1 決まったこと（2026-10-30 ユーザー決定）
 - 範囲（旧 Q1）: 「可能な限り Rust」。`IkariInputController`、`AppContext`、`BridgeServer`、`SettingsStore` の OS 非依存の判断も移す（§2.2）。
 - 移行の間の凍結（旧 Q2）、Swift 版と Rust 版の切り替えの設定（旧 Q3）、日常利用の日数（旧 Q4）: 持たない。守るのは共通のシナリオと性能の基準値（§2.1-4、§6.3、§8）。
 - FFI の形と許す時間（旧 Q5）: 推した案どおり。M0-a の計測の後に形を決め、proto を第一にする。許す時間は計測を見てユーザーが決める（§4.4、§6.1）。
 - 性能: 移行の前に基準値を取り、レーンの統合ごとに比べる。悪化したら統合しない（§6.3。許す幅は Q3）。
+- 設定アプリの Model（旧 Q1）: 推した案どおり。検証、整形、ファイルの読み書き、既定値、管理の要求の組み立ては Rust。`@Observable` の画面の状態は Swift に残す（§2.3）。
+- 候補窓とメニュー（旧 Q2）: **Swift の UI のまま**。見た目に関わるため（ADR 0042 §1-4）。M0-b が成っても Rust では描かない。M0-b で Rust にするのは入口（キーの受け取りと IMK の呼び出し）の可否だけ。
+- 性能の許す幅（旧 Q3）: 結果を見てから決める。ユーザーの見立ては「多分良くなる」。ただし移行で悪くなる場合は、直す対象にする（§6.3）。決まるまでは、統合のたびに比較の表を見せて了解を取る。
 - 方針は ADR 0042。スクリプトは `cargo xtask`（[ADR 0043](0043-xtask.md)）。移行は全タスクで最優先（#138）。
 
 ## 参考
