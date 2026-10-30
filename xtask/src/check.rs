@@ -13,6 +13,7 @@ use crate::data::run::{
 };
 
 mod docs;
+mod frameworks;
 mod record;
 
 const SWIFT_TEST_TIMEOUT_ENV: &str = "IKARI_SWIFT_TEST_TIMEOUT";
@@ -33,7 +34,7 @@ pub struct Args {
     /// 性能の #[ignore] テスト（release）
     #[arg(long)]
     perf: bool,
-    /// eval/scripts/snapshot.sh --compare <基準>（振る舞いが変わっていないことの確認）
+    /// cargo xtask eval snapshot --compare <基準>（振る舞いが変わっていないことの確認）
     #[arg(long, value_name = "基準のディレクトリ")]
     eval: Option<PathBuf>,
     /// 文書とスクリプトの検査だけ（数秒。記録しない）
@@ -110,6 +111,8 @@ fn steps(root: &Path, plan: &Plan) -> Result<(), Failure> {
         rust_lm(root)?;
     }
     if plan.swift {
+        // 古い XCFramework のまま swift test が通ったり落ちたりしないよう、先に鮮度を確かめる（#148）
+        frameworks::verify(root)?;
         swift_test(root)?;
     }
     if plan.real {
@@ -120,11 +123,13 @@ fn steps(root: &Path, plan: &Plan) -> Result<(), Failure> {
     }
     if let Some(base) = &plan.eval {
         log(&format!("eval の比較: {}", base.display()));
-        let mut command = Command::new("bash");
+        // 自分自身（cargo xtask eval snapshot）を呼ぶ。シェルを挟まない
+        let exe = std::env::current_exe()
+            .map_err(|e| Failure::new(format!("xtask の実行ファイルの場所を取れません: {e}")))?;
+        let mut command = Command::new(exe);
         command
             .current_dir(root)
-            .arg("eval/scripts/snapshot.sh")
-            .arg("--compare")
+            .args(["eval", "snapshot", "--compare"])
             .arg(base);
         exec(&mut command)?;
     }

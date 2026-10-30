@@ -55,13 +55,6 @@ impl std::fmt::Display for XtaskError {
 
 impl std::error::Error for XtaskError {}
 
-/// まだ移していない下位コマンド。今のシェルのスクリプトを案内する。
-pub(crate) fn not_yet(command: &str, stage: &str, instead: &str) -> XtaskError {
-    XtaskError(format!(
-        "cargo xtask {command} はまだありません（ADR 0043 の段 {stage}）。今は {instead} を使ってください"
-    ))
-}
-
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.command {

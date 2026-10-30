@@ -5,7 +5,7 @@
 #   scripts/check.sh --lm            + ikari-lm / ikari-engine-ffi / ikari-stack を feature つきで clippy と test（cmake が要る）
 #   scripts/check.sh --real          + 実データの #[ignore] テスト（辞書とモデルを使う。--lm を含む）
 #   scripts/check.sh --perf          + 性能の #[ignore] テスト（release）
-#   scripts/check.sh --eval <基準>   + eval/scripts/snapshot.sh --compare <基準>（振る舞いが変わっていないことの確認）
+#   scripts/check.sh --eval <基準>   + eval/scripts/snapshot.sh --compare <基準>（cargo xtask eval snapshot）（振る舞いが変わっていないことの確認）
 #   scripts/check.sh --docs-only     文書とスクリプトの検査だけ（数秒）
 #   scripts/check.sh --no-swift      swift test を飛ばす（macOS 以外）
 #
