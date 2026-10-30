@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use ikari_proto::v1;
 use ikari_proto::v1::envelope::Body;
+use ikari_shell_core::controller::BackgroundMode;
 use ikari_shell_core::scenario::{self, EngineScript, ScenarioSurrounding, ScriptPage};
 use ikari_shell_core::{
     CandidateKind, Clock, EngineError, EngineErrorCode, EngineTransport, SelectedText,
@@ -82,6 +83,8 @@ fn run(setup: &scenario::ResolvedSetup, scenario: &scenario::Scenario) -> Result
         Arc::new(FixedClock),
     )
     .map_err(|error| format!("Shell::new: {error}"))?;
+    // エンジンへの非同期の問い合わせ（絵文字の表、Hello、郵便番号）を、その場で流す（結果の順を決める）
+    shell.set_background_mode(BackgroundMode::Inline);
     let mut text = ScenarioText {
         surrounding: setup.surrounding.clone(),
         selection: None,
