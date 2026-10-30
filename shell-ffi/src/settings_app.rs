@@ -14,7 +14,7 @@ use ikari_shell_core::{KeymapPreset, SettingsChanges};
 use prost::Message;
 
 use crate::convert::{
-    method_from_pb, method_to_pb, modifiers_from_pb, preset_from_pb, preset_to_pb,
+    key_from_pb, method_from_pb, method_to_pb, modifiers_from_pb, preset_from_pb, preset_to_pb,
 };
 use crate::panel::run;
 use crate::shell::IKARI_SHELL_ERR_DECODE;
@@ -56,7 +56,13 @@ pub fn handle(body: app::app_request::Body) -> Reply {
             let intent = intent_from_pb(request.intent.and_then(|i| i.kind))?;
             Out::Planned(planned_to_pb(values.plan(&intent, &presets)))
         }
-        In::Chord(request) => Out::Chord(chord_info(request.form.ok_or(IKARI_SHELL_ERR_DECODE)?)),
+        In::Chord(request) => Out::Chord(match request.form.ok_or(IKARI_SHELL_ERR_DECODE)? {
+            app::chord_request::Form::Record(key) => {
+                let input = key_from_pb(key).map_err(|_| IKARI_SHELL_ERR_DECODE)?;
+                record_chord(&input)
+            }
+            form => chord_info(form),
+        }),
         In::DictionaryEntry(request) => {
             let draft = request.draft.unwrap_or_default();
             let draft = DictionaryDraft {
@@ -281,6 +287,8 @@ fn planned_to_pb(plan: Result<Option<SettingsChanges>, PlanError>) -> app::Plann
 fn chord_info(form: app::chord_request::Form) -> app::ChordInfo {
     use app::chord_request::Form;
     let text = match form {
+        // record は handle が先に受ける（`record_chord`）。ここへは来ないが、来ても落とさない
+        Form::Record(_) => return app::ChordInfo::default(),
         Form::Text(text) => text,
         Form::Parts(parts) => {
             // 押したキーは、表記に直して読み戻せるときだけ valid。表記と表示は読み戻せなくても返す
@@ -291,6 +299,7 @@ fn chord_info(form: app::chord_request::Form) -> app::ChordInfo {
                 text: chord.to_text(),
                 display: chord.display(),
                 function_key: chord.is_function_key(),
+                ..Default::default()
             };
         }
     };
@@ -300,13 +309,34 @@ fn chord_info(form: app::chord_request::Form) -> app::ChordInfo {
             text: chord.to_text(),
             display: chord.display(),
             function_key: chord.is_function_key(),
+            ..Default::default()
         },
         None => app::ChordInfo {
             valid: false,
             text: String::new(),
             display: text,
             function_key: false,
+            ..Default::default()
         },
+    }
+}
+
+/// 押されたキーを割り当てとして受け入れるか（shell-core の `KeyChord::record`）
+fn record_chord(input: &ikari_shell_core::KeyInput) -> app::ChordInfo {
+    use app::ChordOutcome;
+    use ikari_shell_core::keymap::{ChordRecording, ChordRefusal};
+    let (outcome, chord) = match KeyChord::record(input) {
+        ChordRecording::Chord(chord) => (ChordOutcome::Accepted, Some(chord)),
+        ChordRecording::Cancel => (ChordOutcome::Cancel, None),
+        ChordRecording::Refused(ChordRefusal::NeedsModifier) => (ChordOutcome::NeedsModifier, None),
+        ChordRecording::Refused(ChordRefusal::Unsupported) => (ChordOutcome::UnsupportedKey, None),
+    };
+    app::ChordInfo {
+        valid: chord.is_some(),
+        text: chord.as_ref().map(KeyChord::to_text).unwrap_or_default(),
+        display: chord.as_ref().map(KeyChord::display).unwrap_or_default(),
+        function_key: chord.as_ref().is_some_and(KeyChord::is_function_key),
+        outcome: outcome as i32,
     }
 }
 
@@ -457,6 +487,56 @@ mod tests {
         assert_eq!(recorded.text, "ctrl+shift+j");
         assert_eq!(recorded.display, "⌃⇧J");
         assert!(info(Form::Text("f6".into())).function_key);
+        assert_eq!(parsed.outcome, app::ChordOutcome::Unspecified as i32);
+    }
+
+    #[test]
+    fn pressed_keys_are_judged_by_shell_core() {
+        use app::ChordOutcome as O;
+        let judge = |kind: pb::KeyKind, text: &str, function: u32, modifiers: pb::Modifiers| {
+            let form = app::chord_request::Form::Record(pb::KeyInput {
+                kind: kind as i32,
+                text: text.into(),
+                function,
+                modifiers: Some(modifiers),
+                ..Default::default()
+            });
+            let Out::Chord(info) = call(In::Chord(app::ChordRequest { form: Some(form) })) else {
+                panic!("expected chord");
+            };
+            info
+        };
+        let ctrl = pb::Modifiers {
+            control: true,
+            ..Default::default()
+        };
+        let none = pb::Modifiers::default();
+        let accepted = judge(pb::KeyKind::Character, "j", 0, ctrl);
+        assert_eq!(accepted.outcome, O::Accepted as i32);
+        assert!(accepted.valid);
+        assert_eq!(
+            (accepted.text.as_str(), accepted.display.as_str()),
+            ("ctrl+j", "⌃J")
+        );
+        let f6 = judge(pb::KeyKind::Function, "", 6, none);
+        assert_eq!(f6.outcome, O::Accepted as i32);
+        assert!(f6.function_key);
+        assert_eq!(
+            judge(pb::KeyKind::Escape, "", 0, none).outcome,
+            O::Cancel as i32
+        );
+        let plain = judge(pb::KeyKind::Character, "j", 0, none);
+        assert_eq!(plain.outcome, O::NeedsModifier as i32);
+        assert!(!plain.valid && plain.text.is_empty());
+        assert_eq!(
+            judge(pb::KeyKind::Space, "", 0, ctrl).outcome,
+            O::UnsupportedKey as i32
+        );
+        // 範囲を超える番号は decode できない欄ではなく、使えないキー
+        assert_eq!(
+            judge(pb::KeyKind::Function, "", 21, none).outcome,
+            O::UnsupportedKey as i32
+        );
     }
 
     #[test]

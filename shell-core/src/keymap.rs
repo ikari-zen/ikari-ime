@@ -4,7 +4,9 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use crate::types::Modifiers;
+use unicode_segmentation::UnicodeSegmentation;
+
+use crate::types::{KeyInput, KeyKind, Modifiers};
 
 /// `settings.tsv` の `keymap.<操作>` のキーの頭。
 const SETTINGS_KEY_PREFIX: &str = "keymap.";
@@ -129,7 +131,74 @@ const NAMED_KEYS: [&str; 8] = [
 const FUNCTION_KEY_RANGE: std::ops::RangeInclusive<u32> = 1..=20;
 const SEPARATOR: char = '+';
 
+/// 押されたキーを、割り当てとして引けない理由。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChordRefusal {
+    /// 修飾キーのない文字キー（打鍵そのものを奪ってしまう）
+    NeedsModifier,
+    /// 状態機械が割り当てとして引かないキー（Space、Enter、Esc、Backspace、複数文字など）
+    Unsupported,
+}
+
+/// 設定アプリでキーを押して記録した結果。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChordRecording {
+    Chord(KeyChord),
+    /// 修飾キーなしの Esc。記録をやめる
+    Cancel,
+    Refused(ChordRefusal),
+}
+
 impl KeyChord {
+    /// 状態機械が割り当てとして引くキー。F キーと、←/→/↑/↓（修飾キーの有無を問わない）と、
+    /// Ctrl / Option / Command を伴う 1 文字だけ。`Machine::bound_action` と設定アプリの記録が同じ規則を使う。
+    pub fn for_lookup(input: &KeyInput) -> Result<Self, ChordRefusal> {
+        let named = |name: &str| Self::new(name, input.modifiers);
+        match &input.key {
+            KeyKind::Function { number } => Ok(named(&format!("f{number}"))),
+            KeyKind::Character { text } => {
+                if text.graphemes(true).count() != 1 {
+                    return Err(ChordRefusal::Unsupported);
+                }
+                let m = input.modifiers;
+                if !(m.control || m.option || m.command) {
+                    return Err(ChordRefusal::NeedsModifier);
+                }
+                Ok(named(&text.to_lowercase()))
+            }
+            KeyKind::Left => Ok(named("left")),
+            KeyKind::Right => Ok(named("right")),
+            KeyKind::Up => Ok(named("up")),
+            KeyKind::Down => Ok(named("down")),
+            _ => Err(ChordRefusal::Unsupported),
+        }
+    }
+
+    /// 設定アプリで押されたキーを割り当てとして受け入れるか。JIS の位置にあるキーは、配列が出す文字（`layout_text`）で見る。
+    /// 表記に直して読み戻せないものは断る。
+    pub fn record(input: &KeyInput) -> ChordRecording {
+        if input.key == KeyKind::Escape && input.modifiers.is_empty() {
+            return ChordRecording::Cancel;
+        }
+        let looked_up = match &input.key {
+            KeyKind::Jis { .. } => {
+                let mut as_character = input.clone();
+                as_character.key = KeyKind::Character {
+                    text: input.layout_text.clone().unwrap_or_default(),
+                };
+                Self::for_lookup(&as_character)
+            }
+            _ => Self::for_lookup(input),
+        };
+        match looked_up {
+            Ok(chord) if Self::parse(&chord.to_text()).as_ref() == Some(&chord) => {
+                ChordRecording::Chord(chord)
+            }
+            Ok(_) => ChordRecording::Refused(ChordRefusal::Unsupported),
+            Err(refusal) => ChordRecording::Refused(refusal),
+        }
+    }
+
     pub fn new(key: impl Into<String>, modifiers: Modifiers) -> Self {
         Self {
             key: key.into(),
@@ -392,6 +461,133 @@ mod tests {
 
     fn chord(text: &str) -> KeyChord {
         KeyChord::parse(text).unwrap()
+    }
+
+    fn key(kind: KeyKind, modifiers: Modifiers) -> KeyInput {
+        KeyInput {
+            modifiers,
+            ..KeyInput::new(kind)
+        }
+    }
+
+    fn character(text: &str, modifiers: Modifiers) -> KeyInput {
+        key(KeyKind::Character { text: text.into() }, modifiers)
+    }
+
+    const CTRL: Modifiers = Modifiers {
+        control: true,
+        ..Modifiers::NONE
+    };
+    const SHIFT: Modifiers = Modifiers {
+        shift: true,
+        ..Modifiers::NONE
+    };
+    const CTRL_SHIFT: Modifiers = Modifiers {
+        control: true,
+        shift: true,
+        ..Modifiers::NONE
+    };
+
+    #[test]
+    fn records_a_character_with_a_command_modifier() {
+        assert_eq!(
+            KeyChord::record(&character("j", CTRL)),
+            ChordRecording::Chord(chord("ctrl+j"))
+        );
+        // Shift が付いたときの大文字は小文字にそろえる
+        assert_eq!(
+            KeyChord::record(&character("J", CTRL_SHIFT)),
+            ChordRecording::Chord(chord("ctrl+shift+j"))
+        );
+        assert_eq!(
+            KeyChord::record(&character(";", CTRL)),
+            ChordRecording::Chord(chord("ctrl+;"))
+        );
+    }
+
+    #[test]
+    fn records_jis_keys_by_the_layout_text() {
+        let mut input = key(KeyKind::Jis { code: 38 }, CTRL);
+        input.layout_text = Some("j".into());
+        assert_eq!(
+            KeyChord::record(&input),
+            ChordRecording::Chord(chord("ctrl+j"))
+        );
+        input.layout_text = None;
+        assert_eq!(
+            KeyChord::record(&input),
+            ChordRecording::Refused(ChordRefusal::Unsupported)
+        );
+    }
+
+    #[test]
+    fn records_function_and_arrow_keys_with_or_without_modifiers() {
+        assert_eq!(
+            KeyChord::record(&key(KeyKind::Function { number: 6 }, Modifiers::NONE)),
+            ChordRecording::Chord(chord("f6"))
+        );
+        assert_eq!(
+            KeyChord::record(&key(KeyKind::Function { number: 10 }, SHIFT)),
+            ChordRecording::Chord(chord("shift+f10"))
+        );
+        assert_eq!(
+            KeyChord::record(&key(KeyKind::Left, SHIFT)),
+            ChordRecording::Chord(chord("shift+left"))
+        );
+        assert_eq!(
+            KeyChord::record(&key(KeyKind::Down, Modifiers::NONE)),
+            ChordRecording::Chord(chord("down"))
+        );
+        // 読み戻せない F キーは断る
+        assert_eq!(
+            KeyChord::record(&key(KeyKind::Function { number: 21 }, Modifiers::NONE)),
+            ChordRecording::Refused(ChordRefusal::Unsupported)
+        );
+    }
+
+    #[test]
+    fn plain_or_shift_only_characters_need_a_modifier() {
+        assert_eq!(
+            KeyChord::record(&character("j", Modifiers::NONE)),
+            ChordRecording::Refused(ChordRefusal::NeedsModifier)
+        );
+        assert_eq!(
+            KeyChord::record(&character("J", SHIFT)),
+            ChordRecording::Refused(ChordRefusal::NeedsModifier)
+        );
+    }
+
+    #[test]
+    fn keys_the_machine_does_not_look_up_are_refused() {
+        for kind in [
+            KeyKind::Space,
+            KeyKind::Enter,
+            KeyKind::Backspace,
+            KeyKind::Other,
+        ] {
+            assert_eq!(
+                KeyChord::record(&key(kind.clone(), CTRL)),
+                ChordRecording::Refused(ChordRefusal::Unsupported),
+                "{kind:?}"
+            );
+        }
+        // 複数文字は、修飾キーがなくても「使えないキー」
+        assert_eq!(
+            KeyChord::record(&character("ab", Modifiers::NONE)),
+            ChordRecording::Refused(ChordRefusal::Unsupported)
+        );
+        assert_eq!(
+            KeyChord::record(&key(KeyKind::Escape, CTRL)),
+            ChordRecording::Refused(ChordRefusal::Unsupported)
+        );
+    }
+
+    #[test]
+    fn plain_escape_cancels() {
+        assert_eq!(
+            KeyChord::record(&key(KeyKind::Escape, Modifiers::NONE)),
+            ChordRecording::Cancel
+        );
     }
 
     fn mods(control: bool, shift: bool, option: bool, command: bool) -> Modifiers {
