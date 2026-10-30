@@ -2,7 +2,7 @@ import Testing
 
 @testable import IkariShellCore
 
-/// 契約コミットで固定する型の性質（`InputMenuModel.build` と `SettingsFile.update` の中身はレーン S3 のテストが持つ）。
+/// 契約コミットで固定する型の性質（`InputMenuModel.build` の中身はレーン S3 のテストが持つ）。
 @Suite struct InputMenuContractTests {
     @Test func settingsTabRawValuesAreTheNamesCarriedByTheBridge() {
         #expect(SettingsTab.allCases.map(\.rawValue) == ["input", "conversion", "dictionary", "learning", "about"])

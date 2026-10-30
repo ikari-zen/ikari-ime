@@ -69,9 +69,5 @@ private let table = ShortcodeTable(entries: [ShortcodeEntry(name: "eyes", emoji:
         #expect(parsed.warnings.isEmpty)
         #expect(parsed.settings.emojiSmallLetters)
         #expect(Settings.parse(tsv: "emoji.small_letters\tyes\n").warnings.count == 1)
-        #expect(Settings.isAcceptable(key: "emoji.small_letters", value: "off"))
-        var settings = Settings.default
-        settings.emojiSmallLetters = true
-        #expect(Dictionary(uniqueKeysWithValues: settings.effectiveEntries.map { ($0.key, $0.value) })["emoji.small_letters"] == "on")
     }
 }

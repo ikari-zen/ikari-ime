@@ -1,3 +1,5 @@
+// 設定の処理は shell-core（ikari_settings_*）を通すので、XCFramework のあるビルドだけで流す（ADR 0041 §2.3）
+#if IKARI_HAS_SHELL_FFI
 // 「郵便番号」の欄（ADR 0032）のモデル
 import Foundation
 import IkariShellCore
@@ -32,3 +34,5 @@ import Testing
         #expect(harness.shell.state.snapshot.settings["postal.te_prefix"] == "off")
     }
 }
+
+#endif

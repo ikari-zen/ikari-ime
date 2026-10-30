@@ -837,25 +837,6 @@ private func marked(_ text: String) -> KeyAction {
         #expect(parsed.warnings.allSatisfy { !$0.contains("maybe") && !$0.contains("com.a b") })
     }
 
-    @Test func knownAndAcceptableKeys() {
-        #expect(Settings.isKnownKey("emoji.shortcode"))
-        #expect(Settings.isKnownKey("emoji.shortcode_exclude"))
-        #expect(Settings.isAcceptable(key: "emoji.shortcode", value: "on"))
-        #expect(!Settings.isAcceptable(key: "emoji.shortcode", value: "yes"))
-        #expect(Settings.isAcceptable(key: "emoji.shortcode_exclude", value: "com.a.b,com.c.d"))
-        #expect(!Settings.isAcceptable(key: "emoji.shortcode_exclude", value: "com.a b"))
-    }
-
-    @Test func roundTripsThroughEffectiveEntries() {
-        var settings = Settings.default
-        settings.emojiShortcode = true
-        settings.emojiShortcodeExclude = ["com.example.A"]
-        let tsv = settings.effectiveEntries.map { "\($0.key)\t\($0.value)" }.joined(separator: "\n")
-        let parsed = Settings.parse(tsv: tsv)
-        #expect(parsed.settings == settings)
-        #expect(parsed.warnings.isEmpty)
-    }
-
     @Test func reconfigureSwitchesTheModeWithTheInputMethod() throws {
         let h = try romajiHarness()
         let keymap = try Keymap(presetTSV: Harness.presetTSV(.macos), settings: Settings(inputMethod: .kana, emojiShortcode: true))

@@ -1,4 +1,6 @@
 // settings.tsv（ADR 0004 §6.3、docs/phase2-contract.md §3）。契約。
+// 殻と設定アプリの設定の処理は shell-core（`settings`。ADR 0041 §2.3）に移った。ここに残るのは、M5 まで残る
+// Swift の状態機械（`InputStateMachine`、`Keymap`）とその測り手・テストが使う型と読み込みだけ（M5 で消す）。
 import Foundation
 
 public enum InputMethodKind: String, Sendable {
@@ -308,17 +310,9 @@ public struct Settings: Sendable, Equatable {
         return (settings, warnings)
     }
 
-    // MARK: 文脈の共有（ADR 0015 D6）
-
-    /// そのアプリで、ほかのアプリと文脈を貸し借りしてよいか。Bundle ID が取れない（空）ときは貸し借りしない
-    /// （どのアプリか分からないので、除外かどうかを確かめられない）
-    public func sharesContext(bundleID: String) -> Bool {
-        !bundleID.isEmpty && !contextSharedExclude.contains(bundleID)
-    }
-
     /// Bundle ID の一覧（`,` 区切り）。空の値は空の一覧。空白は削り、空の要素は捨てて、重複は最初だけ残す。
     /// 使えない文字（英数字、`.`、`-`、`_` 以外）があれば nil
-    public static func parseBundleIDList(_ value: String) -> [String]? {
+    private static func parseBundleIDList(_ value: String) -> [String]? {
         var result: [String] = []
         for part in value.split(separator: listSeparator, omittingEmptySubsequences: true) {
             let id = part.trimmingCharacters(in: .whitespaces)
@@ -335,79 +329,11 @@ public struct Settings: Sendable, Equatable {
         return set
     }()
 
-    // MARK: 設定アプリ・メニューとの受け渡し
-
     private static func parseSwitch(_ value: String) -> Bool? {
         switch value {
         case engineLMOn: true
         case engineLMOff: false
         default: nil
         }
-    }
-
-    private static func switchValue(_ on: Bool) -> String { on ? engineLMOn : engineLMOff }
-
-    /// `engine.*` と、エンジンが起動時に読む `postal.japanese`、`postal.te_prefix`、`unicode.notation`、`date.weekday_dates` のどれかが違う。違えば、殻はエンジンへ `Shutdown{SETTINGS_CHANGED}` を送って起こし直す（ADR 0005 §7.3）
-    public func engineSettingsDiffer(from other: Settings) -> Bool {
-        engineLM != other.engineLM || engineIdleUnloadSecs != other.engineIdleUnloadSecs
-            || engineLMDeadlineMs != other.engineLMDeadlineMs || engineConvertWaitMs != other.engineConvertWaitMs
-            || postalJapanese != other.postalJapanese || postalTePrefix != other.postalTePrefix
-            || unicodeNotation != other.unicodeNotation || dateWeekdayDates != other.dateWeekdayDates
-    }
-
-    /// 設定アプリに返す「今効いている値」（`SettingsSnapshot`）。キーは `settings.tsv` のキー、値は書き方そのまま。
-    /// `keymap.<操作>` は上書きがあるものだけ（なければプリセットのまま）。順は固定。
-    public var effectiveEntries: [(key: String, value: String)] {
-        var entries: [(key: String, value: String)] = [
-            ("input.method", inputMethod.rawValue),
-            ("keymap.preset", keymapPreset.rawValue),
-        ]
-        for action in KeymapAction.allCases {
-            if let override = keymapOverrides[action] {
-                entries.append((Self.keymapKeyPrefix + action.rawValue, override))
-            }
-        }
-        entries += [
-            ("paging.wrap", pagingWrap ? "true" : "false"),
-            ("paging.size", String(pageSize)),
-            (Self.engineLMKey, engineLM ? Self.engineLMOn : Self.engineLMOff),
-            (Self.engineIdleUnloadKey, String(engineIdleUnloadSecs)),
-            (Self.engineLMDeadlineKey, String(engineLMDeadlineMs)),
-            (Self.engineConvertWaitKey, String(engineConvertWaitMs)),
-            (Self.contextSharedExcludeKey, contextSharedExclude.joined(separator: String(Self.listSeparator))),
-            (Self.emojiShortcodeKey, emojiShortcode ? Self.engineLMOn : Self.engineLMOff),
-            (Self.emojiShortcodeExcludeKey, emojiShortcodeExclude.joined(separator: String(Self.listSeparator))),
-            (Self.emojiSmallLettersKey, Self.switchValue(emojiSmallLetters)),
-            (Self.postalJapaneseKey, Self.switchValue(postalJapanese)),
-            (Self.postalEnglishKey, Self.switchValue(postalEnglish)),
-            (Self.postalTePrefixKey, Self.switchValue(postalTePrefix)),
-            (Self.unicodeNotationKey, Self.switchValue(unicodeNotation)),
-            (Self.dateWeekdayDatesKey, Self.switchValue(dateWeekdayDates)),
-            (Self.candidateHideWhenConfidentKey, Self.switchValue(candidateHideWhenConfident)),
-        ]
-        return entries
-    }
-
-    /// 殻の設定アプリ・メニューが書き換えてよい（既知の）キーか。`keymap.<操作>` は操作の名前が既知のものだけ
-    public static func isKnownKey(_ key: String) -> Bool {
-        switch key {
-        case "input.method", "keymap.preset", "paging.wrap", "paging.size", engineLMKey, engineIdleUnloadKey,
-            engineLMDeadlineKey, engineConvertWaitKey,
-            contextSharedExcludeKey, emojiShortcodeKey, emojiShortcodeExcludeKey, emojiSmallLettersKey,
-            postalJapaneseKey, postalEnglishKey, postalTePrefixKey,
-            unicodeNotationKey, dateWeekdayDatesKey, candidateHideWhenConfidentKey:
-            return true
-        default:
-            return key.hasPrefix(keymapKeyPrefix)
-                && KeymapAction(rawValue: String(key.dropFirst(keymapKeyPrefix.count))) != nil
-        }
-    }
-
-    /// 書いてよい（既知の）キーと値か。値の検査は `parse` と同じ規則。
-    /// 行の区切りや制御文字を含むものは偽（ファイルに別の行を混ぜられないように）
-    public static func isAcceptable(key: String, value: String) -> Bool {
-        let forbidden = CharacterSet.controlCharacters.union(.newlines)
-        guard isKnownKey(key), value.rangeOfCharacter(from: forbidden) == nil else { return false }
-        return parse(tsv: "\(key)\t\(value)").warnings.isEmpty
     }
 }

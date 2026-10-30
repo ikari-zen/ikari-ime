@@ -1,3 +1,5 @@
+// 設定の処理は shell-core（ikari_settings_*）を通すので、XCFramework のあるビルドだけで流す（ADR 0041 §2.3）
+#if IKARI_HAS_SHELL_FFI
 import IkariProto
 import IkariShellCore
 import Testing
@@ -147,3 +149,5 @@ import Testing
         #expect(Messages.describe(counts) == "辞書 3 語、学習 120 行、分野 2、取り込み元 1")
     }
 }
+
+#endif

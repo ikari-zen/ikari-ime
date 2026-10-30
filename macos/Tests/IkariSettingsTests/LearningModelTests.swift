@@ -1,3 +1,5 @@
+// 設定の処理は shell-core（ikari_settings_*）を通すので、XCFramework のあるビルドだけで流す（ADR 0041 §2.3）
+#if IKARI_HAS_SHELL_FFI
 import Foundation
 import IkariProto
 import Testing
@@ -307,3 +309,5 @@ private func sampleState() -> FakeState {
         #expect(LearningTexts.exportFileName(date: date, calendar: calendar) == "ikari-export-20270115.tsv")
     }
 }
+
+#endif

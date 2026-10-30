@@ -1,3 +1,5 @@
+// 設定の処理は shell-core（ikari_settings_*）を通すので、XCFramework のあるビルドだけで流す（ADR 0041 §2.3）
+#if IKARI_HAS_SHELL_FFI
 // 「文脈を共有しないアプリ」の欄（ADR 0015 D6）のモデル。
 import Foundation
 import IkariShellCore
@@ -115,3 +117,5 @@ import Testing
         #expect(model.values.contextSharedExclude == Settings.defaultContextSharedExclude)
     }
 }
+
+#endif

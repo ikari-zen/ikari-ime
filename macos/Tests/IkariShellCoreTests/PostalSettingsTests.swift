@@ -25,31 +25,4 @@ import Testing
         #expect(parsed.settings.postalJapanese)
         #expect(!parsed.settings.postalTePrefix)
     }
-
-    @Test func keysAreWritableAndShownInTheSnapshot() {
-        for key in ["postal.japanese", "postal.english", "postal.te_prefix"] {
-            #expect(Settings.isAcceptable(key: key, value: "on"))
-            #expect(!Settings.isAcceptable(key: key, value: "yes"))
-        }
-        var s = Settings.default
-        s.postalTePrefix = true
-        let entries = Dictionary(uniqueKeysWithValues: s.effectiveEntries.map { ($0.key, $0.value) })
-        #expect(entries["postal.japanese"] == "on")
-        #expect(entries["postal.english"] == "off")
-        #expect(entries["postal.te_prefix"] == "on")
-    }
-
-    @Test func engineRestartsForTheKeysTheEngineReads() {
-        let base = Settings.default
-        var te = base
-        te.postalTePrefix = true
-        #expect(base.engineSettingsDiffer(from: te))
-        var ja = base
-        ja.postalJapanese = false
-        #expect(base.engineSettingsDiffer(from: ja))
-        // 英語のモードは殻が使うので、エンジンは起こし直さない
-        var en = base
-        en.postalEnglish = true
-        #expect(!base.engineSettingsDiffer(from: en))
-    }
 }

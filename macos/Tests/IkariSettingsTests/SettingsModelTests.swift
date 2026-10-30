@@ -1,3 +1,5 @@
+// 設定の処理は shell-core（ikari_settings_*）を通すので、XCFramework のあるビルドだけで流す（ADR 0041 §2.3）
+#if IKARI_HAS_SHELL_FFI
 import Foundation
 import IkariProto
 import IkariShellCore
@@ -289,3 +291,5 @@ func makeSettingsModel(_ harness: Harness) async -> SettingsModel {
             presetText(.reconvert, .atok) == KeyChordText.display(for: KeyChord(key: "y", modifiers: [.control, .shift])))
     }
 }
+
+#endif

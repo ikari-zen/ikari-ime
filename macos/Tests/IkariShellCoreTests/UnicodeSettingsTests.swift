@@ -22,20 +22,4 @@ import Testing
         #expect(parsed.warnings.count == 1)
         #expect(!parsed.settings.unicodeNotation)
     }
-
-    @Test func keyIsWritableAndShownInTheSnapshot() {
-        #expect(Settings.isAcceptable(key: "unicode.notation", value: "on"))
-        #expect(!Settings.isAcceptable(key: "unicode.notation", value: "yes"))
-        var s = Settings.default
-        s.unicodeNotation = true
-        let entries = Dictionary(uniqueKeysWithValues: s.effectiveEntries.map { ($0.key, $0.value) })
-        #expect(entries["unicode.notation"] == "on")
-    }
-
-    @Test func engineRestartsWhenItChanges() {
-        let base = Settings.default
-        var changed = base
-        changed.unicodeNotation = true
-        #expect(base.engineSettingsDiffer(from: changed))
-    }
 }
