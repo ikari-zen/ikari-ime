@@ -168,7 +168,7 @@ message ChordRequest {
 message ChordInfo {
   // 読める（parts なら、表記に直して読み戻せる）
   bool valid = 1;
-  // 設定ファイルの表記（`ctrl+shift+j`）。valid のときだけ
+  // 設定ファイルの表記（`ctrl+shift+j`）。text が読めないときは空（parts は読み戻せなくても入れる）
   string text = 2;
   // 画面の表記（`⌃⇧J`）。読めない text はそのまま
   string display = 3;

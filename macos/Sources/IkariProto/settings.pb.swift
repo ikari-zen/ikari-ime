@@ -920,7 +920,7 @@ public nonisolated struct Ikari_Settings_V1_ChordInfo: Sendable {
   /// 読める（parts なら、表記に直して読み戻せる）
   public var valid: Bool = false
 
-  /// 設定ファイルの表記（`ctrl+shift+j`）。valid のときだけ
+  /// 設定ファイルの表記（`ctrl+shift+j`）。text が読めないときは空（parts は読み戻せなくても入れる）
   public var text: String = String()
 
   /// 画面の表記（`⌃⇧J`）。読めない text はそのまま

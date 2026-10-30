@@ -8,6 +8,7 @@
 import Foundation
 import IkariBridge
 import IkariProto
+import IkariShellABI
 import IkariShellCore
 
 /// 小さな排他つきの箱（テストが状態を覗くため）
@@ -39,18 +40,16 @@ struct FakeState: Sendable {
         "engine.idle_unload_secs": "300",
         "engine.lm_deadline_ms": "300",
         "engine.convert_wait_ms": "30",
-        Settings.contextSharedExcludeKey: Settings.defaultContextSharedExclude.joined(
-            separator: String(Settings.listSeparator)),
-        Settings.emojiShortcodeKey: "off",
-        Settings.emojiSmallLettersKey: "off",
-        Settings.postalJapaneseKey: "on",
-        Settings.postalEnglishKey: "off",
-        Settings.postalTePrefixKey: "off",
-        Settings.unicodeNotationKey: "off",
-        Settings.dateWeekdayDatesKey: "off",
-        Settings.candidateHideWhenConfidentKey: "on",
-        Settings.emojiShortcodeExcludeKey: Settings.defaultEmojiShortcodeExclude.joined(
-            separator: String(Settings.listSeparator)),
+        "context.shared_exclude": SettingsValues.defaults.contextSharedExclude.joined(separator: ","),
+        "emoji.shortcode": "off",
+        "emoji.small_letters": "off",
+        "postal.japanese": "on",
+        "postal.english": "off",
+        "postal.te_prefix": "off",
+        "unicode.notation": "off",
+        "date.weekday_dates": "off",
+        "candidate.hide_when_confident": "on",
+        "emoji.shortcode_exclude": SettingsValues.defaults.emojiShortcodeExclude.joined(separator: ","),
     ]
     static let posOptions: [(name: String, needsConjType: Bool)] = [
         ("名詞", false), ("サ変名詞", false), ("形状詞", false), ("固有名詞", false), ("組織", false),
@@ -216,8 +215,8 @@ final class FakeShell: @unchecked Sendable {
         case "engine.idle_unload_secs", "engine.lm_deadline_ms", "engine.convert_wait_ms":
             return Int(value).map { $0 >= 0 } ?? false
         default:
-            // 殻の `Settings.parse` が付ける警告が 0 のときだけ有効
-            return Settings.parse(tsv: "\(key)\t\(value)").warnings.isEmpty
+            // 殻（shell-core の `settings::validate`）が付ける警告が 0 のときだけ有効
+            return ShellSettings.validate("\(key)\t\(value)")?.issues.isEmpty ?? false
         }
     }
 

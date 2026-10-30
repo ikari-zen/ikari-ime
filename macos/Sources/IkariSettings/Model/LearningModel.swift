@@ -64,28 +64,48 @@ enum DataFileError: Error, Equatable {
 }
 
 enum DataFiles {
-    /// インポートのファイルを読む。上限（64 MiB）を超えるものは読まずに断る
-    static func readImport(at url: URL, maxBytes: Int = AdminLimits.maxImportBytes) throws -> Data {
+    /// インポートのファイルを読む。上限（64 MiB）を超えるもの、空のものは読まずに断る（大きさの判定は shell-core）
+    static func readImport(at url: URL) throws -> Data {
         let size: Int
         do {
             size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
         } catch {
             throw DataFileError.unreadable
         }
-        guard size <= maxBytes else { throw DataFileError.tooLarge }
-        guard size > 0 else { throw DataFileError.empty }
+        try check(size: size)
         guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { throw DataFileError.unreadable }
-        guard data.count <= maxBytes else { throw DataFileError.tooLarge }  // 読む間に大きくなった場合
+        try check(size: data.count)  // 読む間に変わった場合
         return data
+    }
+
+    private static func check(size: Int) throws {
+        var request = Ikari_Settings_V1_ImportSizeRequest()
+        request.size = UInt64(max(size, 0))
+        guard case .importSize(let verdict)? = SettingsCore.call(.importSize(request)) else {
+            throw DataFileError.unreadable
+        }
+        switch verdict {
+        case .ok: return
+        case .tooLarge: throw DataFileError.tooLarge
+        case .empty: throw DataFileError.empty
+        case .unspecified, .UNRECOGNIZED: throw DataFileError.unreadable
+        }
     }
 }
 
 enum LearningTexts {
-    /// 書き出しの既定の名前（`ikari-export-YYYYMMDD.tsv`）
+    /// 書き出しの既定の名前（`ikari-export-YYYYMMDD.tsv`。名前は shell-core が作る）。年月日は利用者の暦と時刻帯で数える
     static func exportFileName(date: Date, calendar: Calendar = .current) -> String {
         let parts = calendar.dateComponents([.year, .month, .day], from: date)
-        return String(format: "ikari-export-%04d%02d%02d.tsv", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+        var request = Ikari_Settings_V1_ExportFileNameRequest()
+        request.year = UInt32(clamping: parts.year ?? 0)
+        request.month = UInt32(clamping: parts.month ?? 0)
+        request.day = UInt32(clamping: parts.day ?? 0)
+        return SettingsCore.text(.exportFileName(request)) ?? fallbackExportFileName
     }
+
+    /// shell-core を使えないときの名前（書き出し先の候補にすぎず、利用者が変えられる）
+    private static let fallbackExportFileName = "ikari-export.tsv"
 
     static func resetConfirmation(_ target: ResetTarget, status: Ikari_Engine_V1_LearningStatusReply?) -> ConfirmRequest {
         let rows: String

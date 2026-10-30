@@ -238,6 +238,30 @@ public enum ShellPanelGeometry {
     }
 }
 
+/// 設定アプリの口（`ikari_settings_*`。状態を持たない。どのスレッドからでも呼べる）。ADR 0041 §2.3
+public enum ShellSettings {
+    /// `ikari_settings_app`。Model の検証・整形・変更の組み立て。失敗（版のずれ、panic）は nil
+    public static func app(_ body: Ikari_Settings_V1_AppRequest.OneOf_Body) -> Ikari_Settings_V1_AppReply.OneOf_Body? {
+        var request = Ikari_Settings_V1_AppRequest()
+        request.body = body
+        guard let bytes = try? request.serializedData() else { return nil }
+        var out = IkariShellBuf(ptr: nil, len: 0)
+        let status = withIkariStr(bytes) { ikari_settings_app($0, &out) }
+        let data = takeRustBuf(out)
+        guard status == Int32(IKARI_SHELL_OK.rawValue) else { return nil }
+        return (try? Ikari_Settings_V1_AppReply(serializedBytes: data))?.body
+    }
+
+    /// `ikari_settings_validate`。`settings.tsv` の文字列を読み、設定の一式と警告を返す
+    public static func validate(_ text: String) -> Ikari_Shell_V1_SettingsValidation? {
+        var out = IkariShellBuf(ptr: nil, len: 0)
+        let status = withIkariStr(text) { ikari_settings_validate($0, &out) }
+        let data = takeRustBuf(out)
+        guard status == Int32(IKARI_SHELL_OK.rawValue) else { return nil }
+        return try? Ikari_Shell_V1_SettingsValidation(serializedBytes: data)
+    }
+}
+
 #else
 
 /// FFI のないビルド。何もしない。
@@ -260,6 +284,12 @@ public final class ShellABI {
     public func dispatch(_ event: Ikari_Shell_V1_ShellEvent) -> (status: ShellABIStatus, actions: [Ikari_Shell_V1_ShellAction]) {
         (.unimplemented, [])
     }
+}
+
+/// FFI のないビルド。設定アプリの Model は値を作れない（呼び手は既定の空の値で画面を出す）。
+public enum ShellSettings {
+    public static func app(_ body: Ikari_Settings_V1_AppRequest.OneOf_Body) -> Ikari_Settings_V1_AppReply.OneOf_Body? { nil }
+    public static func validate(_ text: String) -> Ikari_Shell_V1_SettingsValidation? { nil }
 }
 
 /// FFI のないビルド。配置は決められない（呼び手が代わりの値を使う）。

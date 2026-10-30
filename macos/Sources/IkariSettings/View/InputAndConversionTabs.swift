@@ -130,7 +130,7 @@ private struct SharedExcludeSection: View {
             title: "文脈を共有しないアプリ",
             note: "パスワード管理やターミナルなど。ここに挙げたアプリでは、ほかのアプリの文を文脈に使わず、入力した文もほかのアプリに渡しません。",
             bundleIDs: model.values.contextSharedExclude,
-            defaultIDs: Settings.defaultContextSharedExclude,
+            defaultIDs: SettingsValues.defaults.contextSharedExclude,
             add: model.addSharedExclude(_:),
             addApp: model.addSharedExclude(appAt:),
             remove: model.removeSharedExclude(_:),
@@ -159,7 +159,7 @@ private struct EmojiShortcodeSection: View {
             title: "ショートコードを使わないアプリ",
             note: "ターミナルなど、1 打鍵ずつアプリが意味を持つところでは、ここに挙げたアプリで「:」を今までどおりに入力します。",
             bundleIDs: model.values.emojiShortcodeExclude,
-            defaultIDs: Settings.defaultEmojiShortcodeExclude,
+            defaultIDs: SettingsValues.defaults.emojiShortcodeExclude,
             add: model.addEmojiShortcodeExclude(_:),
             addApp: model.addEmojiShortcodeExclude(appAt:),
             remove: model.removeEmojiShortcodeExclude(_:),
@@ -241,7 +241,7 @@ struct ConversionTab: View {
                     "1 ページの件数",
                     selection: .asyncSetter(get: { model.values.pageSize }, set: model.setPageSize)
                 ) {
-                    ForEach(Array(Settings.pageSizeRange), id: \.self) { Text("\($0) 件").tag($0) }
+                    ForEach(Array(SettingsValues.pageSizeRange), id: \.self) { Text("\($0) 件").tag($0) }
                 }
                 .pickerStyle(.menu)
                 Toggle(
@@ -278,7 +278,7 @@ struct ConversionTab: View {
                 )
                 .disabled(!model.values.lmEnabled)
                 Text(
-                    "どちらも変えるとエンジンを起こし直します（既定は \(SettingsValues.defaultLMDeadlineMs) ミリ秒と \(SettingsValues.defaultConvertWaitMs) ミリ秒）。締め切りは \(SettingsValues.lmDeadlineRange.lowerBound)〜\(SettingsValues.lmDeadlineRange.upperBound)、待つ上限は \(SettingsValues.convertWaitRange.lowerBound)〜\(SettingsValues.convertWaitRange.upperBound)（0 は待たない）。"
+                    "どちらも変えるとエンジンを起こし直します（既定は \(SettingsValues.defaults.lmDeadlineMs) ミリ秒と \(SettingsValues.defaults.convertWaitMs) ミリ秒）。締め切りは \(SettingsValues.lmDeadlineRange.lowerBound)〜\(SettingsValues.lmDeadlineRange.upperBound)、待つ上限は \(SettingsValues.convertWaitRange.lowerBound)〜\(SettingsValues.convertWaitRange.upperBound)（0 は待たない）。"
                 )
                 .font(.caption).foregroundStyle(.secondary)
             }

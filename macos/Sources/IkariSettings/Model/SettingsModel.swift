@@ -1,5 +1,7 @@
 // 「入力」と「変換」のタブのモデル（ADR 0005 §6.2）。設定は殻に書いてもらい（書き手は殻だけ。§7.1）、
 // 返ってきた「反映後の値」を画面に戻す。属性プロファイルはエンジンの管理の要求（ProfileGet / ProfileSet）。
+// 値の読み方、範囲への丸め、変わったかどうか、Bundle ID の検証、キーの衝突、送る変更の組み立ては shell-core（ADR 0041 §2.3。
+// `SettingsCore`）。ここは画面の状態（@Observable）と文言を持つ。
 import Foundation
 import IkariProto
 import IkariShellCore
@@ -46,18 +48,25 @@ final class SettingsModel {
         .modeEnglish: "モード: 英語にする",
         .modeJapanese: "モード: 日本語にする",
     ]
+    static let invalidBundleIDMessage = "Bundle ID には英数字、「.」「-」「_」だけを使えます（例: com.apple.Terminal）"
+    static let coreUnavailableMessage = "設定を処理できませんでした。設定アプリを入れ直してください"
 
     private(set) var values = SettingsValues()
+    /// キー割り当ての行（値が変わるたびに shell-core で作り直す）
+    private(set) var keymapRows: [KeymapRow] = []
     private(set) var isLoaded = false
     private(set) var errorMessage: String?
     private(set) var profile: [ProfileDomainRow] = []
     private(set) var profileMessage: String?
     let presets: KeymapPresetTable
     private let bridge: any SettingsBridge
+    /// 殻が返した設定の行（shell-core に渡す今の値）
+    private var entries: [String: String] = [:]
 
     init(bridge: any SettingsBridge, presets: KeymapPresetTable = .bundled()) {
         self.bridge = bridge
         self.presets = presets
+        show([:])
     }
 
     func dismissError() { errorMessage = nil }
@@ -72,7 +81,7 @@ final class SettingsModel {
     /// 殻の通知（`settings_changed`）でも呼ぶ
     func reloadSettings() async {
         do {
-            values = SettingsValues(snapshot: try await bridge.getSettings())
+            show(try await bridge.getSettings())
             isLoaded = true
         } catch {
             errorMessage = Messages.describe(error)
@@ -90,77 +99,44 @@ final class SettingsModel {
         }
     }
 
+    /// 殻の返した行を画面の値とキー割り当ての行にする
+    private func show(_ snapshot: [String: String]) {
+        entries = snapshot
+        guard let described = SettingsCore.describe(snapshot, presets: presets) else {
+            values = SettingsValues.defaults
+            keymapRows = []
+            return
+        }
+        values = SettingsValues(message: described.values)
+        keymapRows = described.rows.compactMap { row in
+            guard let action = KeymapAction(rawValue: row.action) else { return nil }
+            return KeymapRow(
+                action: action, title: Self.actionTitles[action] ?? action.rawValue,
+                binding: SettingsCore.binding(row.binding),
+                keyText: row.hasKeyText ? row.keyText : Self.noneText,
+                presetText: row.hasPresetText ? row.presetText : nil)
+        }
+    }
+
     // MARK: 設定の変更
 
-    func setInputMethod(_ method: InputMethodKind) async {
-        guard method != values.inputMethod else { return }
-        await apply(set: [(SettingKey.inputMethod, method.rawValue)])
-    }
-
-    func setKeymapPreset(_ preset: KeymapPreset) async {
-        guard preset != values.keymapPreset else { return }
-        await apply(set: [(SettingKey.keymapPreset, preset.rawValue)])
-    }
-
-    func setPagingWrap(_ wrap: Bool) async {
-        guard wrap != values.pagingWrap else { return }
-        await apply(set: [(SettingKey.pagingWrap, wrap ? "true" : "false")])
-    }
-
-    func setPageSize(_ size: Int) async {
-        let clamped = min(max(size, Settings.pageSizeRange.lowerBound), Settings.pageSizeRange.upperBound)
-        guard clamped != values.pageSize else { return }
-        await apply(set: [(SettingKey.pagingSize, String(clamped))])
-    }
-
+    func setInputMethod(_ method: InputMethodKind) async { await apply(.inputMethod(SettingsCore.kind(method))) }
+    func setKeymapPreset(_ preset: KeymapPreset) async { await apply(.keymapPreset(SettingsCore.kind(preset))) }
+    func setPagingWrap(_ wrap: Bool) async { await apply(.pagingWrap(wrap)) }
+    func setPageSize(_ size: Int) async { await apply(.pageSize(Int64(size))) }
     /// 殻が `engine.*` の変更を見て、エンジンを起こし直す（ADR 0005 §7.3）
-    func setLMEnabled(_ enabled: Bool) async {
-        guard enabled != values.lmEnabled else { return }
-        await apply(set: [(SettingKey.engineLM, enabled ? EngineToggle.on : EngineToggle.off)])
-    }
-
-    func setIdleUnloadSecs(_ secs: Int) async {
-        let range = SettingsValues.idleUnloadRange
-        let clamped = min(max(secs, range.lowerBound), range.upperBound)
-        guard clamped != values.idleUnloadSecs else { return }
-        await apply(set: [(SettingKey.engineIdleUnloadSecs, String(clamped))])
-    }
-
-    func setLMDeadlineMs(_ ms: Int) async {
-        let range = SettingsValues.lmDeadlineRange
-        let clamped = min(max(ms, range.lowerBound), range.upperBound)
-        guard clamped != values.lmDeadlineMs else { return }
-        await apply(set: [(SettingKey.engineLMDeadlineMs, String(clamped))])
-    }
-
-    func setConvertWaitMs(_ ms: Int) async {
-        let range = SettingsValues.convertWaitRange
-        let clamped = min(max(ms, range.lowerBound), range.upperBound)
-        guard clamped != values.convertWaitMs else { return }
-        await apply(set: [(SettingKey.engineConvertWaitMs, String(clamped))])
-    }
+    func setLMEnabled(_ enabled: Bool) async { await apply(.lmEnabled(enabled)) }
+    func setIdleUnloadSecs(_ secs: Int) async { await apply(.idleUnloadSecs(Int64(secs))) }
+    func setLMDeadlineMs(_ ms: Int) async { await apply(.lmDeadlineMs(Int64(ms))) }
+    func setConvertWaitMs(_ ms: Int) async { await apply(.convertWaitMs(Int64(ms))) }
 
     /// 文脈を貸し借りしないアプリに Bundle ID を足す。空白は削る。使えない文字があれば足さずに、画面に断りを出す
-    func addSharedExclude(_ rawID: String) async {
-        guard let id = validBundleID(rawID), !values.contextSharedExclude.contains(id) else { return }
-        await setSharedExclude(values.contextSharedExclude + [id])
-    }
+    func addSharedExclude(_ rawID: String) async { await apply(.addSharedExclude(rawID)) }
 
     /// 選んだアプリ（`.app`）の Bundle ID を足す。Bundle ID を読めなければ足さずに、画面に断りを出す
     func addSharedExclude(appAt url: URL) async {
         guard let id = bundleID(ofAppAt: url) else { return }
         await addSharedExclude(id)
-    }
-
-    /// 入力欄の Bundle ID を確かめる。空は無視（nil）。使えない文字があれば画面に断りを出して nil
-    private func validBundleID(_ rawID: String) -> String? {
-        let text = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return nil }
-        guard let parsed = Settings.parseBundleIDList(text), parsed.count == 1, let id = parsed.first else {
-            errorMessage = "Bundle ID には英数字、「.」「-」「_」だけを使えます（例: com.apple.Terminal）"
-            return nil
-        }
-        return id
     }
 
     private func bundleID(ofAppAt url: URL) -> String? {
@@ -171,125 +147,81 @@ final class SettingsModel {
         return id
     }
 
-    // MARK: 郵便番号（ADR 0032）
+    func removeSharedExclude(_ id: String) async { await apply(.removeSharedExclude(id)) }
+    /// 既定の一覧に戻す（設定の行を消す）
+    func resetSharedExclude() async { await apply(.resetSharedExclude(Ikari_Shell_V1_Empty())) }
 
-    func setPostalJapanese(_ enabled: Bool) async {
-        guard enabled != values.postalJapanese else { return }
-        await apply(set: [(SettingKey.postalJapanese, enabled ? EngineToggle.on : EngineToggle.off)])
-    }
+    // MARK: 郵便番号（ADR 0032）など、オン・オフの設定
 
-    func setPostalEnglish(_ enabled: Bool) async {
-        guard enabled != values.postalEnglish else { return }
-        await apply(set: [(SettingKey.postalEnglish, enabled ? EngineToggle.on : EngineToggle.off)])
-    }
-
-    func setCandidateHideWhenConfident(_ enabled: Bool) async {
-        guard enabled != values.candidateHideWhenConfident else { return }
-        await apply(set: [(SettingKey.candidateHideWhenConfident, enabled ? EngineToggle.on : EngineToggle.off)])
-    }
-
-    func setUnicodeNotation(_ enabled: Bool) async {
-        guard enabled != values.unicodeNotation else { return }
-        await apply(set: [(SettingKey.unicodeNotation, enabled ? EngineToggle.on : EngineToggle.off)])
-    }
-
-    func setDateWeekdayDates(_ enabled: Bool) async {
-        guard enabled != values.dateWeekdayDates else { return }
-        await apply(set: [(SettingKey.dateWeekdayDates, enabled ? EngineToggle.on : EngineToggle.off)])
-    }
-
-    func setPostalTePrefix(_ enabled: Bool) async {
-        guard enabled != values.postalTePrefix else { return }
-        await apply(set: [(SettingKey.postalTePrefix, enabled ? EngineToggle.on : EngineToggle.off)])
-    }
+    func setPostalJapanese(_ enabled: Bool) async { await apply(.postalJapanese(enabled)) }
+    func setPostalEnglish(_ enabled: Bool) async { await apply(.postalEnglish(enabled)) }
+    func setCandidateHideWhenConfident(_ enabled: Bool) async { await apply(.candidateHideWhenConfident(enabled)) }
+    func setUnicodeNotation(_ enabled: Bool) async { await apply(.unicodeNotation(enabled)) }
+    func setDateWeekdayDates(_ enabled: Bool) async { await apply(.dateWeekdayDates(enabled)) }
+    func setPostalTePrefix(_ enabled: Bool) async { await apply(.postalTePrefix(enabled)) }
 
     // MARK: 絵文字のショートコード（ADR 0027 §8.1）
 
-    func setEmojiSmallLetters(_ enabled: Bool) async {
-        guard enabled != values.emojiSmallLetters else { return }
-        await apply(set: [(SettingKey.emojiSmallLetters, enabled ? EngineToggle.on : EngineToggle.off)])
-    }
-
-    func setEmojiShortcode(_ enabled: Bool) async {
-        guard enabled != values.emojiShortcode else { return }
-        await apply(set: [(SettingKey.emojiShortcode, enabled ? EngineToggle.on : EngineToggle.off)])
-    }
+    func setEmojiSmallLetters(_ enabled: Bool) async { await apply(.emojiSmallLetters(enabled)) }
+    func setEmojiShortcode(_ enabled: Bool) async { await apply(.emojiShortcode(enabled)) }
 
     /// ショートコードを使わないアプリに Bundle ID を足す
-    func addEmojiShortcodeExclude(_ rawID: String) async {
-        guard let id = validBundleID(rawID), !values.emojiShortcodeExclude.contains(id) else { return }
-        await setEmojiShortcodeExclude(values.emojiShortcodeExclude + [id])
-    }
+    func addEmojiShortcodeExclude(_ rawID: String) async { await apply(.addEmojiShortcodeExclude(rawID)) }
 
     func addEmojiShortcodeExclude(appAt url: URL) async {
         guard let id = bundleID(ofAppAt: url) else { return }
         await addEmojiShortcodeExclude(id)
     }
 
-    func removeEmojiShortcodeExclude(_ id: String) async {
-        guard values.emojiShortcodeExclude.contains(id) else { return }
-        await setEmojiShortcodeExclude(values.emojiShortcodeExclude.filter { $0 != id })
-    }
-
+    func removeEmojiShortcodeExclude(_ id: String) async { await apply(.removeEmojiShortcodeExclude(id)) }
     /// 既定の一覧に戻す（設定の行を消す）
-    func resetEmojiShortcodeExclude() async {
-        guard values.emojiShortcodeExclude != Settings.defaultEmojiShortcodeExclude else { return }
-        await apply(reset: [SettingKey.emojiShortcodeExclude])
-    }
+    func resetEmojiShortcodeExclude() async { await apply(.resetEmojiShortcodeExclude(Ikari_Shell_V1_Empty())) }
 
-    /// 一覧を書く。空の一覧は空の値（除外なし）として書く
-    private func setEmojiShortcodeExclude(_ list: [String]) async {
-        let value = list.joined(separator: String(Settings.listSeparator))
-        await apply(set: [(SettingKey.emojiShortcodeExclude, value)])
-    }
-
-    func removeSharedExclude(_ id: String) async {
-        guard values.contextSharedExclude.contains(id) else { return }
-        await setSharedExclude(values.contextSharedExclude.filter { $0 != id })
-    }
-
-    /// 既定の一覧に戻す（設定の行を消す）
-    func resetSharedExclude() async {
-        guard values.contextSharedExclude != Settings.defaultContextSharedExclude else { return }
-        await apply(reset: [SettingKey.contextSharedExclude])
-    }
-
-    /// 一覧を書く。空の一覧は空の値（除外なし）として書く
-    private func setSharedExclude(_ list: [String]) async {
-        let value = list.joined(separator: String(Settings.listSeparator))
-        await apply(set: [(SettingKey.contextSharedExclude, value)])
-    }
-
-    /// 操作ごとの割り当てを変える。`.preset` は上書きの行を消す（`reset`）
+    /// 操作ごとの割り当てを変える。`.preset` は上書きの行を消す（`reset`）。ほかの操作が使うキーは断る
     func setKeymap(_ action: KeymapAction, to binding: KeymapBinding) async {
-        let key = SettingKey.keymap(action)
-        switch binding {
-        case .preset:
-            guard values.keymapBindings[action] != nil else { return }
-            await apply(reset: [key])
-        case .none:
-            await apply(set: [(key, Settings.noneValue)])
-        case .chord(let text):
-            guard let chord = KeyChord(parsing: text) else { return }
-            if let other = conflictingAction(for: chord, excluding: action) {
-                errorMessage = "\(KeyChordText.display(for: chord)) は「\(Self.actionTitles[other] ?? other.rawValue)」に割り当てられています"
-                return
-            }
-            await apply(set: [(key, KeyChordText.string(for: chord))])
+        var intent = Ikari_Settings_V1_KeymapIntent()
+        intent.action = action.rawValue
+        intent.binding = SettingsCore.message(binding)
+        await apply(.keymap(intent))
+    }
+
+    /// 操作を shell-core で変更にして殻に送る。今の値と同じなら何も送らない
+    private func apply(_ intent: Ikari_Settings_V1_Intent.OneOf_Kind) async {
+        switch SettingsCore.plan(intent, entries: entries, presets: presets) {
+        case .changes(let changes)?:
+            await send(changes)
+        case .unchanged?:
+            return
+        case .error(let error)?:
+            errorMessage = describe(error)
+        case nil:
+            errorMessage = Self.coreUnavailableMessage
         }
     }
 
-    private func apply(set: [(key: String, value: String)] = [], reset: [String] = []) async {
+    private func describe(_ error: Ikari_Settings_V1_PlanError) -> String {
+        switch error.kind {
+        case .invalidBundleID?:
+            return Self.invalidBundleIDMessage
+        case .keyConflict(let conflict)?:
+            let title = KeymapAction(rawValue: conflict.otherAction).flatMap { Self.actionTitles[$0] } ?? conflict.otherAction
+            return "\(conflict.chordDisplay) は「\(title)」に割り当てられています"
+        case .unknownAction?, nil:
+            return Self.coreUnavailableMessage
+        }
+    }
+
+    private func send(_ changes: Ikari_Shell_V1_SettingsChanges) async {
         do {
             let snapshot = try await bridge.updateSettings(
-                set: set.map { entry in
+                set: changes.set.map { entry in
                     var out = SettingEntry()
                     out.key = entry.key
                     out.value = entry.value
                     return out
                 },
-                reset: reset)
-            values = SettingsValues(snapshot: snapshot)
+                reset: changes.reset)
+            show(snapshot)
             errorMessage = nil
         } catch {
             errorMessage = Messages.describe(error)
@@ -302,65 +234,24 @@ final class SettingsModel {
 
     // MARK: キー割り当て
 
-    var keymapRows: [KeymapRow] {
-        KeymapAction.allCases.map { action in
-            let binding = resolvedBinding(for: action)
-            let presetChord = presets.primaryChord(for: action, preset: values.keymapPreset)
-            let presetText = presetChord.map(KeyChordText.display(for:))
-            let keyText: String
-            switch binding {
-            case .preset: keyText = presetText ?? Self.noneText
-            case .none: keyText = Self.noneText
-            case .chord(let text): keyText = KeyChordText.display(forText: text)
-            }
-            return KeymapRow(
-                action: action, title: Self.actionTitles[action] ?? action.rawValue, binding: binding,
-                keyText: keyText, presetText: presetText)
-        }
-    }
-
-    /// 上書きがプリセットの割り当てと同じなら `.preset` とみなす
-    /// （殻が、上書きの行だけでなく「今効いているキー」を返す場合にも合わせられる）
+    /// 今の割り当て。上書きがプリセットの割り当てと同じなら `.preset`（shell-core が行に入れた値）
     func resolvedBinding(for action: KeymapAction) -> KeymapBinding {
-        guard let binding = values.keymapBindings[action] else { return .preset }
-        if case .chord(let text) = binding, let chord = KeyChord(parsing: text),
-            presets.chords(for: action, preset: values.keymapPreset).contains(chord)
-        {
-            return .preset
-        }
-        return binding
-    }
-
-    /// 今効いている、その操作のキー（F キーを含む）
-    func effectiveChords(for action: KeymapAction) -> [KeyChord] {
-        let preset = presets.chords(for: action, preset: values.keymapPreset)
-        switch resolvedBinding(for: action) {
-        case .preset: return preset
-        case .none: return []
-        case .chord(let text):
-            // 上書きは文字キーを置き換え、F キーは残す（`Keymap.init(presetTSV:settings:)`）
-            return [KeyChord(parsing: text)].compactMap { $0 } + preset.filter(KeyChordText.isFunctionKey)
-        }
-    }
-
-    /// そのキーを、ほかの操作がすでに使っていれば、その操作
-    func conflictingAction(for chord: KeyChord, excluding action: KeymapAction) -> KeymapAction? {
-        KeymapAction.allCases.first { other in
-            other != action && effectiveChords(for: other).contains(chord)
-        }
+        keymapRows.first { $0.action == action }?.binding ?? .preset
     }
 
     // MARK: 属性プロファイル
 
-    /// 分野ごとの重み。`ProfileSet` は全体を置き換えるので、全分野を送る（OFF は書かない）
+    /// 分野ごとの重み。`ProfileSet` は全体を置き換えるので、全分野を送る（OFF は書かない。shell-core が組み立てる）
     func setWeight(_ weight: ProfileWeight, forDomain id: String) async {
-        guard let index = profile.firstIndex(where: { $0.id == id }), profile[index].weight != weight else { return }
-        var next = profile
-        next[index].weight = weight
-        var request = Ikari_Engine_V1_ProfileSet()
-        request.domains = next.filter { $0.weight != .off }.map(Self.state(from:))
+        var request = Ikari_Settings_V1_ProfileSetRequest()
+        request.rows = profile.map(Self.state(from:))
+        request.id = id
+        request.weight = Self.kind(from: weight)
+        guard case .profileSet(let planned)? = SettingsCore.call(.profileSet(request)),
+            case .request(let set)? = planned.result
+        else { return }
         do {
-            let body = try await bridge.engine(.setProfile(request))
+            let body = try await bridge.engine(.setProfile(set))
             guard case .profileReply(let reply) = body else { throw BridgeClientError.unexpectedReply }
             profile = reply.domains.map(Self.row(from:))
             profileMessage = nil
@@ -383,6 +274,7 @@ final class SettingsModel {
         return state
     }
 
+    /// proto の列挙と画面の列挙の写し（読めない値は OFF。shell-core の `profile_weight_from_proto` と同じ）
     static func weight(from kind: Ikari_Engine_V1_ProfileWeightKind) -> ProfileWeight {
         switch kind {
         case .profileWeightSometimes: .sometimes

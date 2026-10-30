@@ -280,15 +280,21 @@ fn planned_to_pb(plan: Result<Option<SettingsChanges>, PlanError>) -> app::Plann
 /// 表記を読む、または押したキーを表記に直して読み戻せるか確かめる（今の `KeyChordText`）
 fn chord_info(form: app::chord_request::Form) -> app::ChordInfo {
     use app::chord_request::Form;
-    let (chord, fallback) = match form {
-        Form::Text(text) => (KeyChord::parse(&text), text),
+    let text = match form {
+        Form::Text(text) => text,
         Form::Parts(parts) => {
+            // 押したキーは、表記に直して読み戻せるときだけ valid。表記と表示は読み戻せなくても返す
             let chord = KeyChord::new(parts.key, modifiers_from_pb(parts.modifiers));
             let readable = KeyChord::parse(&chord.to_text()).as_ref() == Some(&chord);
-            (readable.then_some(chord), String::new())
+            return app::ChordInfo {
+                valid: readable,
+                text: chord.to_text(),
+                display: chord.display(),
+                function_key: chord.is_function_key(),
+            };
         }
     };
-    match chord {
+    match KeyChord::parse(&text) {
         Some(chord) => app::ChordInfo {
             valid: true,
             text: chord.to_text(),
@@ -298,7 +304,7 @@ fn chord_info(form: app::chord_request::Form) -> app::ChordInfo {
         None => app::ChordInfo {
             valid: false,
             text: String::new(),
-            display: fallback,
+            display: text,
             function_key: false,
         },
     }
