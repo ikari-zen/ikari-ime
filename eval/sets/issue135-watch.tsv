@@ -1,0 +1,6 @@
+# #135 の掃引で悪化を見張るケース: かんさつしよう が 観察使用 になる（LM ありで 観察しよう と逆転する。LM なしでは 1 位 観察しよう）。一般の語だけ。
+# split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev。調整は dev だけで行う。
+id	kind	tags	profile	context	reading	expected	note	split	source
+i135w-kansatsu-01	単独	issue135,watch,サ変			かんさつしよう	観察しよう	実機の LM ありで 1 位 観察使用、2 位 観察しよう（締め切り 3000ms でも再現）	dev	issue135
+i135w-kansatsu-02	文脈	issue135,watch,サ変		#3はもう少し	かんさつしよう	観察しよう	実機の LM ありで 1 位 観察使用、2 位 観察しよう（締め切り 3000ms でも再現）	dev	issue135
+i135w-kansatsu-03	文脈	issue135,watch,サ変		もう少し	かんさつしよう	観察しよう	実機の LM ありで 1 位 観察使用、2 位 観察しよう（締め切り 3000ms でも再現）	dev	issue135
