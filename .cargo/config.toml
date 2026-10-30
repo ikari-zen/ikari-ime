@@ -1,0 +1,3 @@
+# `cargo xtask <下位コマンド>`（ADR 0043）。ビルドと検証の道具を、シェルに依存しない Rust にまとめる。
+[alias]
+xtask = "run --quiet --package xtask --"
