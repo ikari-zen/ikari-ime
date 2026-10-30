@@ -1,6 +1,6 @@
 # ADR 0041: 殻の OS に依存しない処理を Rust（`shell-core`）に移し、macOS と Windows で共有する
 
-- 状態: 提案
+- 状態: 承認（2026-10-30。§11.1 のユーザー決定。性能の許す幅だけ、基準値のあとに決める）
 - 日付: 2026-10-30（同日、ユーザーの決定と棚卸しに合わせて改訂）
 - 対象: 方針、範囲、境界の形、段階、レーンと契約、性能の基準（コードは変えない）。採ったときに触るのは、新しい crate `shell-core`、`shell-ffi`（口を足し、古い口を消す）、新しい `proto/ikari/shell/v1/shell.proto`、`macos/Sources/IkariShellCore/**`（消す）、`macos/Sources/IkariXPC/**`・`IkariBridge/**`・`IkariEngineService/EngineGate.swift`（トランスポートと OS の検査だけを残す）、`macos/Sources/IkariIME/**`（薄い入口と UI だけを残す）、`macos/Sources/IkariSettings/Model/**`（検証と整形を Rust に頼む）、`macos/Tests/**`（シナリオを共通の形式に移す）。スクリプトの `cargo xtask` は [ADR 0043](0043-xtask.md)
 - 前提: main = a43ccb1。ADR 0042（技術選定の方針。PR #137。2026-10-30 ユーザー承認。main にはまだない）。ADR 0004 §3.3・§4.3・§5.1・§6.3・§7.5（Convert と Page は `lm_budget + 40ms` まで同期で待つ。落ちた回数での休止）・§12（Space から 1 ページ目まで p99 16ms 以下）。ADR 0005 §8.3（設定アプリからの管理の要求）。ADR 0006 §8.2・§16。ADR 0026、0027、0032、0034。ADR 0040（Windows。PR #126。main にはまだない）
