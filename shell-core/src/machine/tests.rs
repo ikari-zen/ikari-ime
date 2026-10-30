@@ -888,6 +888,23 @@ fn graphemes_are_counted_like_swift_characters() {
 }
 
 #[test]
+fn suffix_graphemes_matches_counting_from_the_front() {
+    // 結合文字、ZWJ の並び、国旗（地域指示子の対）、絵文字の肌色を含む
+    let text = "a🇯🇵🇺🇸b👨‍👩‍👧か\u{3099}c👍🏽\r\nあ🇯🇵🇺🇸🇫";
+    let count = grapheme_count(text);
+    for limit in 0..=count + 2 {
+        let expected = if count <= limit {
+            text.to_string()
+        } else {
+            text.grapheme_indices(true)
+                .nth(count - limit)
+                .map_or_else(String::new, |(start, _)| text[start..].to_string())
+        };
+        assert_eq!(suffix_graphemes(text, limit), expected, "limit {limit}");
+    }
+}
+
+#[test]
 fn reconvertible_selections_follow_section_9_2() {
     let selection = |text: &str| SelectedText {
         range: Utf16Range {

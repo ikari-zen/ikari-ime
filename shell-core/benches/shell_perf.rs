@@ -56,6 +56,8 @@ struct Options {
     metric: String,
     repeat: usize,
     shortcode_entries: usize,
+    /// P1 のキーごとの内訳（遅い順の上位）を標準エラーに出す
+    detail: bool,
 }
 
 fn parse_options() -> Result<Options, String> {
@@ -63,12 +65,14 @@ fn parse_options() -> Result<Options, String> {
         metric: "p1".into(),
         repeat: DEFAULT_REPEAT,
         shortcode_entries: DEFAULT_SHORTCODE_ENTRIES,
+        detail: false,
     };
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         let mut value = |name: &str| args.next().ok_or_else(|| format!("{name} needs a value"));
         match arg.as_str() {
             "--bench" => {}
+            "--detail" => options.detail = true,
             "--metric" => options.metric = value("--metric")?,
             "--repeat" => {
                 options.repeat = value("--repeat")?
@@ -100,12 +104,12 @@ fn main() -> ExitCode {
 
 fn run() -> Result<(), String> {
     let options = parse_options()?;
-    let (samples, excluded, stub) = match options.metric.as_str() {
+    let measured = match options.metric.as_str() {
         "p1" => measure_keys(&options)?,
         "p3" => measure_startup(&options)?,
         other => return Err(format!("unknown metric {other}")),
     };
-    report(&options, samples, excluded, stub)
+    report(&options, measured)
 }
 
 // ---------------------------------------------------------------- 統計と出力
@@ -116,12 +120,13 @@ fn percentile(sorted: &[u64], fraction: f64) -> u64 {
     sorted[rank.clamp(1, sorted.len()) - 1]
 }
 
-fn report(
-    options: &Options,
-    mut samples: Vec<u64>,
-    excluded: usize,
-    stub: bool,
-) -> Result<(), String> {
+fn report(options: &Options, measured: Measured) -> Result<(), String> {
+    let Measured {
+        mut samples,
+        without_transport,
+        excluded,
+        stub,
+    } = measured;
     if samples.is_empty() {
         return Err("no samples".into());
     }
@@ -137,6 +142,15 @@ fn report(
         "max_ns": samples[samples.len() - 1],
         "stub": stub,
     });
+    // 替え玉のエンジン（`ScriptedTransport`: 要求の復号、台本の照合、返事の組み立てと符号化）で使った時間を引いた値。
+    // Swift 版の測り手はエンジンへの口を持たない（FFI の符号化を含まない）ので、これが近い条件の値
+    if !without_transport.is_empty() {
+        let mut sorted = without_transport;
+        sorted.sort_unstable();
+        object["p50_ns_without_transport"] = percentile(&sorted, 0.5).into();
+        object["p99_ns_without_transport"] = percentile(&sorted, 0.99).into();
+        object["max_ns_without_transport"] = sorted[sorted.len() - 1].into();
+    }
     if options.metric == "p3" {
         object["shortcode_entries"] = options.shortcode_entries.into();
     }
@@ -149,15 +163,67 @@ fn report(
 
 // ---------------------------------------------------------------- P1
 
-type Measured = (Vec<u64>, usize, bool);
+struct Measured {
+    samples: Vec<u64>,
+    /// `samples` から替え玉のエンジンで使った時間を引いたもの（P1 のみ）
+    without_transport: Vec<u64>,
+    excluded: usize,
+    stub: bool,
+}
+
+/// `--detail` 用: キー 1 つぶんの記録
+struct KeyRecord {
+    label: String,
+    total: Vec<u64>,
+    transport: Vec<u64>,
+}
+
+fn nanos(duration: Duration) -> u64 {
+    u64::try_from(duration.as_nanos()).unwrap_or(u64::MAX)
+}
+
+fn median(values: &mut [u64]) -> u64 {
+    values.sort_unstable();
+    values[values.len() / 2]
+}
+
+fn print_detail(records: &mut [KeyRecord]) {
+    for record in records.iter_mut() {
+        record.total.sort_unstable();
+    }
+    records.sort_by_key(|record| std::cmp::Reverse(record.total[record.total.len() / 2]));
+    eprintln!("# 遅いキー(中央値の降順の上位 25): 合計 / エンジン側 / 殻の分 [ns]  キー");
+    for record in records.iter_mut().take(25) {
+        let total = median(&mut record.total);
+        let transport = median(&mut record.transport);
+        eprintln!(
+            "{total:>8} {transport:>8} {:>8}  {}",
+            total.saturating_sub(transport),
+            record.label
+        );
+    }
+    let mut medians: Vec<u64> = records.iter_mut().map(|r| median(&mut r.total)).collect();
+    medians.sort_unstable();
+    eprintln!(
+        "# キーごとの中央値の分布: keys={} p10={} p50={} p90={} p99={}",
+        medians.len(),
+        percentile(&medians, 0.1),
+        percentile(&medians, 0.5),
+        percentile(&medians, 0.9),
+        percentile(&medians, 0.99)
+    );
+}
 
 fn measure_keys(options: &Options) -> Result<Measured, String> {
     let files =
         scenario::load_dir(&scenario::scenarios_dir()).map_err(|error| error.to_string())?;
     let mut samples = Vec::new();
+    let mut without_transport = Vec::new();
     let mut excluded = 0;
     let mut any_action = false;
-    for _ in 0..options.repeat {
+    let mut records: Vec<KeyRecord> = Vec::new();
+    for round in 0..options.repeat {
+        let mut slot = 0;
         for (_, file) in &files {
             for scenario in &file.scenarios {
                 let setup = file.defaults.resolve(&scenario.setup);
@@ -173,7 +239,7 @@ fn measure_keys(options: &Options) -> Result<Measured, String> {
                     },
                     &mut text,
                 );
-                for step in &scenario.steps {
+                for (step_index, step) in scenario.steps.iter().enumerate() {
                     if let Some(surrounding) = &step.surrounding {
                         text.surrounding = surrounding.clone();
                     }
@@ -181,23 +247,61 @@ fn measure_keys(options: &Options) -> Result<Measured, String> {
                     let events = step
                         .events(setup.client.secure)
                         .map_err(|error| error.to_string())?;
-                    for event in events {
-                        let before = lock(&log).sync_requests;
+                    for (event_index, event) in events.into_iter().enumerate() {
+                        let (before, transport_before) = {
+                            let guard = lock(&log);
+                            (guard.sync_requests, guard.transport_ns)
+                        };
+                        let label = if options.detail && round == 0 {
+                            format!("{} #{step_index}.{event_index} {event:?}", scenario.name)
+                        } else {
+                            String::new()
+                        };
                         let started = Instant::now();
                         let actions = shell.dispatch(event, &mut text);
-                        let elapsed = started.elapsed();
+                        let elapsed = nanos(started.elapsed());
                         any_action |= !std::hint::black_box(actions).is_empty();
-                        if lock(&log).sync_requests > before {
+                        let guard = lock(&log);
+                        let transport = guard.transport_ns - transport_before;
+                        let is_sync = guard.sync_requests > before;
+                        drop(guard);
+                        if options.detail {
+                            if round == 0 {
+                                records.push(KeyRecord {
+                                    label,
+                                    total: Vec::new(),
+                                    transport: Vec::new(),
+                                });
+                            }
+                            if !is_sync {
+                                if let Some(record) = records.get_mut(slot) {
+                                    record.total.push(elapsed);
+                                    record.transport.push(transport);
+                                }
+                            }
+                            slot += 1;
+                        }
+                        if is_sync {
                             excluded += 1;
                         } else {
-                            samples.push(u64::try_from(elapsed.as_nanos()).unwrap_or(u64::MAX));
+                            samples.push(elapsed);
+                            without_transport.push(elapsed.saturating_sub(transport));
                         }
                     }
                 }
             }
         }
     }
-    Ok((samples, excluded, !any_action))
+    if options.detail {
+        records.retain(|record| !record.total.is_empty());
+        print_detail(&mut records);
+    }
+    Ok(Measured {
+        samples,
+        without_transport,
+        excluded,
+        stub: !any_action,
+    })
 }
 
 // ---------------------------------------------------------------- P3
@@ -224,9 +328,14 @@ fn measure_startup(options: &Options) -> Result<Measured, String> {
         std::hint::black_box(actions);
         // 初期化がエンジンへ何か送った（hello など）なら、stub ではない
         stub &= lock(&log).total_requests == 0;
-        samples.push(u64::try_from(elapsed.as_nanos()).unwrap_or(u64::MAX));
+        samples.push(nanos(elapsed));
     }
-    Ok((samples, 0, stub))
+    Ok(Measured {
+        samples,
+        without_transport: Vec::new(),
+        excluded: 0,
+        stub,
+    })
 }
 
 fn new_shell(settings: &str, log: Arc<Mutex<EngineLog>>) -> Result<Shell, String> {
@@ -275,6 +384,8 @@ struct EngineLog {
     sync_requests: usize,
     total_requests: usize,
     emoji_entries: usize,
+    /// 替え玉のエンジンの中で使った時間の合計（ナノ秒）
+    transport_ns: u64,
 }
 
 impl EngineLog {
@@ -285,6 +396,7 @@ impl EngineLog {
             sync_requests: 0,
             total_requests: 0,
             emoji_entries: 0,
+            transport_ns: 0,
         }
     }
 
@@ -344,6 +456,32 @@ impl EngineTransport for ScriptedTransport {
         bytes: &[u8],
         _timeout: Duration,
     ) -> Result<Vec<u8>, TransportError> {
+        let started = Instant::now();
+        let result = self.serve(bytes);
+        lock(&self.log).transport_ns += nanos(started.elapsed());
+        result
+    }
+
+    fn post(&self, _handle: TransportHandle, bytes: &[u8]) {
+        let started = Instant::now();
+        if let Ok(v1::Envelope {
+            body: Some(body), ..
+        }) = v1::Envelope::decode(bytes)
+        {
+            lock(&self.log).record(kind_of(&body));
+        }
+        lock(&self.log).transport_ns += nanos(started.elapsed());
+    }
+
+    fn close(&self, _handle: TransportHandle) {}
+
+    fn pid(&self, _handle: TransportHandle) -> Option<i32> {
+        Some(1)
+    }
+}
+
+impl ScriptedTransport {
+    fn serve(&self, bytes: &[u8]) -> Result<Vec<u8>, TransportError> {
         let envelope = v1::Envelope::decode(bytes).map_err(|_| TransportError::Unavailable)?;
         let body = envelope.body.ok_or(TransportError::Unavailable)?;
         let mut log = lock(&self.log);
@@ -361,21 +499,6 @@ impl EngineTransport for ScriptedTransport {
             body: Some(reply),
         }
         .encode_to_vec())
-    }
-
-    fn post(&self, _handle: TransportHandle, bytes: &[u8]) {
-        if let Ok(v1::Envelope {
-            body: Some(body), ..
-        }) = v1::Envelope::decode(bytes)
-        {
-            lock(&self.log).record(kind_of(&body));
-        }
-    }
-
-    fn close(&self, _handle: TransportHandle) {}
-
-    fn pid(&self, _handle: TransportHandle) -> Option<i32> {
-        Some(1)
     }
 }
 
