@@ -20,19 +20,4 @@ import Testing
         #expect(bad.warnings.count == 1)
         #expect(bad.settings.candidateHideWhenConfident)
     }
-
-    @Test func keyIsWritableAndShownInTheSnapshot() {
-        #expect(Settings.isAcceptable(key: "candidate.hide_when_confident", value: "on"))
-        #expect(!Settings.isAcceptable(key: "candidate.hide_when_confident", value: "yes"))
-        var s = Settings.default
-        s.candidateHideWhenConfident = true
-        let entries = Dictionary(uniqueKeysWithValues: s.effectiveEntries.map { ($0.key, $0.value) })
-        #expect(entries["candidate.hide_when_confident"] == "on")
-    }
-
-    @Test func engineIsNotRestarted() {
-        var changed = Settings.default
-        changed.candidateHideWhenConfident = true
-        #expect(!Settings.default.engineSettingsDiffer(from: changed))
-    }
 }

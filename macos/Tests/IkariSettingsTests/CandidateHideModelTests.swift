@@ -1,3 +1,5 @@
+// 設定の処理は shell-core（ikari_settings_*）を通すので、XCFramework のあるビルドだけで流す（ADR 0041 §2.3）
+#if IKARI_HAS_SHELL_FFI
 // 「確信が高い変換では候補一覧を出さない」のモデル（#69）
 import Foundation
 import IkariShellCore
@@ -19,3 +21,5 @@ import Testing
         #expect(harness.shell.state.snapshot.settings["candidate.hide_when_confident"] == "on")
     }
 }
+
+#endif

@@ -2,8 +2,8 @@
 //! 今の `SettingsModel` の属性プロファイル（ProfileGet / ProfileSet）と `DictionaryRules`（DictionaryModel.swift）。
 //! 送受信は Bridge（`shell-core::bridge`、L-B）の仕事で、ここは要求の中身だけを作る。
 //!
-//! 移していないもの: `DictionaryRules.filter`（検索語の畳み込みに、かな・全角半角・大文字小文字の正規化が要る。
-//! `Cargo.toml` に Unicode の正規化の依存を足す判断が要るため、Swift に残す）。
+//! 学習とデータの、インポートの大きさの判定と、書き出しの既定の名前（今の `DataFiles`、`LearningTexts`）。
+//! ファイルの読み書きそのもの（利用者の選んだ場所。Sandbox の許可は設定アプリが持つ）と文言は Swift に残す。
 
 use ikari_proto::v1;
 
@@ -154,6 +154,86 @@ pub fn pos_display(pos: &str) -> String {
 /// 表示順: 読み、表記の順
 pub fn sort_dictionary_entries(entries: &mut [v1::UserDictEntry]) {
     entries.sort_by(|a, b| (&a.reading, &a.surface).cmp(&(&b.reading, &b.surface)));
+}
+
+/// 一覧の表示順（読み、表記の順）の添字。`entries` は並べ替えない
+pub fn dictionary_display_order(entries: &[v1::UserDictEntry]) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..entries.len()).collect();
+    order.sort_by(|&a, &b| {
+        let (a, b) = (&entries[a], &entries[b]);
+        (&a.reading, &a.surface).cmp(&(&b.reading, &b.surface))
+    });
+    order
+}
+
+/// 検索語を空白で分け、すべてが読み・表記・品詞・コメントのどれかに含まれる項目か。
+/// 大文字小文字、全角半角（英数と半角カタカナ）、ひらがなとカタカナの違いは無視する。空の検索語はすべて残す
+pub fn dictionary_entry_matches(entry: &v1::UserDictEntry, query: &str) -> bool {
+    let terms: Vec<String> = query.split_whitespace().map(fold_for_search).collect();
+    if terms.is_empty() {
+        return true;
+    }
+    let fields =
+        [&entry.reading, &entry.surface, &entry.pos, &entry.comment].map(|f| fold_for_search(f));
+    terms
+        .iter()
+        .all(|term| fields.iter().any(|field| field.contains(term.as_str())))
+}
+
+/// 検索のための畳み込み: 半角カタカナを全角にしてからひらがなに、全角英数を半角に、小文字に。
+/// 今の Swift（`applyingTransform(.hiraganaToKatakana, reverse: true)` と `folding([.caseInsensitive, .widthInsensitive])`）
+/// と同じ向きにそろえる。依存を足さずに書ける範囲（かなは ikari-input の字種の変換を使う）
+fn fold_for_search(text: &str) -> String {
+    ikari_input::convert_script(text, ikari_input::Script::Hiragana)
+        .chars()
+        .map(fullwidth_ascii_to_halfwidth)
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+/// 全角の ASCII（`！`..=`～`）と全角の空白を半角に
+fn fullwidth_ascii_to_halfwidth(c: char) -> char {
+    const FULLWIDTH_FIRST: u32 = 0xFF01;
+    const FULLWIDTH_LAST: u32 = 0xFF5E;
+    const FULLWIDTH_OFFSET: u32 = 0xFEE0;
+    const IDEOGRAPHIC_SPACE: char = '\u{3000}';
+    match c {
+        IDEOGRAPHIC_SPACE => ' ',
+        c if (FULLWIDTH_FIRST..=FULLWIDTH_LAST).contains(&(c as u32)) => {
+            char::from_u32(c as u32 - FULLWIDTH_OFFSET).unwrap_or(c)
+        }
+        c => c,
+    }
+}
+
+// ---------------------------------------------------------------- 学習とデータ（DataFiles、LearningTexts）
+
+/// インポートのファイルの上限（バイト）。設定アプリと殻の間の枠の上限と同じ（枠に入らないと送れない）
+pub const MAX_IMPORT_BYTES: u64 = crate::bridge::MAX_FRAME_BYTES as u64;
+
+/// インポートのファイルの大きさの判定
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImportSize {
+    Ok,
+    /// 上限を超える（読まずに断る）
+    TooLarge,
+    Empty,
+}
+
+/// 大きさを先に見て、上限を超えるものは読まずに断る。読んだ後（読む間に大きくなった場合）にも同じ判定を使う
+pub fn import_size(bytes: u64) -> ImportSize {
+    if bytes > MAX_IMPORT_BYTES {
+        ImportSize::TooLarge
+    } else if bytes == 0 {
+        ImportSize::Empty
+    } else {
+        ImportSize::Ok
+    }
+}
+
+/// 書き出しの既定の名前（`ikari-export-YYYYMMDD.tsv`）。年月日は呼び手が利用者の暦と時刻帯で数える
+pub fn export_file_name(year: u32, month: u32, day: u32) -> String {
+    format!("ikari-export-{year:04}{month:02}{day:02}.tsv")
 }
 
 #[cfg(test)]
@@ -312,5 +392,69 @@ mod tests {
             .map(|e| (e.reading.as_str(), e.surface.as_str()))
             .collect();
         assert_eq!(order, vec![("あ", "z"), ("い", "a"), ("い", "b")]);
+    }
+
+    // 今の DictionaryRulesTests.searchesAllTermsAcrossFieldsIgnoringKanaCaseAndWidth を写した
+    #[test]
+    fn dictionary_search_ignores_kana_case_and_width_and_requires_all_terms() {
+        let make = |reading: &str, surface: &str, pos: &str, comment: &str| v1::UserDictEntry {
+            reading: reading.into(),
+            surface: surface.into(),
+            pos: pos.into(),
+            comment: comment.into(),
+        };
+        let entries = [
+            make("いかり", "怒り", "名詞", "ikari"),
+            make("いかり", "錨", "固有名詞", ""),
+            make("さんぷる", "SAMPLE", "名詞", ""),
+        ];
+        let hits = |query: &str| -> Vec<&str> {
+            entries
+                .iter()
+                .filter(|e| dictionary_entry_matches(e, query))
+                .map(|e| e.surface.as_str())
+                .collect()
+        };
+        assert_eq!(hits("").len(), 3);
+        assert_eq!(hits("錨"), vec!["錨"]);
+        assert_eq!(hits("イカリ").len(), 2); // カタカナでも引ける
+        assert_eq!(hits("IKARI"), vec!["怒り"]); // コメント、大文字小文字
+        assert_eq!(hits("いかり 固有"), vec!["錨"]); // 品詞も対象、AND
+        assert_eq!(hits("ｓａｍｐｌｅ"), vec!["SAMPLE"]); // 全角
+        assert!(hits("なし").is_empty());
+        // 半角カタカナ（濁点つき）と全角の空白で区切った検索語
+        assert_eq!(hits("ｲｶﾘ\u{3000}固有"), vec!["錨"]);
+        assert_eq!(hits("ｻﾝﾌﾟﾙ"), vec!["SAMPLE"]);
+    }
+
+    // 今の DictionaryRulesTests.sortsByReadingThenSurface を写した
+    #[test]
+    fn display_order_is_reading_then_surface_without_moving_entries() {
+        let make = |reading: &str, surface: &str| v1::UserDictEntry {
+            reading: reading.into(),
+            surface: surface.into(),
+            ..Default::default()
+        };
+        let entries = [make("いか", "烏賊"), make("あ", "亜"), make("いか", "以下")];
+        let order = dictionary_display_order(&entries);
+        let readings: Vec<&str> = order.iter().map(|&i| entries[i].reading.as_str()).collect();
+        assert_eq!(readings, vec!["あ", "いか", "いか"]);
+        assert!(entries[order[1]].surface < entries[order[2]].surface);
+    }
+
+    // 今の LearningTextsTests.exportFileNameIsDated を写した（年月日は呼び手が暦で数える）
+    #[test]
+    fn export_file_name_is_dated() {
+        assert_eq!(export_file_name(2027, 1, 15), "ikari-export-20270115.tsv");
+    }
+
+    // 今の DataFiles.readImport の上限（64 MiB）と空のファイル
+    #[test]
+    fn import_size_refuses_empty_and_over_the_limit() {
+        assert_eq!(MAX_IMPORT_BYTES, 64 << 20);
+        assert_eq!(import_size(0), ImportSize::Empty);
+        assert_eq!(import_size(1), ImportSize::Ok);
+        assert_eq!(import_size(MAX_IMPORT_BYTES), ImportSize::Ok);
+        assert_eq!(import_size(MAX_IMPORT_BYTES + 1), ImportSize::TooLarge);
     }
 }

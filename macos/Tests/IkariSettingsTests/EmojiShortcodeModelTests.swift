@@ -1,3 +1,5 @@
+// 設定の処理は shell-core（ikari_settings_*）を通すので、XCFramework のあるビルドだけで流す（ADR 0041 §2.3）
+#if IKARI_HAS_SHELL_FFI
 // 「絵文字のショートコード」の欄（ADR 0027 §8.1）のモデル。「文脈を共有しないアプリ」の欄（SharedExcludeModelTests）と同じ作り。
 import Foundation
 import IkariShellCore
@@ -67,3 +69,5 @@ import Testing
         #expect(model.values.emojiShortcodeExclude == Settings.defaultEmojiShortcodeExclude)
     }
 }
+
+#endif

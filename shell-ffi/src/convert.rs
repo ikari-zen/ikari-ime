@@ -153,7 +153,7 @@ fn range_to_pb(range: &Utf16Range) -> pb::Utf16Range {
     }
 }
 
-fn modifiers_from_pb(modifiers: Option<pb::Modifiers>) -> Modifiers {
+pub(crate) fn modifiers_from_pb(modifiers: Option<pb::Modifiers>) -> Modifiers {
     modifiers.map_or(Modifiers::NONE, |m| Modifiers {
         shift: m.shift,
         control: m.control,
@@ -342,7 +342,7 @@ fn panel_to_pb(panel: &CandidatePanelModel) -> pb::CandidatePanelModel {
 
 // ---------------------------------------------------------------- メニュー
 
-fn preset_from_pb(value: i32, field: &'static str) -> Result<KeymapPreset> {
+pub(crate) fn preset_from_pb(value: i32, field: &'static str) -> Result<KeymapPreset> {
     match enum_value::<pb::KeymapPreset>(value, field)? {
         pb::KeymapPreset::Unspecified => Err(ConvertError::OutOfRange(field)),
         pb::KeymapPreset::Macos => Ok(KeymapPreset::Macos),
@@ -351,7 +351,7 @@ fn preset_from_pb(value: i32, field: &'static str) -> Result<KeymapPreset> {
     }
 }
 
-fn preset_to_pb(preset: KeymapPreset) -> pb::KeymapPreset {
+pub(crate) fn preset_to_pb(preset: KeymapPreset) -> pb::KeymapPreset {
     match preset {
         KeymapPreset::Macos => pb::KeymapPreset::Macos,
         KeymapPreset::MsIme => pb::KeymapPreset::MsIme,
@@ -359,7 +359,7 @@ fn preset_to_pb(preset: KeymapPreset) -> pb::KeymapPreset {
     }
 }
 
-fn method_from_pb(value: i32, field: &'static str) -> Result<InputMethodKind> {
+pub(crate) fn method_from_pb(value: i32, field: &'static str) -> Result<InputMethodKind> {
     match enum_value::<pb::InputMethodKind>(value, field)? {
         pb::InputMethodKind::Unspecified => Err(ConvertError::OutOfRange(field)),
         pb::InputMethodKind::Romaji => Ok(InputMethodKind::Romaji),
@@ -367,7 +367,7 @@ fn method_from_pb(value: i32, field: &'static str) -> Result<InputMethodKind> {
     }
 }
 
-fn method_to_pb(method: InputMethodKind) -> pb::InputMethodKind {
+pub(crate) fn method_to_pb(method: InputMethodKind) -> pb::InputMethodKind {
     match method {
         InputMethodKind::Romaji => pb::InputMethodKind::Romaji,
         InputMethodKind::Kana => pb::InputMethodKind::Kana,

@@ -1,3 +1,5 @@
+// 設定の処理は shell-core（ikari_settings_*）を通すので、XCFramework のあるビルドだけで流す（ADR 0041 §2.3）
+#if IKARI_HAS_SHELL_FFI
 import Foundation
 import IkariProto
 import IkariShellCore
@@ -273,13 +275,21 @@ func makeSettingsModel(_ harness: Harness) async -> SettingsModel {
         #expect(values.keymapBindings[.toFullwidthAlnum] == .chord("ctrl+g"))
     }
 
-    @Test func presetTableListsFunctionKeysFirstAndPrimaryChordIsACharacterKey() {
-        let table = repositoryPresets()
-        #expect(table.primaryChord(for: .toHiragana, preset: .macos) == KeyChord(key: "j", modifiers: .control))
-        #expect(table.primaryChord(for: .toHiragana, preset: .msIme) == KeyChord(key: "u", modifiers: .control))
-        #expect(table.primaryChord(for: .toHalfwidthAlnum, preset: .macos) == nil)  // F10 だけ
-        #expect(table.primaryChord(for: .toHalfwidthAlnum, preset: .atok) == KeyChord(key: "@", modifiers: .control))
-        #expect(table.primaryChord(for: .reconvert, preset: .atok) == KeyChord(key: "y", modifiers: [.control, .shift]))
-        #expect(table.chords(for: .toHiragana, preset: .macos).first == KeyChord(key: "f6"))
+    // プリセットの表の読み方（F キーが先、既定は文字キー）は shell-core（values.rs の preset_table_* のテスト）。
+    // ここは画面に出る「プリセットのキー」が同じ期待になることを、shell-core を通して確かめる
+    @Test func presetTextIsTheCharacterKeyOfThePreset() {
+        func presetText(_ action: KeymapAction, _ preset: KeymapPreset) -> String? {
+            let row = SettingsCore.describe(["keymap.preset": preset.rawValue], presets: repositoryPresets())?
+                .rows.first { $0.action == action.rawValue }
+            return row?.hasPresetText == true ? row?.presetText : nil
+        }
+        #expect(presetText(.toHiragana, .macos) == KeyChordText.display(for: KeyChord(key: "j", modifiers: .control)))
+        #expect(presetText(.toHiragana, .msIme) == KeyChordText.display(for: KeyChord(key: "u", modifiers: .control)))
+        #expect(presetText(.toHalfwidthAlnum, .macos) == nil)  // F10 だけ
+        #expect(presetText(.toHalfwidthAlnum, .atok) == KeyChordText.display(for: KeyChord(key: "@", modifiers: .control)))
+        #expect(
+            presetText(.reconvert, .atok) == KeyChordText.display(for: KeyChord(key: "y", modifiers: [.control, .shift])))
     }
 }
+
+#endif

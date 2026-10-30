@@ -41,7 +41,11 @@ var targets: [Target] = [
     // 契約コミットで完成させてあり、以後はレーン S3 も U も変えない
     .target(name: "IkariBridge", dependencies: ["IkariShellCore", "IkariProto"]),
     // 設定アプリ（ADR 0005 §6.2）。レーン U が実装する。エンジンには直接つながない（殻の中継だけ）
-    .executableTarget(name: "IkariSettings", dependencies: ["IkariShellCore", "IkariBridge", "IkariProto", "IkariXPC"]),
+    // 検証・整形・変更の組み立ては shell-core（`IkariShellABI` の `ikari_settings_*`。ADR 0041 §2.3）
+    .executableTarget(
+        name: "IkariSettings",
+        dependencies: ["IkariShellCore", "IkariShellABI", "IkariBridge", "IkariProto", "IkariXPC"]
+    ),
     // XPC サービス（FFI を呼ぶだけ）
     .executableTarget(
         name: "IkariEngineService",
@@ -71,7 +75,11 @@ var targets: [Target] = [
         swiftSettings: hasShellFFI ? [.define("IKARI_HAS_SHELL_FFI")] : []
     ),
     .testTarget(name: "IkariBridgeTests", dependencies: ["IkariBridge", "IkariProto", "IkariShellCore"]),
-    .testTarget(name: "IkariSettingsTests", dependencies: ["IkariSettings", "IkariBridge", "IkariProto", "IkariShellCore", "IkariXPC"]),
+    .testTarget(
+        name: "IkariSettingsTests",
+        dependencies: ["IkariSettings", "IkariBridge", "IkariProto", "IkariShellCore", "IkariXPC"],
+        swiftSettings: hasShellFFI ? [.define("IKARI_HAS_SHELL_FFI")] : []
+    ),
     .testTarget(name: "IkariXPCTests", dependencies: ["IkariXPC", "IkariShellCore", "IkariProto"]),
     // XPC サービスのエンジンの寿命（#51）。FFI なしで確かめられる部分だけ
     .testTarget(name: "IkariEngineServiceTests", dependencies: ["IkariEngineService"]),

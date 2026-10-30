@@ -1,3 +1,5 @@
+// 設定の処理は shell-core（ikari_settings_*）を通すので、XCFramework のあるビルドだけで流す（ADR 0041 §2.3）
+#if IKARI_HAS_SHELL_FFI
 // 「Unicode 表記」の欄のモデル
 import Foundation
 import IkariShellCore
@@ -19,3 +21,5 @@ import Testing
         #expect(harness.shell.state.snapshot.settings["unicode.notation"] == "off")
     }
 }
+
+#endif

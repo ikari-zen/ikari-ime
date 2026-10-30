@@ -97,7 +97,6 @@ import Testing
     @Test func atokPresetSettingRoundTripsAndUnknownValuesStayDefault() {
         #expect(KeymapPreset(rawValue: "atok") == .atok)
         #expect(Settings.parse(tsv: "keymap.preset\tatok").settings.keymapPreset == .atok)
-        #expect(Settings.isAcceptable(key: "keymap.preset", value: "atok"))
         #expect(Settings.parse(tsv: "keymap.preset\temacs").settings.keymapPreset == .macos)
     }
 

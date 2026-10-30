@@ -13,7 +13,7 @@ use crate::shell::{
 };
 use crate::{IkariShellBuf, IkariStr, bytes};
 
-fn run(
+pub(crate) fn run(
     request: IkariStr,
     out: *mut IkariShellBuf,
     body: impl FnOnce(&[u8]) -> Result<Vec<u8>, i32>,

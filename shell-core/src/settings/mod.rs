@@ -22,8 +22,9 @@ mod text;
 mod values;
 
 pub use admin::{
-    CONJ_SEPARATOR, DictionaryDraft, DraftProblem, ProfileDomainRow, ProfileWeight,
-    dictionary_entry_from_draft, pos_display, profile_get_request, profile_rows,
+    CONJ_SEPARATOR, DictionaryDraft, DraftProblem, ImportSize, MAX_IMPORT_BYTES, ProfileDomainRow,
+    ProfileWeight, dictionary_display_order, dictionary_entry_from_draft, dictionary_entry_matches,
+    export_file_name, import_size, pos_display, profile_get_request, profile_rows,
     profile_set_request, profile_weight_from_proto, profile_weight_to_proto,
     sort_dictionary_entries,
 };
@@ -34,7 +35,10 @@ pub use parse::{
     shares_context,
 };
 pub use store::{Reload, SettingsChange, SettingsStore, StoreError, Updated};
-pub use values::{KeymapBinding, KeymapPresetTable, PlanError, SettingsIntent, SettingsValues};
+pub use values::{
+    CONVERT_WAIT_RANGE, IDLE_UNLOAD_RANGE, KeymapBinding, KeymapPresetTable, KeymapRowData,
+    LM_DEADLINE_RANGE, PlanError, SettingsIntent, SettingsValues,
+};
 
 use serde::{Deserialize, Serialize};
 

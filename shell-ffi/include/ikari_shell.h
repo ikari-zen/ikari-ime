@@ -217,6 +217,11 @@ int32_t ikari_settings_validate(IkariStr settings, IkariShellBuf *out);
 // protobuf を入れる（成功なら text、警告が増えるなら issues_added。どちらも IKARI_SHELL_OK）。
 int32_t ikari_settings_rewrite(IkariStr file, IkariStr changes, IkariShellBuf *out);
 
+// 設定アプリの Model の検証・整形・変更の組み立て（L-C 後半で追加）。request（ikari.settings.v1.AppRequest。
+// proto/ikari/settings/v1/settings.proto）を処理し、*out に AppReply を入れる。要求の欄が足りない・範囲外なら
+// IKARI_SHELL_ERR_DECODE。
+int32_t ikari_settings_app(IkariStr request, IkariShellBuf *out);
+
 // ---------------------------------------------------------------- 候補ウィンドウの配置（L-E で追加）
 // 状態を持たない純関数。どのスレッドからでも呼べる。入出力は protobuf。IKARI_SHELL_OK 以外では *out は空。
 

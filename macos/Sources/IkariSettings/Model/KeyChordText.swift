@@ -1,39 +1,34 @@
-// キーの表記（docs/phase2-contract.md §4.1）と、キーを押して記録するための変換。AppKit に依存しない純関数。
+// キーの表記（docs/phase2-contract.md §4.1）と、キーを押して記録するための変換。
+// 表記の読み書きと表示は shell-core（`KeyChord`。ADR 0041 §2.3）。ここに残すのは macOS の keyCode からの記録だけ。
 import Foundation
+import IkariProto
 import IkariShellCore
 
 enum KeyChordText {
-    /// 矢印のキー名（`left` / `right`。ADR 0006 §8.1）の画面での表記
-    private static let arrowSymbols = ["left": "←", "right": "→"]
+    private static func info(for chord: KeyChord) -> Ikari_Settings_V1_ChordInfo? {
+        var parts = Ikari_Settings_V1_ChordParts()
+        parts.key = chord.key
+        parts.modifiers = SettingsCore.modifiers(chord.modifiers)
+        return SettingsCore.chord(.parts(parts))
+    }
 
     /// 設定ファイルの表記（`ctrl+shift+j`、`f6`）。`KeyChord(parsing:)` で読み戻せる
     static func string(for chord: KeyChord) -> String {
-        var parts: [String] = []
-        if chord.modifiers.contains(.control) { parts.append("ctrl") }
-        if chord.modifiers.contains(.shift) { parts.append("shift") }
-        if chord.modifiers.contains(.option) { parts.append("option") }
-        if chord.modifiers.contains(.command) { parts.append("command") }
-        parts.append(chord.key)
-        return parts.joined(separator: "+")
+        info(for: chord)?.text ?? ""
     }
 
     /// 画面に出す表記（`⌃J`、`F6`、`⇧←`）。修飾キーは Apple の順（⌃⌥⇧⌘）。矢印は記号で出す
     static func display(for chord: KeyChord) -> String {
-        var text = ""
-        if chord.modifiers.contains(.control) { text += "⌃" }
-        if chord.modifiers.contains(.option) { text += "⌥" }
-        if chord.modifiers.contains(.shift) { text += "⇧" }
-        if chord.modifiers.contains(.command) { text += "⌘" }
-        return text + (arrowSymbols[chord.key] ?? chord.key.uppercased())
+        info(for: chord)?.display ?? chord.key
     }
 
     /// 設定ファイルの表記から画面の表記へ。読めなければ元の文字列
     static func display(forText text: String) -> String {
-        KeyChord(parsing: text).map(display(for:)) ?? text
+        SettingsCore.chord(.text(text))?.display ?? text
     }
 
     static func isFunctionKey(_ chord: KeyChord) -> Bool {
-        chord.key.count > 1 && chord.key.hasPrefix("f") && Int(chord.key.dropFirst()) != nil
+        info(for: chord)?.functionKey ?? false
     }
 
     enum Recording: Equatable {
@@ -78,9 +73,9 @@ enum KeyChordText {
         }
     }
 
-    /// 表記に直して読み戻せるものだけを通す
+    /// 表記に直して読み戻せるものだけを通す（shell-core が確かめる）
     private static func validated(_ chord: KeyChord) -> Recording {
-        guard KeyChord(parsing: string(for: chord)) == chord else { return .rejected(.unsupportedKey) }
+        guard info(for: chord)?.valid == true else { return .rejected(.unsupportedKey) }
         return .chord(chord)
     }
 }

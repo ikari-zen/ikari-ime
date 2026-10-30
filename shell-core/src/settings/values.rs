@@ -914,6 +914,17 @@ mod tests {
                 .is_none()
         );
         assert!(p.chords("mode.toggle", KeymapPreset::Macos).is_empty());
+        // 今の Swift の presetTableListsFunctionKeysFirstAndPrimaryChordIsACharacterKey の残りを写した
+        assert_eq!(
+            p.primary_chord("convert.halfwidth_alnum", KeymapPreset::Atok)
+                .map(KeyChord::to_text),
+            Some("ctrl+@".to_string())
+        );
+        assert_eq!(
+            p.primary_chord("reconvert", KeymapPreset::Atok)
+                .map(KeyChord::to_text),
+            Some("ctrl+shift+y".to_string())
+        );
     }
 
     #[test]

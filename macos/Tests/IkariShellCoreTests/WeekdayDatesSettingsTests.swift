@@ -22,20 +22,4 @@ import Testing
         #expect(parsed.warnings.count == 1)
         #expect(!parsed.settings.dateWeekdayDates)
     }
-
-    @Test func keyIsWritableAndShownInTheSnapshot() {
-        #expect(Settings.isAcceptable(key: "date.weekday_dates", value: "on"))
-        #expect(!Settings.isAcceptable(key: "date.weekday_dates", value: "yes"))
-        var s = Settings.default
-        s.dateWeekdayDates = true
-        let entries = Dictionary(uniqueKeysWithValues: s.effectiveEntries.map { ($0.key, $0.value) })
-        #expect(entries["date.weekday_dates"] == "on")
-    }
-
-    @Test func engineRestartsWhenItChanges() {
-        let base = Settings.default
-        var changed = base
-        changed.dateWeekdayDates = true
-        #expect(base.engineSettingsDiffer(from: changed))
-    }
 }
