@@ -1,10 +1,17 @@
 // 設定の処理は shell-core（ikari_settings_*）を通すので、XCFramework のあるビルドだけで流す（ADR 0041 §2.3）
 #if IKARI_HAS_SHELL_FFI
 import IkariProto
-import IkariShellCore
+import IkariShellABI
 import Testing
 
 @testable import IkariSettings
+
+/// 書いた表記を shell-core が読み戻して、同じ表記と表示になるか（表記の読み書きは shell-core。ADR 0041 §2.3）
+private func readsBack(_ chord: KeyChord) -> Bool {
+    let text = KeyChordText.string(for: chord)
+    guard let info = SettingsCore.chord(.text(text)) else { return false }
+    return info.valid && info.text == text && info.display == KeyChordText.display(for: chord)
+}
 
 @Suite struct KeyChordTextTests {
     @Test func writesTheSettingsNotationInAFixedOrder() {
@@ -19,7 +26,7 @@ import Testing
             KeyChord(key: "j", modifiers: .control), KeyChord(key: "f20"), KeyChord(key: "+", modifiers: .option),
             KeyChord(key: "l", modifiers: [.control, .shift, .option, .command]),
         ] {
-            #expect(KeyChord(parsing: KeyChordText.string(for: chord)) == chord)
+            #expect(readsBack(chord))
         }
     }
 
@@ -60,16 +67,16 @@ import Testing
 
     @Test func keysTheStateMachineDoesNotLookUpAreRefused() {
         #expect(
-            KeyChordText.record(keyCode: KeyCodes.space, charactersIgnoringModifiers: " ", modifiers: .control)
+            KeyChordText.record(keyCode: KeyEvents.space, charactersIgnoringModifiers: " ", modifiers: .control)
                 == .rejected(.unsupportedKey))
         #expect(
-            KeyChordText.record(keyCode: KeyCodes.returnKey, charactersIgnoringModifiers: "\r", modifiers: .control)
+            KeyChordText.record(keyCode: KeyEvents.returnKey, charactersIgnoringModifiers: "\r", modifiers: .control)
                 == .rejected(.unsupportedKey))
         #expect(
-            KeyChordText.record(keyCode: KeyCodes.delete, charactersIgnoringModifiers: "\u{7F}", modifiers: .control)
+            KeyChordText.record(keyCode: KeyEvents.delete, charactersIgnoringModifiers: "\u{7F}", modifiers: .control)
                 == .rejected(.unsupportedKey))
         #expect(
-            KeyChordText.record(keyCode: KeyCodes.escape, charactersIgnoringModifiers: "\u{1B}", modifiers: .control)
+            KeyChordText.record(keyCode: KeyEvents.escape, charactersIgnoringModifiers: "\u{1B}", modifiers: .control)
                 == .rejected(.unsupportedKey))
     }
 
@@ -85,25 +92,25 @@ import Testing
 
     @Test func arrowNotationIsWrittenAndReadBack() {
         for chord in [KeyChord(key: "left"), KeyChord(key: "right", modifiers: .shift)] {
-            #expect(KeyChord(parsing: KeyChordText.string(for: chord)) == chord)
+            #expect(readsBack(chord))
         }
         #expect(KeyChordText.string(for: KeyChord(key: "left", modifiers: .shift)) == "shift+left")
     }
 
     @Test func recordsArrowKeysWithOrWithoutModifiers() {
         #expect(
-            KeyChordText.record(keyCode: KeyCodes.leftArrow, charactersIgnoringModifiers: "\u{F702}", modifiers: [])
+            KeyChordText.record(keyCode: KeyEvents.leftArrow, charactersIgnoringModifiers: "\u{F702}", modifiers: [])
                 == .chord(KeyChord(key: "left")))
         #expect(
-            KeyChordText.record(keyCode: KeyCodes.rightArrow, charactersIgnoringModifiers: "\u{F703}", modifiers: .shift)
+            KeyChordText.record(keyCode: KeyEvents.rightArrow, charactersIgnoringModifiers: "\u{F703}", modifiers: .shift)
                 == .chord(KeyChord(key: "right", modifiers: .shift)))
         #expect(
-            KeyChordText.record(keyCode: KeyCodes.leftArrow, charactersIgnoringModifiers: "\u{F702}", modifiers: [.control, .option])
+            KeyChordText.record(keyCode: KeyEvents.leftArrow, charactersIgnoringModifiers: "\u{F702}", modifiers: [.control, .option])
                 == .chord(KeyChord(key: "left", modifiers: [.control, .option])))
     }
 
     @Test func escapeAloneCancelsTheRecording() {
-        #expect(KeyChordText.record(keyCode: KeyCodes.escape, charactersIgnoringModifiers: "\u{1B}", modifiers: []) == .cancel)
+        #expect(KeyChordText.record(keyCode: KeyEvents.escape, charactersIgnoringModifiers: "\u{1B}", modifiers: []) == .cancel)
     }
 }
 

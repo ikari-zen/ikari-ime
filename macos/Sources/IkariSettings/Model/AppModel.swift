@@ -2,7 +2,6 @@
 // 接続が切れたら操作を無効にし（`session = nil`）、殻が戻れば再接続でつなぎ直す（ADR 0005 §6.3「切れたとき」）。
 import Foundation
 import IkariBridge
-import IkariShellCore
 import Observation
 
 /// 1 回の接続に結びついたタブのモデル。接続が切れたら捨て、つなぎ直したら作り直す

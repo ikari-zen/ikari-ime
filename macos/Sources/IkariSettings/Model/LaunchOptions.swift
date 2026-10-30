@@ -1,6 +1,5 @@
 // 起動の引数（ADR 0005 §6.2「引数で開くタブ」）。殻が `NSWorkspace.openApplication` の configuration.arguments で渡す。
 import Foundation
-import IkariShellCore
 
 struct LaunchOptions: Equatable {
     /// 開くタブ（`SettingsTab.rawValue`）。指定がなければ先頭

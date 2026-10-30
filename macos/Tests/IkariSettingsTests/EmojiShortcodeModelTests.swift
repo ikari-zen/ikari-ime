@@ -2,7 +2,6 @@
 #if IKARI_HAS_SHELL_FFI
 // 「絵文字のショートコード」の欄（ADR 0027 §8.1）のモデル。「文脈を共有しないアプリ」の欄（SharedExcludeModelTests）と同じ作り。
 import Foundation
-import IkariShellCore
 import Testing
 
 @testable import IkariSettings
@@ -13,7 +12,8 @@ import Testing
         defer { harness.close() }
         let model = await makeSettingsModel(harness)
         #expect(!model.values.emojiShortcode)
-        #expect(model.values.emojiShortcodeExclude == Settings.defaultEmojiShortcodeExclude)
+        #expect(!SettingsValues.defaults.emojiShortcodeExclude.isEmpty)
+        #expect(model.values.emojiShortcodeExclude == SettingsValues.defaults.emojiShortcodeExclude)
     }
 
     @Test func toggleGoesThroughTheShell() async throws {
@@ -39,20 +39,20 @@ import Testing
         #expect(model.values.emojiShortcodeExclude.last == "com.example.Slack")
         #expect(harness.shell.state.snapshot.settings["emoji.shortcode_exclude"]?.hasSuffix(",com.example.Slack") == true)
         // 「文脈を共有しないアプリ」は変わらない
-        #expect(model.values.contextSharedExclude == Settings.defaultContextSharedExclude)
+        #expect(model.values.contextSharedExclude == SettingsValues.defaults.contextSharedExclude)
 
         await model.removeEmojiShortcodeExclude("com.apple.Terminal")
         #expect(!model.values.emojiShortcodeExclude.contains("com.apple.Terminal"))
 
         await model.resetEmojiShortcodeExclude()
-        #expect(model.values.emojiShortcodeExclude == Settings.defaultEmojiShortcodeExclude)
+        #expect(model.values.emojiShortcodeExclude == SettingsValues.defaults.emojiShortcodeExclude)
     }
 
     @Test func removingEveryEntryStoresAnEmptyList() async throws {
         let harness = try await Harness.make()
         defer { harness.close() }
         let model = await makeSettingsModel(harness)
-        for id in Settings.defaultEmojiShortcodeExclude { await model.removeEmojiShortcodeExclude(id) }
+        for id in SettingsValues.defaults.emojiShortcodeExclude { await model.removeEmojiShortcodeExclude(id) }
         #expect(model.values.emojiShortcodeExclude.isEmpty)
         #expect(harness.shell.state.snapshot.settings["emoji.shortcode_exclude"] == "")
     }
@@ -66,7 +66,7 @@ import Testing
         model.dismissError()
         await model.addEmojiShortcodeExclude("com.apple.Terminal")
         #expect(model.errorMessage == nil)
-        #expect(model.values.emojiShortcodeExclude == Settings.defaultEmojiShortcodeExclude)
+        #expect(model.values.emojiShortcodeExclude == SettingsValues.defaults.emojiShortcodeExclude)
     }
 }
 

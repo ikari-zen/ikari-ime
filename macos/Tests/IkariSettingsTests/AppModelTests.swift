@@ -3,7 +3,6 @@
 import Foundation
 import IkariBridge
 import IkariProto
-import IkariShellCore
 import Testing
 
 @testable import IkariSettings

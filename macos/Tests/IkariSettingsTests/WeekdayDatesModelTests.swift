@@ -2,7 +2,6 @@
 #if IKARI_HAS_SHELL_FFI
 // 「曜日の日付」の欄のモデル
 import Foundation
-import IkariShellCore
 import Testing
 
 @testable import IkariSettings

@@ -1,5 +1,5 @@
-// エンジンとの境界（ADR 0004 §5、§7.5）。契約。
-// IkariShellCore は protobuf を知らない。protobuf との変換は IkariXPC が行う。
+// エンジンとの境界の型（ADR 0004 §5、§7.5）。`XPCEngineClient`（smoke が使う）の入出力。
+// IME の殻は shell-core（Rust）がエンジンと話すので、これらの型を使わない（ADR 0041。M5 で IkariShellCore から移した）。
 import Foundation
 
 /// エンジンの LM の状態（`LmState` に対応）。
@@ -237,87 +237,27 @@ public enum EngineShutdownReason: Sendable, Equatable {
     case settingsChanged
 }
 
-/// 殻から見たエンジン。IkariXPC が XPC で実装し、テストはモックで差し替える。
-/// `convert` と `page` は同期で待つ（IMK の主スレッドを止めてよい。ADR 0004 §7.5）。
-/// それ以外の通知は返事を待たない。
-public protocol EngineClient: Sendable {
-    /// 版の照合とエンジンの起動の前倒し（`activateServer` で呼ぶ）
-    func hello(shellVersion: String, timeout: Duration) throws -> EngineHello
-    func beginSession(_ session: SessionInfo)
-    func endSession(sessionID: UInt64)
-    /// 読みが変わるたびに呼ぶ。返事を待たない
-    func prefetch(_ request: ConversionRequest)
-    func convert(_ request: ConversionRequest, timeout: Duration) throws -> ConversionPage
-    func page(conversionID: UInt64, index: Int, timeout: Duration) throws -> ConversionPage
-    /// `candidateIndex` は生成済みの列の中の通し番号（ページをまたぐ）
-    func commit(conversionID: UInt64, candidateIndex: Int)
-    /// 変換せずに確定した文字列（確定履歴のため）
-    func commitText(sessionID: UInt64, reading: String, surface: String)
-    func cancel(conversionID: UInt64)
-    // ---- 文節と再変換（ADR 0006 §5.2、§8.5）。同期で待つ（待ちの上限は `EngineTimeouts.convertTimeout(文節の読みの文字数)`）----
-    /// 文節 `segment` の `index` ページ目。`left` は文節 0〜segment-1 の選択（初めて作るときだけ使われる）
-    func segmentPage(
-        conversionID: UInt64, layoutRev: UInt32, segment: Int, index: Int, left: [SegmentChoiceValue], timeout: Duration
-    ) throws -> SegmentPage
-    /// 区切り直し。`delta` は縮める = 負、伸ばす = 正。返事は新しい区切り（`layoutRev` が上がる）
-    func resize(
-        conversionID: UInt64, layoutRev: UInt32, segment: Int, delta: Int, left: [SegmentChoiceValue], timeout: Duration
-    ) throws -> SegmentLayoutInfo
-    /// 文節ごとの選択で確定する。通知（返事を待たない）。secure のときは呼ばない
-    func commitSegments(conversionID: UInt64, layoutRev: UInt32, choices: [SegmentChoiceValue])
-    /// 再変換の要求。読みが決まらなければ `engine(.badRequest)` などで失敗する（殻は何もしない）
-    func reconvert(_ request: ReconvertRequest, timeout: Duration) throws -> SegmentLayoutInfo
-    /// エンジンに保存して終了するよう頼む。終了は異常として数えない
-    func shutdown(reason: EngineShutdownReason)
-    /// 管理の要求（ADR 0005 §8.3）。`Envelope` のバイト列をそのまま送り、返事のバイト列をそのまま返す。
-    /// `request_id` は実装が付け直す。待ちの上限は `timeout`（`EngineTimeouts.admin` / `.adminTransfer`）。
-    /// 殻は種類を見て許可リストで断る（`IkariBridge.RelayPolicy`）。ここでは中身を解釈しない
-    func relay(_ request: Data, timeout: Duration) throws -> Data
-    /// 絵文字のショートコードの表（ADR 0027 §9.2）。セッションの開始時とデータの版が変わったときに、
-    /// 主スレッドの外で（非同期に）頼む。英語のモードの経路では同期で呼ばない。
-    /// 契約（B47）: 既定の実装は空の表を返す。`XPCEngineClient` の実装はレーン S
-    func emojiTable(timeout: Duration) throws -> EmojiTableInfo
-    /// 診断ログの事象（ADR 0034 §2.2）。返事を待たない。secure のセッションでは呼ばない。
-    /// 契約（D2）: 既定の実装は何もしない。`XPCEngineClient` で送るのは D4
-    func diag(_ event: DiagEventValue)
-    /// 英語のモードの郵便番号（ADR 0032 §9.1）。`code` は ASCII 数字 7 桁。主スレッドの外で（非同期に）1 回だけ頼む。
-    /// 表にない番号は空の配列。契約: 既定の実装は空を返す。`XPCEngineClient` の実装はレーン E
-    func postalLookup(code: String, timeout: Duration) throws -> [String]
-}
+// 変換1回の待ち時間（ADR 0004 §3.4、§7.5）。エンジン側の `LmBudget` と同じ式。
+public enum EngineTimeouts {
+    public static let base: Duration = .milliseconds(30)
+    public static let perCharacter: Duration = .milliseconds(6)
+    public static let maximum: Duration = .milliseconds(300)
+    /// 殻が `lm_budget` に足す IPC の余裕
+    public static let ipcMargin: Duration = .milliseconds(40)
 
-extension EngineClient {
-    public func diag(_ event: DiagEventValue) {}
-    public func postalLookup(code: String, timeout: Duration) throws -> [String] { [] }
-    public func emojiTable(timeout: Duration) throws -> EmojiTableInfo { .empty }
-}
-
-/// `EmojiTableReply` の写し（ADR 0027 §9.2）
-public struct EmojiTableInfo: Sendable, Equatable {
-    /// 名前の昇順
-    public var entries: [ShortcodeEntry]
-    /// データの版の目印。変わったら表を取り直す
-    public var dataLabel: String
-
-    public static let empty = EmojiTableInfo(entries: [], dataLabel: "")
-
-    public init(entries: [ShortcodeEntry], dataLabel: String) {
-        self.entries = entries
-        self.dataLabel = dataLabel
+    /// `min(300ms, max(30ms, 6ms × 読みの文字数))`
+    public static func lmBudget(readingCharacterCount: Int) -> Duration {
+        let count = max(0, readingCharacterCount)
+        return min(maximum, max(base, perCharacter * count))
     }
-}
 
-/// `DiagEvent` の写し（ADR 0034 §2.2）。値は数と固定の語だけ。kind・キー・語は engine の許可リスト
-/// （`diag_schema.rs`）にあるものだけが書かれる。ユーザーの文字は入れない（NFR-19）
-public struct DiagEventValue: Sendable, Equatable {
-    public var sessionID: UInt64
-    public var kind: String
-    public var nums: [String: Int64]
-    public var tags: [String: String]
+    /// 管理の要求の待ちの上限（ADR 0005 §8.3、docs/phase2-contract.md §5.3）。インポートとエクスポート以外
+    public static let admin: Duration = .seconds(3)
+    /// インポートとエクスポートの待ちの上限
+    public static let adminTransfer: Duration = .seconds(30)
 
-    public init(sessionID: UInt64, kind: String, nums: [String: Int64] = [:], tags: [String: String] = [:]) {
-        self.sessionID = sessionID
-        self.kind = kind
-        self.nums = nums
-        self.tags = tags
+    /// `Convert` と `Page` を同期で待つ上限 = `lm_budget(読み) + 40ms`
+    public static func convertTimeout(readingCharacterCount: Int) -> Duration {
+        lmBudget(readingCharacterCount: readingCharacterCount) + ipcMargin
     }
 }

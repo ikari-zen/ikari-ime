@@ -7,7 +7,7 @@ use crate::data::consts::LibConsts;
 use crate::data::run::{Failure, capture, git, has_bash, log, run, succeeds_quietly, warn};
 
 const ENGINE_SOURCE: &str = "engine/src/lib.rs";
-const IDENTITY_SWIFT: &str = "macos/Sources/IkariShellCore/Identity.swift";
+const IDENTITY_SWIFT: &str = "macos/Sources/IkariXPC/Identity.swift";
 const GEN_IDENTITY: &str = "macos/scripts/gen-identity.sh";
 const ADR_DIR: &str = "docs/adr";
 const GITLEAKS_CONFIGS: [&str; 2] = [".gitleaks.toml", ".gitleaks.local.toml"];

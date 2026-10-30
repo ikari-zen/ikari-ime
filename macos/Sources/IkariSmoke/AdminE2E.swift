@@ -5,7 +5,7 @@
 // 途中で失敗しても、見張りの語は最後に必ず消す。
 import Foundation
 import IkariProto
-import IkariShellCore
+import IkariXPC
 
 enum AdminSmoke {
     static let watchReading = "いかりすもーく"
@@ -38,7 +38,7 @@ enum AdminSmokeError: Error, CustomStringConvertible {
 }
 
 /// 管理の要求を送って、返事の本体を返す（`ErrorReply` は投げる）
-func relayAdmin(_ client: any EngineClient, _ body: AdminBody, timeout: Duration) throws -> AdminBody {
+func relayAdmin(_ client: XPCEngineClient, _ body: AdminBody, timeout: Duration) throws -> AdminBody {
     var envelope = AdminEnvelope()
     envelope.schemaVersion = AdminSmoke.schemaVersion
     envelope.requestID = AdminSmoke.requestID
@@ -52,7 +52,7 @@ func relayAdmin(_ client: any EngineClient, _ body: AdminBody, timeout: Duration
 }
 
 struct AdminE2E {
-    let client: any EngineClient
+    let client: XPCEngineClient
     let report: Report
     let convertContext: SurroundingText
     let convertTimeout: Duration

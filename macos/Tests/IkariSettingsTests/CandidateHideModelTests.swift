@@ -2,7 +2,6 @@
 #if IKARI_HAS_SHELL_FFI
 // 「確信が高い変換では候補一覧を出さない」のモデル（#69）
 import Foundation
-import IkariShellCore
 import Testing
 
 @testable import IkariSettings

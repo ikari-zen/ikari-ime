@@ -1,6 +1,5 @@
 // 画面の共通部品: メッセージの帯、キーの記録ボタン、非同期の更新を受ける Binding。
 import AppKit
-import IkariShellCore
 import SwiftUI
 
 extension Binding {

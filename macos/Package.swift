@@ -22,29 +22,27 @@ let rustNativeLibs: [LinkerSetting] = [
 ]
 
 var targets: [Target] = [
-    // 入力の状態機械、キー割り当て、配置の計算、EngineClient プロトコル、設定。AppKit と IMK に依存しない
-    .target(name: "IkariShellCore"),
     // 生成した protobuf（macos/scripts/gen-proto.sh。コミットする）
     .target(
         name: "IkariProto",
         dependencies: [.product(name: "SwiftProtobuf", package: "swift-protobuf")]
     ),
-    // EngineClient の XPC 実装、署名要件
-    .target(name: "IkariXPC", dependencies: ["IkariShellCore", "IkariProto"]),
+    // エンジンへの XPC の輸送（殻の `XPCEngineConnections`）、識別子と署名要件、smoke が使う型付きの口（`XPCEngineClient`）
+    .target(name: "IkariXPC", dependencies: ["IkariProto"]),
     // IMKServer、IkariInputController、CandidatePanel。判断は shell-core（`IkariShellABI` の 1 本の口。ADR 0041 L-E）
     .executableTarget(
         name: "IkariIME",
         dependencies: ["IkariShellABI", "IkariXPC", "IkariBridge", "IkariProto"],
         swiftSettings: hasShellFFI ? [.define("IKARI_HAS_SHELL_FFI")] : []
     ),
-    // 設定アプリと殻のブリッジ（ADR 0005 §6.3）。枠の読み書き、BridgeTransport、中継の許可リスト。
-    // 契約コミットで完成させてあり、以後はレーン S3 も U も変えない
-    .target(name: "IkariBridge", dependencies: ["IkariShellCore", "IkariProto"]),
+    // 設定アプリと殻のブリッジ（ADR 0005 §6.3）。枠の読み書きと BridgeTransport（輸送だけ。照合と中継の許可リストは
+    // 殻では shell-core、設定アプリでは IkariSettings が持つ）
+    .target(name: "IkariBridge", dependencies: ["IkariProto"]),
     // 設定アプリ（ADR 0005 §6.2）。レーン U が実装する。エンジンには直接つながない（殻の中継だけ）
     // 検証・整形・変更の組み立ては shell-core（`IkariShellABI` の `ikari_settings_*`。ADR 0041 §2.3）
     .executableTarget(
         name: "IkariSettings",
-        dependencies: ["IkariShellCore", "IkariShellABI", "IkariBridge", "IkariProto", "IkariXPC"]
+        dependencies: ["IkariShellABI", "IkariBridge", "IkariProto", "IkariXPC"]
     ),
     // XPC サービス（FFI を呼ぶだけ）
     .executableTarget(
@@ -53,34 +51,31 @@ var targets: [Target] = [
         swiftSettings: hasEngineFFI ? [.define("IKARI_HAS_ENGINE_FFI")] : [],
         linkerSettings: hasEngineFFI ? rustNativeLibs : []
     ),
-    // 殻の 1 本の口（ADR 0041 §4.4。`ikari_shell_*`）の薄い層。L-E が IkariIME から使う
+    // 殻の 1 本の口（ADR 0041 §4.4。`ikari_shell_*`）の薄い層と、キーコードの表（`KeyEvents`）。IkariIME と IkariSettings が使う
     .target(
         name: "IkariShellABI",
         dependencies: ["IkariProto", .product(name: "SwiftProtobuf", package: "swift-protobuf")] + (hasShellFFI ? ["IkariShellFFI"] : []),
         swiftSettings: hasShellFFI ? [.define("IKARI_HAS_SHELL_FFI")] : []
     ),
-    // 殻の性能の測り手（ADR 0041 §6.3。移行の間だけ。M5 で消す）。`cargo xtask perf shell` が -enable-testing つきでビルドする
-    .executableTarget(name: "IkariShellBench", dependencies: ["IkariShellCore"]),
     // XPC 経由の E2E
-    .executableTarget(name: "IkariSmoke", dependencies: ["IkariShellCore", "IkariXPC", "IkariProto"]),
+    .executableTarget(name: "IkariSmoke", dependencies: ["IkariXPC", "IkariProto"]),
     .testTarget(
         name: "IkariIMETests",
         dependencies: ["IkariIME", "IkariShellABI", "IkariBridge", "IkariProto", "IkariXPC"],
         swiftSettings: hasShellFFI ? [.define("IKARI_HAS_SHELL_FFI")] : []
     ),
-    .testTarget(name: "IkariShellCoreTests", dependencies: ["IkariShellCore"]),
     .testTarget(
         name: "IkariShellABITests",
         dependencies: ["IkariShellABI", "IkariProto"],
         swiftSettings: hasShellFFI ? [.define("IKARI_HAS_SHELL_FFI")] : []
     ),
-    .testTarget(name: "IkariBridgeTests", dependencies: ["IkariBridge", "IkariProto", "IkariShellCore"]),
+    .testTarget(name: "IkariBridgeTests", dependencies: ["IkariBridge", "IkariProto"]),
     .testTarget(
         name: "IkariSettingsTests",
-        dependencies: ["IkariSettings", "IkariBridge", "IkariProto", "IkariShellCore", "IkariXPC"],
+        dependencies: ["IkariSettings", "IkariShellABI", "IkariBridge", "IkariProto", "IkariXPC"],
         swiftSettings: hasShellFFI ? [.define("IKARI_HAS_SHELL_FFI")] : []
     ),
-    .testTarget(name: "IkariXPCTests", dependencies: ["IkariXPC", "IkariShellCore", "IkariProto"]),
+    .testTarget(name: "IkariXPCTests", dependencies: ["IkariXPC", "IkariProto"]),
     // XPC サービスのエンジンの寿命（#51）。FFI なしで確かめられる部分だけ
     .testTarget(name: "IkariEngineServiceTests", dependencies: ["IkariEngineService"]),
 ]
@@ -96,11 +91,9 @@ let package = Package(
     name: "ikari",
     platforms: [.macOS("26.0")],
     products: [
-        .library(name: "IkariShellCore", targets: ["IkariShellCore"]),
         .executable(name: "ikari", targets: ["IkariIME"]),
         .executable(name: "IkariEngine", targets: ["IkariEngineService"]),
         .executable(name: "ikari-smoke", targets: ["IkariSmoke"]),
-        .executable(name: "ikari-shell-bench", targets: ["IkariShellBench"]),
         .executable(name: "IkariSettings", targets: ["IkariSettings"]),
     ],
     dependencies: [

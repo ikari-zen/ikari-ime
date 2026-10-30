@@ -1,5 +1,5 @@
 #!/bin/bash
-# lib.sh の IKARI_ID_PREFIX と TEAM_ID から macos/Sources/IkariShellCore/Identity.swift を作る（ADR 0036 §3）。
+# lib.sh の IKARI_ID_PREFIX と TEAM_ID から macos/Sources/IkariXPC/Identity.swift を作る（ADR 0036 §3）。
 # 使い方: gen-identity.sh           ... Identity.swift を書く（build.sh が呼ぶ）
 #         gen-identity.sh --stdout  ... 標準出力へ出すだけ（scripts/check.sh が違いを調べる）
 set -euo pipefail
@@ -27,5 +27,5 @@ SWIFT
 if [[ "${1:-}" == "--stdout" ]]; then
   generate
 else
-  generate >"$IKARI_MACOS_DIR/Sources/IkariShellCore/Identity.swift"
+  generate >"$IKARI_MACOS_DIR/Sources/IkariXPC/Identity.swift"
 fi

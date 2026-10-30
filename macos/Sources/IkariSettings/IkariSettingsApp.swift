@@ -3,7 +3,6 @@
 // 開いている間は Dock に出て、最後のウィンドウを閉じたら終了する。
 import AppKit
 import IkariBridge
-import IkariShellCore
 import SwiftUI
 
 @main

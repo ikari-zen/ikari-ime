@@ -2,7 +2,6 @@
 #if IKARI_HAS_SHELL_FFI
 // 「小さい文字」の欄のモデル（emoji.small_letters）
 import Foundation
-import IkariShellCore
 import Testing
 
 @testable import IkariSettings

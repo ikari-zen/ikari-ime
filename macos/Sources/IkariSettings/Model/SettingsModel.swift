@@ -4,7 +4,6 @@
 // `SettingsCore`）。ここは画面の状態（@Observable）と文言を持つ。
 import Foundation
 import IkariProto
-import IkariShellCore
 import Observation
 
 struct KeymapRow: Identifiable, Equatable {

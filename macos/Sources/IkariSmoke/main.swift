@@ -8,7 +8,6 @@
 //
 // 終了コード: 0 = FAIL がない、1 = FAIL がある、2 = 使い方の誤り、または実行できない（エンジンのロックが使用中）。
 import Foundation
-import IkariShellCore
 import IkariXPC
 
 // MARK: 引数

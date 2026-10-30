@@ -3,7 +3,6 @@
 // 画面は「今効いている値」のスナップショット（`SettingsSnapshot`）から作る。
 import Foundation
 import IkariProto
-import IkariShellCore
 
 /// 操作ごとのキー割り当て。`preset` は上書きなし
 enum KeymapBinding: Equatable, Sendable {

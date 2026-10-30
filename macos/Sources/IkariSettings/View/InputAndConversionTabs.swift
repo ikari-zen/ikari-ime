@@ -1,5 +1,4 @@
 // 「入力」と「変換」のタブ（ADR 0005 §6.2）。
-import IkariShellCore
 import SwiftUI
 
 struct InputTab: View {

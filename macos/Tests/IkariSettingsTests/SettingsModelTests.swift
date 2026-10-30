@@ -2,7 +2,6 @@
 #if IKARI_HAS_SHELL_FFI
 import Foundation
 import IkariProto
-import IkariShellCore
 import Testing
 
 @testable import IkariSettings

@@ -1,6 +1,5 @@
 // Bundle ID、XPC のサービス名、署名要件（ADR 0004 §5.1、§15.1-1/2。docs/phase2-contract.md §1〜§2）。契約。
 import Foundation
-import IkariShellCore
 
 public enum IkariIdentifiers {
     /// 殻（ikari.app）の Bundle ID。`.inputmethod.` を含める

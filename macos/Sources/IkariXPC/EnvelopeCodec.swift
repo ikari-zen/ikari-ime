@@ -1,7 +1,6 @@
-// EngineClient の型と protobuf（Envelope）の変換と、返事の検証（ADR 0004 §5.2「信用しない入力」）。
+// エンジンとの境界の型（EngineClientTypes.swift）と protobuf（Envelope）の変換と、返事の検証（ADR 0004 §5.2「信用しない入力」）。
 import Foundation
 import IkariProto
-import IkariShellCore
 import SwiftProtobuf
 
 typealias Envelope = Ikari_Engine_V1_Envelope
@@ -29,7 +28,7 @@ enum EnvelopeCodec {
         (try? env.serializedData()) ?? Data()
     }
 
-    static func surrounding(_ text: IkariShellCore.SurroundingText) -> Ikari_Engine_V1_SurroundingText {
+    static func surrounding(_ text: SurroundingText) -> Ikari_Engine_V1_SurroundingText {
         var out = Ikari_Engine_V1_SurroundingText()
         out.left = text.left
         out.right = text.right

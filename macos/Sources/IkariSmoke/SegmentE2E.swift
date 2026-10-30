@@ -8,7 +8,6 @@
 // 読みや表記の中身はエンジンの辞書に依存するので、確かめるのは「区切りの読みが元の読みに戻る」
 // 「文節の候補の 0 番が表示中の表記と一致する」「区切り直しで境界が動く」といった、辞書によらない性質に絞る。
 import Foundation
-import IkariShellCore
 import IkariXPC
 
 enum SegmentSmoke {
@@ -29,7 +28,7 @@ enum SegmentSmoke {
 }
 
 struct SegmentE2E {
-    let client: any EngineClient
+    let client: XPCEngineClient
     let report: Report
     let context: SurroundingText
     let timeout: Duration
