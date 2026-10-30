@@ -1,0 +1,271 @@
+// 設定アプリ（別のプロセス）と shell-core の間のメッセージ（ADR 0041 §2.3、§4.4。`ikari_settings_app`）。
+// 設定アプリの Model のうち、検証、整形、既定値、変更と管理の要求の組み立てを Rust に頼むための要求と返事。
+// 状態を持たない（毎回、今の設定の行とキー割り当てのプリセットを渡す）。画面の状態（@Observable）と文言は Swift が持つ。
+// 欄の意味は shell-core の `settings` モジュール（values.rs、admin.rs）の注釈を正とする。
+// 変更したら macos/scripts/gen-proto.sh を流して settings.pb.swift の差分をコミットする。
+syntax = "proto3";
+package ikari.settings.v1;
+
+import "ikari/engine/v1/engine.proto";
+import "ikari/shell/v1/shell.proto";
+
+// ikari_settings_app の入力
+message AppRequest {
+  oneof body {
+    Describe describe = 1;
+    Plan plan = 2;
+    ChordRequest chord = 3;
+    DictionaryEntryRequest dictionary_entry = 4;
+    DictionaryListRequest dictionary_list = 5;
+    PosDisplayRequest pos_display = 6;
+    ProfileSetRequest profile_set = 7;
+    ImportSizeRequest import_size = 8;
+    ExportFileNameRequest export_file_name = 9;
+    ikari.shell.v1.Empty constants = 10;
+  }
+}
+
+// ikari_settings_app の出力（要求の種類に対応する 1 つ）
+message AppReply {
+  oneof body {
+    Described described = 1;
+    Planned planned = 2;
+    ChordInfo chord = 3;
+    DictionaryEntryResult dictionary_entry = 4;
+    DictionaryList dictionary_list = 5;
+    // pos_display、export_file_name の結果
+    string text = 6;
+    ProfileSetResult profile_set = 7;
+    ImportSizeVerdict import_size = 8;
+    Constants constants = 9;
+  }
+}
+
+// ---------------------------------------------------------------- 設定の値とキー割り当て
+
+// キー割り当てのプリセットの TSV（バンドルの keymap/<名前>.tsv）。読めないプリセットは渡さない
+message PresetText {
+  ikari.shell.v1.KeymapPreset preset = 1;
+  string tsv = 2;
+}
+
+// 殻の返す設定の行（`key -> value`）から、画面の値とキー割り当ての行を作る
+message Describe {
+  map<string, string> entries = 1;
+  repeated PresetText presets = 2;
+}
+
+// 操作ごとの割り当て。どれもなければ preset
+message Binding {
+  oneof kind {
+    ikari.shell.v1.Empty preset = 1;
+    // 割り当てを外す（`none`）
+    ikari.shell.v1.Empty none = 2;
+    // `ctrl+j` の表記
+    string chord = 3;
+  }
+}
+
+message KeymapRow {
+  // 操作の名前（`to_hiragana`）
+  string action = 1;
+  // 今の割り当て。プリセットと同じ値は preset にそろえる
+  Binding binding = 2;
+  // 画面に出すキー（`⌃J`）。なければ割り当てなし
+  optional string key_text = 3;
+  // プリセットの割り当て（上書き中に「戻す」と何になるか）
+  optional string preset_text = 4;
+}
+
+message Described {
+  // 読めない値と未知のキーは既定値。keymap_overrides は上書きの行（値は `none` かキーの表記）
+  ikari.shell.v1.SettingsSnapshot values = 1;
+  // 操作の順（KEYMAP_ACTIONS）
+  repeated KeymapRow rows = 2;
+}
+
+message KeymapIntent {
+  string action = 1;
+  Binding binding = 2;
+}
+
+// 画面の操作 1 つ（SettingsIntent）
+message Intent {
+  oneof kind {
+    ikari.shell.v1.InputMethodKind input_method = 1;
+    ikari.shell.v1.KeymapPreset keymap_preset = 2;
+    bool paging_wrap = 3;
+    int64 page_size = 4;
+    bool lm_enabled = 5;
+    int64 idle_unload_secs = 6;
+    int64 lm_deadline_ms = 7;
+    int64 convert_wait_ms = 8;
+    bool postal_japanese = 9;
+    bool postal_english = 10;
+    bool postal_te_prefix = 11;
+    bool candidate_hide_when_confident = 12;
+    bool unicode_notation = 13;
+    bool date_weekday_dates = 14;
+    bool emoji_small_letters = 15;
+    bool emoji_shortcode = 16;
+    string add_shared_exclude = 17;
+    string remove_shared_exclude = 18;
+    ikari.shell.v1.Empty reset_shared_exclude = 19;
+    string add_emoji_shortcode_exclude = 20;
+    string remove_emoji_shortcode_exclude = 21;
+    ikari.shell.v1.Empty reset_emoji_shortcode_exclude = 22;
+    KeymapIntent keymap = 23;
+  }
+}
+
+// 今の設定の行に対して、操作を殻への変更（UpdateSettings の set / reset）にする
+message Plan {
+  map<string, string> entries = 1;
+  repeated PresetText presets = 2;
+  Intent intent = 3;
+}
+
+message KeyConflict {
+  // 画面の表記（`⌃J`）
+  string chord_display = 1;
+  // そのキーをすでに使っている操作の名前
+  string other_action = 2;
+}
+
+message PlanError {
+  oneof kind {
+    // Bundle ID に使えない文字がある
+    ikari.shell.v1.Empty invalid_bundle_id = 1;
+    ikari.shell.v1.Empty unknown_action = 2;
+    KeyConflict key_conflict = 3;
+  }
+}
+
+message Planned {
+  oneof result {
+    ikari.shell.v1.SettingsChanges changes = 1;
+    // 今の値と同じ（送らない）
+    ikari.shell.v1.Empty unchanged = 2;
+    PlanError error = 3;
+  }
+}
+
+// ---------------------------------------------------------------- キーの表記
+
+message ChordParts {
+  string key = 1;
+  ikari.shell.v1.Modifiers modifiers = 2;
+}
+
+// 設定の表記（`ctrl+j`）か、押したキー（キーの名前と修飾）
+message ChordRequest {
+  oneof form {
+    string text = 1;
+    ChordParts parts = 2;
+  }
+}
+
+message ChordInfo {
+  // 読める（parts なら、表記に直して読み戻せる）
+  bool valid = 1;
+  // 設定ファイルの表記（`ctrl+shift+j`）。valid のときだけ
+  string text = 2;
+  // 画面の表記（`⌃⇧J`）。読めない text はそのまま
+  string display = 3;
+  bool function_key = 4;
+}
+
+// ---------------------------------------------------------------- ユーザー辞書
+
+message DictionaryDraft {
+  string reading = 1;
+  string surface = 2;
+  string pos_name = 3;
+  string conj_type = 4;
+  string comment = 5;
+}
+
+message DictionaryEntryRequest {
+  DictionaryDraft draft = 1;
+  repeated ikari.engine.v1.PosOption options = 2;
+}
+
+enum DraftProblem {
+  DRAFT_PROBLEM_UNSPECIFIED = 0;
+  DRAFT_PROBLEM_READING_EMPTY = 1;
+  DRAFT_PROBLEM_SURFACE_EMPTY = 2;
+  DRAFT_PROBLEM_POS_NOT_CHOSEN = 3;
+  DRAFT_PROBLEM_CONJ_TYPE_NEEDED = 4;
+  DRAFT_PROBLEM_CONTROL_CHARACTERS = 5;
+}
+
+message DictionaryEntryResult {
+  oneof result {
+    ikari.engine.v1.UserDictEntry entry = 1;
+    DraftProblem problem = 2;
+  }
+}
+
+// 一覧を表示順（読み、表記）に並べ、検索語で絞る。空の検索語は全部
+message DictionaryListRequest {
+  repeated ikari.engine.v1.UserDictEntry entries = 1;
+  string query = 2;
+}
+
+// entries の添字（表示順）
+message DictionaryList { repeated uint32 indices = 1; }
+
+message PosDisplayRequest { string pos = 1; }
+
+// ---------------------------------------------------------------- 属性プロファイル
+
+message ProfileSetRequest {
+  // 今の行（ProfileReply の domains）
+  repeated ikari.engine.v1.ProfileDomainState rows = 1;
+  string id = 2;
+  ikari.engine.v1.ProfileWeightKind weight = 3;
+}
+
+message ProfileSetResult {
+  oneof result {
+    ikari.engine.v1.ProfileSet request = 1;
+    // 分野がない、または重みが同じ（送らない）
+    ikari.shell.v1.Empty unchanged = 2;
+  }
+}
+
+// ---------------------------------------------------------------- 学習とデータ
+
+message ImportSizeRequest { uint64 size = 1; }
+
+enum ImportSizeVerdict {
+  IMPORT_SIZE_VERDICT_UNSPECIFIED = 0;
+  IMPORT_SIZE_VERDICT_OK = 1;
+  IMPORT_SIZE_VERDICT_TOO_LARGE = 2;
+  IMPORT_SIZE_VERDICT_EMPTY = 3;
+}
+
+// 書き出しの既定の名前の日付（利用者の暦と時刻帯で数えた年月日）
+message ExportFileNameRequest {
+  uint32 year = 1;
+  uint32 month = 2;
+  uint32 day = 3;
+}
+
+// ---------------------------------------------------------------- 既定値と範囲
+
+message IntRange {
+  int64 min = 1;
+  int64 max = 2;
+}
+
+message Constants {
+  // 何も書いていないときの値（Describe に空の行を渡したのと同じ）
+  ikari.shell.v1.SettingsSnapshot defaults = 1;
+  IntRange page_size = 2;
+  IntRange idle_unload_secs = 3;
+  IntRange lm_deadline_ms = 4;
+  IntRange convert_wait_ms = 5;
+  // インポートのファイルの上限（バイト）
+  uint64 max_import_bytes = 6;
+}

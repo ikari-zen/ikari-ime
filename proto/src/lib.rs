@@ -1,6 +1,7 @@
 //! ikari-proto: エンジンと殻の間のメッセージ（`proto/ikari/engine/v1/engine.proto`。ADR 0004 §5.2）と、
 //! 殻の入口と shell-core の間のメッセージ（`proto/ikari/shell/v1/shell.proto`。ADR 0041 §4.4）と、
-//! 設定アプリと殻の間のメッセージ（`proto/ikari/bridge/v1/bridge.proto`。ADR 0005 §6.3）。
+//! 設定アプリと殻の間のメッセージ（`proto/ikari/bridge/v1/bridge.proto`。ADR 0005 §6.3）と、
+//! 設定アプリと shell-core の間のメッセージ（`proto/ikari/settings/v1/settings.proto`。ADR 0041 §2.3）。
 
 /// スキーマの版。`Envelope.schema_version` に入れる。
 pub const SCHEMA_VERSION: u32 = 1;
@@ -21,6 +22,13 @@ pub mod shell {
 /// `crate::engine::v1` として参照するため（パッケージの階層どおりの相対パス）。
 pub mod engine {
     pub use super::v1;
+}
+
+/// `ikari.settings.v1`（設定アプリと shell-core。`ikari_settings_app`。ADR 0041 §2.3）
+pub mod settings {
+    pub mod v1 {
+        include!(concat!(env!("OUT_DIR"), "/ikari.settings.v1.rs"));
+    }
 }
 
 /// `ikari.bridge.v1`
