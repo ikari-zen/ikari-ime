@@ -163,6 +163,8 @@ func measureKeys(_ options: BenchOptions) throws -> P1Result {
         for (_, file) in files {
             let defaults = file.defaults ?? ScenarioSetup()
             for scenario in file.scenarios {
+                // 殻の判断（IkariIME にあり、ここから呼べない）は Rust の測り手だけで流す（ScenarioRunnerTests と同じ）
+                if scenario.rustOnly != nil { continue }
                 let setup = defaults.resolve(scenario.setup)
                 let tsv = setup.settings.joined(separator: "\n")
                 if keymaps[tsv] == nil {
@@ -190,6 +192,14 @@ func measureKeys(_ options: BenchOptions) throws -> P1Result {
                         } else {
                             result.samples.append(elapsed)
                         }
+                    }
+                    // キー以外の手順（host）は、状態を進めるために実行するが、時間には数えない（P1 はキー 1 回の時間）
+                    switch step.host {
+                    case nil: break
+                    case .commitComposition: sink &+= machine.commitComposition().count
+                    case .panelShown(let side): machine.setPanelSide(side)
+                    case .panelHidden: machine.setPanelSide(.below)
+                    case .unsupported(let type): throw ScenarioFormatError("\(scenario.name): the Swift bench cannot run host \(type)")
                     }
                 }
             }
