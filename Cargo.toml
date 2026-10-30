@@ -37,3 +37,7 @@ ikari-stack = { path = "stack" }
 ikari-proto = { path = "proto" }
 ikari-engine = { path = "engine" }
 ikari-shell-core = { path = "shell-core" }
+
+# xtask は debug ビルドで走る（`cargo xtask`）。辞書の入力（数百 MB）の sha256 を取るので、この crate だけ最適化する
+[profile.dev.package.xtask]
+opt-level = 3
