@@ -1,0 +1,373 @@
+{
+  "description": "文節の移動、区切り直し、文節ごとの選択と確定。ADR 0006 §8.2、§16.1、§16.6。「はじめてしった」→ 初めて｜知った",
+  "defaults": {"surrounding": {"left": "ユーザー辞書に単語を登録するときは"}, "engine": {"pages": [{"conversion_id": 11, "page_index": 0, "has_next": false, "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}, {"surface": "初めてシッタ"}], "layout": {"conversion_id": 11, "layout_rev": 0, "segments": [{"reading": "はじめて", "surface": "初めて"}, {"reading": "しった", "surface": "知った"}], "focused": 0, "focused_page": {"page_index": 0, "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "has_next": true}}}], "segment_pages": [{"segment": 0, "page_index": 0, "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "has_next": true}, {"segment": 0, "page_index": 1, "candidates": [{"surface": "ハジメテ", "kind": "katakana"}, {"surface": "肇て"}]}, {"segment": 1, "page_index": 0, "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "has_next": true}, {"segment": 1, "page_index": 1, "candidates": [{"surface": "シッタ", "kind": "katakana"}, {"surface": "汁た"}]}], "resizes": [{"segment": 0, "delta": -1, "layout": {"conversion_id": 11, "layout_rev": 1, "segments": [{"reading": "はじめ", "surface": "始め"}, {"reading": "てしった", "surface": "手しった"}], "focused": 0, "focused_page": {"candidates": [{"surface": "始め"}, {"surface": "初め"}]}}}]}},
+  "scenarios": [
+    {
+      "name": "the first display is the whole candidates with clause marks",
+      "from": "SegmentEditingTests.swift SegmentDisplayTests.theFirstDisplayIsTheWholeCandidatesWithClauseMarksAndNoFocus",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]}
+      ]
+    },
+    {
+      "name": "a number key commits the whole candidate even with two segments",
+      "from": "SegmentEditingTests.swift WholeCandidatesFirstTests.aNumberKeyCommitsTheWholeCandidateEvenWhenThereAreTwoSegments",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "2", "expect": [{"type": "commit", "text": "始めてしった"}, {"type": "hide_candidates"}], "engine": [{"type": "commit", "candidate_index": 1, "conversion_id": 11}]}
+      ]
+    },
+    {
+      "name": "enter commits the selected whole candidate with the legacy commit",
+      "from": "SegmentEditingTests.swift WholeCandidatesFirstTests.enterCommitsTheSelectedWholeCandidateWithTheLegacyCommit",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "始めてしった", "highlighted_length": 6}, {"type": "move_selection", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 1, "reserved_rows": 4}], "engine": []},
+        {"press": "enter", "expect": [{"type": "commit", "text": "始めてしった"}, {"type": "hide_candidates"}], "engine": [{"type": "commit", "candidate_index": 1, "conversion_id": 11}]}
+      ]
+    },
+    {
+      "name": "space steps through whole candidates and clause marks follow the first surface",
+      "from": "SegmentEditingTests.swift WholeCandidatesFirstTests.spaceStepsThroughTheWholeCandidatesAndTheClauseMarksFollowTheFirstSurface",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "始めてしった", "highlighted_length": 6}, {"type": "move_selection", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 1, "reserved_rows": 4}], "engine": []},
+        {"press": "shift+space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "move_selection", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": []}
+      ]
+    },
+    {
+      "name": "right enters the clause mode and moves to the second segment",
+      "from": "SegmentEditingTests.swift WholeCandidatesFirstTests.rightEntersTheClauseModeAndMovesTheFocusToTheSecondSegment",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 0, "layout_rev": 0, "left": [{"candidate_index": 0}], "segment": 1, "timeout_ms": 70}]}
+      ]
+    },
+    {
+      "name": "left enters the clause mode on the last segment",
+      "from": "SegmentEditingTests.swift WholeCandidatesFirstTests.leftEntersTheClauseModeOnTheLastSegmentWithoutChangingTheDisplay",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "left", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 0, "layout_rev": 0, "left": [{"candidate_index": 0}], "segment": 1, "timeout_ms": 70}]}
+      ]
+    },
+    {
+      "name": "a whole selection the segments can form is carried into the clause mode",
+      "from": "SegmentEditingTests.swift WholeCandidatesFirstTests.aWholeSelectionThatTheSegmentsCanFormIsCarriedIntoTheClauseMode",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "始めてしった", "highlighted_length": 6}, {"type": "move_selection", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 1, "reserved_rows": 4}], "engine": []},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "始めてしった", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 1, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 0, "layout_rev": 0, "left": [{"candidate_index": 0}], "segment": 1, "timeout_ms": 70}]},
+        {"press": "enter", "expect": [{"type": "commit", "text": "始めてしった"}, {"type": "hide_candidates"}], "engine": [{"type": "commit_segments", "choices": [{"candidate_index": 1}, {"candidate_index": 1}], "conversion_id": 11, "layout_rev": 0}]}
+      ]
+    },
+    {
+      "name": "a whole selection the segments cannot form enters with the first candidates",
+      "from": "SegmentEditingTests.swift WholeCandidatesFirstTests.aWholeSelectionThatTheSegmentsCannotFormStillEntersTheClauseModeWithTheFirstCandidates",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "始めてしった", "highlighted_length": 6}, {"type": "move_selection", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 1, "reserved_rows": 4}], "engine": []},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "はじめて仕った", "highlighted_length": 7}, {"type": "move_selection", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 2, "reserved_rows": 4}], "engine": []},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 0, "layout_rev": 0, "left": [{"candidate_index": 0}], "segment": 1, "timeout_ms": 70}]}
+      ]
+    },
+    {
+      "name": "shift arrows resegment from the first segment",
+      "from": "SegmentEditingTests.swift WholeCandidatesFirstTests.shiftArrowsResegmentFromTheFirstSegmentAndDropTheWholeSelection",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "始めてしった", "highlighted_length": 6}, {"type": "move_selection", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 1, "reserved_rows": 4}], "engine": []},
+        {"press": "shift+left", "expect": [{"type": "set_marked_text", "text": "始め手しった", "segments": [2, 4], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "始め"}, {"surface": "初め"}], "selected": 0, "reserved_rows": 2}], "engine": [{"type": "resize_segment", "conversion_id": 11, "delta": -1, "layout_rev": 0, "left": [], "segment": 0, "timeout_ms": 70}]},
+        {"press": "enter", "expect": [{"type": "commit", "text": "始め手しった"}, {"type": "hide_candidates"}], "engine": [{"type": "commit_segments", "choices": [{"candidate_index": 0}, {"candidate_index": 0}], "conversion_id": 11, "layout_rev": 1}]}
+      ]
+    },
+    {
+      "name": "a failed resize keeps the whole candidates",
+      "from": "SegmentEditingTests.swift WholeCandidatesFirstTests.aFailedResizeKeepsTheWholeCandidatesAndTheirSelection",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "始めてしった", "highlighted_length": 6}, {"type": "move_selection", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 1, "reserved_rows": 4}], "engine": []},
+        {"press": "shift+right", "expect": [{"type": "consume"}], "engine": [{"type": "resize_segment", "conversion_id": 11, "delta": 1, "layout_rev": 0, "left": [], "segment": 0, "timeout_ms": 70}]}
+      ]
+    },
+    {
+      "name": "escape from the whole candidates returns to the reading",
+      "from": "SegmentEditingTests.swift WholeCandidatesFirstTests.escapeFromTheWholeCandidatesReturnsToTheReading",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "escape", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "はじめてしった", "highlighted_length": 7}], "engine": [{"type": "cancel", "conversion_id": 11}]}
+      ]
+    },
+    {
+      "name": "a script key converts the whole reading while whole candidates are shown",
+      "from": "SegmentEditingTests.swift WholeCandidatesFirstTests.aScriptKeyConvertsTheWholeReadingWhileTheWholeCandidatesAreShown",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "f7", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ハジメテシッタ", "highlighted_length": 7}], "engine": [{"type": "cancel", "conversion_id": 11}]},
+        {"press": "enter", "expect": [{"type": "commit", "text": "ハジメテシッタ"}, {"type": "hide_candidates"}], "engine": [{"type": "commit_text", "reading": "はじめてしった", "surface": "ハジメテシッタ"}]}
+      ]
+    },
+    {
+      "name": "right moves the focus and fetches the first page once",
+      "from": "SegmentEditingTests.swift SegmentFocusTests.rightMovesTheFocusAndFetchesTheFirstPageOfThatSegmentOnce",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "left", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 0, "layout_rev": 0, "left": [{"candidate_index": 0}], "segment": 1, "timeout_ms": 70}]},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": []}
+      ]
+    },
+    {
+      "name": "space steps through the focused segment only",
+      "from": "SegmentEditingTests.swift SegmentFocusTests.spaceStepsThroughTheFocusedSegmentOnly",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "left", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 0, "layout_rev": 0, "left": [{"candidate_index": 0}], "segment": 1, "timeout_ms": 70}]},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "始めて知った", "segments": [3, 3], "focused": 0}, {"type": "move_selection", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 1, "reserved_rows": 9}], "engine": []},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "始めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "始めてしった", "segments": [3, 3], "focused": 1}, {"type": "move_selection", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 1, "reserved_rows": 9}], "engine": []}
+      ]
+    },
+    {
+      "name": "space past the page fetches the next page of that segment",
+      "from": "SegmentEditingTests.swift SegmentFocusTests.spacePastThePageFetchesTheNextPageOfThatSegmentWithTheSegmentRequest",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "left", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 0, "layout_rev": 0, "left": [{"candidate_index": 0}], "segment": 1, "timeout_ms": 70}]},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "始めて知った", "segments": [3, 3], "focused": 0}, {"type": "move_selection", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 1, "reserved_rows": 9}], "engine": []},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "はじめて知った", "segments": [4, 3], "focused": 0}, {"type": "move_selection", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 2, "reserved_rows": 9}], "engine": []},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "ハジメテ知った", "segments": [4, 3], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "ハジメテ", "kind": "katakana"}, {"surface": "肇て"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 1, "layout_rev": 0, "left": [], "segment": 0, "timeout_ms": 70}]},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "肇て知った", "segments": [2, 3], "focused": 0}, {"type": "move_selection", "candidates": [{"surface": "ハジメテ", "kind": "katakana"}, {"surface": "肇て"}], "selected": 1, "reserved_rows": 9}], "engine": []}
+      ]
+    },
+    {
+      "name": "the last page wraps to the first page of the segment",
+      "from": "SegmentEditingTests.swift SegmentFocusTests.theLastPageWrapsToTheFirstPageOfTheSegment",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "left", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 0, "layout_rev": 0, "left": [{"candidate_index": 0}], "segment": 1, "timeout_ms": 70}]},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "始めて知った", "segments": [3, 3], "focused": 0}, {"type": "move_selection", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 1, "reserved_rows": 9}], "engine": []},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "はじめて知った", "segments": [4, 3], "focused": 0}, {"type": "move_selection", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 2, "reserved_rows": 9}], "engine": []},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "ハジメテ知った", "segments": [4, 3], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "ハジメテ", "kind": "katakana"}, {"surface": "肇て"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 1, "layout_rev": 0, "left": [], "segment": 0, "timeout_ms": 70}]},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "肇て知った", "segments": [2, 3], "focused": 0}, {"type": "move_selection", "candidates": [{"surface": "ハジメテ", "kind": "katakana"}, {"surface": "肇て"}], "selected": 1, "reserved_rows": 9}], "engine": []},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": []}
+      ]
+    },
+    {
+      "name": "a number key on two segments chooses and moves to the next segment",
+      "from": "SegmentEditingTests.swift SegmentSelectionTests.aNumberKeyOnTwoSegmentsOnlyChoosesAndMovesToTheNextSegment",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "left", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 0, "layout_rev": 0, "left": [{"candidate_index": 0}], "segment": 1, "timeout_ms": 70}]},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "2", "expect": [{"type": "set_marked_text", "text": "始めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "3", "expect": [{"type": "set_marked_text", "text": "始めて絞った", "segments": [3, 3], "focused": 1}, {"type": "move_selection", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 2, "reserved_rows": 9}], "engine": []},
+        {"press": "enter", "expect": [{"type": "commit", "text": "始めて絞った"}, {"type": "hide_candidates"}], "engine": [{"type": "commit_segments", "choices": [{"candidate_index": 1}, {"candidate_index": 2}], "conversion_id": 11, "layout_rev": 0}]}
+      ]
+    },
+    {
+      "name": "jis digit keys behave the same",
+      "from": "SegmentEditingTests.swift SegmentSelectionTests.jisDigitKeysBehaveTheSame",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "left", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 0, "layout_rev": 0, "left": [{"candidate_index": 0}], "segment": 1, "timeout_ms": 70}]},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "jis:1", "expect": [{"type": "set_marked_text", "text": "始めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": []}
+      ]
+    },
+    {
+      "name": "a number beyond the candidates of the page is ignored",
+      "from": "SegmentEditingTests.swift SegmentSelectionTests.aNumberBeyondTheCandidatesOfThePageIsIgnored",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "left", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 0, "layout_rev": 0, "left": [{"candidate_index": 0}], "segment": 1, "timeout_ms": 70}]},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "4", "expect": [{"type": "consume"}], "engine": []}
+      ]
+    },
+    {
+      "name": "enter without visiting a segment sends its first candidate",
+      "from": "SegmentEditingTests.swift SegmentSelectionTests.enterWithoutVisitingASegmentSendsItsFirstCandidate",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "left", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 0, "layout_rev": 0, "left": [{"candidate_index": 0}], "segment": 1, "timeout_ms": 70}]},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "enter", "expect": [{"type": "commit", "text": "初めて知った"}, {"type": "hide_candidates"}], "engine": [{"type": "commit_segments", "choices": [{"candidate_index": 0}, {"candidate_index": 0}], "conversion_id": 11, "layout_rev": 0}]}
+      ]
+    },
+    {
+      "name": "choices across pages use the cumulative index",
+      "from": "SegmentEditingTests.swift SegmentSelectionTests.choicesAcrossPagesUseTheCumulativeIndex",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "left", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 0, "layout_rev": 0, "left": [{"candidate_index": 0}], "segment": 1, "timeout_ms": 70}]},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "始めて知った", "segments": [3, 3], "focused": 0}, {"type": "move_selection", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 1, "reserved_rows": 9}], "engine": []},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "はじめて知った", "segments": [4, 3], "focused": 0}, {"type": "move_selection", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 2, "reserved_rows": 9}], "engine": []},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "ハジメテ知った", "segments": [4, 3], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "ハジメテ", "kind": "katakana"}, {"surface": "肇て"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 1, "layout_rev": 0, "left": [], "segment": 0, "timeout_ms": 70}]},
+        {"press": "enter", "expect": [{"type": "commit", "text": "ハジメテ知った"}, {"type": "hide_candidates"}], "engine": [{"type": "commit_segments", "choices": [{"candidate_index": 3}, {"candidate_index": 0}], "conversion_id": 11, "layout_rev": 0}]}
+      ]
+    },
+    {
+      "name": "escape and backspace return to the whole reading",
+      "from": "SegmentEditingTests.swift SegmentSelectionTests.escapeAndBackspaceReturnToTheWholeReadingAndDropTheSelections",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "left", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 0, "layout_rev": 0, "left": [{"candidate_index": 0}], "segment": 1, "timeout_ms": 70}]},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "2", "expect": [{"type": "set_marked_text", "text": "始めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "escape", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "はじめてしった", "highlighted_length": 7}], "engine": [{"type": "cancel", "conversion_id": 11}]},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "backspace", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "はじめてしった", "highlighted_length": 7}], "engine": [{"type": "cancel", "conversion_id": 11}]}
+      ]
+    },
+    {
+      "name": "typing a character commits all segments and starts a composition",
+      "from": "SegmentEditingTests.swift SegmentSelectionTests.typingACharacterCommitsAllSegmentsAndStartsAComposition",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "left", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 0, "layout_rev": 0, "left": [{"candidate_index": 0}], "segment": 1, "timeout_ms": 70}]},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "k", "expect": [{"type": "commit", "text": "初めて知った"}, {"type": "hide_candidates"}, {"type": "set_marked_text", "text": "k"}], "engine": [{"type": "commit_segments", "choices": [{"candidate_index": 0}, {"candidate_index": 0}], "conversion_id": 11, "layout_rev": 0}]},
+        {"press": "a", "expect": [{"type": "set_marked_text", "text": "か", "highlighted_length": 1}], "engine": [{"type": "prefetch", "reading": "か", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}}]}
+      ]
+    },
+    {
+      "name": "a command shortcut commits first then passes through",
+      "from": "SegmentEditingTests.swift SegmentSelectionTests.aCommandShortcutCommitsFirstThenPassesThrough",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "left", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 0, "layout_rev": 0, "left": [{"candidate_index": 0}], "segment": 1, "timeout_ms": 70}]},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "cmd+c", "expect": [{"type": "commit", "text": "初めて知った"}, {"type": "hide_candidates"}, {"type": "pass_through"}], "engine": [{"type": "commit_segments", "choices": [{"candidate_index": 0}, {"candidate_index": 0}], "conversion_id": 11, "layout_rev": 0}]}
+      ]
+    },
+    {
+      "name": "a script key converts only the focused segment",
+      "from": "SegmentEditingTests.swift SegmentScriptConversionTests.aScriptKeyConvertsOnlyTheFocusedSegmentAndKeepsTheConversion",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "left", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 0, "layout_rev": 0, "left": [{"candidate_index": 0}], "segment": 1, "timeout_ms": 70}]},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "f7", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ハジメテ知った", "segments": [4, 3], "focused": 0}], "engine": []},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "ハジメテ知った", "segments": [4, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "left", "expect": [{"type": "set_marked_text", "text": "ハジメテ知った", "segments": [4, 3], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "始めて知った", "segments": [3, 3], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 1, "reserved_rows": 9}], "engine": []},
+        {"press": "f8", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ﾊｼﾞﾒﾃ知った", "segments": [5, 3], "focused": 0}], "engine": []},
+        {"press": "enter", "expect": [{"type": "commit", "text": "ﾊｼﾞﾒﾃ知った"}, {"type": "hide_candidates"}], "engine": [{"type": "commit_segments", "choices": [{"literal": "ﾊｼﾞﾒﾃ"}, {"candidate_index": 0}], "conversion_id": 11, "layout_rev": 0}]}
+      ]
+    },
+    {
+      "name": "shift left shrinks the focused segment and adopts the new layout",
+      "from": "SegmentEditingTests.swift SegmentResizeTests.shiftLeftShrinksTheFocusedSegmentAndAdoptsTheNewLayout",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "left", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 0, "layout_rev": 0, "left": [{"candidate_index": 0}], "segment": 1, "timeout_ms": 70}]},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "shift+left", "expect": [{"type": "set_marked_text", "text": "始め手しった", "segments": [2, 4], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "始め"}, {"surface": "初め"}], "selected": 0, "reserved_rows": 2}], "engine": [{"type": "resize_segment", "conversion_id": 11, "delta": -1, "layout_rev": 0, "left": [], "segment": 0, "timeout_ms": 70}]},
+        {"press": "enter", "expect": [{"type": "commit", "text": "始め手しった"}, {"type": "hide_candidates"}], "engine": [{"type": "commit_segments", "choices": [{"candidate_index": 0}, {"candidate_index": 0}], "conversion_id": 11, "layout_rev": 1}]}
+      ]
+    },
+    {
+      "name": "the last segment cannot be expanded",
+      "from": "SegmentEditingTests.swift SegmentResizeTests.shiftRightExpandsAndPassesTheLeftSegmentsChoices",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "left", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 0, "layout_rev": 0, "left": [{"candidate_index": 0}], "segment": 1, "timeout_ms": 70}]},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "shift+right", "expect": [{"type": "consume"}], "engine": []}
+      ]
+    },
+    {
+      "name": "a failed resize keeps the display",
+      "from": "SegmentEditingTests.swift SegmentResizeTests.aFailedResizeKeepsTheDisplayAsItIs",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "left", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 0, "layout_rev": 0, "left": [{"candidate_index": 0}], "segment": 1, "timeout_ms": 70}]},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "shift+left", "expect": [{"type": "consume"}], "engine": [{"type": "resize_segment", "conversion_id": 11, "delta": -1, "layout_rev": 0, "left": [{"candidate_index": 0}], "segment": 1, "timeout_ms": 70}]}
+      ]
+    },
+    {
+      "name": "an old engine without a layout ignores segment keys",
+      "from": "SegmentEditingTests.swift SegmentResizeTests.anOldEngineWithoutALayoutIgnoresArrowsAndNeverSendsSegmentRequests",
+      "setup": {"engine": {"pages": [{"conversion_id": 11, "page_index": 0, "has_next": false, "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}, {"surface": "初めてシッタ"}]}]}},
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "highlighted_length": 6}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "left", "expect": [{"type": "consume"}], "engine": []},
+        {"press": "right", "expect": [{"type": "consume"}], "engine": []},
+        {"press": "shift+left", "expect": [{"type": "consume"}], "engine": []},
+        {"press": "shift+right", "expect": [{"type": "consume"}], "engine": []}
+      ]
+    },
+    {
+      "name": "the shell fallback ignores segment keys",
+      "from": "SegmentEditingTests.swift SegmentResizeTests.theShellFallbackIgnoresSegmentKeys",
+      "setup": {"engine": {"pages": [], "failures": [{"request": "convert", "nth": 1, "error": "timeout"}]}},
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "はじめてしった", "highlighted_length": 7}, {"type": "show_candidates", "candidates": [{"surface": "はじめてしった", "kind": "hiragana"}, {"surface": "ハジメテシッタ", "kind": "katakana"}, {"surface": "ﾊｼﾞﾒﾃｼｯﾀ", "kind": "katakana"}], "selected": 0, "reserved_rows": 3}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "shift+left", "expect": [{"type": "consume"}], "engine": []},
+        {"press": "right", "expect": [{"type": "consume"}], "engine": []}
+      ]
+    },
+    {
+      "name": "an arrow with a command modifier while converting commits and passes through",
+      "from": "SegmentEditingTests.swift SegmentKeymapTests.anArrowWithACommandModifierWhileConvertingCommitsAndPassesThrough",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "left", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 0, "layout_rev": 0, "left": [{"candidate_index": 0}], "segment": 1, "timeout_ms": 70}]},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "cmd+left", "expect": [{"type": "commit", "text": "初めて知った"}, {"type": "hide_candidates"}, {"type": "pass_through"}], "engine": [{"type": "commit_segments", "choices": [{"candidate_index": 0}, {"candidate_index": 0}], "conversion_id": 11, "layout_rev": 0}]}
+      ]
+    },
+    {
+      "name": "the IME commit composition commits what is shown",
+      "from": "ReconversionTests.swift ReconversionKeysTests.theImeCommitCompositionCommitsWhatIsShownAndLearnsNothingIfUnchanged (文節)",
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "ユーザー辞書に単語を登録するときは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "left", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 0, "layout_rev": 0, "left": [{"candidate_index": 0}], "segment": 1, "timeout_ms": 70}]},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "初めて"}, {"surface": "始めて"}, {"surface": "はじめて", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "2", "expect": [{"type": "set_marked_text", "text": "始めて知った", "segments": [3, 3], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "知った"}, {"surface": "しった", "kind": "hiragana"}, {"surface": "絞った"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"host": {"type": "commit_composition"}, "expect": [{"type": "commit", "text": "始めて知った"}, {"type": "hide_candidates"}], "engine": [{"type": "commit_segments", "choices": [{"candidate_index": 1}, {"candidate_index": 0}], "conversion_id": 11, "layout_rev": 0}]}
+      ]
+    }
+  ]
+}

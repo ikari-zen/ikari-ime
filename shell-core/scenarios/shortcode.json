@@ -1,0 +1,94 @@
+{
+  "description": "日本語のモードの絵文字のショートコード（ADR 0027 §3）。状態機械の部分",
+  "defaults": {"settings": ["emoji.shortcode\ton"], "engine": {"emoji_table": [{"name": "eyeglasses", "emoji": "👓"}, {"name": "eyes", "emoji": "👀"}, {"name": "smile", "emoji": "😄"}], "pages": [{"conversion_id": 9, "page_index": 0, "has_next": false, "candidates": [{"surface": "目"}]}]}, "surrounding": {"left": "これは"}},
+  "scenarios": [
+    {
+      "name": "colon enters the shortcode",
+      "from": "ShortcodeTests.swift (入り)",
+      "steps": [
+        {"press": ":", "expect": [{"type": "set_marked_text", "text": ":", "highlighted_length": 1}], "engine": []},
+        {"press": "e", "expect": [{"type": "set_marked_text", "text": ":e", "highlighted_length": 2}], "engine": []},
+        {"press": "y", "expect": [{"type": "set_marked_text", "text": ":ey", "highlighted_length": 3}], "engine": []}
+      ]
+    },
+    {
+      "name": "tab shows the choices and enter commits the emoji",
+      "from": "ShortcodeTests.swift (候補と確定)",
+      "steps": [
+        {"press": ":", "expect": [{"type": "set_marked_text", "text": ":", "highlighted_length": 1}], "engine": []},
+        {"type_text": "eyes"},
+        {"press": ":", "expect": [{"type": "set_marked_text", "text": ":eyes:", "highlighted_length": 6}, {"type": "show_candidates", "candidates": [{"surface": ":eyes:", "kind": "literal"}, {"surface": "👀", "kind": "unspecified", "label": ":eyes:"}], "selected": 0, "reserved_rows": 2}], "engine": []},
+        {"press": "enter", "expect": [{"type": "commit", "text": ":eyes:"}, {"type": "hide_candidates"}], "engine": [{"type": "commit_text", "reading": ":eyes", "surface": ":eyes:"}]}
+      ]
+    },
+    {
+      "name": "closing colon on an exact name shows the choices",
+      "from": "ShortcodeTests.swift (閉じの :)",
+      "steps": [
+        {"press": ":", "expect": [{"type": "set_marked_text", "text": ":", "highlighted_length": 1}], "engine": []},
+        {"type_text": "smile"},
+        {"press": ":", "expect": [{"type": "set_marked_text", "text": ":smile:", "highlighted_length": 7}, {"type": "show_candidates", "candidates": [{"surface": ":smile:", "kind": "literal"}, {"surface": "😄", "kind": "unspecified", "label": ":smile:"}], "selected": 0, "reserved_rows": 2}], "engine": []}
+      ]
+    },
+    {
+      "name": "backspace on only the colon cancels",
+      "from": "ShortcodeTests.swift (`:` だけで BackSpace)",
+      "steps": [
+        {"press": ":", "expect": [{"type": "set_marked_text", "text": ":", "highlighted_length": 1}], "engine": []},
+        {"press": "backspace", "expect": [{"type": "set_marked_text", "text": ""}], "engine": []}
+      ]
+    },
+    {
+      "name": "escape retypes as a composition",
+      "from": "ShortcodeTests.swift (Esc は打ち直し)",
+      "steps": [
+        {"press": ":", "expect": [{"type": "set_marked_text", "text": ":", "highlighted_length": 1}], "engine": []},
+        {"type_text": "ey"},
+        {"press": "escape", "expect": [{"type": "set_marked_text", "text": ""}, {"type": "set_marked_text", "text": "：", "highlighted_length": 1}, {"type": "set_marked_text", "text": "：え", "highlighted_length": 2}, {"type": "set_marked_text", "text": "：えy", "highlighted_length": 2}], "engine": [{"type": "prefetch", "reading": "：", "context": {"available": true, "left": "これは", "right": ""}}, {"type": "prefetch", "reading": "：え", "context": {"available": true, "left": "これは", "right": ""}}]}
+      ]
+    },
+    {
+      "name": "a digit picks from the choices",
+      "from": "ShortcodeTests.swift (数字で選ぶ)",
+      "steps": [
+        {"press": ":", "expect": [{"type": "set_marked_text", "text": ":", "highlighted_length": 1}], "engine": []},
+        {"type_text": "eye"},
+        {"press": "down", "expect": [{"type": "set_marked_text", "text": ":eye", "highlighted_length": 4}, {"type": "show_candidates", "candidates": [{"surface": ":eye", "kind": "literal"}, {"surface": "👀", "kind": "unspecified", "label": ":eyes:"}, {"surface": "👓", "kind": "unspecified", "label": ":eyeglasses:"}], "selected": 0, "reserved_rows": 3}], "engine": []},
+        {"press": "2", "expect": [{"type": "commit", "text": "👀"}, {"type": "hide_candidates"}], "engine": [{"type": "commit_text", "reading": ":eye", "surface": "👀"}]}
+      ]
+    },
+    {
+      "name": "off does not enter",
+      "from": "ShortcodeTests.swift (設定がオフ)",
+      "setup": {"settings": [], "engine": {"emoji_table": [{"name": "eyeglasses", "emoji": "👓"}, {"name": "eyes", "emoji": "👀"}, {"name": "smile", "emoji": "😄"}], "pages": [{"conversion_id": 9, "page_index": 0, "has_next": false, "candidates": [{"surface": "目"}]}]}},
+      "steps": [
+        {"press": ":", "expect": [{"type": "set_marked_text", "text": "：", "highlighted_length": 1}], "engine": [{"type": "prefetch", "reading": "：", "context": {"available": true, "left": "これは", "right": ""}}]}
+      ]
+    },
+    {
+      "name": "an excluded app does not enter",
+      "from": "ShortcodeTests.swift (除外のアプリ)",
+      "setup": {"settings": ["emoji.shortcode\ton"], "engine": {"emoji_table": [{"name": "eyeglasses", "emoji": "👓"}, {"name": "eyes", "emoji": "👀"}, {"name": "smile", "emoji": "😄"}], "pages": [{"conversion_id": 9, "page_index": 0, "has_next": false, "candidates": [{"surface": "目"}]}]}, "client": {"bundle_id": "com.apple.Terminal"}},
+      "steps": [
+        {"press": ":", "expect": [{"type": "set_marked_text", "text": "：", "highlighted_length": 1}], "engine": [{"type": "prefetch", "reading": "：", "context": {"available": true, "left": "これは", "right": ""}}]}
+      ]
+    },
+    {
+      "name": "the IME commit composition commits what is shown",
+      "from": "ShortcodeTests.swift (commitComposition)",
+      "steps": [
+        {"press": ":", "expect": [{"type": "set_marked_text", "text": ":", "highlighted_length": 1}], "engine": []},
+        {"type_text": "ey"},
+        {"host": {"type": "commit_composition"}, "expect": [{"type": "commit", "text": ":ey"}], "engine": [{"type": "commit_text", "reading": ":ey", "surface": ":ey"}]}
+      ]
+    },
+    {
+      "name": "a key repeat does not enter",
+      "from": "ShortcodeTests.swift (キーリピート)",
+      "rust_only": "Swift の実行器はキーリピートを渡さない（ScenarioEvent は is_repeat を読まない）",
+      "steps": [
+        {"event": {"type": "key", "key": {"kind": "character", "text": ":"}, "is_repeat": true}, "expect": [{"type": "set_marked_text", "text": "：", "highlighted_length": 1}], "engine": [{"type": "prefetch", "reading": "：", "context": {"available": true, "left": "これは", "right": ""}}]}
+      ]
+    }
+  ]
+}

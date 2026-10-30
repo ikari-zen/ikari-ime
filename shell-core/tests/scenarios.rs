@@ -1,8 +1,9 @@
 //! 共通のシナリオ（`shell-core/scenarios/*.json`）の Rust の実行器（ADR 0041 §5）。
 //!
 //! - `scenarios_are_well_formed`: すべてのファイルが Rust の型で読め、手順の形が正しいこと（いつも流す）。
-//! - `scenarios_match_on_rust`: `Shell` に流して期待と比べる。M1-a では `Shell` が stub なので `#[ignore]`。
-//!   L-A2（状態機械）と L-B（エンジン通信）が入ったら `#[ignore]` を外す。
+//! - `scenarios_match_on_rust`: `Shell` に流して期待と比べる。L-A2（状態機械）は入ったが、エンジンへの口（`EngineLink`）が
+//!   まだ stub（L-B）なので `#[ignore]`。L-B を重ねると全件通ることは確かめた（L-A2 の PR）。L-B が入ったら外す。
+//! - `record_expectations`: 期待を書くときの記録（手で流す。README）。
 
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -51,7 +52,7 @@ fn scenarios_are_well_formed() {
 // ---------------------------------------------------------------- 実行
 
 #[test]
-#[ignore = "M1-a: Shell は stub。L-A2（状態機械）と L-B（エンジン通信）が入ったら外す"]
+#[ignore = "EngineLink（L-B）が stub の間は変換が殻の候補になる。L-B が入ったら外す"]
 fn scenarios_match_on_rust() {
     let files = scenario::load_dir(&scenario::scenarios_dir()).expect("scenarios load");
     let mut failures = Vec::new();

@@ -1,0 +1,106 @@
+{
+  "description": "確信が高い変換で、最初の Space で 1 位だけを出す（candidate.hide_when_confident。#69）",
+  "defaults": {"surrounding": {"left": "これは"}, "engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": true, "confident": true, "candidates": [{"surface": "品詞", "annotation": "ひんし(品詞)"}, {"surface": "瀕死", "annotation": "ひんし(瀕死)"}, {"surface": "ひんし", "kind": "hiragana"}]}]}},
+  "scenarios": [
+    {
+      "name": "off keeps the list even when confident",
+      "from": "ConfidentConversionTests.swift ConfidentConversionTests.defaultIsOnAndOffKeepsTheListEvenWhenConfident",
+      "setup": {"settings": ["candidate.hide_when_confident\toff"]},
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "品詞", "annotation": "ひんし(品詞)"}, {"surface": "瀕死", "annotation": "ひんし(瀕死)"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "annotation": "ひんし(品詞)", "reserved_rows": 9}], "engine": [{"type": "convert", "reading": "ひんし", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]}
+      ]
+    },
+    {
+      "name": "first space shows only the top candidate underlined",
+      "from": "ConfidentConversionTests.swift ConfidentConversionTests.firstSpaceShowsOnlyTheTopCandidateUnderlined",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2}], "engine": [{"type": "convert", "reading": "ひんし", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]}
+      ]
+    },
+    {
+      "name": "second space shows the list without moving the selection",
+      "from": "ConfidentConversionTests.swift ConfidentConversionTests.secondSpaceShowsTheListWithoutMovingTheSelection",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2}], "engine": [{"type": "convert", "reading": "ひんし", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "space", "expect": [{"type": "show_candidates", "candidates": [{"surface": "品詞", "annotation": "ひんし(品詞)"}, {"surface": "瀕死", "annotation": "ひんし(瀕死)"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "annotation": "ひんし(品詞)", "reserved_rows": 9}], "engine": []},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "瀕死", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "品詞", "annotation": "ひんし(品詞)"}, {"surface": "瀕死", "annotation": "ひんし(瀕死)"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 1, "annotation": "ひんし(瀕死)", "reserved_rows": 9}], "engine": []}
+      ]
+    },
+    {
+      "name": "down and up show the list",
+      "from": "ConfidentConversionTests.swift ConfidentConversionTests.downAndUpShowTheList",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2}], "engine": [{"type": "convert", "reading": "ひんし", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "down", "expect": [{"type": "show_candidates", "candidates": [{"surface": "品詞", "annotation": "ひんし(品詞)"}, {"surface": "瀕死", "annotation": "ひんし(瀕死)"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "annotation": "ひんし(品詞)", "reserved_rows": 9}], "engine": []}
+      ]
+    },
+    {
+      "name": "up shows the list",
+      "from": "ConfidentConversionTests.swift ConfidentConversionTests.downAndUpShowTheList (up)",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2}], "engine": [{"type": "convert", "reading": "ひんし", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "up", "expect": [{"type": "show_candidates", "candidates": [{"surface": "品詞", "annotation": "ひんし(品詞)"}, {"surface": "瀕死", "annotation": "ひんし(瀕死)"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "annotation": "ひんし(品詞)", "reserved_rows": 9}], "engine": []}
+      ]
+    },
+    {
+      "name": "a digit shows the list instead of picking",
+      "from": "ConfidentConversionTests.swift ConfidentConversionTests.aDigitShowsTheListInsteadOfPicking",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2}], "engine": [{"type": "convert", "reading": "ひんし", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "2", "expect": [{"type": "show_candidates", "candidates": [{"surface": "品詞", "annotation": "ひんし(品詞)"}, {"surface": "瀕死", "annotation": "ひんし(瀕死)"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "annotation": "ひんし(品詞)", "reserved_rows": 9}], "engine": []},
+        {"press": "2", "expect": [{"type": "commit", "text": "瀕死"}, {"type": "hide_candidates"}], "engine": [{"type": "commit", "candidate_index": 1, "conversion_id": 7}]}
+      ]
+    },
+    {
+      "name": "enter commits the top candidate while hidden",
+      "from": "ConfidentConversionTests.swift ConfidentConversionTests.enterCommitsTheTopCandidateWhileHidden",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2}], "engine": [{"type": "convert", "reading": "ひんし", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "enter", "expect": [{"type": "commit", "text": "品詞"}, {"type": "hide_candidates"}], "engine": [{"type": "commit", "candidate_index": 0, "conversion_id": 7}]}
+      ]
+    },
+    {
+      "name": "escape returns to the reading while hidden",
+      "from": "ConfidentConversionTests.swift ConfidentConversionTests.escapeReturnsToTheReadingWhileHidden",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2}], "engine": [{"type": "convert", "reading": "ひんし", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "escape", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ひんし", "highlighted_length": 3}], "engine": [{"type": "cancel", "conversion_id": 7}]}
+      ]
+    },
+    {
+      "name": "not confident keeps the list",
+      "from": "ConfidentConversionTests.swift ConfidentConversionTests.notConfidentKeepsTheList",
+      "setup": {"engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": true, "confident": false, "candidates": [{"surface": "品詞", "annotation": "ひんし(品詞)"}, {"surface": "瀕死", "annotation": "ひんし(瀕死)"}, {"surface": "ひんし", "kind": "hiragana"}]}]}},
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "品詞", "annotation": "ひんし(品詞)"}, {"surface": "瀕死", "annotation": "ひんし(瀕死)"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "annotation": "ひんし(品詞)", "reserved_rows": 9}], "engine": [{"type": "convert", "reading": "ひんし", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]}
+      ]
+    },
+    {
+      "name": "fallback never hides the list",
+      "from": "ConfidentConversionTests.swift ConfidentConversionTests.fallbackNeverHidesTheList",
+      "setup": {"engine": {"pages": [], "failures": [{"request": "convert", "nth": 1, "error": "unavailable"}]}},
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "ひんし", "highlighted_length": 3}, {"type": "show_candidates", "candidates": [{"surface": "ひんし", "kind": "hiragana"}, {"surface": "ヒンシ", "kind": "katakana"}, {"surface": "ﾋﾝｼ", "kind": "katakana"}], "selected": 0, "reserved_rows": 3}], "engine": [{"type": "convert", "reading": "ひんし", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]}
+      ]
+    },
+    {
+      "name": "several segments keep the list",
+      "from": "ConfidentConversionTests.swift ConfidentConversionTests.severalSegmentsKeepTheList",
+      "setup": {"engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": true, "confident": true, "candidates": [{"surface": "品詞", "annotation": "ひんし(品詞)"}, {"surface": "瀕死", "annotation": "ひんし(瀕死)"}, {"surface": "ひんし", "kind": "hiragana"}], "layout": {"conversion_id": 7, "segments": [{"reading": "ひん", "surface": "品"}, {"reading": "し", "surface": "詞"}], "focused_page": {"candidates": [{"surface": "品"}]}}}]}},
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "品詞", "segments": [1, 1]}, {"type": "show_candidates", "candidates": [{"surface": "品詞", "annotation": "ひんし(品詞)"}, {"surface": "瀕死", "annotation": "ひんし(瀕死)"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "annotation": "ひんし(品詞)", "reserved_rows": 9}], "engine": [{"type": "convert", "reading": "ひんし", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]}
+      ]
+    }
+  ]
+}
