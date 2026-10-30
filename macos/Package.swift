@@ -49,6 +49,8 @@ var targets: [Target] = [
         swiftSettings: hasEngineFFI ? [.define("IKARI_HAS_ENGINE_FFI")] : [],
         linkerSettings: hasEngineFFI ? rustNativeLibs : []
     ),
+    // 殻の性能の測り手（ADR 0041 §6.3。移行の間だけ。M5 で消す）。`cargo xtask perf shell` が -enable-testing つきでビルドする
+    .executableTarget(name: "IkariShellBench", dependencies: ["IkariShellCore"]),
     // XPC 経由の E2E
     .executableTarget(name: "IkariSmoke", dependencies: ["IkariShellCore", "IkariXPC", "IkariProto"]),
     .testTarget(name: "IkariIMETests", dependencies: ["IkariIME", "IkariBridge", "IkariProto", "IkariShellCore", "IkariXPC"]),
@@ -75,6 +77,7 @@ let package = Package(
         .executable(name: "ikari", targets: ["IkariIME"]),
         .executable(name: "IkariEngine", targets: ["IkariEngineService"]),
         .executable(name: "ikari-smoke", targets: ["IkariSmoke"]),
+        .executable(name: "ikari-shell-bench", targets: ["IkariShellBench"]),
         .executable(name: "IkariSettings", targets: ["IkariSettings"]),
     ],
     dependencies: [
