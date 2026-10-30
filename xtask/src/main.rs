@@ -13,6 +13,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 
 mod check;
+mod cov;
 mod data;
 mod dict;
 mod eval;
@@ -41,6 +42,8 @@ enum Command {
     Eval(eval::Args),
     /// 性能の計測と基準値との比較（ADR 0041 §6.3。L-P）
     Perf(perf::Args),
+    /// テストの行カバレッジの測定（cargo-llvm-cov が要る。issue #158）
+    Cov(cov::Args),
 }
 
 /// xtask の誤り。メッセージは利用者に出す。
@@ -63,6 +66,7 @@ fn main() -> ExitCode {
         Command::Data(args) => data::run(args),
         Command::Eval(args) => eval::run(args),
         Command::Perf(args) => perf::run(args),
+        Command::Cov(args) => cov::run(args),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -90,6 +94,6 @@ mod tests {
             .get_subcommands()
             .map(|command| command.get_name().to_owned())
             .collect();
-        assert_eq!(names, ["check", "dict", "data", "eval", "perf"]);
+        assert_eq!(names, ["check", "dict", "data", "eval", "perf", "cov"]);
     }
 }
