@@ -1,32 +1,23 @@
-// 殻の 1 本の口（ADR 0041 §4.4。`ikari_shell_*`）を Swift から呼ぶ薄い層（契約 M1-b の stub）。
+// 殻の 1 本の口（ADR 0041 §4.4。`ikari_shell_*`）を Swift から呼ぶ薄い層。
 // イベントを protobuf にして `ikari_shell_dispatch` を呼び、動作の列を読むことと、ホストの口の表を
-// Swift のクロージャから作ることだけをする。動作の実行と、IMK・XPC の実装は L-E が書く。
+// Swift のクロージャから作ることだけをする。動作の実行と、IMK・XPC の実装は IkariIME が持つ。
 // 約束（所有権、スレッド、誤り）は shell-ffi/include/ikari_shell.h のコメントを正とする。
+//
+// XCFramework がないビルド（`IKARI_HAS_SHELL_FFI` なし）でも型は同じにする。そのときは `ShellABI.init` が
+// 投げ、配置の口は nil を返す（IkariIME はキーをすべてアプリに渡す）。
 import Foundation
 import IkariProto
+import SwiftProtobuf
 
 #if IKARI_HAS_SHELL_FFI
 import IkariShellFFI
-import SwiftProtobuf
+#endif
 
 /// `IkariShellStatus`（ヘッダ）
 public enum ShellABIStatus: Equatable, Sendable {
     case ok, null, invalidHandle, decode, busy, panic, unimplemented
     /// ヘッダにない値（版のずれ）
     case unknown(Int32)
-
-    init(_ raw: Int32) {
-        switch raw {
-        case Int32(IKARI_SHELL_OK.rawValue): self = .ok
-        case Int32(IKARI_SHELL_ERR_NULL.rawValue): self = .null
-        case Int32(IKARI_SHELL_ERR_INVALID_HANDLE.rawValue): self = .invalidHandle
-        case Int32(IKARI_SHELL_ERR_DECODE.rawValue): self = .decode
-        case Int32(IKARI_SHELL_ERR_BUSY.rawValue): self = .busy
-        case Int32(IKARI_SHELL_ERR_PANIC.rawValue): self = .panic
-        case Int32(IKARI_SHELL_ERR_UNIMPLEMENTED.rawValue): self = .unimplemented
-        default: self = .unknown(raw)
-        }
-    }
 }
 
 /// `IkariShellTransportResult`（ヘッダ）
@@ -39,13 +30,6 @@ public enum ShellTransportResult: Sendable {
 /// `IkariShellDownKind`（ヘッダ）
 public enum ShellDownKind: Sendable {
     case interrupted, invalidated
-
-    var raw: UInt8 {
-        switch self {
-        case .interrupted: UInt8(IKARI_SHELL_DOWN_INTERRUPTED.rawValue)
-        case .invalidated: UInt8(IKARI_SHELL_DOWN_INVALIDATED.rawValue)
-        }
-    }
 }
 
 /// ホストの口（`IkariShellHost`）。
@@ -78,6 +62,32 @@ public struct ShellHost {
         self.enginePost = enginePost
         self.engineClose = engineClose
         self.enginePid = enginePid
+    }
+}
+
+#if IKARI_HAS_SHELL_FFI
+
+extension ShellABIStatus {
+    init(_ raw: Int32) {
+        switch raw {
+        case Int32(IKARI_SHELL_OK.rawValue): self = .ok
+        case Int32(IKARI_SHELL_ERR_NULL.rawValue): self = .null
+        case Int32(IKARI_SHELL_ERR_INVALID_HANDLE.rawValue): self = .invalidHandle
+        case Int32(IKARI_SHELL_ERR_DECODE.rawValue): self = .decode
+        case Int32(IKARI_SHELL_ERR_BUSY.rawValue): self = .busy
+        case Int32(IKARI_SHELL_ERR_PANIC.rawValue): self = .panic
+        case Int32(IKARI_SHELL_ERR_UNIMPLEMENTED.rawValue): self = .unimplemented
+        default: self = .unknown(raw)
+        }
+    }
+}
+
+extension ShellDownKind {
+    var raw: UInt8 {
+        switch self {
+        case .interrupted: UInt8(IKARI_SHELL_DOWN_INTERRUPTED.rawValue)
+        case .invalidated: UInt8(IKARI_SHELL_DOWN_INVALIDATED.rawValue)
+        }
     }
 }
 
@@ -205,4 +215,57 @@ public final class ShellABI {
         return (ShellABIStatus(raw), actions)
     }
 }
+
+/// 候補ウィンドウの配置（`ikari_panel_*`。状態を持たない。どのスレッドからでも呼べる）。
+public enum ShellPanelGeometry {
+    public static func resolveAnchor(_ request: Ikari_Shell_V1_PanelAnchorRequest) -> Ikari_Shell_V1_PanelAnchor? {
+        call(request, ikari_panel_resolve_anchor)
+    }
+
+    public static func layout(_ request: Ikari_Shell_V1_PanelLayoutRequest) -> Ikari_Shell_V1_PanelPlacement? {
+        call(request, ikari_panel_layout)
+    }
+
+    private static func call<Request: SwiftProtobuf.Message, Reply: SwiftProtobuf.Message>(
+        _ request: Request, _ function: (IkariStr, UnsafeMutablePointer<IkariShellBuf>?) -> Int32
+    ) -> Reply? {
+        guard let bytes = try? request.serializedData() else { return nil }
+        var out = IkariShellBuf(ptr: nil, len: 0)
+        let status = withIkariStr(bytes) { function($0, &out) }
+        let data = takeRustBuf(out)
+        guard status == Int32(IKARI_SHELL_OK.rawValue) else { return nil }
+        return try? Reply(serializedBytes: data)
+    }
+}
+
+#else
+
+/// FFI のないビルド。何もしない。
+public struct ShellDownNotifier: Sendable {
+    public func engineDown(generation: UInt64, kind: ShellDownKind) {}
+}
+
+/// FFI のないビルド。作れない（IkariIME はキーをすべてアプリに渡す）。
+public final class ShellABI {
+    public struct CreateError: Error, Equatable {
+        public let message: String
+    }
+
+    public init(shellVersion: String, settingsPath: String, resourcesDir: String, host: ShellHost) throws {
+        throw CreateError(message: "shell-ffi is not linked")
+    }
+
+    public var downNotifier: ShellDownNotifier { ShellDownNotifier() }
+
+    public func dispatch(_ event: Ikari_Shell_V1_ShellEvent) -> (status: ShellABIStatus, actions: [Ikari_Shell_V1_ShellAction]) {
+        (.unimplemented, [])
+    }
+}
+
+/// FFI のないビルド。配置は決められない（呼び手が代わりの値を使う）。
+public enum ShellPanelGeometry {
+    public static func resolveAnchor(_ request: Ikari_Shell_V1_PanelAnchorRequest) -> Ikari_Shell_V1_PanelAnchor? { nil }
+    public static func layout(_ request: Ikari_Shell_V1_PanelLayoutRequest) -> Ikari_Shell_V1_PanelPlacement? { nil }
+}
+
 #endif

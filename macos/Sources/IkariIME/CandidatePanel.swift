@@ -4,7 +4,11 @@
 // 候補の `label`（ショートコードの名前 `:eyes:`。ADR 0027 §3.4）は、行の右に薄く出す。
 // アンカーの下に置き、入らないときだけ上に置く。上に置いたときは 1 位を下（アンカーに近い側）にする。
 import AppKit
-import IkariShellCore
+import IkariProto
+import IkariShellABI
+
+typealias CandidatePanelModel = Ikari_Shell_V1_CandidatePanelModel
+typealias PanelSide = Ikari_Shell_V1_PanelSide
 
 @MainActor
 final class CandidatePanel {
@@ -58,12 +62,21 @@ final class CandidatePanel {
     private func apply(_ model: CandidatePanelModel) -> PanelSide {
         view.model = model
         let size = view.preferredSize
-        let placement = layoutPanel(
-            anchor: anchor, panelSize: size, reservedHeight: CandidateView.height(rows: model.reservedRows),
-            visibleFrame: visibleFrame)
-        view.side = placement.side
-        panel.setFrame(placement.frame, display: true)
-        return placement.side
+        var request = Ikari_Shell_V1_PanelLayoutRequest()
+        request.anchor = .init(anchor)
+        request.width = Double(size.width)
+        request.height = Double(size.height)
+        request.reservedHeight = Double(CandidateView.height(rows: Int(model.reservedRows)))
+        request.visibleFrame = .init(visibleFrame)
+        // 配置は shell-core が決める。決められないとき（FFI なし）はアンカーの下に置く
+        let placement = ShellPanelGeometry.layout(request)
+        let side: PanelSide = placement?.side ?? .below
+        let frame =
+            placement.map { CGRect($0.frame) }
+            ?? CGRect(x: anchor.minX, y: anchor.minY - size.height, width: size.width, height: size.height)
+        view.side = side
+        panel.setFrame(frame, display: true)
+        return side
     }
 }
 
@@ -90,7 +103,7 @@ final class CandidateView: NSView {
     /// この変換でこれまでに見せた最大の幅。ページを送るたびに右端が揺れないよう、縮めない
     private var widestSoFar: CGFloat = 0
 
-    var model = CandidatePanelModel(candidates: [], selected: 0, annotation: "") {
+    var model = CandidatePanelModel() {
         didSet { needsDisplay = true }
     }
 
@@ -147,7 +160,7 @@ final class CandidateView: NSView {
 
         for (index, candidate) in model.candidates.enumerated() {
             let row = rowRect(index)
-            let isSelected = index == model.selected
+            let isSelected = index == Int(model.selected)
             if isSelected {
                 let selection = row.insetBy(dx: Self.selectionInset, dy: Self.selectionInset)
                 NSColor.controlAccentColor.setFill()
@@ -182,5 +195,21 @@ final class CandidateView: NSView {
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
         let size = (text as NSString).size(withAttributes: attributes)
         (text as NSString).draw(at: NSPoint(x: x, y: row.minY + (row.height - size.height) / 2), withAttributes: attributes)
+    }
+}
+
+extension Ikari_Shell_V1_Rect {
+    init(_ rect: CGRect) {
+        self.init()
+        x = Double(rect.origin.x)
+        y = Double(rect.origin.y)
+        width = Double(rect.size.width)
+        height = Double(rect.size.height)
+    }
+}
+
+extension CGRect {
+    init(_ rect: Ikari_Shell_V1_Rect) {
+        self.init(x: rect.x, y: rect.y, width: rect.width, height: rect.height)
     }
 }

@@ -31,11 +31,11 @@ var targets: [Target] = [
     ),
     // EngineClient の XPC 実装、署名要件
     .target(name: "IkariXPC", dependencies: ["IkariShellCore", "IkariProto"]),
-    // IMKServer、IkariInputController、CandidatePanel
+    // IMKServer、IkariInputController、CandidatePanel。判断は shell-core（`IkariShellABI` の 1 本の口。ADR 0041 L-E）
     .executableTarget(
         name: "IkariIME",
-        dependencies: ["IkariShellCore", "IkariXPC", "IkariBridge", "IkariProto"] + (hasShellFFI ? ["IkariShellFFI"] : []),
-        swiftSettings: [.define("IKARI_HAS_BRIDGE")] + (hasShellFFI ? [.define("IKARI_HAS_SHELL_FFI")] : [])
+        dependencies: ["IkariShellABI", "IkariXPC", "IkariBridge", "IkariProto"],
+        swiftSettings: hasShellFFI ? [.define("IKARI_HAS_SHELL_FFI")] : []
     ),
     // 設定アプリと殻のブリッジ（ADR 0005 §6.3）。枠の読み書き、BridgeTransport、中継の許可リスト。
     // 契約コミットで完成させてあり、以後はレーン S3 も U も変えない
@@ -59,7 +59,11 @@ var targets: [Target] = [
     .executableTarget(name: "IkariShellBench", dependencies: ["IkariShellCore"]),
     // XPC 経由の E2E
     .executableTarget(name: "IkariSmoke", dependencies: ["IkariShellCore", "IkariXPC", "IkariProto"]),
-    .testTarget(name: "IkariIMETests", dependencies: ["IkariIME", "IkariBridge", "IkariProto", "IkariShellCore", "IkariXPC"]),
+    .testTarget(
+        name: "IkariIMETests",
+        dependencies: ["IkariIME", "IkariShellABI", "IkariBridge", "IkariProto", "IkariXPC"],
+        swiftSettings: hasShellFFI ? [.define("IKARI_HAS_SHELL_FFI")] : []
+    ),
     .testTarget(name: "IkariShellCoreTests", dependencies: ["IkariShellCore"]),
     .testTarget(
         name: "IkariShellABITests",

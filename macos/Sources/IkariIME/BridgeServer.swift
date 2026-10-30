@@ -1,20 +1,14 @@
-// 設定アプリとのブリッジの殻側（ADR 0005 §6.3、docs/phase2-contract.md §5.1）。
+// 設定アプリとのブリッジの殻側の輸送（ADR 0005 §6.3、docs/phase2-contract.md §5.1、ADR 0041 §2.2）。
 // 殻が Unix ドメインソケット（`run/bridge.sock`。`run/` は 0700、ソケットは 0600）で待ち、受けた接続の相手を
-// `LOCAL_PEERTOKEN` の audit token から確かめる（S0-5 で動作を確認済み）。同時に受ける接続は 1 つだけ。
-// 枠の読み書きと中継の許可リストは `IkariBridge`（契約。ここでは変えない）を使う。
+// 同じユーザーかと `LOCAL_PEERTOKEN` の audit token の署名で確かめる。同時に受ける接続は 1 つだけ。
+// 枠の中身の判断（最初の枠の照合、設定の取得と書き換え、中継の許可と同時数、通知）は shell-core が持つ。
+// ここは、受けた枠を `onFrame` で渡し、shell-core が返した枠を送り、頼まれたら閉じるだけ。
 //
 // ログには、種類とエラーコードだけを書く（読み、表記、辞書の語、設定の値は書かない。NFR-19）。
-//
-// 注意: Package.swift の `IkariIME` ターゲットが `IkariBridge` と `IkariProto` に依存し、`IKARI_HAS_BRIDGE` を定義していること
-// が前提（契約ファイルなのでレーン S3 は変えない。変更案はレーン S3 の最終報告に書いた）。
-// 定義がないビルドでは、何もしない代わりの実装になる（`#else`）。`canImport(IkariBridge)` は使えない:
-// ビルドの状態によってモジュールが見えてしまい、リンクだけが失敗する。
-#if IKARI_HAS_BRIDGE
 import Darwin
 import Foundation
 import IkariBridge
 import IkariProto
-import IkariShellCore
 import IkariXPC
 import Security
 
@@ -25,46 +19,30 @@ final class BridgeServer: @unchecked Sendable {
     private static let directoryPermissions: mode_t = 0o700
     private static let socketPermissions: mode_t = 0o600
     /// 設定アプリへの書き込みが進まない時間の上限。超えたら接続を閉じる（設定アプリはつなぎ直す。issue #44）。
-    /// 暫定値（掃引していない）。相手が一時停止したときに、送る側のスレッドと `sendLock` を待たせる上限になる
+    /// 暫定値（掃引していない）。相手が一時停止したときに、送る側のスレッドを待たせる上限になる
     static let sendTimeout: Duration = .seconds(2)
+    /// 輸送の相対パス（`IkariBridge.BridgeProtocol.socketRelativePath`。shell-core の `SOCKET_RELATIVE_PATH` と同じ）
+    static let socketRelativePath = BridgeProtocol.socketRelativePath
 
     private let socketURL: URL
-    private let store: SettingsStore
-    private let engine: any EngineClient
-    private let shellVersion: String
     private let peerValidator: @Sendable (Int32) -> Bool
 
     private let lock = NSLock()
     private var listener: Int32 = -1
-    private var connection: BridgeTransport?
-    /// `BridgeHello` を交わし終えた接続だけに、殻からの通知（`Event`）を送る
-    private var connectionReady = false
+    private var connection: (id: UInt64, transport: BridgeTransport)?
+    private var nextConnectionID: UInt64 = 1
 
-    /// 殻からの通知は、このキューで順に送る。呼び出し元（main、入力の経路）は、相手が読まなくても止まらない
-    private let eventQueue = DispatchQueue(label: "\(Identity.productID).bridge-event", qos: .utility)
+    /// 受けた枠（`Frame` の protobuf の本体）。接続ごとの受信のスレッドから呼ぶ。起動の前に 1 度だけ設定する
+    var onFrame: (@Sendable (_ connection: UInt64, _ frame: Data) -> Void)?
+    /// 接続が切れた（相手が閉じた、壊れた枠、`close`）。起動の前に 1 度だけ設定する
+    var onClosed: (@Sendable (_ connection: UInt64) -> Void)?
 
-    /// 中継は別のキューで並行に動かす（インポートで長く待つ間も、設定の取得や更新を止めない）
-    private let relayQueue = DispatchQueue(
-        label: "\(Identity.productID).bridge-relay", qos: .utility, attributes: .concurrent)
+    /// 送る枠と閉じる頼みは、このキューで順に行う。呼び出し元（main、入力の経路）は、相手が読まなくても止まらない
+    private let sendQueue = DispatchQueue(label: "\(IkariIdentifiers.shell).bridge-send", qos: .utility)
 
-    /// 同時に走る中継の数の上限。暫定値（掃引なしで決めた。PR で要確認）
-    static let maxConcurrentRelays = 4
-    /// この大きさ以上の要求は「大きな要求」として、同時に 1 本までにする（枠の上限は 64MiB。暫定値）
-    static let largeRelayBytes = 1 * 1024 * 1024
-    static let maxConcurrentLargeRelays = 1
-    private let relayGate = RelayGate(
-        maxConcurrent: BridgeServer.maxConcurrentRelays, maxLarge: BridgeServer.maxConcurrentLargeRelays)
-
-    /// `peerValidator` は接続したソケットの記述子を受け、相手が設定アプリなら真。既定は署名の確認
-    /// （テストだけが差し替える）
-    init(
-        directory: URL, store: SettingsStore, engine: any EngineClient, signing: SigningMode, shellVersion: String,
-        peerValidator: (@Sendable (Int32) -> Bool)? = nil
-    ) {
-        socketURL = directory.appendingPathComponent(BridgeProtocol.socketRelativePath)
-        self.store = store
-        self.engine = engine
-        self.shellVersion = shellVersion
+    /// `peerValidator` は接続したソケットの記述子を受け、相手が設定アプリなら真。既定は署名の確認（テストだけが差し替える）
+    init(directory: URL, signing: SigningMode, peerValidator: (@Sendable (Int32) -> Bool)? = nil) {
+        socketURL = directory.appendingPathComponent(Self.socketRelativePath)
         let requirement = SigningRequirements.settingsApp(mode: signing)
         self.peerValidator = peerValidator ?? { Self.peerSatisfies(requirement: requirement, descriptor: $0) }
     }
@@ -92,7 +70,7 @@ final class BridgeServer: @unchecked Sendable {
         lock.lock()
         let descriptor = listener
         listener = -1
-        let active = connection
+        let active = connection?.transport
         lock.unlock()
         if descriptor >= 0 {
             _ = Darwin.shutdown(descriptor, SHUT_RDWR)
@@ -102,38 +80,29 @@ final class BridgeServer: @unchecked Sendable {
         unlink(socketURL.path)
     }
 
-    // MARK: 殻からの通知
+    // MARK: shell-core の動作（BridgeReply、BridgeClose）
 
-    /// 設定が変わった（メニュー、設定アプリ、手の編集）。つながっている設定アプリは取り直す
-    func notifySettingsChanged() {
-        sendEvent { $0.settingsChanged = Ikari_Bridge_V1_SettingsChanged() }
-    }
-
-    /// すでに動いている設定アプリに、開くタブを伝える（起動の引数は動作中のアプリには届かない）。つながっていなければ false。
-    /// 送るのは別のキューなので、true は「送る順番に入れた」の意味（届いたことまでは分からない）
-    @discardableResult
-    func sendOpenTab(_ tab: SettingsTab) -> Bool {
-        sendEvent {
-            var open = Ikari_Bridge_V1_OpenTab()
-            open.tab = tab.rawValue
-            $0.openTab = open
+    /// 枠（`Frame` の protobuf の本体）を送る。すぐ戻る。接続が替わっていたら捨てる
+    func send(_ body: Data, to connectionID: UInt64) {
+        guard let transport = transport(connectionID) else { return }
+        guard let frame = try? Frame(serializedBytes: body) else {
+            AppContext.log.error("bridge: shell returned a broken frame")
+            return
         }
+        sendQueue.async { Self.send(frame, on: transport) }
     }
 
-    /// 通知を `eventQueue` に入れて、すぐ戻る。書き込みは `sendTimeout` で打ち切られ、そのときは接続が閉じる
-    @discardableResult
-    private func sendEvent(_ build: (inout Ikari_Bridge_V1_Event) -> Void) -> Bool {
+    /// 接続を閉じる（送る順番の最後に）
+    func close(_ connectionID: UInt64) {
+        guard let transport = transport(connectionID) else { return }
+        sendQueue.async { transport.close() }
+    }
+
+    private func transport(_ connectionID: UInt64) -> BridgeTransport? {
         lock.lock()
-        let target = connectionReady ? connection : nil
-        lock.unlock()
-        guard let target else { return false }
-        var event = Ikari_Bridge_V1_Event()
-        build(&event)
-        var frame = Frame()
-        frame.requestID = 0
-        frame.event = event
-        eventQueue.async { [self] in send(frame, on: target) }
-        return true
+        defer { lock.unlock() }
+        guard let connection, connection.id == connectionID else { return nil }
+        return connection.transport
     }
 
     // MARK: ソケット
@@ -234,11 +203,12 @@ final class BridgeServer: @unchecked Sendable {
             transport.close()
             return
         }
-        connection = transport
-        connectionReady = false
+        let id = nextConnectionID
+        nextConnectionID &+= 1
+        connection = (id, transport)
         lock.unlock()
 
-        let thread = Thread { [self] in serve(transport) }
+        let thread = Thread { [self] in serve(transport, id: id) }
         thread.name = "ikari.bridge.serve"
         thread.qualityOfService = .utility
         thread.start()
@@ -271,30 +241,24 @@ final class BridgeServer: @unchecked Sendable {
         return SecCodeCheckValidity(code, SecCSFlags(), requirement) == errSecSuccess
     }
 
-    // MARK: 接続ごとの処理
+    // MARK: 接続ごとの受信
 
-    private func serve(_ transport: BridgeTransport) {
+    private func serve(_ transport: BridgeTransport, id: UInt64) {
         defer {
             transport.close()
             lock.lock()
-            connection = nil
-            connectionReady = false
+            if connection?.id == id { connection = nil }
             lock.unlock()
+            onClosed?(id)
             AppContext.log.info("bridge: disconnected")
         }
-        // 最初の枠は BridgeHello。合わなければ VERSION_MISMATCH を返して閉じる
-        guard let first = try? transport.receive(), case .hello(let hello)? = first.body else { return }
-        let reply = BridgeHandshake.reply(to: hello, requestID: first.requestID, shellVersion: shellVersion)
-        guard (try? transport.send(reply)) != nil else { return }
-        if case .error? = reply.body { return }
-        lock.lock()
-        connectionReady = true
-        lock.unlock()
         AppContext.log.info("bridge: connected")
-
         while true {
             do {
-                handle(try transport.receive(), on: transport)
+                let frame = try transport.receive()
+                // 受けた枠は shell-core に渡す（直列化は protobuf の本体だけ。長さの接頭辞は輸送のもの）
+                guard let body = try? frame.serializedData() else { continue }
+                onFrame?(id, body)
             } catch BridgeTransportError.frame {
                 AppContext.log.error("bridge: broken frame")
                 return
@@ -304,82 +268,7 @@ final class BridgeServer: @unchecked Sendable {
         }
     }
 
-    private func handle(_ frame: Frame, on transport: BridgeTransport) {
-        if let rejection = RelayPolicy.rejection(for: frame) {
-            send(rejection, on: transport)
-            return
-        }
-        switch frame.body {
-        case .getSettings?:
-            send(snapshotFrame(requestID: frame.requestID, settings: store.settings), on: transport)
-        case .updateSettings(let update)?:
-            send(apply(update, requestID: frame.requestID), on: transport)
-        case .engine(let envelope)?:
-            // 受け付けた時点で枠を取り、満員なら待たせず断る（連打でキューとメモリを溜めない）
-            // 直列化は一度だけ行い、そのバイト列を中継へ渡す（複製を増やさない）
-            guard let request = try? envelope.serializedData() else {
-                send(.error(requestID: frame.requestID, code: .engineUnavailable), on: transport)
-                return
-            }
-            let isLarge = request.count >= Self.largeRelayBytes
-            guard relayGate.tryEnter(large: isLarge) else {
-                AppContext.log.error("bridge: relay busy")
-                send(.error(requestID: frame.requestID, code: .engineUnavailable), on: transport)
-                return
-            }
-            relayQueue.async { [self] in
-                defer { relayGate.leave(large: isLarge) }
-                relay(request, timeout: RelayPolicy.timeout(for: envelope.body), requestID: frame.requestID, on: transport)
-            }
-        default:
-            // 設定アプリから送ってよいのは、上の要求だけ（二度目の Hello、殻からの通知や返事の種類は断る）
-            send(.error(requestID: frame.requestID, code: .notAllowed), on: transport)
-        }
-    }
-
-    private func apply(_ update: Ikari_Bridge_V1_UpdateSettings, requestID: UInt64) -> Frame {
-        do {
-            let snapshot = try store.update(
-                set: update.set.map { (key: $0.key, value: $0.value) }, reset: update.reset)
-            return snapshotFrame(requestID: requestID, settings: snapshot.settings)
-        } catch SettingsStore.UpdateError.invalid(let key) {
-            // key は不正だった設定のキー名だけ（値は入れない）
-            return .error(requestID: requestID, code: .invalidSetting, key: key)
-        } catch {
-            return .error(requestID: requestID, code: .writeFailed)
-        }
-    }
-
-    private func snapshotFrame(requestID: UInt64, settings: Settings) -> Frame {
-        var snapshot = Ikari_Bridge_V1_SettingsSnapshot()
-        snapshot.effective = settings.effectiveEntries.map { entry in
-            var item = Ikari_Bridge_V1_SettingEntry()
-            item.key = entry.key
-            item.value = entry.value
-            return item
-        }
-        var frame = Frame()
-        frame.requestID = requestID
-        frame.settings = snapshot
-        return frame
-    }
-
-    /// 管理の要求をエンジンへそのまま流し、返事をそのまま返す（種類の許可リストは `handle` で確認済み。中身は解釈しない）
-    private func relay(_ request: Data, timeout: Duration, requestID: UInt64, on transport: BridgeTransport) {
-        do {
-            let replyBytes = try engine.relay(request, timeout: timeout)
-            let reply = try EngineEnvelope(serializedBytes: replyBytes)
-            var frame = Frame()
-            frame.requestID = requestID
-            frame.engine = reply
-            send(frame, on: transport)
-        } catch {
-            AppContext.log.error("bridge: relay failed")
-            send(.error(requestID: requestID, code: .engineUnavailable), on: transport)
-        }
-    }
-
-    private func send(_ frame: Frame, on transport: BridgeTransport) {
+    private static func send(_ frame: Frame, on transport: BridgeTransport) {
         do {
             try transport.send(frame)
         } catch BridgeTransportError.frame(let error) {
@@ -387,7 +276,7 @@ final class BridgeServer: @unchecked Sendable {
             AppContext.log.error("bridge: cannot send a frame")
             if case .tooLarge = error { _ = try? transport.send(.error(requestID: frame.requestID, code: .tooLarge)) }
         } catch BridgeTransportError.io(let code) where code == ETIMEDOUT {
-            // 相手が読まない（`sendTimeout`）。輸送が閉じたので、serve の受信が終わり、接続を片づける
+            // 相手が読まない（`sendTimeout`）。輸送が閉じたので、受信が終わり、接続を片づける
             AppContext.log.error("bridge: send timed out; closing the connection")
             transport.close()
         } catch {
@@ -395,57 +284,3 @@ final class BridgeServer: @unchecked Sendable {
         }
     }
 }
-
-/// 中継の同時数を数える。満員なら待たずに false を返す
-final class RelayGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private let maxConcurrent: Int
-    private let maxLarge: Int
-    private var running = 0
-    private var runningLarge = 0
-
-    init(maxConcurrent: Int, maxLarge: Int) {
-        self.maxConcurrent = maxConcurrent
-        self.maxLarge = maxLarge
-    }
-
-    func tryEnter(large: Bool) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        guard running < maxConcurrent, !large || runningLarge < maxLarge else { return false }
-        running += 1
-        if large { runningLarge += 1 }
-        return true
-    }
-
-    func leave(large: Bool) {
-        lock.lock()
-        running -= 1
-        if large { runningLarge -= 1 }
-        lock.unlock()
-    }
-}
-#else
-import Foundation
-import IkariShellCore
-import IkariXPC
-
-/// `IKARI_HAS_BRIDGE` がないビルドでは、ブリッジを持たない（設定アプリはつながらない）。Package.swift に依存と定義を足すと有効になる
-final class BridgeServer: @unchecked Sendable {
-    init(
-        directory: URL, store: SettingsStore, engine: any EngineClient, signing: SigningMode, shellVersion: String,
-        peerValidator: (@Sendable (Int32) -> Bool)? = nil
-    ) {}
-
-    @discardableResult
-    func start() -> Bool {
-        AppContext.log.error("bridge: IkariBridge is not linked; the settings app cannot connect")
-        return false
-    }
-
-    func stop() {}
-    func notifySettingsChanged() {}
-    @discardableResult
-    func sendOpenTab(_ tab: SettingsTab) -> Bool { false }
-}
-#endif
