@@ -8,12 +8,7 @@ use ikari_proto::v1::envelope::Body as EnvelopeBody;
 
 use super::proto::{BridgeErrorCode, Frame, frame::Body};
 use super::protocol::error_frame;
-
-/// 管理の要求の待ちの上限（今の `EngineTimeouts.admin`。ADR 0005 §8.3）。
-/// L-A1 の `timeouts` に同じ値が入ったら、そちらを使う
-pub const ADMIN_TIMEOUT: Duration = Duration::from_secs(3);
-/// インポートとエクスポートの待ちの上限（今の `EngineTimeouts.adminTransfer`）
-pub const ADMIN_TRANSFER_TIMEOUT: Duration = Duration::from_secs(30);
+use crate::timeouts;
 
 /// 中継してよい要求か。**許可するのは `Hello` と ADR 0005 §8.2 の管理の要求だけ。**
 /// `match` はワイルドカードを持たない: 要求の種類が増えたら、ここでコンパイルが通らなくなり、許可するかを決めさせる。
@@ -88,8 +83,8 @@ pub fn rejection(frame: &Frame) -> Option<Frame> {
 /// 中継の待ちの上限。インポートとエクスポートは 30 秒、ほかは 3 秒（ADR 0005 §8.3）
 pub fn timeout(body: Option<&EnvelopeBody>) -> Duration {
     match body {
-        Some(EnvelopeBody::ImportData(_) | EnvelopeBody::ExportData(_)) => ADMIN_TRANSFER_TIMEOUT,
-        _ => ADMIN_TIMEOUT,
+        Some(EnvelopeBody::ImportData(_) | EnvelopeBody::ExportData(_)) => timeouts::ADMIN_TRANSFER,
+        _ => timeouts::ADMIN,
     }
 }
 

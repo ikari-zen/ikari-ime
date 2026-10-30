@@ -11,6 +11,7 @@ use prost::Message;
 
 use super::*;
 use crate::host::{Clock, DownKind, EngineTransport, TransportError, TransportHandle};
+use crate::menu::{ProfileDomain, ProfileWeight};
 use crate::types::{EngineError, EngineErrorCode};
 
 type Responder = Arc<dyn Fn(&v1::Envelope) -> Option<v1::Envelope> + Send + Sync>;
@@ -946,8 +947,6 @@ fn settings_changed_shutdown_is_an_expected_exit_so_repeated_restarts_do_not_sus
 
 // ---------------------------------------------------------------- EngineAdminTests
 
-const ADMIN_TIMEOUT: Duration = Duration::from_secs(3);
-
 #[test]
 fn admin_reads_the_profile_domains() {
     use v1::ProfileWeightKind as W;
@@ -960,7 +959,7 @@ fn admin_reads_the_profile_domains() {
             ("x", "未指定", W::ProfileWeightUnspecified),
         ]))
     });
-    let domains = EngineAdmin::new(&h.link, ADMIN_TIMEOUT).profile().unwrap();
+    let domains = EngineAdmin::new(&h.link).profile().unwrap();
     let d = |id: &str, name: &str, weight| ProfileDomain {
         id: id.into(),
         name: name.into(),
@@ -996,7 +995,7 @@ fn admin_set_profile_sends_only_the_domains_that_are_not_off() {
         name: name.into(),
         weight,
     };
-    let result = EngineAdmin::new(&h.link, ADMIN_TIMEOUT)
+    let result = EngineAdmin::new(&h.link)
         .set_profile(&[
             d("it", "IT", ProfileWeight::Often),
             d("novel", "小説", ProfileWeight::Off),
@@ -1034,7 +1033,7 @@ fn admin_set_weight_reads_the_latest_state_first_so_other_domains_survive() {
         }))),
         _ => None,
     });
-    let result = EngineAdmin::new(&h.link, ADMIN_TIMEOUT)
+    let result = EngineAdmin::new(&h.link)
         .set_weight(ProfileWeight::Often, "novel")
         .unwrap();
     let mut on: Vec<_> = result
@@ -1069,7 +1068,7 @@ fn admin_set_weight_for_an_unknown_domain_fails_without_writing() {
         )]))
     });
     assert_eq!(
-        EngineAdmin::new(&h.link, ADMIN_TIMEOUT).set_weight(ProfileWeight::Off, "nope"),
+        EngineAdmin::new(&h.link).set_weight(ProfileWeight::Off, "nope"),
         Err(EngineError::Engine(EngineErrorCode::BadRequest))
     );
 }
@@ -1077,7 +1076,7 @@ fn admin_set_weight_for_an_unknown_domain_fails_without_writing() {
 #[test]
 fn admin_surfaces_errors_wrong_kinds_and_too_many_domains() {
     let h = Harness::new();
-    let admin = EngineAdmin::new(&h.link, ADMIN_TIMEOUT);
+    let admin = EngineAdmin::new(&h.link);
     h.respond(|_| Some(error_reply(v1::ErrorCode::BadRequest)));
     assert_eq!(
         admin.profile(),

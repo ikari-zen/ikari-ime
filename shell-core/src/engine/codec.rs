@@ -7,6 +7,8 @@
 use ikari_proto::v1::{self, envelope::Body};
 use prost::Message;
 
+use crate::diag::DiagEvent;
+use crate::menu::EngineLmState;
 use crate::types::{EngineError, EngineErrorCode};
 
 /// `Envelope.schema_version`（proto の `SCHEMA_VERSION`）
@@ -106,6 +108,41 @@ pub fn error_code(code: i32) -> EngineErrorCode {
         Ok(v1::ErrorCode::Internal) => EngineErrorCode::Internal,
         Ok(v1::ErrorCode::StaleLayout) => EngineErrorCode::StaleLayout,
         Ok(v1::ErrorCode::Unspecified) | Err(_) => EngineErrorCode::Unspecified,
+    }
+}
+
+/// `HelloReply.lm` をメニューの LM の状態にする（今の `EnvelopeCodec.lmState`）
+pub fn lm_state(reply: &v1::HelloReply) -> EngineLmState {
+    match v1::LmState::try_from(reply.lm) {
+        Ok(v1::LmState::LmDisabled) => EngineLmState::Disabled,
+        Ok(v1::LmState::LmLoading) => EngineLmState::Loading,
+        Ok(v1::LmState::LmReady) => EngineLmState::Ready,
+        Ok(v1::LmState::LmFailed) => EngineLmState::Failed,
+        Ok(v1::LmState::Unspecified) | Err(_) => EngineLmState::Unspecified,
+    }
+}
+
+/// 殻の診断の 1 件（`diag::DiagEvent`）を `EngineLink::diag` に渡すメッセージにする。キーの昇順（`BTreeMap` の順）
+pub fn diag_message(event: &DiagEvent) -> v1::DiagEvent {
+    v1::DiagEvent {
+        session_id: event.session_id,
+        kind: event.kind.clone(),
+        nums: event
+            .nums
+            .iter()
+            .map(|(key, value)| v1::DiagNum {
+                key: key.clone(),
+                value: *value,
+            })
+            .collect(),
+        tags: event
+            .tags
+            .iter()
+            .map(|(key, value)| v1::DiagTag {
+                key: key.clone(),
+                value: value.clone(),
+            })
+            .collect(),
     }
 }
 
@@ -342,6 +379,49 @@ mod tests {
             hello(error(v1::ErrorCode::SchemaMismatch)),
             Err(EngineError::Engine(EngineErrorCode::SchemaMismatch))
         );
+    }
+
+    #[test]
+    fn lm_states_map_one_to_one_and_unknown_is_unspecified() {
+        let reply = |lm: i32| v1::HelloReply {
+            lm,
+            ..Default::default()
+        };
+        assert_eq!(
+            lm_state(&reply(v1::LmState::LmReady as i32)),
+            EngineLmState::Ready
+        );
+        assert_eq!(
+            lm_state(&reply(v1::LmState::LmLoading as i32)),
+            EngineLmState::Loading
+        );
+        assert_eq!(
+            lm_state(&reply(v1::LmState::LmFailed as i32)),
+            EngineLmState::Failed
+        );
+        assert_eq!(
+            lm_state(&reply(v1::LmState::LmDisabled as i32)),
+            EngineLmState::Disabled
+        );
+        assert_eq!(lm_state(&reply(99)), EngineLmState::Unspecified);
+    }
+
+    #[test]
+    fn diag_events_keep_keys_in_order() {
+        let mut event = DiagEvent::new(3, "sh_episode");
+        event.nums.insert("b".into(), 2);
+        event.nums.insert("a".into(), 1);
+        event.tags.insert("mode".into(), "romaji".into());
+        let message = diag_message(&event);
+        assert_eq!(message.session_id, 3);
+        assert_eq!(message.kind, "sh_episode");
+        let keys: Vec<_> = message
+            .nums
+            .iter()
+            .map(|n| (n.key.as_str(), n.value))
+            .collect();
+        assert_eq!(keys, [("a", 1), ("b", 2)]);
+        assert_eq!(message.tags[0].value, "romaji");
     }
 
     #[test]

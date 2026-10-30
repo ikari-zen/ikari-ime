@@ -30,12 +30,12 @@ mod gate;
 #[cfg(test)]
 mod tests;
 
-pub use admin::{EngineAdmin, ProfileDomain, ProfileWeight};
+pub use admin::EngineAdmin;
 pub use codec::{
     MAX_CANDIDATES, MAX_CONTEXT_CHARACTERS, MAX_EMOJI_ENTRIES, MAX_EMOJI_NAME_CHARACTERS,
     MAX_EMOJI_SCALARS, MAX_LITERAL_CHARACTERS, MAX_POSTAL_ADDRESS_CHARACTERS, MAX_POSTAL_ADDRESSES,
     MAX_READING_CHARACTERS, MAX_RECONVERT_CHARACTERS, MAX_REPLY_BYTES, MAX_SEGMENTS,
-    MAX_TEXT_CHARACTERS, SCHEMA_VERSION, error_code,
+    MAX_TEXT_CHARACTERS, SCHEMA_VERSION, diag_message, error_code, lm_state,
 };
 pub use counts::EngineCounts;
 pub use gate::{EngineGate, GateClose};

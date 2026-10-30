@@ -2,60 +2,42 @@
 //! 今はプロファイル（分野）だけ。辞書と学習は設定アプリが Bridge の中継で直接話す。
 //! 送るのは `EngineLink::relay`。分野の名前は利用者向けの文字列だが、ログには書かない。
 
-use std::time::Duration;
-
 use ikari_proto::v1::{self, envelope::Body};
 use prost::Message;
 
 use super::{EngineLink, SCHEMA_VERSION, codec};
+use crate::menu::{ProfileDomain, ProfileWeight};
+use crate::timeouts;
 use crate::types::{EngineError, EngineErrorCode};
 
 /// 返事の検証の上限（壊れた返事だけを弾く。同梱のプリセットは数個）
 pub const MAX_DOMAINS: usize = 64;
 
-/// 分野の重み
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ProfileWeight {
-    Off,
-    Sometimes,
-    Often,
-}
-
-impl ProfileWeight {
-    fn from_proto(kind: i32) -> Self {
-        match v1::ProfileWeightKind::try_from(kind) {
-            Ok(v1::ProfileWeightKind::ProfileWeightSometimes) => Self::Sometimes,
-            Ok(v1::ProfileWeightKind::ProfileWeightOften) => Self::Often,
-            _ => Self::Off,
-        }
-    }
-
-    fn to_proto(self) -> v1::ProfileWeightKind {
-        match self {
-            Self::Off => v1::ProfileWeightKind::ProfileWeightOff,
-            Self::Sometimes => v1::ProfileWeightKind::ProfileWeightSometimes,
-            Self::Often => v1::ProfileWeightKind::ProfileWeightOften,
-        }
+fn weight_from_proto(kind: i32) -> ProfileWeight {
+    match v1::ProfileWeightKind::try_from(kind) {
+        Ok(v1::ProfileWeightKind::ProfileWeightSometimes) => ProfileWeight::Sometimes,
+        Ok(v1::ProfileWeightKind::ProfileWeightOften) => ProfileWeight::Often,
+        _ => ProfileWeight::Off,
     }
 }
 
-/// 同梱のプリセットの 1 つの分野
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProfileDomain {
-    pub id: String,
-    pub name: String,
-    pub weight: ProfileWeight,
+fn weight_to_proto(weight: ProfileWeight) -> v1::ProfileWeightKind {
+    match weight {
+        ProfileWeight::Off => v1::ProfileWeightKind::ProfileWeightOff,
+        ProfileWeight::Sometimes => v1::ProfileWeightKind::ProfileWeightSometimes,
+        ProfileWeight::Often => v1::ProfileWeightKind::ProfileWeightOften,
+    }
 }
 
-/// `EngineLink` を借りる管理の口。待ちの上限は呼ぶ側が渡す（今の `EngineTimeouts.admin`）
+/// `EngineLink` を借りる管理の口。待ちの上限は `timeouts::ADMIN`（今の `EngineTimeouts.admin`）。
+/// 型（`ProfileDomain`、`ProfileWeight`）はメニューと共有する（`menu`）
 pub struct EngineAdmin<'a> {
     link: &'a EngineLink,
-    timeout: Duration,
 }
 
 impl<'a> EngineAdmin<'a> {
-    pub fn new(link: &'a EngineLink, timeout: Duration) -> Self {
-        Self { link, timeout }
+    pub fn new(link: &'a EngineLink) -> Self {
+        Self { link }
     }
 
     /// 同梱のプリセットすべての、今の重み（OFF を含む）
@@ -76,7 +58,7 @@ impl<'a> EngineAdmin<'a> {
                 .map(|domain| v1::ProfileDomainState {
                     id: domain.id.clone(),
                     name: domain.name.clone(),
-                    weight: domain.weight.to_proto() as i32,
+                    weight: weight_to_proto(domain.weight) as i32,
                 })
                 .collect(),
         };
@@ -106,7 +88,7 @@ impl<'a> EngineAdmin<'a> {
             request_id: 0,
             body: Some(body),
         };
-        let reply = self.link.relay(&request.encode_to_vec(), self.timeout)?;
+        let reply = self.link.relay(&request.encode_to_vec(), timeouts::ADMIN)?;
         let envelope =
             v1::Envelope::decode(reply.as_slice()).map_err(|_| EngineError::InvalidReply)?;
         domains(envelope)
@@ -131,7 +113,7 @@ fn domains(envelope: v1::Envelope) -> Result<Vec<ProfileDomain>, EngineError> {
                 return Err(EngineError::InvalidReply);
             }
             Ok(ProfileDomain {
-                weight: ProfileWeight::from_proto(state.weight),
+                weight: weight_from_proto(state.weight),
                 id: state.id,
                 name: state.name,
             })
