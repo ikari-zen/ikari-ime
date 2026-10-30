@@ -23,6 +23,24 @@ struct Fake {
     released: AtomicUsize,
 }
 
+/// `release` の回数が `want` になるのを待って確かめる。`ikari_shell_free` は表から外すだけで、
+/// 中身は最後の Arc（問い合わせのスレッドが持つ分を含む）が落ちたときに片付くので、free の直後は数が足りないことがある。
+/// 多すぎる（二重の release）ときは、待たずに失敗する。
+fn assert_released(fake: &Fake, want: usize) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let got = fake.released.load(Ordering::SeqCst);
+        if got >= want || std::time::Instant::now() >= deadline {
+            assert_eq!(got, want);
+            // 二重の release が遅れて来ないことも、少し待って確かめる
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            assert_eq!(fake.released.load(Ordering::SeqCst), want);
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+}
+
 unsafe extern "C" fn surrounding(_: *mut c_void, _: *mut IkariShellBuf) -> i32 {
     1
 }
@@ -134,7 +152,7 @@ fn dispatch_round_trips_protobuf_bytes() {
     let (_, first) = dispatch_bytes(s, &space());
     assert!(first.contains(&ShellAction::PassThrough));
     unsafe { ikari_shell_free(s) };
-    assert_eq!(fake.released.load(Ordering::SeqCst), 1);
+    assert_released(&fake, 1);
 }
 
 #[test]
@@ -186,7 +204,7 @@ fn free_is_idempotent_and_freed_handles_are_rejected() {
     let s = new_shell(&fake);
     unsafe { ikari_shell_free(s) };
     unsafe { ikari_shell_free(s) }; // 二重の free は何もしない
-    assert_eq!(fake.released.load(Ordering::SeqCst), 1);
+    assert_released(&fake, 1);
 
     // free 後の使用
     let (status, actions) = dispatch_bytes(s, &space());
@@ -200,7 +218,7 @@ fn free_is_idempotent_and_freed_handles_are_rejected() {
     unsafe { ikari_shell_free(s) };
     assert_eq!(dispatch_bytes(fresh, &space()).0, IKARI_SHELL_OK);
     unsafe { ikari_shell_free(fresh) };
-    assert_eq!(fake.released.load(Ordering::SeqCst), 2);
+    assert_released(&fake, 2);
 
     // NULL と知らない番号
     unsafe { ikari_shell_free(ptr::null_mut()) };
@@ -227,10 +245,10 @@ fn new_takes_ownership_of_the_host_even_when_it_fails() {
     let mut err = IkariShellBuf::EMPTY;
     assert!(unsafe { ikari_shell_new(&config(), missing, &mut err) }.is_null());
     assert!(String::from_utf8(take(err)).unwrap().contains("NULL"));
-    assert_eq!(fake.released.load(Ordering::SeqCst), 1);
+    assert_released(&fake, 1);
 
     assert!(unsafe { ikari_shell_new(ptr::null(), host(&fake), ptr::null_mut()) }.is_null());
-    assert_eq!(fake.released.load(Ordering::SeqCst), 2);
+    assert_released(&fake, 2);
 
     let invalid = [0xffu8, 0xfe];
     let bad = IkariShellConfig {
@@ -240,7 +258,7 @@ fn new_takes_ownership_of_the_host_even_when_it_fails() {
     let mut err = IkariShellBuf::EMPTY;
     assert!(unsafe { ikari_shell_new(&bad, host(&fake), &mut err) }.is_null());
     assert!(String::from_utf8(take(err)).unwrap().contains("UTF-8"));
-    assert_eq!(fake.released.load(Ordering::SeqCst), 3);
+    assert_released(&fake, 3);
     assert_eq!(Arc::strong_count(&fake), 1);
 }
 
@@ -267,7 +285,7 @@ fn engine_down_is_callable_from_any_thread_while_dispatching() {
         down.join().unwrap();
     }
     unsafe { ikari_shell_free(s) };
-    assert_eq!(fake.released.load(Ordering::SeqCst), 1);
+    assert_released(&fake, 1);
 }
 
 #[test]
@@ -290,7 +308,7 @@ fn free_while_another_thread_sends_engine_down_releases_once() {
         unsafe { ikari_shell_free(s) };
         down.join().unwrap();
         // release は最後の Arc（engine_down が持っていたものを含む）が落ちたときに 1 回だけ
-        assert_eq!(fake.released.load(Ordering::SeqCst), 1);
+        assert_released(&fake, 1);
     }
 }
 
