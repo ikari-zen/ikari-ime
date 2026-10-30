@@ -93,6 +93,10 @@ pub enum KeyKind {
         number: u8,
     },
     Other,
+    /// JIS の英数キー（L-E で追加）。OS がモードを切り替えたあと同じキーが届くので、受け止めるだけにする
+    Eisu,
+    /// JIS のかなキー（L-E で追加）
+    Kana,
 }
 
 /// 1 回のキーの入力。
@@ -108,6 +112,24 @@ pub struct KeyInput {
     /// secure な入力（パスワード欄。macOS は `IsSecureEventInputEnabled()`）
     #[serde(default, skip_serializing_if = "is_false")]
     pub secure: bool,
+    /// `KeyKind::Jis` のときだけ: OS の配列がそのキーで出す文字（Shift だけを適用。ないキーは空）。L-E で追加。
+    /// かな入力でないとき、英語のモード、Ctrl / Option / Command つきのとき、`shell-core` が文字のキーとして読む
+    /// （`None` なら、JIS の刻印から読む）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout_text: Option<String>,
+}
+
+impl KeyInput {
+    /// 修飾なし、繰り返しなし、secure でないキー。
+    pub fn new(key: KeyKind) -> Self {
+        Self {
+            key,
+            modifiers: Modifiers::NONE,
+            is_repeat: false,
+            secure: false,
+            layout_text: None,
+        }
+    }
 }
 
 // ---------------------------------------------------------------- ホストから受け取るテキスト
@@ -348,6 +370,9 @@ pub enum ShellEvent {
     Activate {
         /// 入力先のアプリの bundle ID（Windows は実行ファイルの名前など）
         bundle_id: String,
+        /// secure な入力（パスワード欄）。L-E で追加
+        #[serde(default, skip_serializing_if = "is_false")]
+        secure: bool,
     },
     Deactivate,
     MenuCommand {
@@ -363,6 +388,27 @@ pub enum ShellEvent {
     BridgeFrame {
         conn: ConnId,
         frame: Vec<u8>,
+    },
+    // ---- L-E で追加（M1-a の口で表せなかった OS とのやりとり。`Shell` の同名の公開の関数と同じ）
+    /// OS が入力モードを替えた（macOS の `kTextServiceInputModePropertyTag`。値はモードの ID）
+    InputModeChanged {
+        mode_id: String,
+        #[serde(default, skip_serializing_if = "is_false")]
+        secure: bool,
+    },
+    /// 外から確定させられた（IMK の `commitComposition`。クリックなど）
+    CommitComposition,
+    /// 候補ウィンドウを出した・動かした（OS が位置を決めたあと）。`source` は新しくアンカーを取ったときだけ
+    PanelShown {
+        side: crate::panel::PanelSide,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source: Option<crate::panel::AnchorSource>,
+    },
+    /// 候補ウィンドウを閉じた（`HideCandidates` は `shell-core` が自分で数えるので、OS 側の都合で閉じたときだけ）
+    PanelHidden,
+    /// 設定アプリとの接続が切れた
+    BridgeClosed {
+        conn: ConnId,
     },
 }
 
@@ -412,6 +458,15 @@ pub enum ShellAction {
     OpenSettings {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         tab: Option<SettingsTab>,
+    },
+    /// OS にモードを選んでもらう（macOS の `client.selectMode`。値はモードの ID）。実際に替わったかは
+    /// `InputModeChanged` で知る。L-E で追加（`Shell::take_mode_request` を FFI の口が動作にしたもの）
+    SelectMode {
+        mode_id: String,
+    },
+    /// 設定アプリとの接続を閉じる（最初の枠が合わない、壊れた枠）。L-E で追加
+    BridgeClose {
+        conn: ConnId,
     },
 }
 

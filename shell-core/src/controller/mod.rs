@@ -7,11 +7,14 @@
 //! 状態機械（`machine`）、エンジン（`engine`）、設定（`settings`）をつなぐ。
 //!
 //! **契約**: `Shell::new`、`Shell::dispatch`、`Shell::engine`、`ShellConfig`、`SettingsSource`、`ShellError` は M1-a で固めた。
-//! 契約の `ShellEvent`・`ShellAction` で表せない OS とのやりとり（入力モードの通知と選択、候補ウィンドウの上下、
-//! IMK の `commitComposition`、英数・かなキー）は、`Shell` の公開の関数で受ける（L-E で `ShellEvent` に足すかを決める）。
+//! M1-a の口で表せなかった OS とのやりとり（入力モードの通知と選択、候補ウィンドウの上下、IMK の `commitComposition`、
+//! 英数・かなキー、設定アプリとの接続）は、L-E で `ShellEvent`・`ShellAction` に足した。同じ働きの公開の関数も残す
+//! （シナリオの `host` の手順と Windows が使う）。モードの選択の依頼は `take_mode_request` で取り出す
+//! （macOS は `shell-ffi` が `ShellAction::SelectMode` にする）。
 
 mod anchor;
 mod background;
+mod bridge_link;
 mod settings_backend;
 #[cfg(test)]
 mod tests;
@@ -25,6 +28,7 @@ pub use background::{BackgroundMode, EMOJI_TABLE_TIMEOUT, HELLO_TIMEOUT};
 pub use settings_backend::{ROMAJI_FILE_NAME, UpdateFailed};
 
 use background::{Background, Job, JobResult};
+use bridge_link::{BridgeLink, BridgeWork};
 use settings_backend::{SettingsBackend, load_keymap};
 
 use crate::diag::DiagEnd;
@@ -44,8 +48,8 @@ use crate::settings::{
 };
 use crate::shortcode::{ShortcodeEntry, ShortcodeTable, jis_ascii};
 use crate::types::{
-    InputMethodKind, KeyInput, KeyKind, MenuCommand, MenuModel, SettingsSnapshot, ShellAction,
-    ShellEvent, TimerId,
+    ConnId, InputMethodKind, KeyInput, KeyKind, MenuCommand, MenuModel, SettingsSnapshot,
+    ShellAction, ShellEvent, TimerId,
 };
 
 /// 設定の読み元。
@@ -152,6 +156,10 @@ pub struct Shell {
 
     background: Background,
     background_poll_scheduled: bool,
+    /// 設定アプリとの接続（L-E）
+    bridge: BridgeLink,
+    /// 次の `finish` で返す、設定アプリへの通知
+    pending_bridge: Vec<ShellAction>,
 }
 
 impl Shell {
@@ -195,6 +203,8 @@ impl Shell {
             profile_version: 0,
             background,
             background_poll_scheduled: false,
+            bridge: BridgeLink::default(),
+            pending_bridge: Vec::new(),
         })
     }
 
@@ -203,7 +213,7 @@ impl Shell {
     pub fn dispatch(&mut self, event: ShellEvent, text: &mut dyn TextAccess) -> Vec<ShellAction> {
         let mut actions = match event {
             ShellEvent::Key(input) => self.handle_key(&input, text),
-            ShellEvent::Activate { bundle_id } => self.activate(&bundle_id),
+            ShellEvent::Activate { bundle_id, secure } => self.activate(&bundle_id, secure),
             ShellEvent::Deactivate => self.deactivate(),
             ShellEvent::MenuCommand { command } => self.perform(command),
             ShellEvent::SettingsFileChanged => {
@@ -211,8 +221,26 @@ impl Shell {
                 Vec::new()
             }
             ShellEvent::Timer { id } => self.timer_fired(id),
-            // 設定アプリとの連絡（Bridge）は L-B の `bridge` が持つ。入るまでは何もしない
-            ShellEvent::BridgeFrame { .. } => Vec::new(),
+            ShellEvent::BridgeFrame { conn, frame } => self.bridge_frame(conn, &frame),
+            ShellEvent::InputModeChanged { mode_id, secure } => {
+                if let Some(client) = &mut self.client {
+                    client.machine.set_secure(secure);
+                }
+                self.change_input_mode(&mode_id)
+            }
+            ShellEvent::CommitComposition => self.commit_composition_now(),
+            ShellEvent::PanelShown { side, source } => {
+                self.panel_shown(side, source);
+                Vec::new()
+            }
+            ShellEvent::PanelHidden => {
+                self.panel_hidden();
+                Vec::new()
+            }
+            ShellEvent::BridgeClosed { conn } => {
+                self.bridge.closed(conn);
+                Vec::new()
+            }
         };
         self.finish(&mut actions);
         actions
@@ -244,22 +272,42 @@ impl Shell {
     /// OS からのモードの通知（macOS の `setValue(_:forTag: kTextServiceInputModePropertyTag)`。値はモードの ID）。
     /// 知らない ID、同じモードなら何もしない。
     pub fn input_mode_changed(&mut self, mode_id: &str) -> Vec<ShellAction> {
+        let mut actions = self.change_input_mode(mode_id);
+        self.finish(&mut actions);
+        actions
+    }
+
+    /// IMK の `commitComposition`（クリックなどで外から確定させられた）。`ShellEvent::CommitComposition` と同じ。
+    pub fn commit_composition(&mut self) -> Vec<ShellAction> {
+        let mut actions = self.commit_composition_now();
+        self.finish(&mut actions);
+        actions
+    }
+
+    /// JIS の英数・かなキー（`EnglishMode::absorbs_key_code`）。OS がモードを切り替えたあと同じキーが届くので、
+    /// どのモードでも受け止めるだけにする（その前にショートコードの表示があれば確定する。ADR 0026 §5.2）。
+    /// `ShellEvent::Key` の `KeyKind::Eisu`・`Kana` と同じ。
+    pub fn absorb_mode_key(&mut self) -> Vec<ShellAction> {
+        let mut actions = self.absorb_mode_key_now();
+        self.finish(&mut actions);
+        actions
+    }
+
+    fn change_input_mode(&mut self, mode_id: &str) -> Vec<ShellAction> {
         let Some(mode) = InputMode::from_mode_id(mode_id) else {
             return Vec::new();
         };
         if mode == self.input_mode {
             return Vec::new();
         }
-        let mut actions = self.leave_current_mode();
+        let actions = self.leave_current_mode();
         let previous = self.input_mode;
         self.input_mode = mode;
         self.record_mode_switch(previous, mode);
-        self.finish(&mut actions);
         actions
     }
 
-    /// IMK の `commitComposition`（クリックなどで外から確定させられた）。
-    pub fn commit_composition(&mut self) -> Vec<ShellAction> {
+    fn commit_composition_now(&mut self) -> Vec<ShellAction> {
         let mut actions = self
             .client
             .as_mut()
@@ -270,19 +318,11 @@ impl Shell {
             })
             .unwrap_or_default();
         actions.extend(self.flush_english_shortcode(DiagEnd::CommitComposition));
-        self.finish(&mut actions);
         actions
     }
 
-    /// JIS の英数・かなキー（`EnglishMode::absorbs_key_code`）。OS がモードを切り替えたあと同じキーが届くので、
-    /// どのモードでも受け止めるだけにする（その前にショートコードの表示があれば確定する。ADR 0026 §5.2）。
-    pub fn absorb_mode_key(&mut self) -> Vec<ShellAction> {
-        let mut actions = self.flush_english_shortcode(DiagEnd::ModeSwitch);
-        if actions.is_empty() {
-            actions.push(ShellAction::Consume);
-        }
-        self.finish(&mut actions);
-        actions
+    fn absorb_mode_key_now(&mut self) -> Vec<ShellAction> {
+        consumed(self.flush_english_shortcode(DiagEnd::ModeSwitch))
     }
 
     /// 候補ウィンドウを出した（OS が位置を決めたあと）。上下と、アンカーがどこから取れたか（診断ログ）。
@@ -322,7 +362,7 @@ impl Shell {
         self.last_session_id
     }
 
-    fn activate(&mut self, bundle_id: &str) -> Vec<ShellAction> {
+    fn activate(&mut self, bundle_id: &str, secure: bool) -> Vec<ShellAction> {
         // 手で編集した settings.tsv に気づく（stat 1 回）。idle のときに反映する
         self.reload_settings();
         let needs_client = self
@@ -334,6 +374,7 @@ impl Shell {
         }
         self.sync_settings();
         if let Some(client) = &mut self.client {
+            client.machine.set_secure(secure);
             client.machine.activate();
         }
         // 絵文字の表と、エンジンの起動の前倒し・メニューの状態の取り直し。主スレッドは止めない
@@ -400,6 +441,10 @@ impl Shell {
         }
         self.sync_settings();
         self.sync_emoji_table();
+        // JIS の英数・かなキーは、どのモードでも受け止めるだけ（secure を見る前。今の `IkariInputController.handle` の順）
+        if matches!(input.key, KeyKind::Eisu | KeyKind::Kana) {
+            return self.absorb_mode_key_now();
+        }
         let Some(client) = &mut self.client else {
             return vec![ShellAction::PassThrough];
         };
@@ -410,6 +455,7 @@ impl Shell {
         if self.input_mode == InputMode::English {
             return self.handle_english(input);
         }
+        let input = &japanese_key(input, client.machine.settings().input_method);
         // キー割り当ての `mode.*` は、変換より先に見る（合成中なら今の表示のまま確定してから切り替える）
         if let Some(target) =
             EnglishMode::mode_switch_target(input, &self.keymap_for_client(), self.input_mode)
@@ -614,7 +660,8 @@ impl Shell {
         if engine_settings_differ(&change.old, &change.new) {
             self.restart_engine(change.new.engine_lm);
         }
-        // 設定アプリへの知らせ（`bridge.notifySettingsChanged`）は L-B の `bridge` が持つ
+        // つながっている設定アプリは取り直す（メニュー、設定アプリ、手の編集で変わったとき）
+        self.pending_bridge.extend(self.bridge.settings_changed());
     }
 
     /// `engine.*` が変わったとき: エンジンに保存して終了してもらい（`SETTINGS_CHANGED`）、続けて `Hello` で起こし直す
@@ -642,8 +689,67 @@ impl Shell {
             value: value.to_string(),
         };
         // 失敗（書けない、検査で断られた）は今の設定のまま。ログは OS 側（種類だけ）
-        if let Ok(Some(change)) = self.settings.update(vec![entry]) {
+        if let Ok(Some(change)) = self.settings.update(vec![entry], Vec::new()) {
             self.settings_did_change(&change);
+        }
+    }
+
+    // MARK: 設定アプリとの接続（今の `BridgeServer` の判断）
+
+    fn bridge_frame(&mut self, conn: ConnId, frame: &[u8]) -> Vec<ShellAction> {
+        let (mut actions, work) = self.bridge.receive(
+            conn,
+            frame,
+            &self.config.shell_version,
+            self.settings.snapshot(),
+        );
+        match work {
+            None => {}
+            Some(BridgeWork::Relay { conn, job }) => {
+                self.background
+                    .spawn(&self.engine, Job::Relay { conn, job });
+            }
+            Some(BridgeWork::Update {
+                conn,
+                request_id,
+                update,
+            }) => actions.push(self.update_from_bridge(conn, request_id, update)),
+        }
+        actions
+    }
+
+    /// 設定アプリからの書き換え（今の `BridgeServer.apply(UpdateSettings)`）。通知（`SettingsChanged`）は `finish` で送る
+    fn update_from_bridge(
+        &mut self,
+        conn: ConnId,
+        request_id: u64,
+        update: crate::bridge::proto::UpdateSettings,
+    ) -> ShellAction {
+        if let Some(key) = bridge_link::invalid_key(&update) {
+            return bridge_link::update_reply(conn, request_id, Err(Some(&key)));
+        }
+        let set = update
+            .set
+            .into_iter()
+            .map(|entry| SettingsEntry {
+                key: entry.key,
+                value: entry.value,
+            })
+            .collect();
+        match self.settings.update(set, update.reset) {
+            Ok(change) => {
+                if let Some(change) = change {
+                    self.settings_did_change(&change);
+                }
+                bridge_link::update_reply(conn, request_id, Ok(self.settings.snapshot()))
+            }
+            // 書いたあとの警告が増える（今の Swift と同じく、キー名は入れない）
+            Err(UpdateFailed::Rejected) => {
+                bridge_link::update_reply(conn, request_id, Err(Some("")))
+            }
+            Err(UpdateFailed::WriteFailed) => {
+                bridge_link::update_reply(conn, request_id, Err(None))
+            }
         }
     }
 
@@ -671,8 +777,13 @@ impl Shell {
                     .spawn(&self.engine, Job::SetProfileDomain { id, included });
             }
             MenuCommand::OpenSettings { tab } => {
-                // 動いている設定アプリへタブを伝える（`bridge.sendOpenTab`）のは L-B の `bridge` が持つ
-                return vec![ShellAction::OpenSettings { tab }];
+                // すでに動いていてつながっているなら、開くタブをブリッジでも伝える（起動の引数は動作中のアプリに届かない）
+                let mut actions: Vec<ShellAction> = tab
+                    .and_then(|tab| self.bridge.open_tab(tab))
+                    .into_iter()
+                    .collect();
+                actions.push(ShellAction::OpenSettings { tab });
+                return actions;
             }
         }
         Vec::new()
@@ -760,6 +871,11 @@ impl Shell {
         for result in self.background.drain() {
             actions.extend(self.accept(result));
         }
+        // 候補ウィンドウを閉じたら上下を既定に戻す（今の `hidePanel` の `setPanelSide(.below)`。閉じるのは OS 側）
+        if actions.contains(&ShellAction::HideCandidates) {
+            self.panel_hidden();
+        }
+        actions.append(&mut self.pending_bridge);
         let inputs = (self.settings.version(), self.lm_state, self.profile_version);
         if self.menu_inputs != Some(inputs) {
             self.menu_inputs = Some(inputs);
@@ -844,6 +960,9 @@ impl Shell {
                 }
                 Vec::new()
             }
+            JobResult::Relay { conn, frame } => {
+                self.bridge.relay_done(conn, &frame).into_iter().collect()
+            }
         }
     }
 
@@ -867,14 +986,46 @@ fn input_method_name(method: InputMethodKind) -> &'static str {
     }
 }
 
+/// JIS の番号で届いたキーを、OS の配列の文字のキーにする（`layout_text`。空なら `Other`）。
+fn layout_key(input: &KeyInput, text: &str) -> KeyInput {
+    KeyInput {
+        key: if text.is_empty() {
+            KeyKind::Other
+        } else {
+            KeyKind::Character {
+                text: text.to_string(),
+            }
+        },
+        layout_text: None,
+        ..input.clone()
+    }
+}
+
+/// 日本語のモードのキー（今の `KeyCodes.keyInput`）。かな入力で、Ctrl / Option / Command がないときだけ JIS のキーにし、
+/// ほかは OS の配列の文字で読む（`layout_text` があるとき。ないとき（シナリオ）は届いたまま）。
+fn japanese_key(input: &KeyInput, method: InputMethodKind) -> KeyInput {
+    let (KeyKind::Jis { .. }, Some(text)) = (&input.key, &input.layout_text) else {
+        return input.clone();
+    };
+    let modifiers = input.modifiers;
+    let chord = modifiers.control || modifiers.option || modifiers.command;
+    if method == InputMethodKind::Kana && !chord {
+        return input.clone();
+    }
+    layout_key(input, text)
+}
+
 /// 英語のモードは、かな入力の設定でも JIS のキーにしない（文字で読む。今の `KeyCodes.keyInput(…, inputMethod: .romaji)`）。
 ///
-/// 契約の `KeyInput` は文字か JIS の番号のどちらかしか持たないので、JIS の番号で届いたキーは、刻印の ASCII に直す
-/// （Shift 付きの英字は大文字。刻印のないキーは `Other`）。OS の配列の文字とは違うことがある（L-E で `KeyInput` に文字を足すかを決める）。
+/// OS の配列の文字（`layout_text`）があればそれを使う。ないとき（シナリオ）は刻印の ASCII に直す
+/// （Shift 付きの英字は大文字。刻印のないキーは `Other`）。
 fn english_key(input: &KeyInput) -> KeyInput {
     let KeyKind::Jis { code } = input.key else {
         return input.clone();
     };
+    if let Some(text) = &input.layout_text {
+        return layout_key(input, text);
+    }
     let shift = input.modifiers.shift;
     let character = jis_ascii::character_for_jis_key(code, shift).or_else(|| {
         shift

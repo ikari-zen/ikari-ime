@@ -261,6 +261,7 @@ impl Harness {
             modifiers,
             is_repeat: false,
             secure: false,
+            layout_text: None,
         };
         self.machine.handle(&input, &mut self.text)
     }

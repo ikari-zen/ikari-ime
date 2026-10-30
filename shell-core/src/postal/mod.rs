@@ -485,6 +485,7 @@ mod tests {
             modifiers: Modifiers::NONE,
             is_repeat: false,
             secure: false,
+            layout_text: None,
         }
     }
 

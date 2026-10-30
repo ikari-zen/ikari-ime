@@ -117,6 +117,7 @@ fn space() -> Vec<u8> {
         modifiers: Modifiers::NONE,
         is_repeat: false,
         secure: false,
+        layout_text: None,
     }))
 }
 
@@ -130,6 +131,7 @@ fn dispatch_round_trips_protobuf_bytes() {
         space(),
         convert::encode_event(&ShellEvent::Activate {
             bundle_id: "com.apple.TextEdit".into(),
+            secure: false,
         }),
         convert::encode_event(&ShellEvent::Deactivate),
         // C 側が proto を直接組み立てた場合も同じ

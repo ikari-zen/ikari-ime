@@ -450,6 +450,7 @@ impl Step {
                     modifiers: Modifiers::NONE,
                     is_repeat: false,
                     secure,
+                    layout_text: None,
                 })
             })
             .collect())
@@ -529,6 +530,7 @@ pub fn parse_press(spec: &str) -> Result<KeyInput, ScenarioError> {
         modifiers,
         is_repeat: false,
         secure: false,
+        layout_text: None,
     })
 }
 

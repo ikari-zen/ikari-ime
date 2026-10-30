@@ -52,6 +52,12 @@ public nonisolated enum Ikari_Shell_V1_KeyKind: SwiftProtobuf.Enum, Swift.CaseIt
   /// KeyInput.function（1〜20）
   case function // = 11
   case other // = 12
+
+  /// JIS の英数キー（L-E で追加）
+  case eisu // = 13
+
+  /// JIS のかなキー（L-E で追加）
+  case kana // = 14
   case UNRECOGNIZED(Int)
 
   public init() {
@@ -73,6 +79,8 @@ public nonisolated enum Ikari_Shell_V1_KeyKind: SwiftProtobuf.Enum, Swift.CaseIt
     case 10: self = .down
     case 11: self = .function
     case 12: self = .other
+    case 13: self = .eisu
+    case 14: self = .kana
     default: self = .UNRECOGNIZED(rawValue)
     }
   }
@@ -92,6 +100,8 @@ public nonisolated enum Ikari_Shell_V1_KeyKind: SwiftProtobuf.Enum, Swift.CaseIt
     case .down: return 10
     case .function: return 11
     case .other: return 12
+    case .eisu: return 13
+    case .kana: return 14
     case .UNRECOGNIZED(let i): return i
     }
   }
@@ -111,6 +121,8 @@ public nonisolated enum Ikari_Shell_V1_KeyKind: SwiftProtobuf.Enum, Swift.CaseIt
     .down,
     .function,
     .other,
+    .eisu,
+    .kana,
   ]
 
 }
@@ -382,6 +394,91 @@ public nonisolated enum Ikari_Shell_V1_MenuItemKind: SwiftProtobuf.Enum, Swift.C
 
 }
 
+public nonisolated enum Ikari_Shell_V1_PanelSide: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case below // = 1
+  case above // = 2
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .below
+    case 2: self = .above
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .below: return 1
+    case .above: return 2
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Ikari_Shell_V1_PanelSide] = [
+    .unspecified,
+    .below,
+    .above,
+  ]
+
+}
+
+/// UNSPECIFIED は「分からない・今回は新しく取っていない」
+public nonisolated enum Ikari_Shell_V1_AnchorSource: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case client // = 1
+  case accessibility // = 2
+  case lastKnown // = 3
+  case mouseScreen // = 4
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .client
+    case 2: self = .accessibility
+    case 3: self = .lastKnown
+    case 4: self = .mouseScreen
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .client: return 1
+    case .accessibility: return 2
+    case .lastKnown: return 3
+    case .mouseScreen: return 4
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Ikari_Shell_V1_AnchorSource] = [
+    .unspecified,
+    .client,
+    .accessibility,
+    .lastKnown,
+    .mouseScreen,
+  ]
+
+}
+
 public nonisolated enum Ikari_Shell_V1_SettingsIssueKind: SwiftProtobuf.Enum, Swift.CaseIterable {
   public typealias RawValue = Int
   case unspecified // = 0
@@ -495,11 +592,23 @@ public nonisolated struct Ikari_Shell_V1_KeyInput: Sendable {
 
   public var secure: Bool = false
 
+  /// KEY_KIND_JIS のときだけ。OS の配列がそのキーで出す文字（Shift だけを適用）。ないキーは空。
+  /// かな入力でないとき、英語のモード、Ctrl / Option / Command つきのとき、shell-core が文字のキーとして読む（L-E で追加）
+  public var layoutText: String {
+    get {_layoutText ?? String()}
+    set {_layoutText = newValue}
+  }
+  /// Returns true if `layoutText` has been explicitly set.
+  public var hasLayoutText: Bool {self._layoutText != nil}
+  /// Clears the value of `layoutText`. Subsequent reads from it will return its default value.
+  public mutating func clearLayoutText() {self._layoutText = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
   fileprivate var _modifiers: Ikari_Shell_V1_Modifiers? = nil
+  fileprivate var _layoutText: String? = nil
 }
 
 /// ホストの口の返事（IkariShellHost.surrounding / selection。§4.4）
@@ -756,6 +865,8 @@ public nonisolated struct Ikari_Shell_V1_Activate: Sendable {
 
   public var bundleID: String = String()
 
+  public var secure: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -781,6 +892,49 @@ public nonisolated struct Ikari_Shell_V1_BridgeFrame: Sendable {
   public var conn: UInt64 = 0
 
   public var frame: Data = Data()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// OS が入力モードを替えた（macOS の setValue(_:forTag: kTextServiceInputModePropertyTag)。値はモードの ID）
+public nonisolated struct Ikari_Shell_V1_InputModeChanged: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var modeID: String = String()
+
+  public var secure: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// 候補ウィンドウを出した・動かした（OS が位置を決めたあと）
+public nonisolated struct Ikari_Shell_V1_PanelShown: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var side: Ikari_Shell_V1_PanelSide = .unspecified
+
+  public var source: Ikari_Shell_V1_AnchorSource = .unspecified
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// 設定アプリとの接続が切れた
+public nonisolated struct Ikari_Shell_V1_BridgeClosed: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var conn: UInt64 = 0
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -850,6 +1004,48 @@ public nonisolated struct Ikari_Shell_V1_ShellEvent: Sendable {
     set {event = .bridgeFrame(newValue)}
   }
 
+  /// L-E で追加
+  public var inputModeChanged: Ikari_Shell_V1_InputModeChanged {
+    get {
+      if case .inputModeChanged(let v)? = event {return v}
+      return Ikari_Shell_V1_InputModeChanged()
+    }
+    set {event = .inputModeChanged(newValue)}
+  }
+
+  /// IMK の commitComposition（クリックなどで外から確定させられた）
+  public var commitComposition: Ikari_Shell_V1_Empty {
+    get {
+      if case .commitComposition(let v)? = event {return v}
+      return Ikari_Shell_V1_Empty()
+    }
+    set {event = .commitComposition(newValue)}
+  }
+
+  public var panelShown: Ikari_Shell_V1_PanelShown {
+    get {
+      if case .panelShown(let v)? = event {return v}
+      return Ikari_Shell_V1_PanelShown()
+    }
+    set {event = .panelShown(newValue)}
+  }
+
+  public var panelHidden: Ikari_Shell_V1_Empty {
+    get {
+      if case .panelHidden(let v)? = event {return v}
+      return Ikari_Shell_V1_Empty()
+    }
+    set {event = .panelHidden(newValue)}
+  }
+
+  public var bridgeClosed: Ikari_Shell_V1_BridgeClosed {
+    get {
+      if case .bridgeClosed(let v)? = event {return v}
+      return Ikari_Shell_V1_BridgeClosed()
+    }
+    set {event = .bridgeClosed(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Event: Equatable, Sendable {
@@ -860,6 +1056,13 @@ public nonisolated struct Ikari_Shell_V1_ShellEvent: Sendable {
     case settingsFileChanged(Ikari_Shell_V1_Empty)
     case timer(Ikari_Shell_V1_TimerFired)
     case bridgeFrame(Ikari_Shell_V1_BridgeFrame)
+    /// L-E で追加
+    case inputModeChanged(Ikari_Shell_V1_InputModeChanged)
+    /// IMK の commitComposition（クリックなどで外から確定させられた）
+    case commitComposition(Ikari_Shell_V1_Empty)
+    case panelShown(Ikari_Shell_V1_PanelShown)
+    case panelHidden(Ikari_Shell_V1_Empty)
+    case bridgeClosed(Ikari_Shell_V1_BridgeClosed)
 
   }
 
@@ -947,6 +1150,30 @@ public nonisolated struct Ikari_Shell_V1_BridgeReply: Sendable {
   public var conn: UInt64 = 0
 
   public var frame: Data = Data()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Ikari_Shell_V1_SelectMode: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var modeID: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Ikari_Shell_V1_BridgeClose: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var conn: UInt64 = 0
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -1080,6 +1307,23 @@ public nonisolated struct Ikari_Shell_V1_ShellAction: Sendable {
     set {action = .openSettings(newValue)}
   }
 
+  /// L-E で追加
+  public var selectMode: Ikari_Shell_V1_SelectMode {
+    get {
+      if case .selectMode(let v)? = action {return v}
+      return Ikari_Shell_V1_SelectMode()
+    }
+    set {action = .selectMode(newValue)}
+  }
+
+  public var bridgeClose: Ikari_Shell_V1_BridgeClose {
+    get {
+      if case .bridgeClose(let v)? = action {return v}
+      return Ikari_Shell_V1_BridgeClose()
+    }
+    set {action = .bridgeClose(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Action: Equatable, Sendable {
@@ -1098,6 +1342,9 @@ public nonisolated struct Ikari_Shell_V1_ShellAction: Sendable {
     case cancelTimer(Ikari_Shell_V1_CancelTimer)
     case bridgeReply(Ikari_Shell_V1_BridgeReply)
     case openSettings(Ikari_Shell_V1_OpenSettings)
+    /// L-E で追加
+    case selectMode(Ikari_Shell_V1_SelectMode)
+    case bridgeClose(Ikari_Shell_V1_BridgeClose)
 
   }
 
@@ -1115,6 +1362,168 @@ public nonisolated struct Ikari_Shell_V1_ShellActions: Sendable {
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
+}
+
+public nonisolated struct Ikari_Shell_V1_Rect: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var x: Double = 0
+
+  public var y: Double = 0
+
+  public var width: Double = 0
+
+  public var height: Double = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// ikari_panel_resolve_anchor の入力。取れなかったものは省く
+public nonisolated struct Ikari_Shell_V1_PanelAnchorRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var client: Ikari_Shell_V1_Rect {
+    get {_client ?? Ikari_Shell_V1_Rect()}
+    set {_client = newValue}
+  }
+  /// Returns true if `client` has been explicitly set.
+  public var hasClient: Bool {self._client != nil}
+  /// Clears the value of `client`. Subsequent reads from it will return its default value.
+  public mutating func clearClient() {self._client = nil}
+
+  public var accessibility: Ikari_Shell_V1_Rect {
+    get {_accessibility ?? Ikari_Shell_V1_Rect()}
+    set {_accessibility = newValue}
+  }
+  /// Returns true if `accessibility` has been explicitly set.
+  public var hasAccessibility: Bool {self._accessibility != nil}
+  /// Clears the value of `accessibility`. Subsequent reads from it will return its default value.
+  public mutating func clearAccessibility() {self._accessibility = nil}
+
+  public var lastKnown: Ikari_Shell_V1_Rect {
+    get {_lastKnown ?? Ikari_Shell_V1_Rect()}
+    set {_lastKnown = newValue}
+  }
+  /// Returns true if `lastKnown` has been explicitly set.
+  public var hasLastKnown: Bool {self._lastKnown != nil}
+  /// Clears the value of `lastKnown`. Subsequent reads from it will return its default value.
+  public mutating func clearLastKnown() {self._lastKnown = nil}
+
+  public var mouseScreenVisibleFrame: Ikari_Shell_V1_Rect {
+    get {_mouseScreenVisibleFrame ?? Ikari_Shell_V1_Rect()}
+    set {_mouseScreenVisibleFrame = newValue}
+  }
+  /// Returns true if `mouseScreenVisibleFrame` has been explicitly set.
+  public var hasMouseScreenVisibleFrame: Bool {self._mouseScreenVisibleFrame != nil}
+  /// Clears the value of `mouseScreenVisibleFrame`. Subsequent reads from it will return its default value.
+  public mutating func clearMouseScreenVisibleFrame() {self._mouseScreenVisibleFrame = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _client: Ikari_Shell_V1_Rect? = nil
+  fileprivate var _accessibility: Ikari_Shell_V1_Rect? = nil
+  fileprivate var _lastKnown: Ikari_Shell_V1_Rect? = nil
+  fileprivate var _mouseScreenVisibleFrame: Ikari_Shell_V1_Rect? = nil
+}
+
+public nonisolated struct Ikari_Shell_V1_PanelAnchor: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var rect: Ikari_Shell_V1_Rect {
+    get {_rect ?? Ikari_Shell_V1_Rect()}
+    set {_rect = newValue}
+  }
+  /// Returns true if `rect` has been explicitly set.
+  public var hasRect: Bool {self._rect != nil}
+  /// Clears the value of `rect`. Subsequent reads from it will return its default value.
+  public mutating func clearRect() {self._rect = nil}
+
+  public var source: Ikari_Shell_V1_AnchorSource = .unspecified
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _rect: Ikari_Shell_V1_Rect? = nil
+}
+
+/// ikari_panel_layout の入力
+public nonisolated struct Ikari_Shell_V1_PanelLayoutRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var anchor: Ikari_Shell_V1_Rect {
+    get {_anchor ?? Ikari_Shell_V1_Rect()}
+    set {_anchor = newValue}
+  }
+  /// Returns true if `anchor` has been explicitly set.
+  public var hasAnchor: Bool {self._anchor != nil}
+  /// Clears the value of `anchor`. Subsequent reads from it will return its default value.
+  public mutating func clearAnchor() {self._anchor = nil}
+
+  public var width: Double = 0
+
+  public var height: Double = 0
+
+  public var reservedHeight: Double {
+    get {_reservedHeight ?? 0}
+    set {_reservedHeight = newValue}
+  }
+  /// Returns true if `reservedHeight` has been explicitly set.
+  public var hasReservedHeight: Bool {self._reservedHeight != nil}
+  /// Clears the value of `reservedHeight`. Subsequent reads from it will return its default value.
+  public mutating func clearReservedHeight() {self._reservedHeight = nil}
+
+  public var visibleFrame: Ikari_Shell_V1_Rect {
+    get {_visibleFrame ?? Ikari_Shell_V1_Rect()}
+    set {_visibleFrame = newValue}
+  }
+  /// Returns true if `visibleFrame` has been explicitly set.
+  public var hasVisibleFrame: Bool {self._visibleFrame != nil}
+  /// Clears the value of `visibleFrame`. Subsequent reads from it will return its default value.
+  public mutating func clearVisibleFrame() {self._visibleFrame = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _anchor: Ikari_Shell_V1_Rect? = nil
+  fileprivate var _reservedHeight: Double? = nil
+  fileprivate var _visibleFrame: Ikari_Shell_V1_Rect? = nil
+}
+
+public nonisolated struct Ikari_Shell_V1_PanelPlacement: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var frame: Ikari_Shell_V1_Rect {
+    get {_frame ?? Ikari_Shell_V1_Rect()}
+    set {_frame = newValue}
+  }
+  /// Returns true if `frame` has been explicitly set.
+  public var hasFrame: Bool {self._frame != nil}
+  /// Clears the value of `frame`. Subsequent reads from it will return its default value.
+  public mutating func clearFrame() {self._frame = nil}
+
+  public var side: Ikari_Shell_V1_PanelSide = .unspecified
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _frame: Ikari_Shell_V1_Rect? = nil
 }
 
 public nonisolated struct Ikari_Shell_V1_SettingsSnapshot: @unchecked Sendable {
@@ -1345,7 +1754,7 @@ public nonisolated struct Ikari_Shell_V1_SettingsRewrite: Sendable {
 fileprivate nonisolated let _protobuf_package = "ikari.shell.v1"
 
 nonisolated extension Ikari_Shell_V1_KeyKind: SwiftProtobuf._ProtoNameProviding {
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0KEY_KIND_UNSPECIFIED\0\u{1}KEY_KIND_CHARACTER\0\u{1}KEY_KIND_JIS\0\u{1}KEY_KIND_SPACE\0\u{1}KEY_KIND_ENTER\0\u{1}KEY_KIND_ESCAPE\0\u{1}KEY_KIND_BACKSPACE\0\u{1}KEY_KIND_LEFT\0\u{1}KEY_KIND_RIGHT\0\u{1}KEY_KIND_UP\0\u{1}KEY_KIND_DOWN\0\u{1}KEY_KIND_FUNCTION\0\u{1}KEY_KIND_OTHER\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0KEY_KIND_UNSPECIFIED\0\u{1}KEY_KIND_CHARACTER\0\u{1}KEY_KIND_JIS\0\u{1}KEY_KIND_SPACE\0\u{1}KEY_KIND_ENTER\0\u{1}KEY_KIND_ESCAPE\0\u{1}KEY_KIND_BACKSPACE\0\u{1}KEY_KIND_LEFT\0\u{1}KEY_KIND_RIGHT\0\u{1}KEY_KIND_UP\0\u{1}KEY_KIND_DOWN\0\u{1}KEY_KIND_FUNCTION\0\u{1}KEY_KIND_OTHER\0\u{1}KEY_KIND_EISU\0\u{1}KEY_KIND_KANA\0")
 }
 
 nonisolated extension Ikari_Shell_V1_CandidateKind: SwiftProtobuf._ProtoNameProviding {
@@ -1370,6 +1779,14 @@ nonisolated extension Ikari_Shell_V1_MenuRadioGroup: SwiftProtobuf._ProtoNamePro
 
 nonisolated extension Ikari_Shell_V1_MenuItemKind: SwiftProtobuf._ProtoNameProviding {
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0MENU_ITEM_KIND_UNSPECIFIED\0\u{1}MENU_ITEM_KIND_SEPARATOR\0\u{1}MENU_ITEM_KIND_ACTION\0\u{1}MENU_ITEM_KIND_TOGGLE\0\u{1}MENU_ITEM_KIND_RADIO\0")
+}
+
+nonisolated extension Ikari_Shell_V1_PanelSide: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0PANEL_SIDE_UNSPECIFIED\0\u{1}PANEL_SIDE_BELOW\0\u{1}PANEL_SIDE_ABOVE\0")
+}
+
+nonisolated extension Ikari_Shell_V1_AnchorSource: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0ANCHOR_SOURCE_UNSPECIFIED\0\u{1}ANCHOR_SOURCE_CLIENT\0\u{1}ANCHOR_SOURCE_ACCESSIBILITY\0\u{1}ANCHOR_SOURCE_LAST_KNOWN\0\u{1}ANCHOR_SOURCE_MOUSE_SCREEN\0")
 }
 
 nonisolated extension Ikari_Shell_V1_SettingsIssueKind: SwiftProtobuf._ProtoNameProviding {
@@ -1477,7 +1894,7 @@ nonisolated extension Ikari_Shell_V1_Modifiers: SwiftProtobuf.Message, SwiftProt
 
 nonisolated extension Ikari_Shell_V1_KeyInput: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".KeyInput"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}kind\0\u{1}text\0\u{1}jis\0\u{1}function\0\u{1}modifiers\0\u{3}is_repeat\0\u{1}secure\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}kind\0\u{1}text\0\u{1}jis\0\u{1}function\0\u{1}modifiers\0\u{3}is_repeat\0\u{1}secure\0\u{3}layout_text\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1492,6 +1909,7 @@ nonisolated extension Ikari_Shell_V1_KeyInput: SwiftProtobuf.Message, SwiftProto
       case 5: try { try decoder.decodeSingularMessageField(value: &self._modifiers) }()
       case 6: try { try decoder.decodeSingularBoolField(value: &self.isRepeat) }()
       case 7: try { try decoder.decodeSingularBoolField(value: &self.secure) }()
+      case 8: try { try decoder.decodeSingularStringField(value: &self._layoutText) }()
       default: break
       }
     }
@@ -1523,6 +1941,9 @@ nonisolated extension Ikari_Shell_V1_KeyInput: SwiftProtobuf.Message, SwiftProto
     if self.secure != false {
       try visitor.visitSingularBoolField(value: self.secure, fieldNumber: 7)
     }
+    try { if let v = self._layoutText {
+      try visitor.visitSingularStringField(value: v, fieldNumber: 8)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -1534,6 +1955,7 @@ nonisolated extension Ikari_Shell_V1_KeyInput: SwiftProtobuf.Message, SwiftProto
     if lhs._modifiers != rhs._modifiers {return false}
     if lhs.isRepeat != rhs.isRepeat {return false}
     if lhs.secure != rhs.secure {return false}
+    if lhs._layoutText != rhs._layoutText {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -2026,7 +2448,7 @@ nonisolated extension Ikari_Shell_V1_MenuModel: SwiftProtobuf.Message, SwiftProt
 
 nonisolated extension Ikari_Shell_V1_Activate: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Activate"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}bundle_id\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}bundle_id\0\u{1}secure\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2035,6 +2457,7 @@ nonisolated extension Ikari_Shell_V1_Activate: SwiftProtobuf.Message, SwiftProto
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularStringField(value: &self.bundleID) }()
+      case 2: try { try decoder.decodeSingularBoolField(value: &self.secure) }()
       default: break
       }
     }
@@ -2044,11 +2467,15 @@ nonisolated extension Ikari_Shell_V1_Activate: SwiftProtobuf.Message, SwiftProto
     if !self.bundleID.isEmpty {
       try visitor.visitSingularStringField(value: self.bundleID, fieldNumber: 1)
     }
+    if self.secure != false {
+      try visitor.visitSingularBoolField(value: self.secure, fieldNumber: 2)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Ikari_Shell_V1_Activate, rhs: Ikari_Shell_V1_Activate) -> Bool {
     if lhs.bundleID != rhs.bundleID {return false}
+    if lhs.secure != rhs.secure {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -2119,9 +2546,109 @@ nonisolated extension Ikari_Shell_V1_BridgeFrame: SwiftProtobuf.Message, SwiftPr
   }
 }
 
+nonisolated extension Ikari_Shell_V1_InputModeChanged: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".InputModeChanged"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}mode_id\0\u{1}secure\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.modeID) }()
+      case 2: try { try decoder.decodeSingularBoolField(value: &self.secure) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.modeID.isEmpty {
+      try visitor.visitSingularStringField(value: self.modeID, fieldNumber: 1)
+    }
+    if self.secure != false {
+      try visitor.visitSingularBoolField(value: self.secure, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Ikari_Shell_V1_InputModeChanged, rhs: Ikari_Shell_V1_InputModeChanged) -> Bool {
+    if lhs.modeID != rhs.modeID {return false}
+    if lhs.secure != rhs.secure {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Ikari_Shell_V1_PanelShown: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".PanelShown"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}side\0\u{1}source\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularEnumField(value: &self.side) }()
+      case 2: try { try decoder.decodeSingularEnumField(value: &self.source) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.side != .unspecified {
+      try visitor.visitSingularEnumField(value: self.side, fieldNumber: 1)
+    }
+    if self.source != .unspecified {
+      try visitor.visitSingularEnumField(value: self.source, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Ikari_Shell_V1_PanelShown, rhs: Ikari_Shell_V1_PanelShown) -> Bool {
+    if lhs.side != rhs.side {return false}
+    if lhs.source != rhs.source {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Ikari_Shell_V1_BridgeClosed: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".BridgeClosed"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}conn\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularUInt64Field(value: &self.conn) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.conn != 0 {
+      try visitor.visitSingularUInt64Field(value: self.conn, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Ikari_Shell_V1_BridgeClosed, rhs: Ikari_Shell_V1_BridgeClosed) -> Bool {
+    if lhs.conn != rhs.conn {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
 nonisolated extension Ikari_Shell_V1_ShellEvent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ShellEvent"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}key\0\u{1}activate\0\u{1}deactivate\0\u{3}menu_command\0\u{3}settings_file_changed\0\u{1}timer\0\u{3}bridge_frame\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}key\0\u{1}activate\0\u{1}deactivate\0\u{3}menu_command\0\u{3}settings_file_changed\0\u{1}timer\0\u{3}bridge_frame\0\u{3}input_mode_changed\0\u{3}commit_composition\0\u{3}panel_shown\0\u{3}panel_hidden\0\u{3}bridge_closed\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2220,6 +2747,71 @@ nonisolated extension Ikari_Shell_V1_ShellEvent: SwiftProtobuf.Message, SwiftPro
           self.event = .bridgeFrame(v)
         }
       }()
+      case 8: try {
+        var v: Ikari_Shell_V1_InputModeChanged?
+        var hadOneofValue = false
+        if let current = self.event {
+          hadOneofValue = true
+          if case .inputModeChanged(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.event = .inputModeChanged(v)
+        }
+      }()
+      case 9: try {
+        var v: Ikari_Shell_V1_Empty?
+        var hadOneofValue = false
+        if let current = self.event {
+          hadOneofValue = true
+          if case .commitComposition(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.event = .commitComposition(v)
+        }
+      }()
+      case 10: try {
+        var v: Ikari_Shell_V1_PanelShown?
+        var hadOneofValue = false
+        if let current = self.event {
+          hadOneofValue = true
+          if case .panelShown(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.event = .panelShown(v)
+        }
+      }()
+      case 11: try {
+        var v: Ikari_Shell_V1_Empty?
+        var hadOneofValue = false
+        if let current = self.event {
+          hadOneofValue = true
+          if case .panelHidden(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.event = .panelHidden(v)
+        }
+      }()
+      case 12: try {
+        var v: Ikari_Shell_V1_BridgeClosed?
+        var hadOneofValue = false
+        if let current = self.event {
+          hadOneofValue = true
+          if case .bridgeClosed(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.event = .bridgeClosed(v)
+        }
+      }()
       default: break
       }
     }
@@ -2258,6 +2850,26 @@ nonisolated extension Ikari_Shell_V1_ShellEvent: SwiftProtobuf.Message, SwiftPro
     case .bridgeFrame?: try {
       guard case .bridgeFrame(let v)? = self.event else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 7)
+    }()
+    case .inputModeChanged?: try {
+      guard case .inputModeChanged(let v)? = self.event else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 8)
+    }()
+    case .commitComposition?: try {
+      guard case .commitComposition(let v)? = self.event else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 9)
+    }()
+    case .panelShown?: try {
+      guard case .panelShown(let v)? = self.event else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 10)
+    }()
+    case .panelHidden?: try {
+      guard case .panelHidden(let v)? = self.event else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 11)
+    }()
+    case .bridgeClosed?: try {
+      guard case .bridgeClosed(let v)? = self.event else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 12)
     }()
     case nil: break
     }
@@ -2470,9 +3082,69 @@ nonisolated extension Ikari_Shell_V1_BridgeReply: SwiftProtobuf.Message, SwiftPr
   }
 }
 
+nonisolated extension Ikari_Shell_V1_SelectMode: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".SelectMode"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}mode_id\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.modeID) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.modeID.isEmpty {
+      try visitor.visitSingularStringField(value: self.modeID, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Ikari_Shell_V1_SelectMode, rhs: Ikari_Shell_V1_SelectMode) -> Bool {
+    if lhs.modeID != rhs.modeID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Ikari_Shell_V1_BridgeClose: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".BridgeClose"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}conn\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularUInt64Field(value: &self.conn) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.conn != 0 {
+      try visitor.visitSingularUInt64Field(value: self.conn, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Ikari_Shell_V1_BridgeClose, rhs: Ikari_Shell_V1_BridgeClose) -> Bool {
+    if lhs.conn != rhs.conn {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
 nonisolated extension Ikari_Shell_V1_ShellAction: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ShellAction"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pass_through\0\u{1}consume\0\u{3}set_marked_text\0\u{1}commit\0\u{3}show_candidates\0\u{3}move_selection\0\u{3}hide_candidates\0\u{1}restore\0\u{3}resolve_stray_marked_text\0\u{1}prefetch\0\u{3}show_menu\0\u{3}schedule_timer\0\u{3}cancel_timer\0\u{3}bridge_reply\0\u{3}open_settings\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pass_through\0\u{1}consume\0\u{3}set_marked_text\0\u{1}commit\0\u{3}show_candidates\0\u{3}move_selection\0\u{3}hide_candidates\0\u{1}restore\0\u{3}resolve_stray_marked_text\0\u{1}prefetch\0\u{3}show_menu\0\u{3}schedule_timer\0\u{3}cancel_timer\0\u{3}bridge_reply\0\u{3}open_settings\0\u{3}select_mode\0\u{3}bridge_close\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2675,6 +3347,32 @@ nonisolated extension Ikari_Shell_V1_ShellAction: SwiftProtobuf.Message, SwiftPr
           self.action = .openSettings(v)
         }
       }()
+      case 16: try {
+        var v: Ikari_Shell_V1_SelectMode?
+        var hadOneofValue = false
+        if let current = self.action {
+          hadOneofValue = true
+          if case .selectMode(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.action = .selectMode(v)
+        }
+      }()
+      case 17: try {
+        var v: Ikari_Shell_V1_BridgeClose?
+        var hadOneofValue = false
+        if let current = self.action {
+          hadOneofValue = true
+          if case .bridgeClose(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.action = .bridgeClose(v)
+        }
+      }()
       default: break
       }
     }
@@ -2746,6 +3444,14 @@ nonisolated extension Ikari_Shell_V1_ShellAction: SwiftProtobuf.Message, SwiftPr
       guard case .openSettings(let v)? = self.action else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 15)
     }()
+    case .selectMode?: try {
+      guard case .selectMode(let v)? = self.action else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 16)
+    }()
+    case .bridgeClose?: try {
+      guard case .bridgeClose(let v)? = self.action else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 17)
+    }()
     case nil: break
     }
     try unknownFields.traverse(visitor: &visitor)
@@ -2783,6 +3489,232 @@ nonisolated extension Ikari_Shell_V1_ShellActions: SwiftProtobuf.Message, SwiftP
 
   public static func ==(lhs: Ikari_Shell_V1_ShellActions, rhs: Ikari_Shell_V1_ShellActions) -> Bool {
     if lhs.actions != rhs.actions {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Ikari_Shell_V1_Rect: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".Rect"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}x\0\u{1}y\0\u{1}width\0\u{1}height\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularDoubleField(value: &self.x) }()
+      case 2: try { try decoder.decodeSingularDoubleField(value: &self.y) }()
+      case 3: try { try decoder.decodeSingularDoubleField(value: &self.width) }()
+      case 4: try { try decoder.decodeSingularDoubleField(value: &self.height) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.x.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.x, fieldNumber: 1)
+    }
+    if self.y.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.y, fieldNumber: 2)
+    }
+    if self.width.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.width, fieldNumber: 3)
+    }
+    if self.height.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.height, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Ikari_Shell_V1_Rect, rhs: Ikari_Shell_V1_Rect) -> Bool {
+    if lhs.x != rhs.x {return false}
+    if lhs.y != rhs.y {return false}
+    if lhs.width != rhs.width {return false}
+    if lhs.height != rhs.height {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Ikari_Shell_V1_PanelAnchorRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".PanelAnchorRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}client\0\u{1}accessibility\0\u{3}last_known\0\u{3}mouse_screen_visible_frame\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._client) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._accessibility) }()
+      case 3: try { try decoder.decodeSingularMessageField(value: &self._lastKnown) }()
+      case 4: try { try decoder.decodeSingularMessageField(value: &self._mouseScreenVisibleFrame) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._client {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    try { if let v = self._accessibility {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    try { if let v = self._lastKnown {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    } }()
+    try { if let v = self._mouseScreenVisibleFrame {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Ikari_Shell_V1_PanelAnchorRequest, rhs: Ikari_Shell_V1_PanelAnchorRequest) -> Bool {
+    if lhs._client != rhs._client {return false}
+    if lhs._accessibility != rhs._accessibility {return false}
+    if lhs._lastKnown != rhs._lastKnown {return false}
+    if lhs._mouseScreenVisibleFrame != rhs._mouseScreenVisibleFrame {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Ikari_Shell_V1_PanelAnchor: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".PanelAnchor"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}rect\0\u{1}source\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._rect) }()
+      case 2: try { try decoder.decodeSingularEnumField(value: &self.source) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._rect {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    if self.source != .unspecified {
+      try visitor.visitSingularEnumField(value: self.source, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Ikari_Shell_V1_PanelAnchor, rhs: Ikari_Shell_V1_PanelAnchor) -> Bool {
+    if lhs._rect != rhs._rect {return false}
+    if lhs.source != rhs.source {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Ikari_Shell_V1_PanelLayoutRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".PanelLayoutRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}anchor\0\u{1}width\0\u{1}height\0\u{3}reserved_height\0\u{3}visible_frame\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._anchor) }()
+      case 2: try { try decoder.decodeSingularDoubleField(value: &self.width) }()
+      case 3: try { try decoder.decodeSingularDoubleField(value: &self.height) }()
+      case 4: try { try decoder.decodeSingularDoubleField(value: &self._reservedHeight) }()
+      case 5: try { try decoder.decodeSingularMessageField(value: &self._visibleFrame) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._anchor {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    if self.width.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.width, fieldNumber: 2)
+    }
+    if self.height.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.height, fieldNumber: 3)
+    }
+    try { if let v = self._reservedHeight {
+      try visitor.visitSingularDoubleField(value: v, fieldNumber: 4)
+    } }()
+    try { if let v = self._visibleFrame {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Ikari_Shell_V1_PanelLayoutRequest, rhs: Ikari_Shell_V1_PanelLayoutRequest) -> Bool {
+    if lhs._anchor != rhs._anchor {return false}
+    if lhs.width != rhs.width {return false}
+    if lhs.height != rhs.height {return false}
+    if lhs._reservedHeight != rhs._reservedHeight {return false}
+    if lhs._visibleFrame != rhs._visibleFrame {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Ikari_Shell_V1_PanelPlacement: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".PanelPlacement"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}frame\0\u{1}side\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._frame) }()
+      case 2: try { try decoder.decodeSingularEnumField(value: &self.side) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._frame {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    if self.side != .unspecified {
+      try visitor.visitSingularEnumField(value: self.side, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Ikari_Shell_V1_PanelPlacement, rhs: Ikari_Shell_V1_PanelPlacement) -> Bool {
+    if lhs._frame != rhs._frame {return false}
+    if lhs.side != rhs.side {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

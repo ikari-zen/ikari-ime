@@ -251,7 +251,7 @@ impl EnglishMode {
             KeyKind::Right => named("right"),
             KeyKind::Up => named("up"),
             KeyKind::Down => named("down"),
-            KeyKind::Jis { .. } | KeyKind::Other => None,
+            KeyKind::Jis { .. } | KeyKind::Other | KeyKind::Eisu | KeyKind::Kana => None,
         }
     }
 
@@ -291,7 +291,9 @@ impl EnglishMode {
             | KeyKind::Down
             | KeyKind::Function { .. }
             | KeyKind::Jis { .. }
-            | KeyKind::Other => self.flush(),
+            | KeyKind::Other
+            | KeyKind::Eisu
+            | KeyKind::Kana => self.flush(),
         }
     }
 
@@ -372,6 +374,7 @@ pub(crate) mod test_support {
             modifiers,
             is_repeat: false,
             secure: false,
+            layout_text: None,
         }
     }
 
