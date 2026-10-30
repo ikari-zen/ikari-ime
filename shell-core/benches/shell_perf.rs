@@ -273,11 +273,9 @@ fn measure_keys(options: &Options) -> Result<Measured, String> {
                                     transport: Vec::new(),
                                 });
                             }
-                            if !is_sync {
-                                if let Some(record) = records.get_mut(slot) {
-                                    record.total.push(elapsed);
-                                    record.transport.push(transport);
-                                }
+                            if !is_sync && let Some(record) = records.get_mut(slot) {
+                                record.total.push(elapsed);
+                                record.transport.push(transport);
                             }
                             slot += 1;
                         }
