@@ -1,0 +1,26 @@
+{
+  "description": "ATOK 風プリセットのキー割り当て(L-A1: keymap の移行で足した)",
+  "defaults": {
+    "client": {"bundle_id": "com.apple.TextEdit"}
+  },
+  "scenarios": [
+    {
+      "name": "ATOK preset binds ctrl+i",
+      "from": "KeymapAndSettingsTests.swift KeymapTests.atokPresetDiffersFromMsImeOnlyInHalfwidthAlnumAndReconvert",
+      "setup": {"settings": ["keymap.preset\tatok"]},
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "ctrl+i", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ヒンシ", "highlighted_length": 3}]}
+      ]
+    },
+    {
+      "name": "ATOK preset does not bind ctrl+t",
+      "from": "KeymapAndSettingsTests.swift KeymapTests.atokPresetDiffersFromMsImeOnlyInHalfwidthAlnumAndReconvert",
+      "setup": {"settings": ["keymap.preset\tatok"]},
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "ctrl+t", "expect": [{"type": "commit", "text": "ひんし"}, {"type": "pass_through"}]}
+      ]
+    }
+  ]
+}
