@@ -177,8 +177,8 @@ ikari-ime は次の機能を作らない（[要件定義書](ikari-ime_spec.md) 
 flowchart LR
     subgraph 殻["ikari.app（殻。Swift、InputMethodKit）"]
         IME["IkariIME: 入力コントローラ、候補ウィンドウ"]
-        Shell["IkariShellCore: 状態機械、キー割り当て"]
     end
+    Shell["shell-core（Rust）: 状態機械、キー割り当て、エンジンとの通信"]
     subgraph XPC["IkariEngine.xpc（App Sandbox、ネットワークなし）"]
         Svc["IkariEngineService"]
         FFI["engine-ffi"]
@@ -186,10 +186,11 @@ flowchart LR
     Settings["ikari 設定（IkariSettings）"]
     Rust["Rust のコア: input、core、lm、stack、engine"]
 
-    IME --> Shell
-    IME -- "XPC（engine.proto）" --> Svc
+    IME -- "shell-ffi（shell.proto）" --> Shell
+    Shell -- "XPC（engine.proto）。運ぶのは IkariXPC" --> Svc
     Svc --> FFI --> Rust
     Settings -- "Unix ソケット（bridge.proto）" --> IME
+    Settings -- "検証・整形（settings.proto）" --> Shell
 ```
 
 構成の詳細（crate の依存、プロセス、データの置き場所）は [architecture.md](architecture.md) が正。
@@ -204,6 +205,7 @@ flowchart LR
 | `core` | 辞書引き、ラティスと Viterbi、Ranker（コスト、左文脈、文書内キャッシュ、学習、話題、規則の Guard）、Rewriter（日付、数字、電卓、記号、絵文字、郵便番号など）、文節の編集、ユーザーデータ | [0001](adr/0001-phase0-architecture.md)、[0002](adr/0002-phase1-architecture.md)、[0006](adr/0006-segment-editing.md)、[0024](adr/0024-lm-keeps-rule-s.md) |
 | `lm` | zenz（GGUF、llama.cpp）による話題スコア。feature `llama`、`metal` のときだけ llama.cpp をビルドする | [0003](adr/0003-topic-ranker-decision.md) |
 | `stack` | Converter、Ranker、LM の組み立てを 1 か所にまとめる（エンジン、CLI、eval が使う） | [0004](adr/0004-phase2-macos.md) §3.2 |
+| `shell-core` | 殻の OS に依存しない処理（入力の状態機械、キー割り当て、英語のモードの文脈、ショートコード、配置の計算、エンジンとの通信、設定の検証）。`shell-ffi` が C ABI を出す | [0041](adr/0041-shell-state-machine-in-rust.md) |
 | `import` | 取り込みファイル（JSONL）の検証、強制アライメント、初期学習 | [0002](adr/0002-phase1-architecture.md) §11 |
 
 Ranker は差し替え可能な trait として作る。実装方式（Word2Vec か小型 LM か）をコアに埋め込まない（spec「依頼するときの原則」）。
@@ -219,11 +221,11 @@ Ranker は差し替え可能な trait として作る。実装方式（Word2Vec 
 
 | モジュール | 役割 |
 | --- | --- |
-| `IkariShellCore` | 入力の状態機械、キー割り当て（`keymap`）、英語のモードの文脈、ショートコード、配置の計算。AppKit に依存しない |
-| `IkariIME` | IMKServer、入力コントローラ、候補ウィンドウ |
-| `IkariXPC` | エンジンへの XPC 接続。署名要件で相手を確かめる |
-| `IkariBridge` | 設定アプリとの Unix ソケット |
-| `IkariSettings` | 設定アプリ（SwiftUI）。エンジンには直接つながない |
+| `IkariIME` | IMKServer、入力コントローラ、候補ウィンドウ。判断は持たず、`shell-core` に渡して動作の列を実行する |
+| `IkariShellABI` | `shell-ffi` の薄い層と、キーコードの表 |
+| `IkariXPC` | エンジンへの XPC 接続（輸送）。署名要件で相手を確かめる |
+| `IkariBridge` | 設定アプリとの Unix ソケット（輸送） |
+| `IkariSettings` | 設定アプリ（SwiftUI）。エンジンには直接つながない。検証と整形は `shell-core` |
 | `IkariSmoke` | 実機の E2E（後述） |
 
 詳しくは [macos/README.md](../macos/README.md)。
@@ -231,7 +233,7 @@ Ranker は差し替え可能な trait として作る。実装方式（Word2Vec 
 ### proto の契約
 
 - [`engine.proto`](../proto/ikari/engine/v1/engine.proto)：殻とエンジンの間のメッセージ（Rust は prost、Swift は SwiftProtobuf で生成する）。スキーマのバージョンで互換性を管理する。殻はエンジンの版が違うと起こし直す（[0004](adr/0004-phase2-macos.md) §5）。
-- [`bridge.proto`](../proto/ikari/bridge/v1/bridge.proto)：設定アプリと殻の間。Swift だけが使う。
+- [`bridge.proto`](../proto/ikari/bridge/v1/bridge.proto)：設定アプリと殻の間（殻の側は `shell-core` が読む）。
 - 契約の詳細（識別子、署名要件、上限）は [phase2-contract.md](phase2-contract.md)。
 
 ### 辞書のビルド

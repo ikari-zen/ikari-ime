@@ -19,7 +19,8 @@ ikari-ime の今の構成を 1 か所にまとめた地図。判断の理由は�
 | `proto` | エンジンと殻の間のメッセージ（`proto/ikari/engine/v1/engine.proto`、prost）。設定アプリと殻の間の `proto/ikari/bridge/v1/bridge.proto` も生成する（`shell-core` の bridge が使う。Swift は `gen-proto.sh`） | [0004 §5](adr/0004-phase2-macos.md)、[0005 §6.3](adr/0005-macos-settings-and-indicator.md) |
 | `engine` | 常駐エンジン。`Envelope` を受けて返す。`lib.rs`（`Engine`、`Inner`、上限）、`dispatch`（入口）、`session`、`convert`、`lm`、`data`（データの監視）、`workers`（裏のスレッド）、`segments`（文節）、`admin`（管理）、`cache` | [0004 §7](adr/0004-phase2-macos.md) |
 | `engine-ffi` | エンジンの C ABI（staticlib。ヘッダ `include/ikari_engine.h`） | [0004 §4.2](adr/0004-phase2-macos.md) |
-| `shell-ffi` | 殻が使う入力処理の C ABI（staticlib。ヘッダ `include/ikari_shell.h`） | [0004 §4.3](adr/0004-phase2-macos.md) |
+| `shell-core` | 殻の OS に依存しない処理の全部（入力の状態機械、キー割り当て、合成器の呼び出し、英語のモードの文脈（`english`）、郵便番号と Unicode の表記（`postal`）、ショートコード、候補ウィンドウの配置（`panel`）、メニュー、エンジンとの通信と再接続（`engine`）、設定アプリとのブリッジの判断（`bridge`）、設定の検証と整形（`settings`）、診断ログ）。入口は「OS のイベント → `Shell::dispatch` → 動作の列」の 1 本。共通のシナリオ（`shell-core/scenarios/`）で振る舞いを守る | [0041](adr/0041-shell-state-machine-in-rust.md) |
+| `shell-ffi` | 殻と設定アプリが使う `shell-core` の C ABI（staticlib。ヘッダ `include/ikari_shell.h`。`ikari_shell_*`、`ikari_settings_*`、`ikari_panel_*`。入出力は protobuf の `ikari.shell.v1`・`ikari.settings.v1`） | [0041 §4.4](adr/0041-shell-state-machine-in-rust.md) |
 | `cli` | コマンド `ikari`（変換、ユーザー辞書、取り込み）。バイナリ名は `ikari` | [0001 §5](adr/0001-phase0-architecture.md)、[0002 §14](adr/0002-phase1-architecture.md) |
 | `eval` | 評価セットの実行、レポート、シナリオ、AJIMEE。`ikari-eval` | [0001 §6](adr/0001-phase0-architecture.md)、[0002 §15](adr/0002-phase1-architecture.md) |
 
@@ -31,7 +32,7 @@ dict-format, input ← core ← lm（optional: llama-cpp-2）
 core, lm（optional）← stack ← engine ← engine-ffi（staticlib）
 core, dict-format ← import
 core, stack, import（+ lm optional）← cli, eval
-input ← shell-ffi（staticlib）
+input, proto ← shell-core ← shell-ffi（staticlib）
 proto ← engine
 ```
 
@@ -43,17 +44,20 @@ proto ← engine
 
 ```
 ikari.app（殻。Swift、InputMethodKit、Sandbox なし。~/Library/Input Methods/）
-  ├─ IkariShellCore  入力の状態機械、キー割り当て、配置の計算（AppKit に依存しない）
-  ├─ IkariIME        IMKServer、IkariInputController、候補ウィンドウ（shell-ffi をリンク）
-  ├─ IkariXPC        EngineClient の XPC 実装、署名要件
-  ├─ IkariBridge     設定アプリとのブリッジ（枠の読み書き、BridgeTransport、中継の許可リスト）。契約コミットで完成
-  └─ IkariProto      生成した protobuf（engine.pb.swift、bridge.pb.swift。macos/scripts/gen-proto.sh）
+  ├─ IkariIME        IMKServer、IkariInputController、候補ウィンドウ、ブリッジの待ち受け。判断は持たず、イベントを
+  │                  shell-core に渡して動作の列を実行する（ADR 0041）
+  ├─ IkariShellABI   shell-ffi（`ikari_shell_*`、`ikari_panel_*`、`ikari_settings_*`）の薄い層と、キーコードの表（`KeyEvents`）
+  ├─ IkariXPC        エンジンへの XPC の輸送（`XPCEngineConnections`。shell-core のホストの口）、識別子、署名要件。
+  │                  smoke が使う型付きの口（`XPCEngineClient`）
+  ├─ IkariBridge     設定アプリとのブリッジの輸送（枠の読み書き、BridgeTransport）。照合と中継の許可リストは shell-core
+  └─ IkariProto      生成した protobuf（engine、bridge、shell、settings の .pb.swift。macos/scripts/gen-proto.sh）
         │ XPC（Envelope。署名要件で相互に相手を確かめる）
 IkariEngine.xpc（同梱の XPC サービス。App Sandbox、ネットワークなし）
   └─ IkariEngineService（Swift は FFI を呼ぶだけ）→ engine-ffi（Rust のエンジン。LM は llama.cpp）
 ```
 
-- `IkariSettings`（設定アプリ「ikari 設定」。`ikari.app/Contents/Helpers/` に同梱する予定）は、今はスタブ。殻の Unix ソケット（`IkariBridge`）だけにつなぐ。
+- `IkariSettings`（設定アプリ「ikari 設定」。`ikari.app/Contents/Helpers/` に同梱）は、殻の Unix ソケット（`IkariBridge`）だけにつなぐ。検証・整形・変更の組み立ては shell-core（`ikari_settings_app`）に頼み、Swift は画面と小さな画面の型（`ScreenTypes.swift`）だけを持つ。
+- 移行の前の Swift の状態機械（`IkariShellCore`）とその測り手（`IkariShellBench`）、旧い FFI（`ikari_composer_*`、`ikari_convert_script`）は、移行の片付け（M5、#138）で消した。
 - `ikari-smoke`（`IkariSmoke`）: バンドルの中から XPC 経由で E2E を流す。`macos/scripts/smoke.sh`。
 - 識別子と署名要件は [phase2-contract.md](phase2-contract.md)。Bundle ID `io.github.ikari-zen.inputmethod.ikari`、チームID（`lib.sh` の `TEAM_ID`）。
 - 設計は [0004](adr/0004-phase2-macos.md)。設定アプリ（IkariSettings）と管理のメッセージは [0005](adr/0005-macos-settings-and-indicator.md)（実装済み。ブリッジと上限は [phase2-contract.md §5](phase2-contract.md)）。
@@ -64,9 +68,9 @@ IkariEngine.xpc（同梱の XPC サービス。App Sandbox、ネットワーク�
 - 表示名（`Resources/{ja,en}.lproj/InfoPlist.strings`）は、`TISInputSourceID` ではなく**モードの辞書のキー**で引かれる。英語は `ikari (English)`。アイコンは `ikari-japanese.pdf`（塗りの「あ」）と `ikari-english.pdf`（輪郭の「A」）。
 - `IkariInputController` は `setValue(_:forTag:client:)`（`kTextServiceInputModePropertyTag`）で今のモード（`InputMode`）を知る。コントローラ、セッション ID は変えず、`BeginSession` も送り直さない。日本語 → 英語のときは合成中の文字列を今の表示のまま確定し、候補ウィンドウを閉じる。
 - **英語のモードは打鍵をすべてアプリに素通しにする**（`handle` が false）。英数・かなキー（keyCode 102・104）はどのモードでも受け止める（素通しにするとアプリに余計な文字が入る）。secure なら、日本語でも英語でも素通しで、何も記録しない（日本語は合成中なら今の表示のまま確定してから）。キー割り当ての `mode.toggle` / `mode.english` / `mode.japanese`（既定は割り当てなし）は、どちらのモードでも変換より先に見る。
-- 英語の文脈は、殻が `EnglishContextPool`（`IkariShellCore/EnglishMode.swift`、純関数）にためる。印字できる文字を足し、Backspace は末尾を消し、区切り（Return、Tab、矢印、Escape、F キー、Ctrl・Option・Command 付き、モードの切り替え、`deactivateServer`、2000 スカラー）で 1 件の `CommitText`（`reading` は空）として片道でエンジンに送る。エンジンは確定履歴に入れるだけで、学習しない。`reading` が空の項目は、履歴の読みを使う再変換（`core/src/converter/reconvert.rs`）が飛ばす。
+- 英語の文脈は、殻が `EnglishContextPool`（`shell-core/src/english/`）にためる。印字できる文字を足し、Backspace は末尾を消し、区切り（Return、Tab、矢印、Escape、F キー、Ctrl・Option・Command 付き、モードの切り替え、`deactivateServer`、2000 スカラー）で 1 件の `CommitText`（`reading` は空）として片道でエンジンに送る。エンジンは確定履歴に入れるだけで、学習しない。`reading` が空の項目は、履歴の読みを使う再変換（`core/src/converter/reconvert.rs`）が飛ばす。
 - ショートコード（ADR 0027）の英語のモードへの配線は B48、打鍵と確定文字列の統計は B45。
-- 英語のモードの郵便番号（ADR 0032 §9.1、設定 `postal.english`、既定 off）: 語頭の `te` + 数字 7 桁を殻の `PostalMachine`（`EnglishPostal.swift`）がためて、7 桁目で候補ウィンドウを自動で出す（下線なし。選ぶのは ↑/↓ だけ）。住所は、殻が主スレッドの外で `PostalLookupRequest` をエンジンへ 1 回送り（`EngineClient.postalLookup`。待ちの上限は暫定で 1 秒）、エンジンが `postal.tsv` の表（`stack().postal`）を引いて返す。返事が来たとき状態が同じ（同じコードと同じ候補の通し番号）なら候補に足し、違えば捨てる。設定アプリからは中継しない（`RelayPolicy`）。同じ状態機械が、`u+` + 16 進 4〜6 桁（設定 `unicode.notation`、既定 off。issue #28）も扱う。4 桁目で候補（そのまま、その文字）が出て、桁が増えるたびに更新する。問い合わせはなく、10FFFF を超える並び・制御文字・未割り当ては出さない。`u` の次は `+` が要る（`use`、`unit` などは素通し）。
+- 英語のモードの郵便番号（ADR 0032 §9.1、設定 `postal.english`、既定 off）: 語頭の `te` + 数字 7 桁を殻の `PostalMachine`（`shell-core/src/postal/`）がためて、7 桁目で候補ウィンドウを自動で出す（下線なし。選ぶのは ↑/↓ だけ）。住所は、殻が主スレッドの外で `PostalLookupRequest` をエンジンへ 1 回送り（shell-core の `engine`。待ちの上限は暫定で 1 秒）、エンジンが `postal.tsv` の表（`stack().postal`）を引いて返す。返事が来たとき状態が同じ（同じコードと同じ候補の通し番号）なら候補に足し、違えば捨てる。設定アプリからは中継しない（shell-core の `bridge/relay_policy.rs`）。同じ状態機械が、`u+` + 16 進 4〜6 桁（設定 `unicode.notation`、既定 off。issue #28）も扱う。4 桁目で候補（そのまま、その文字）が出て、桁が増えるたびに更新する。問い合わせはなく、10FFFF を超える並び・制御文字・未割り当ては出さない。`u` の次は `+` が要る（`use`、`unit` などは素通し）。
 - 確信度が高い変換（#69、設定 `candidate.hide_when_confident`、既定 on。2026-10-28 ユーザー決定）: エンジンが、読み全体の候補の 1 位と 2 位の最終スコアの差を見て、閾値以上なら `ConvertReply.confident = true` を返す（閾値は LM なし 5000、LM あり 10000。暫定。`convert` の行の `gap=` `confident=` で実利用の分布を見て見直す）。殻は、設定がオンで confident、1 文節のとき、最初の Space で 1 位だけを下線つきで出し、候補ウィンドウは出さない。もう一度 Space、↓、↑、数字キーで一覧を出す（選択は 0 番のまま）。Enter、Esc、BackSpace、文字入力は今までどおり。
 
 ## 3. データの置き場所
