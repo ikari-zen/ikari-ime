@@ -496,6 +496,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ikari-shell-core"
+version = "0.1.0"
+dependencies = [
+ "ikari-input",
+ "ikari-proto",
+ "prost",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ikari-shell-ffi"
 version = "0.1.0"
 dependencies = [
