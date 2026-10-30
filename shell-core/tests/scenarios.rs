@@ -318,12 +318,12 @@ struct ScriptedTransport {
 }
 
 impl EngineTransport for ScriptedTransport {
-    fn connect(&mut self) -> Result<TransportHandle, TransportError> {
+    fn connect(&self) -> Result<TransportHandle, TransportError> {
         Ok(TransportHandle(1))
     }
 
     fn request(
-        &mut self,
+        &self,
         _handle: TransportHandle,
         bytes: &[u8],
         timeout: Duration,
@@ -347,7 +347,7 @@ impl EngineTransport for ScriptedTransport {
         .encode_to_vec())
     }
 
-    fn post(&mut self, _handle: TransportHandle, bytes: &[u8]) {
+    fn post(&self, _handle: TransportHandle, bytes: &[u8]) {
         if let Ok(v1::Envelope {
             body: Some(body), ..
         }) = v1::Envelope::decode(bytes)
@@ -356,7 +356,7 @@ impl EngineTransport for ScriptedTransport {
         }
     }
 
-    fn close(&mut self, _handle: TransportHandle) {}
+    fn close(&self, _handle: TransportHandle) {}
 
     fn pid(&self, _handle: TransportHandle) -> Option<i32> {
         Some(1)

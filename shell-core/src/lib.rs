@@ -97,19 +97,19 @@ mod tests {
     fn stubs_do_not_panic() {
         struct NoTransport;
         impl EngineTransport for NoTransport {
-            fn connect(&mut self) -> Result<TransportHandle, TransportError> {
+            fn connect(&self) -> Result<TransportHandle, TransportError> {
                 Err(TransportError::Unavailable)
             }
             fn request(
-                &mut self,
+                &self,
                 _: TransportHandle,
                 _: &[u8],
                 _: std::time::Duration,
             ) -> Result<Vec<u8>, TransportError> {
                 Err(TransportError::Unavailable)
             }
-            fn post(&mut self, _: TransportHandle, _: &[u8]) {}
-            fn close(&mut self, _: TransportHandle) {}
+            fn post(&self, _: TransportHandle, _: &[u8]) {}
+            fn close(&self, _: TransportHandle) {}
             fn pid(&self, _: TransportHandle) -> Option<i32> {
                 None
             }
