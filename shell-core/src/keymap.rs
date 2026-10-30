@@ -206,12 +206,64 @@ impl KeyChord {
             .is_some_and(|number| FUNCTION_KEY_RANGE.contains(&number))
     }
 
-    fn is_function_key(&self) -> bool {
+    /// `f` + 数字（F キーは常に使える）。
+    pub fn is_function_key(&self) -> bool {
         self.key.chars().count() > 1
             && self
                 .key
                 .strip_prefix('f')
                 .is_some_and(|rest| rest.parse::<i64>().is_ok())
+    }
+
+    /// 設定ファイルの表記（`ctrl+shift+j`、`f6`）。`parse` で読み戻せる。修飾キーは ctrl, shift, option, command の順。
+    pub fn to_text(&self) -> String {
+        let mut parts: Vec<&str> = Vec::new();
+        for (name, on) in [
+            ("ctrl", self.modifiers.control),
+            ("shift", self.modifiers.shift),
+            ("option", self.modifiers.option),
+            ("command", self.modifiers.command),
+        ] {
+            if on {
+                parts.push(name);
+            }
+        }
+        parts.push(&self.key);
+        parts.join("+")
+    }
+
+    /// 画面に出す表記（`⌃J`、`F6`、`⇧←`）。修飾キーは Apple の順（⌃⌥⇧⌘）。左右の矢印は記号。
+    pub fn display(&self) -> String {
+        let mut text = String::new();
+        for (symbol, on) in [
+            ('⌃', self.modifiers.control),
+            ('⌥', self.modifiers.option),
+            ('⇧', self.modifiers.shift),
+            ('⌘', self.modifiers.command),
+        ] {
+            if on {
+                text.push(symbol);
+            }
+        }
+        match self.key.as_str() {
+            "left" => text.push('←'),
+            "right" => text.push('→'),
+            other => text.push_str(&other.to_uppercase()),
+        }
+        text
+    }
+
+    /// 設定ファイルの表記から画面の表記へ。読めなければ元の文字列。
+    pub fn display_text(text: &str) -> String {
+        Self::parse(text).map_or_else(|| text.to_string(), |chord| chord.display())
+    }
+
+    /// 並べるときの修飾キーの重み（Swift の `KeyModifiers.rawValue` と同じ: shift 1、control 2、option 4、command 8）。
+    pub fn modifier_bits(&self) -> u8 {
+        u8::from(self.modifiers.shift)
+            | u8::from(self.modifiers.control) << 1
+            | u8::from(self.modifiers.option) << 2
+            | u8::from(self.modifiers.command) << 3
     }
 }
 

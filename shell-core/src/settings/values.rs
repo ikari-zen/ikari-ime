@@ -188,7 +188,7 @@ impl KeymapPresetTable {
                 by_action.entry(action).or_default().push(chord);
             }
             for list in by_action.values_mut() {
-                list.sort_by(|a, b| (a.modifiers, &a.key).cmp(&(b.modifiers, &b.key)));
+                list.sort_by(|a, b| (a.modifier_bits(), &a.key).cmp(&(b.modifier_bits(), &b.key)));
             }
             chords.insert(preset, by_action);
         }
