@@ -1,0 +1,183 @@
+{
+  "description": "殻の判断（セッション、英語のモード、モードの切り替え、メニューの命令、設定の反映）。ADR 0041 §2.2、ADR 0026、ADR 0005 §5",
+  "defaults": {"surrounding": {"left": "これは"}, "engine": {"pages": [{"conversion_id": 3, "page_index": 0, "has_next": false, "candidates": [{"surface": "日"}]}]}},
+  "scenarios": [
+    {
+      "name": "deactivate commits the composition and hides the panel",
+      "from": "IkariInputController.swift deactivateServer",
+      "rust_only": "殻の判断（IkariInputController・AppContext。Swift は IkariIME にありテストから呼べない）",
+      "steps": [
+        {"type_text": "hi"},
+        {"event": {"type": "deactivate"}, "expect": [{"type": "commit", "text": "ひ"}, {"type": "hide_candidates"}], "engine": [{"type": "commit_text", "reading": "ひ", "surface": "ひ"}, {"type": "end_session"}]}
+      ]
+    },
+    {
+      "name": "activate after deactivate begins the session again",
+      "from": "IkariInputController.swift activateServer",
+      "rust_only": "殻の判断（IkariInputController・AppContext。Swift は IkariIME にありテストから呼べない）",
+      "steps": [
+        {"event": {"type": "deactivate"}, "expect": [{"type": "hide_candidates"}], "engine": [{"type": "end_session"}]},
+        {"event": {"type": "activate", "bundle_id": "com.apple.TextEdit"}, "expect": [], "engine": [{"type": "begin_session", "client_bundle_id": "com.apple.TextEdit", "secure": false, "share_context": true}, {"type": "hello", "shell_version": "scenario", "timeout_ms": 2000}, {"type": "relay", "timeout_ms": 3000}]},
+        {"type_text": "a"}
+      ]
+    },
+    {
+      "name": "a new app gets a new session",
+      "from": "IkariInputController.swift init (nextSessionID)",
+      "rust_only": "殻の判断（IkariInputController・AppContext。Swift は IkariIME にありテストから呼べない）",
+      "steps": [
+        {"event": {"type": "activate", "bundle_id": "com.apple.Safari"}, "expect": [], "engine": [{"type": "begin_session", "client_bundle_id": "com.apple.Safari", "secure": false, "share_context": true}, {"type": "hello", "shell_version": "scenario", "timeout_ms": 2000}, {"type": "relay", "timeout_ms": 3000}]},
+        {"type_text": "a"}
+      ]
+    },
+    {
+      "name": "mode toggle while composing commits and asks for english",
+      "from": "IkariInputController.swift selectMode",
+      "rust_only": "殻の判断（IkariInputController・AppContext。Swift は IkariIME にありテストから呼べない）",
+      "setup": {"settings": ["keymap.mode.toggle\tctrl+;"]},
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "ctrl+;", "expect": [{"type": "commit", "text": "ひ"}, {"type": "hide_candidates"}], "engine": [{"type": "commit_text", "reading": "ひ", "surface": "ひ"}], "mode_request": "english"},
+        {"host": {"type": "input_mode_changed", "mode_id": "com.apple.inputmethod.Roman"}, "expect": [{"type": "hide_candidates"}], "engine": []}
+      ]
+    },
+    {
+      "name": "english mode passes keys through and pools them",
+      "from": "IkariInputController.swift handleEnglish",
+      "rust_only": "殻の判断（IkariInputController・AppContext。Swift は IkariIME にありテストから呼べない）",
+      "steps": [
+        {"host": {"type": "input_mode_changed", "mode_id": "com.apple.inputmethod.Roman"}, "expect": [{"type": "hide_candidates"}], "engine": []},
+        {"type_text": "hello"},
+        {"press": "space", "expect": [{"type": "pass_through"}], "engine": []},
+        {"press": "enter", "expect": [{"type": "pass_through"}], "engine": [{"type": "commit_text", "reading": "", "surface": "hello "}]},
+        {"host": {"type": "input_mode_changed", "mode_id": "io.github.ikari-zen.inputmethod.ikari.Japanese"}, "expect": [{"type": "hide_candidates"}], "engine": []}
+      ]
+    },
+    {
+      "name": "english mode secure passes through",
+      "from": "IkariInputController.swift handleEnglish (secure)",
+      "rust_only": "殻の判断（IkariInputController・AppContext。Swift は IkariIME にありテストから呼べない）",
+      "setup": {"client": {"secure": true}},
+      "steps": [
+        {"host": {"type": "input_mode_changed", "mode_id": "com.apple.inputmethod.Roman"}, "expect": [{"type": "hide_candidates"}], "engine": []},
+        {"press": "a", "expect": [{"type": "pass_through"}], "engine": [{"type": "begin_session", "client_bundle_id": "com.apple.TextEdit", "secure": true, "share_context": true}]}
+      ]
+    },
+    {
+      "name": "english mode toggles back with the key",
+      "from": "IkariInputController.swift handleEnglish (mode.toggle)",
+      "rust_only": "殻の判断（IkariInputController・AppContext。Swift は IkariIME にありテストから呼べない）",
+      "setup": {"settings": ["keymap.mode.toggle\tctrl+;"]},
+      "steps": [
+        {"host": {"type": "input_mode_changed", "mode_id": "com.apple.inputmethod.Roman"}, "expect": [{"type": "hide_candidates"}], "engine": []},
+        {"press": "ctrl+;", "expect": [{"type": "hide_candidates"}], "engine": [], "mode_request": "japanese"}
+      ]
+    },
+    {
+      "name": "english shortcode with the emoji table",
+      "from": "IkariInputController.swift handleEnglish (ショートコード)",
+      "rust_only": "殻の判断（IkariInputController・AppContext。Swift は IkariIME にありテストから呼べない）",
+      "setup": {"settings": ["emoji.shortcode\ton"], "engine": {"emoji_table": [{"name": "eyeglasses", "emoji": "👓"}, {"name": "eyes", "emoji": "👀"}, {"name": "smile", "emoji": "😄"}]}},
+      "steps": [
+        {"host": {"type": "input_mode_changed", "mode_id": "com.apple.inputmethod.Roman"}, "expect": [{"type": "hide_candidates"}], "engine": []},
+        {"press": ":", "expect": [{"type": "set_marked_text", "text": ":", "highlighted_length": 1, "underlined": false}], "engine": []},
+        {"type_text": "eyes"},
+        {"press": ":", "expect": [{"type": "set_marked_text", "text": ":eyes:", "highlighted_length": 6}, {"type": "show_candidates", "candidates": [{"surface": ":eyes:", "kind": "literal"}, {"surface": "👀", "kind": "unspecified", "label": ":eyes:"}], "selected": 0, "reserved_rows": 2}], "engine": []},
+        {"press": "enter", "expect": [{"type": "commit", "text": ":eyes:"}, {"type": "hide_candidates"}, {"type": "pass_through"}], "engine": [{"type": "commit_text", "reading": "", "surface": ":eyes:"}]}
+      ]
+    },
+    {
+      "name": "english shortcode is committed by the mode key",
+      "from": "IkariInputController.swift flushEnglishShortcode (英数・かなキー)",
+      "rust_only": "殻の判断（IkariInputController・AppContext。Swift は IkariIME にありテストから呼べない）",
+      "setup": {"settings": ["emoji.shortcode\ton"], "engine": {"emoji_table": [{"name": "eyeglasses", "emoji": "👓"}, {"name": "eyes", "emoji": "👀"}, {"name": "smile", "emoji": "😄"}]}},
+      "steps": [
+        {"host": {"type": "input_mode_changed", "mode_id": "com.apple.inputmethod.Roman"}, "expect": [{"type": "hide_candidates"}], "engine": []},
+        {"press": ":", "expect": [{"type": "set_marked_text", "text": ":", "highlighted_length": 1, "underlined": false}], "engine": []},
+        {"type_text": "ey"},
+        {"host": {"type": "absorb_mode_key"}, "expect": [{"type": "commit", "text": ":ey"}], "engine": []}
+      ]
+    },
+    {
+      "name": "english postal code looks up the address",
+      "from": "IkariInputController.swift requestPostalLookup",
+      "rust_only": "殻の判断（IkariInputController・AppContext。Swift は IkariIME にありテストから呼べない）",
+      "setup": {"settings": ["postal.english\ton"], "engine": {"postal": {"1000001": ["東京都千代田区千代田"]}}},
+      "steps": [
+        {"host": {"type": "input_mode_changed", "mode_id": "com.apple.inputmethod.Roman"}, "expect": [{"type": "hide_candidates"}], "engine": []},
+        {"type_text": "te100000"},
+        {"press": "1", "expect": [{"type": "set_marked_text", "text": "te1000001", "highlighted_length": 9, "underlined": false}, {"type": "show_candidates", "candidates": [{"surface": "te1000001", "kind": "literal"}, {"surface": "〒100-0001", "kind": "unspecified"}, {"surface": "〒1000001", "kind": "unspecified"}], "selected": 0, "reserved_rows": 3}, {"type": "show_candidates", "candidates": [{"surface": "te1000001", "kind": "literal"}, {"surface": "〒100-0001", "kind": "unspecified"}, {"surface": "〒1000001", "kind": "unspecified"}, {"surface": "東京都千代田区千代田", "kind": "unspecified"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "postal_lookup", "code": "1000001", "timeout_ms": 1000}]},
+        {"press": "1", "expect": [{"type": "commit", "text": "te1000001"}, {"type": "hide_candidates"}, {"type": "pass_through"}], "engine": []}
+      ]
+    },
+    {
+      "name": "menu selects the keymap preset and applies it when idle",
+      "from": "AppContext.swift perform(MenuCommand)",
+      "rust_only": "殻の判断（IkariInputController・AppContext。Swift は IkariIME にありテストから呼べない）",
+      "steps": [
+        {"type_text": "hi"},
+        {"event": {"type": "menu_command", "command": {"type": "select_keymap_preset", "preset": "ms-ime"}}, "expect": [{"type": "show_menu", "items": [{"command": {"type": "select_keymap_preset", "preset": "macos"}, "kind": {"group": "keymap_preset", "kind": "radio"}, "title": "キー割り当て: macOS 風"}, {"checked": true, "command": {"type": "select_keymap_preset", "preset": "ms-ime"}, "kind": {"group": "keymap_preset", "kind": "radio"}, "title": "キー割り当て: MS-IME 風"}, {"command": {"type": "select_keymap_preset", "preset": "atok"}, "kind": {"group": "keymap_preset", "kind": "radio"}, "title": "キー割り当て: ATOK 風"}, {"enabled": false, "kind": {"kind": "separator"}, "title": ""}, {"checked": true, "command": {"type": "select_input_method", "method": "romaji"}, "kind": {"group": "input_method", "kind": "radio"}, "title": "入力方式: ローマ字"}, {"command": {"type": "select_input_method", "method": "kana"}, "kind": {"group": "input_method", "kind": "radio"}, "title": "入力方式: かな"}, {"enabled": false, "kind": {"kind": "separator"}, "title": ""}, {"checked": true, "command": {"type": "set_lm", "enabled": false}, "kind": {"kind": "toggle"}, "title": "LM（zenz）で並べ替える"}, {"enabled": false, "kind": {"kind": "separator"}, "title": ""}, {"command": {"type": "open_settings", "tab": "dictionary"}, "kind": {"kind": "action"}, "title": "ユーザー辞書と学習…"}, {"command": {"type": "open_settings"}, "kind": {"kind": "action"}, "title": "環境設定…"}]}], "engine": []},
+        {"press": "enter", "expect": [{"type": "commit", "text": "ひ"}], "engine": [{"type": "commit_text", "reading": "ひ", "surface": "ひ"}]},
+        {"type_text": "hi"},
+        {"press": "ctrl+i", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ヒ", "highlighted_length": 1}], "engine": []}
+      ]
+    },
+    {
+      "name": "menu switches the input method",
+      "from": "AppContext.swift perform(MenuCommand) (入力方式)",
+      "rust_only": "殻の判断（IkariInputController・AppContext。Swift は IkariIME にありテストから呼べない）",
+      "steps": [
+        {"event": {"type": "menu_command", "command": {"type": "select_input_method", "method": "kana"}}, "expect": [{"type": "show_menu", "items": [{"checked": true, "command": {"type": "select_keymap_preset", "preset": "macos"}, "kind": {"group": "keymap_preset", "kind": "radio"}, "title": "キー割り当て: macOS 風"}, {"command": {"type": "select_keymap_preset", "preset": "ms-ime"}, "kind": {"group": "keymap_preset", "kind": "radio"}, "title": "キー割り当て: MS-IME 風"}, {"command": {"type": "select_keymap_preset", "preset": "atok"}, "kind": {"group": "keymap_preset", "kind": "radio"}, "title": "キー割り当て: ATOK 風"}, {"enabled": false, "kind": {"kind": "separator"}, "title": ""}, {"command": {"type": "select_input_method", "method": "romaji"}, "kind": {"group": "input_method", "kind": "radio"}, "title": "入力方式: ローマ字"}, {"checked": true, "command": {"type": "select_input_method", "method": "kana"}, "kind": {"group": "input_method", "kind": "radio"}, "title": "入力方式: かな"}, {"enabled": false, "kind": {"kind": "separator"}, "title": ""}, {"checked": true, "command": {"type": "set_lm", "enabled": false}, "kind": {"kind": "toggle"}, "title": "LM（zenz）で並べ替える"}, {"enabled": false, "kind": {"kind": "separator"}, "title": ""}, {"command": {"type": "open_settings", "tab": "dictionary"}, "kind": {"kind": "action"}, "title": "ユーザー辞書と学習…"}, {"command": {"type": "open_settings"}, "kind": {"kind": "action"}, "title": "環境設定…"}]}], "engine": []},
+        {"press": "jis:22", "expect": [{"type": "set_marked_text", "text": "ち", "highlighted_length": 1}], "engine": [{"type": "prefetch", "reading": "ち", "context": {"available": true, "left": "これは", "right": ""}}]}
+      ]
+    },
+    {
+      "name": "menu turns the LM off and restarts the engine",
+      "from": "AppContext.swift settingsDidChange・restartEngine",
+      "rust_only": "殻の判断（IkariInputController・AppContext。Swift は IkariIME にありテストから呼べない）",
+      "steps": [
+        {"event": {"type": "menu_command", "command": {"type": "set_lm", "enabled": false}}, "expect": [{"type": "show_menu", "items": [{"checked": true, "command": {"type": "select_keymap_preset", "preset": "macos"}, "kind": {"group": "keymap_preset", "kind": "radio"}, "title": "キー割り当て: macOS 風"}, {"command": {"type": "select_keymap_preset", "preset": "ms-ime"}, "kind": {"group": "keymap_preset", "kind": "radio"}, "title": "キー割り当て: MS-IME 風"}, {"command": {"type": "select_keymap_preset", "preset": "atok"}, "kind": {"group": "keymap_preset", "kind": "radio"}, "title": "キー割り当て: ATOK 風"}, {"enabled": false, "kind": {"kind": "separator"}, "title": ""}, {"checked": true, "command": {"type": "select_input_method", "method": "romaji"}, "kind": {"group": "input_method", "kind": "radio"}, "title": "入力方式: ローマ字"}, {"command": {"type": "select_input_method", "method": "kana"}, "kind": {"group": "input_method", "kind": "radio"}, "title": "入力方式: かな"}, {"enabled": false, "kind": {"kind": "separator"}, "title": ""}, {"command": {"type": "set_lm", "enabled": true}, "kind": {"kind": "toggle"}, "title": "LM（zenz）で並べ替える"}, {"enabled": false, "kind": {"kind": "separator"}, "title": ""}, {"command": {"type": "open_settings", "tab": "dictionary"}, "kind": {"kind": "action"}, "title": "ユーザー辞書と学習…"}, {"command": {"type": "open_settings"}, "kind": {"kind": "action"}, "title": "環境設定…"}]}], "engine": [{"type": "shutdown", "reason": "settings_changed", "timeout_ms": 1000}, {"type": "hello", "shell_version": "scenario", "timeout_ms": 2000}, {"type": "relay", "timeout_ms": 3000}]}
+      ]
+    },
+    {
+      "name": "menu opens the settings",
+      "from": "AppContext.swift perform(.openSettings)",
+      "rust_only": "殻の判断（IkariInputController・AppContext。Swift は IkariIME にありテストから呼べない）",
+      "steps": [
+        {"event": {"type": "menu_command", "command": {"type": "open_settings", "tab": "dictionary"}}, "expect": [{"type": "open_settings", "tab": "dictionary"}], "engine": []}
+      ]
+    },
+    {
+      "name": "settings file changed does nothing for inline settings",
+      "from": "SettingsStore.swift reloadIfFileChanged",
+      "rust_only": "殻の判断（IkariInputController・AppContext。Swift は IkariIME にありテストから呼べない）",
+      "steps": [
+        {"event": {"type": "settings_file_changed"}, "expect": [], "engine": []}
+      ]
+    },
+    {
+      "name": "absorb mode key while idle is consumed",
+      "from": "IkariInputController.swift handle (英数・かなキー)",
+      "rust_only": "殻の判断（IkariInputController・AppContext。Swift は IkariIME にありテストから呼べない）",
+      "steps": [
+        {"host": {"type": "absorb_mode_key"}, "expect": [{"type": "consume"}], "engine": []}
+      ]
+    },
+    {
+      "name": "commit composition while idle does nothing",
+      "from": "IkariInputController.swift commitComposition",
+      "rust_only": "殻の判断（IkariInputController・AppContext。Swift は IkariIME にありテストから呼べない）",
+      "steps": [
+        {"host": {"type": "commit_composition"}, "expect": [], "engine": []}
+      ]
+    },
+    {
+      "name": "unknown timer does nothing",
+      "from": "AppContext.swift (タイマー)",
+      "rust_only": "殻の判断（IkariInputController・AppContext。Swift は IkariIME にありテストから呼べない）",
+      "steps": [
+        {"event": {"type": "timer", "id": 99}, "expect": [], "engine": []}
+      ]
+    }
+  ]
+}

@@ -18,6 +18,8 @@ symbol_kana	3000
 proper_noun	1000
 # 品詞3が人名（proper_noun に加算される）
 person_name	1000
+# 漢字で書く人名の軽減（default.tsv と同じ。理由と掃引はそちら）
+person_name_kanji	-500
 # 品詞3が地名（proper_noun に加算される。地名の合計は 1000-750=250。人名と違い地名は誰でもどんな場面でも使うため。ADR 0002 §4.1 の掃引）
 place_name	-750
 # 表記が2文字以上で波ダッシュ（〜 ～ ~）を含む（あの〜、なった〜 など。感嘆の装飾）

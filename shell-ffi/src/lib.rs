@@ -1,7 +1,20 @@
-//! ikari-shell-ffi: 殻が使う入力処理の C ABI（ADR 0004 §4.3。ヘッダは `include/ikari_shell.h`）。
+//! ikari-shell-ffi: 殻が使う C ABI（ヘッダは `include/ikari_shell.h`）。
+//!
+//! - このファイル: 入力処理（`ikari_composer_*`、`ikari_convert_script`。ADR 0004 §4.3）と、共通の型と解放
+//! - `shell`: 殻の 1 本の口（`ikari_shell_*`。ADR 0041 §4.4）
+//! - `settings`: 設定アプリ用（`ikari_settings_*`。ADR 0041 §2.3）
+//! - `convert`: `shell-core` の型と proto（`ikari.shell.v1`）の写し
 //!
 //! すべての入口で `catch_unwind` を使い、panic を FFI の外へ出さない。
 //! ヘッダと一致させること（シグネチャの変更は契約の変更）。
+
+pub mod convert;
+mod panel;
+mod settings;
+mod shell;
+
+pub use settings::{ikari_settings_rewrite, ikari_settings_validate};
+pub use shell::*;
 
 use std::mem::ManuallyDrop;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -89,26 +102,32 @@ pub struct IkariShellBuf {
 }
 
 impl IkariStr {
-    const EMPTY: IkariStr = IkariStr {
+    pub const EMPTY: IkariStr = IkariStr {
         ptr: ptr::null(),
         len: 0,
     };
 
-    fn of(s: &str) -> IkariStr {
+    /// `s` を借用する（`s` より長く使わない）。
+    pub fn of(s: &str) -> IkariStr {
+        Self::of_bytes(s.as_bytes())
+    }
+
+    /// `b` を借用する（`b` より長く使わない）。
+    pub fn of_bytes(b: &[u8]) -> IkariStr {
         IkariStr {
-            ptr: s.as_ptr(),
-            len: s.len(),
+            ptr: b.as_ptr(),
+            len: b.len(),
         }
     }
 }
 
 impl IkariShellBuf {
-    const EMPTY: IkariShellBuf = IkariShellBuf {
+    pub const EMPTY: IkariShellBuf = IkariShellBuf {
         ptr: ptr::null_mut(),
         len: 0,
     };
 
-    fn from_vec(v: Vec<u8>) -> IkariShellBuf {
+    pub(crate) fn from_vec(v: Vec<u8>) -> IkariShellBuf {
         let boxed = v.into_boxed_slice();
         let len = boxed.len();
         IkariShellBuf {
@@ -116,13 +135,26 @@ impl IkariShellBuf {
             len,
         }
     }
+
+    /// Rust が確保したバイト列を引き取って `Vec` にする（解放の責任も移る）。`ptr` が NULL なら空。
+    ///
+    /// # Safety
+    /// `self` は Rust が返したもの（`ikari_shell_buf_copy` などで作ったもの）で、まだ解放していないこと。
+    /// 引き取ったあと、同じ `ptr` を `ikari_shell_buf_free` に渡さないこと。
+    pub unsafe fn into_vec(self) -> Vec<u8> {
+        if self.ptr.is_null() {
+            return Vec::new();
+        }
+        // SAFETY: `from_vec` が `Box<[u8]>` から作ったもの（呼び出し側の約束）
+        unsafe { Box::from_raw(ptr::slice_from_raw_parts_mut(self.ptr, self.len)) }.into_vec()
+    }
 }
 
 /// `(ptr, len)` を借用する。NULL か len 0 は空。
 ///
 /// # Safety
 /// `ptr` が非 NULL なら、`len` バイトが読めること。
-unsafe fn bytes<'a>(ptr: *const u8, len: usize) -> &'a [u8] {
+pub(crate) unsafe fn bytes<'a>(ptr: *const u8, len: usize) -> &'a [u8] {
     if ptr.is_null() || len == 0 {
         &[]
     } else {
@@ -131,11 +163,11 @@ unsafe fn bytes<'a>(ptr: *const u8, len: usize) -> &'a [u8] {
 }
 
 /// panic を FFI の外へ出さない。panic したら `fallback` を返す。
-fn guard<T>(fallback: T, f: impl FnOnce() -> T) -> T {
+pub(crate) fn guard<T>(fallback: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(fallback)
 }
 
-fn write_error(err: *mut IkariShellBuf, message: &str) {
+pub(crate) fn write_error(err: *mut IkariShellBuf, message: &str) {
     if !err.is_null() {
         // SAFETY: 呼び出し側が書き込める `IkariShellBuf` を渡す（契約）。
         unsafe { err.write(IkariShellBuf::from_vec(message.as_bytes().to_vec())) };
@@ -358,10 +390,60 @@ mod tests {
             "ikari_composer_free",
             "ikari_convert_script",
             "ikari_shell_buf_free",
+            "ikari_shell_new",
+            "ikari_shell_dispatch",
+            "ikari_shell_engine_down",
+            "ikari_shell_free",
+            "ikari_shell_buf_copy",
+            "ikari_settings_validate",
+            "ikari_settings_rewrite",
         ] {
             assert!(
                 header.contains(name),
                 "{name} is missing from ikari_shell.h"
+            );
+        }
+    }
+
+    #[test]
+    fn shell_constants_match_the_header() {
+        let header = include_str!("../include/ikari_shell.h");
+        for (name, value) in [
+            ("IKARI_SHELL_OK", IKARI_SHELL_OK),
+            ("IKARI_SHELL_ERR_NULL", IKARI_SHELL_ERR_NULL),
+            (
+                "IKARI_SHELL_ERR_INVALID_HANDLE",
+                IKARI_SHELL_ERR_INVALID_HANDLE,
+            ),
+            ("IKARI_SHELL_ERR_DECODE", IKARI_SHELL_ERR_DECODE),
+            ("IKARI_SHELL_ERR_BUSY", IKARI_SHELL_ERR_BUSY),
+            ("IKARI_SHELL_ERR_PANIC", IKARI_SHELL_ERR_PANIC),
+            (
+                "IKARI_SHELL_ERR_UNIMPLEMENTED",
+                IKARI_SHELL_ERR_UNIMPLEMENTED,
+            ),
+            ("IKARI_SHELL_TRANSPORT_OK", IKARI_SHELL_TRANSPORT_OK),
+            (
+                "IKARI_SHELL_TRANSPORT_UNAVAILABLE",
+                IKARI_SHELL_TRANSPORT_UNAVAILABLE,
+            ),
+            (
+                "IKARI_SHELL_TRANSPORT_TIMEOUT",
+                IKARI_SHELL_TRANSPORT_TIMEOUT,
+            ),
+            (
+                "IKARI_SHELL_DOWN_INTERRUPTED",
+                i32::from(IKARI_SHELL_DOWN_INTERRUPTED),
+            ),
+            (
+                "IKARI_SHELL_DOWN_INVALIDATED",
+                i32::from(IKARI_SHELL_DOWN_INVALIDATED),
+            ),
+        ] {
+            let line = format!("{name} = {value},");
+            assert!(
+                header.contains(&line),
+                "{line} is missing from ikari_shell.h"
             );
         }
     }

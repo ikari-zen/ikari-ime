@@ -496,10 +496,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "ikari-shell-core"
+version = "0.1.0"
+dependencies = [
+ "ikari-input",
+ "ikari-proto",
+ "prost",
+ "serde",
+ "serde_json",
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "ikari-shell-ffi"
 version = "0.1.0"
 dependencies = [
  "ikari-input",
+ "ikari-proto",
+ "ikari-shell-core",
+ "prost",
 ]
 
 [[package]]
@@ -1147,6 +1162,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
 
 [[package]]
+name = "unicode-segmentation"
+version = "1.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
+
+[[package]]
 name = "unicode-width"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1196,6 +1217,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc"
 dependencies = [
  "windows-link",
+]
+
+[[package]]
+name = "xtask"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "serde_json",
 ]
 
 [[package]]

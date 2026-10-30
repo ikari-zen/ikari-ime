@@ -1,0 +1,176 @@
+{
+  "description": "候補ウィンドウの見せ方と選び方（↑↓、3 件から 9 件への展開、番号キー、上に出たときの向き）。ADR 0014",
+  "defaults": {"surrounding": {"left": "これは"}, "engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": true, "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}, {"surface": "a4"}, {"surface": "a5"}, {"surface": "a6"}, {"surface": "a7"}, {"surface": "a8"}, {"surface": "a9"}]}, {"conversion_id": 7, "page_index": 1, "has_next": false, "candidates": [{"surface": "b1"}, {"surface": "b2"}, {"surface": "b3"}, {"surface": "b4"}, {"surface": "b5"}, {"surface": "b6"}, {"surface": "b7"}, {"surface": "b8"}, {"surface": "b9"}]}]}},
+  "scenarios": [
+    {
+      "name": "down and up move like space and shift space",
+      "from": "CandidateWindowTests.swift CandidateWindowTests.downAndUpMoveLikeSpaceAndShiftSpace",
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "a1", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "convert", "reading": "ひ", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "down", "expect": [{"type": "set_marked_text", "text": "a2", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "selected": 1, "reserved_rows": 9}], "engine": []},
+        {"press": "up", "expect": [{"type": "set_marked_text", "text": "a1", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "selected": 0, "reserved_rows": 9}], "engine": []}
+      ]
+    },
+    {
+      "name": "up on the first candidate does nothing",
+      "from": "CandidateWindowTests.swift CandidateWindowTests.upOnTheFirstCandidateDoesNothing",
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "a1", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "convert", "reading": "ひ", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "up", "expect": [{"type": "consume"}], "engine": []}
+      ]
+    },
+    {
+      "name": "down before converting passes through when idle and is swallowed when composing",
+      "from": "CandidateWindowTests.swift CandidateWindowTests.downBeforeConvertingPassesThroughWhenIdleAndIsSwallowedWhenComposing",
+      "steps": [
+        {"press": "down", "expect": [{"type": "pass_through"}], "engine": []},
+        {"press": "up", "expect": [{"type": "pass_through"}], "engine": []},
+        {"type_text": "hi"},
+        {"press": "down", "expect": [{"type": "consume"}], "engine": []}
+      ]
+    },
+    {
+      "name": "down is swallowed in an ascii run",
+      "from": "CandidateWindowTests.swift CandidateWindowTests.downIsSwallowedInAnAsciiRun",
+      "steps": [
+        {"press": "shift+A", "expect": [{"type": "set_marked_text", "text": "A", "highlighted_length": 1}], "engine": []},
+        {"press": "down", "expect": [{"type": "consume"}], "engine": []}
+      ]
+    },
+    {
+      "name": "unbinding the arrows leaves them swallowed",
+      "from": "CandidateWindowTests.swift CandidateWindowTests.unbindingTheArrowsLeavesThemSwallowed",
+      "setup": {"settings": ["keymap.candidate.next\tnone"]},
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "a1", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "convert", "reading": "ひ", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "down", "expect": [{"type": "consume"}], "engine": []}
+      ]
+    },
+    {
+      "name": "candidate next can be bound to another key",
+      "from": "CandidateWindowTests.swift CandidateWindowTests.candidateNextCanBeBoundToAnotherKey",
+      "setup": {"settings": ["keymap.candidate.next\tctrl+n"]},
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "a1", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "convert", "reading": "ひ", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "ctrl+n", "expect": [{"type": "set_marked_text", "text": "a2", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "selected": 1, "reserved_rows": 9}], "engine": []},
+        {"press": "down", "expect": [{"type": "consume"}], "engine": []}
+      ]
+    },
+    {
+      "name": "arrows are swapped when the panel is above",
+      "from": "CandidateWindowTests.swift CandidateWindowTests.arrowsAreSwappedWhenThePanelIsAbove",
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "a1", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "convert", "reading": "ひ", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"host": {"type": "panel_shown", "side": "above"}, "expect": [], "engine": []},
+        {"press": "up", "expect": [{"type": "set_marked_text", "text": "a2", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "selected": 1, "reserved_rows": 9}], "engine": []},
+        {"press": "down", "expect": [{"type": "set_marked_text", "text": "a1", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "a2", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "selected": 1, "reserved_rows": 9}], "engine": []}
+      ]
+    },
+    {
+      "name": "arrows follow the screen when the panel is below",
+      "from": "CandidateWindowTests.swift CandidateWindowTests.arrowsFollowTheScreenWhenThePanelIsBelow",
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "a1", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "convert", "reading": "ひ", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"host": {"type": "panel_shown", "side": "below"}, "expect": [], "engine": []},
+        {"press": "down", "expect": [{"type": "set_marked_text", "text": "a2", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "selected": 1, "reserved_rows": 9}], "engine": []}
+      ]
+    },
+    {
+      "name": "rebound candidate next is not reversed when above",
+      "from": "CandidateWindowTests.swift CandidateWindowTests.reboundCandidateNextIsNotReversedWhenAbove",
+      "setup": {"settings": ["keymap.candidate.next\tctrl+n"]},
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "a1", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "convert", "reading": "ひ", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"host": {"type": "panel_shown", "side": "above"}, "expect": [], "engine": []},
+        {"press": "ctrl+n", "expect": [{"type": "set_marked_text", "text": "a2", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "selected": 1, "reserved_rows": 9}], "engine": []}
+      ]
+    },
+    {
+      "name": "going past the third expands to nine and keeps the selection moving",
+      "from": "CandidateWindowTests.swift CandidateWindowTests.goingPastTheThirdExpandsToNineAndKeepsTheSelectionMoving",
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "a1", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "convert", "reading": "ひ", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "down", "expect": [{"type": "set_marked_text", "text": "a2", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "selected": 1, "reserved_rows": 9}], "engine": []},
+        {"press": "down", "expect": [{"type": "set_marked_text", "text": "a3", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "selected": 2, "reserved_rows": 9}], "engine": []},
+        {"press": "down", "expect": [{"type": "set_marked_text", "text": "a4", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}, {"surface": "a4"}, {"surface": "a5"}, {"surface": "a6"}, {"surface": "a7"}, {"surface": "a8"}, {"surface": "a9"}], "selected": 3, "reserved_rows": 9}], "engine": []},
+        {"press": "up", "expect": [{"type": "set_marked_text", "text": "a3", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}, {"surface": "a4"}, {"surface": "a5"}, {"surface": "a6"}, {"surface": "a7"}, {"surface": "a8"}, {"surface": "a9"}], "selected": 2, "reserved_rows": 9}], "engine": []}
+      ]
+    },
+    {
+      "name": "after nine the next page shows nine at a time",
+      "from": "CandidateWindowTests.swift CandidateWindowTests.afterNineTheNextPageShowsNineAtATime",
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "a1", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "convert", "reading": "ひ", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "down", "expect": [{"type": "set_marked_text", "text": "a2", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "selected": 1, "reserved_rows": 9}], "engine": []},
+        {"press": "down", "expect": [{"type": "set_marked_text", "text": "a3", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "selected": 2, "reserved_rows": 9}], "engine": []},
+        {"press": "down", "expect": [{"type": "set_marked_text", "text": "a4", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}, {"surface": "a4"}, {"surface": "a5"}, {"surface": "a6"}, {"surface": "a7"}, {"surface": "a8"}, {"surface": "a9"}], "selected": 3, "reserved_rows": 9}], "engine": []},
+        {"press": "down", "expect": [{"type": "set_marked_text", "text": "a5", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}, {"surface": "a4"}, {"surface": "a5"}, {"surface": "a6"}, {"surface": "a7"}, {"surface": "a8"}, {"surface": "a9"}], "selected": 4, "reserved_rows": 9}], "engine": []},
+        {"press": "down", "expect": [{"type": "set_marked_text", "text": "a6", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}, {"surface": "a4"}, {"surface": "a5"}, {"surface": "a6"}, {"surface": "a7"}, {"surface": "a8"}, {"surface": "a9"}], "selected": 5, "reserved_rows": 9}], "engine": []},
+        {"press": "down", "expect": [{"type": "set_marked_text", "text": "a7", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}, {"surface": "a4"}, {"surface": "a5"}, {"surface": "a6"}, {"surface": "a7"}, {"surface": "a8"}, {"surface": "a9"}], "selected": 6, "reserved_rows": 9}], "engine": []},
+        {"press": "down", "expect": [{"type": "set_marked_text", "text": "a8", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}, {"surface": "a4"}, {"surface": "a5"}, {"surface": "a6"}, {"surface": "a7"}, {"surface": "a8"}, {"surface": "a9"}], "selected": 7, "reserved_rows": 9}], "engine": []},
+        {"press": "down", "expect": [{"type": "set_marked_text", "text": "a9", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}, {"surface": "a4"}, {"surface": "a5"}, {"surface": "a6"}, {"surface": "a7"}, {"surface": "a8"}, {"surface": "a9"}], "selected": 8, "reserved_rows": 9}], "engine": []},
+        {"press": "down", "expect": [{"type": "set_marked_text", "text": "b1", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "b1"}, {"surface": "b2"}, {"surface": "b3"}, {"surface": "b4"}, {"surface": "b5"}, {"surface": "b6"}, {"surface": "b7"}, {"surface": "b8"}, {"surface": "b9"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "page", "conversion_id": 7, "index": 1, "timeout_ms": 70}]},
+        {"press": "down", "expect": [{"type": "set_marked_text", "text": "b2", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "b1"}, {"surface": "b2"}, {"surface": "b3"}, {"surface": "b4"}, {"surface": "b5"}, {"surface": "b6"}, {"surface": "b7"}, {"surface": "b8"}, {"surface": "b9"}], "selected": 1, "reserved_rows": 9}], "engine": []}
+      ]
+    },
+    {
+      "name": "numbers are one to three until expanded then one to nine",
+      "from": "CandidateWindowTests.swift CandidateWindowTests.numbersAreOneToThreeUntilExpandedThenOneToNine",
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "a1", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "convert", "reading": "ひ", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "4", "expect": [{"type": "consume"}], "engine": []},
+        {"press": "down", "expect": [{"type": "set_marked_text", "text": "a2", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "selected": 1, "reserved_rows": 9}], "engine": []},
+        {"press": "down", "expect": [{"type": "set_marked_text", "text": "a3", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "selected": 2, "reserved_rows": 9}], "engine": []},
+        {"press": "down", "expect": [{"type": "set_marked_text", "text": "a4", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}, {"surface": "a4"}, {"surface": "a5"}, {"surface": "a6"}, {"surface": "a7"}, {"surface": "a8"}, {"surface": "a9"}], "selected": 3, "reserved_rows": 9}], "engine": []},
+        {"press": "5", "expect": [{"type": "commit", "text": "a5"}, {"type": "hide_candidates"}], "engine": [{"type": "commit", "candidate_index": 4, "conversion_id": 7}]}
+      ]
+    },
+    {
+      "name": "a short page does not reserve more rows than it has",
+      "from": "CandidateWindowTests.swift CandidateWindowTests.aShortPageDoesNotReserveMoreRowsThanItHas",
+      "setup": {"engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": false, "candidates": [{"surface": "a1"}, {"surface": "a2"}]}]}},
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "a1", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "a1"}, {"surface": "a2"}], "selected": 0, "reserved_rows": 2}], "engine": [{"type": "convert", "reading": "ひ", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]}
+      ]
+    },
+    {
+      "name": "the setting sets how many are shown first",
+      "from": "CandidateWindowTests.swift CandidateWindowTests.theSettingSetsHowManyAreShownFirst",
+      "setup": {"settings": ["paging.size\t5"]},
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "a1", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}, {"surface": "a4"}, {"surface": "a5"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "convert", "reading": "ひ", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "6", "expect": [{"type": "consume"}], "engine": []},
+        {"press": "5", "expect": [{"type": "commit", "text": "a5"}, {"type": "hide_candidates"}], "engine": [{"type": "commit", "candidate_index": 4, "conversion_id": 7}]}
+      ]
+    },
+    {
+      "name": "moving the focus to another segment starts collapsed again",
+      "from": "CandidateWindowTests.swift CandidateWindowTests.movingTheFocusToAnotherSegmentStartsCollapsedAgain",
+      "setup": {"engine": {"pages": [{"conversion_id": 11, "page_index": 0, "has_next": false, "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}, {"surface": "初めてシッタ"}], "layout": {"conversion_id": 11, "layout_rev": 0, "segments": [{"reading": "はじめて", "surface": "初めて"}, {"reading": "しった", "surface": "知った"}], "focused": 0, "focused_page": {"candidates": [{"surface": "h1"}, {"surface": "h2"}, {"surface": "h3"}, {"surface": "h4"}, {"surface": "h5"}]}}}], "segment_pages": [{"segment": 0, "page_index": 0, "candidates": [{"surface": "h1"}, {"surface": "h2"}, {"surface": "h3"}, {"surface": "h4"}, {"surface": "h5"}]}, {"segment": 1, "page_index": 0, "candidates": [{"surface": "t1"}, {"surface": "t2"}, {"surface": "t3"}, {"surface": "t4"}, {"surface": "t5"}]}]}},
+      "steps": [
+        {"type_text": "hajimetesitta"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "初めて知った", "segments": [3, 3]}, {"type": "show_candidates", "candidates": [{"surface": "初めて知った"}, {"surface": "始めてしった"}, {"surface": "はじめて仕った"}], "selected": 0, "reserved_rows": 4}], "engine": [{"type": "convert", "reading": "はじめてしった", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 82}]},
+        {"press": "left", "expect": [{"type": "set_marked_text", "text": "h1t1", "segments": [2, 2], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "t1"}, {"surface": "t2"}, {"surface": "t3"}], "selected": 0, "reserved_rows": 5}], "engine": [{"type": "segment_page", "conversion_id": 11, "index": 0, "layout_rev": 0, "left": [{"candidate_index": 0}], "segment": 1, "timeout_ms": 70}]},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "h1t1", "segments": [2, 2], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "h1"}, {"surface": "h2"}, {"surface": "h3"}], "selected": 0, "reserved_rows": 5}], "engine": []},
+        {"press": "down", "expect": [{"type": "set_marked_text", "text": "h2t1", "segments": [2, 2], "focused": 0}, {"type": "move_selection", "candidates": [{"surface": "h1"}, {"surface": "h2"}, {"surface": "h3"}], "selected": 1, "reserved_rows": 5}], "engine": []},
+        {"press": "down", "expect": [{"type": "set_marked_text", "text": "h3t1", "segments": [2, 2], "focused": 0}, {"type": "move_selection", "candidates": [{"surface": "h1"}, {"surface": "h2"}, {"surface": "h3"}], "selected": 2, "reserved_rows": 5}], "engine": []},
+        {"press": "down", "expect": [{"type": "set_marked_text", "text": "h4t1", "segments": [2, 2], "focused": 0}, {"type": "move_selection", "candidates": [{"surface": "h1"}, {"surface": "h2"}, {"surface": "h3"}, {"surface": "h4"}, {"surface": "h5"}], "selected": 3, "reserved_rows": 5}], "engine": []},
+        {"press": "right", "expect": [{"type": "set_marked_text", "text": "h4t1", "segments": [2, 2], "focused": 1}, {"type": "show_candidates", "candidates": [{"surface": "t1"}, {"surface": "t2"}, {"surface": "t3"}], "selected": 0, "reserved_rows": 5}], "engine": []},
+        {"press": "left", "expect": [{"type": "set_marked_text", "text": "h4t1", "segments": [2, 2], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "h1"}, {"surface": "h2"}, {"surface": "h3"}, {"surface": "h4"}, {"surface": "h5"}], "selected": 3, "reserved_rows": 5}], "engine": []}
+      ]
+    }
+  ]
+}

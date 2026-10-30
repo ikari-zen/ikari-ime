@@ -1,0 +1,95 @@
+{
+  "description": "合成中（読みを打っている間）のキー。ADR 0004 §6.3 の表",
+  "defaults": {"client": {"bundle_id": "com.apple.TextEdit"}, "surrounding": {"left": "ユーザー辞書に単語を登録するときは"}, "engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": true, "candidates": [{"surface": "品詞", "annotation": "ひんし(品詞)"}, {"surface": "瀕死", "annotation": "ひんし(瀕死)"}, {"surface": "ひんし", "kind": "hiragana"}]}, {"conversion_id": 7, "page_index": 1, "has_next": true, "candidates": [{"surface": "ヒンシ", "kind": "katakana"}, {"surface": "貧士"}, {"surface": "品指"}]}, {"conversion_id": 7, "page_index": 2, "has_next": false, "candidates": [{"surface": "牝糸"}, {"surface": "ﾋﾝｼ", "kind": "katakana"}]}]}},
+  "scenarios": [
+    {
+      "name": "typing builds kana and prefetches only when the reading changes",
+      "from": "InputStateMachineTests.swift ComposingTests.typingBuildsKanaAndPrefetchesOnlyWhenTheReadingChanges",
+      "steps": [
+        {"type_text": "hins", "engine": [{"type": "prefetch", "reading": "ひ"}, {"type": "prefetch", "reading": "ひん"}]},
+        {"press": "i", "expect": [{"type": "set_marked_text", "text": "ひんし", "highlighted_length": 3}], "engine": [{"type": "prefetch", "reading": "ひんし"}]}
+      ]
+    },
+    {
+      "name": "pending romaji is shown but not part of the reading",
+      "from": "InputStateMachineTests.swift ComposingTests.pendingRomajiIsShownButNotPartOfTheReading",
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "k", "expect": [{"type": "set_marked_text", "text": "ひk", "highlighted_length": 1}], "engine": []}
+      ]
+    },
+    {
+      "name": "z key produces a symbol through the composer",
+      "from": "InputStateMachineTests.swift ComposingTests.zKeyProducesSymbolThroughTheComposer",
+      "steps": [
+        {"type_text": "z"},
+        {"press": "h", "expect": [{"type": "set_marked_text", "text": "←", "highlighted_length": 1}]}
+      ]
+    },
+    {
+      "name": "kana input uses the JIS key numbers",
+      "from": "InputStateMachineTests.swift ComposingTests.kanaInputUsesTheJisKeyNumbers",
+      "setup": {"settings": ["input.method\tkana"]},
+      "steps": [
+        {"press": "jis:22", "engine": [{"type": "prefetch", "reading": "ち"}]},
+        {"press": "jis:32", "expect": [{"type": "set_marked_text", "text": "ちの", "highlighted_length": 2}], "engine": [{"type": "prefetch", "reading": "ちの"}]}
+      ]
+    },
+    {
+      "name": "backspace removes pending first then kana then returns to idle",
+      "from": "InputStateMachineTests.swift ComposingTests.backspaceRemovesPendingFirstThenKanaThenReturnsToIdle",
+      "steps": [
+        {"type_text": "hik"},
+        {"press": "backspace", "expect": [{"type": "set_marked_text", "text": "ひ", "highlighted_length": 1}]},
+        {"press": "backspace", "expect": [{"type": "set_marked_text", "text": ""}]},
+        {"press": "backspace", "expect": [{"type": "pass_through"}]}
+      ]
+    },
+    {
+      "name": "escape cancels the composition",
+      "from": "InputStateMachineTests.swift ComposingTests.escapeCancelsTheComposition",
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "escape", "expect": [{"type": "set_marked_text", "text": ""}]}
+      ]
+    },
+    {
+      "name": "enter commits the kana as is and records history",
+      "from": "InputStateMachineTests.swift ComposingTests.enterCommitsTheKanaAsIsAndRecordsHistory",
+      "steps": [
+        {"type_text": "hin"},
+        {"press": "enter", "expect": [{"type": "commit", "text": "ひん"}], "engine": [{"type": "commit_text", "reading": "ひん", "surface": "ひん"}]}
+      ]
+    },
+    {
+      "name": "idle keys that are not text go to the app",
+      "from": "InputStateMachineTests.swift ComposingTests.idleKeysThatAreNotTextGoToTheApp",
+      "steps": [
+        {"press": "space", "expect": [{"type": "pass_through"}]},
+        {"press": "enter", "expect": [{"type": "resolve_stray_marked_text"}]},
+        {"press": "escape", "expect": [{"type": "resolve_stray_marked_text"}]},
+        {"press": "left", "expect": [{"type": "pass_through"}]},
+        {"press": "shift+right", "expect": [{"type": "pass_through"}]},
+        {"press": "cmd+c", "expect": [{"type": "pass_through"}]},
+        {"press": "f5", "expect": [{"type": "pass_through"}]},
+        {"press": "other", "expect": [{"type": "pass_through"}]}
+      ]
+    },
+    {
+      "name": "command shortcut while composing commits first then passes through",
+      "from": "InputStateMachineTests.swift ComposingTests.commandShortcutWhileComposingCommitsFirstThenPassesThrough",
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "cmd+c", "expect": [{"type": "commit", "text": "ひ"}, {"type": "pass_through"}]}
+      ]
+    },
+    {
+      "name": "non-script function keys are swallowed while composing",
+      "from": "InputStateMachineTests.swift ConversionTests.nonScriptFunctionKeysAreSwallowedWhileComposing",
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "f1", "expect": [{"type": "consume"}]}
+      ]
+    }
+  ]
+}
