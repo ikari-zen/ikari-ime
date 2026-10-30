@@ -16,7 +16,7 @@ ikari-ime の今の構成を 1 か所にまとめた地図。判断の理由は�
 | `lm` | zenz（GGUF、llama.cpp）による話題スコア。feature `llama` / `metal` のときだけ llama.cpp をビルドする | [0002 §13.2](adr/0002-phase1-architecture.md)、[0003](adr/0003-topic-ranker-decision.md) |
 | `stack` | Converter、Ranker、LM の共有の組み立て（`build_stack`）。エンジン、CLI、eval が使う | [0004 §3.2](adr/0004-phase2-macos.md) |
 | `import` | 取り込みファイル（JSONL）の検証、強制アライメント、初期学習 | [0002 §11](adr/0002-phase1-architecture.md) |
-| `proto` | エンジンと殻の間のメッセージ（`proto/ikari/engine/v1/engine.proto`、prost）。設定アプリと殻の間の `proto/ikari/bridge/v1/bridge.proto` は Swift だけが使い、Rust は生成しない | [0004 §5](adr/0004-phase2-macos.md)、[0005 §6.3](adr/0005-macos-settings-and-indicator.md) |
+| `proto` | エンジンと殻の間のメッセージ（`proto/ikari/engine/v1/engine.proto`、prost）。設定アプリと殻の間の `proto/ikari/bridge/v1/bridge.proto` も生成する（`shell-core` の bridge が使う。Swift は `gen-proto.sh`） | [0004 §5](adr/0004-phase2-macos.md)、[0005 §6.3](adr/0005-macos-settings-and-indicator.md) |
 | `engine` | 常駐エンジン。`Envelope` を受けて返す。`lib.rs`（`Engine`、`Inner`、上限）、`dispatch`（入口）、`session`、`convert`、`lm`、`data`（データの監視）、`workers`（裏のスレッド）、`segments`（文節）、`admin`（管理）、`cache` | [0004 §7](adr/0004-phase2-macos.md) |
 | `engine-ffi` | エンジンの C ABI（staticlib。ヘッダ `include/ikari_engine.h`） | [0004 §4.2](adr/0004-phase2-macos.md) |
 | `shell-ffi` | 殻が使う入力処理の C ABI（staticlib。ヘッダ `include/ikari_shell.h`） | [0004 §4.3](adr/0004-phase2-macos.md) |
