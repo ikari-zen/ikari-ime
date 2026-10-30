@@ -315,7 +315,10 @@ mod tests {
             body: Some(Body::Engine(envelope)),
         };
         let data = encode(&frame).unwrap();
-        assert_eq!(FrameDecoder::new().feed(&data).unwrap(), std::slice::from_ref(&frame));
+        assert_eq!(
+            FrameDecoder::new().feed(&data).unwrap(),
+            std::slice::from_ref(&frame)
+        );
         assert_eq!(decode_body(&data[4..]).unwrap(), frame);
     }
 }
