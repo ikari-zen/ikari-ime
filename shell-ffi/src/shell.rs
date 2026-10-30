@@ -276,7 +276,7 @@ fn shells() -> MutexGuard<'static, BTreeMap<u64, Arc<Slot>>> {
 }
 
 fn id_of(s: *const IkariShell) -> u64 {
-    s as usize as u64
+    s.addr() as u64
 }
 
 fn lookup(s: *const IkariShell) -> Option<Arc<Slot>> {
@@ -335,7 +335,8 @@ pub unsafe extern "C" fn ikari_shell_new(
     err: *mut IkariShellBuf,
 ) -> *mut IkariShell {
     match catch_unwind(AssertUnwindSafe(|| new_shell(config, host))) {
-        Ok(Ok(id)) => id as usize as *mut IkariShell,
+        // 指す先のない番号（provenance を持たない）
+        Ok(Ok(id)) => ptr::without_provenance_mut(id as usize),
         Ok(Err(message)) => {
             write_error(err, &message);
             ptr::null_mut()
