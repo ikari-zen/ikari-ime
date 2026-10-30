@@ -259,8 +259,15 @@ fn env_path(name: &str, default: PathBuf) -> PathBuf {
     std::env::var_os(name).map_or(default, PathBuf::from)
 }
 
-/// 実データのテスト。前提（辞書、モデル）がなければ、黙って成功せずここで失敗させる
-fn real(root: &Path, consts: &LibConsts) -> Result<(), Failure> {
+/// 実データのテストが使う場所（環境変数で変えられる。`cargo xtask cov --real` も同じものを使う）
+pub(crate) struct RealInputs {
+    pub dict: PathBuf,
+    pub zenz: PathBuf,
+    pub edge: PathBuf,
+}
+
+/// 実データ（辞書、モデル）の場所を決め、そろっているか確かめる。なければ黙って成功せず失敗させる
+pub(crate) fn real_inputs(root: &Path, consts: &LibConsts) -> Result<RealInputs, Failure> {
     let zenz_file = consts
         .get("ZENZ_MODEL_FILE")
         .map_err(|e| Failure::new(e.to_string()))?;
@@ -288,8 +295,28 @@ fn real(root: &Path, consts: &LibConsts) -> Result<(), Failure> {
             )));
         }
     }
+    Ok(RealInputs { dict, zenz, edge })
+}
+
+/// 実データのテスト。前提（辞書、モデル）がなければ、黙って成功せずここで失敗させる
+fn real(root: &Path, consts: &LibConsts) -> Result<(), Failure> {
+    let RealInputs { dict, zenz, edge } = real_inputs(root, consts)?;
     log("実データのテスト（--ignored）");
-    let tests: [&[&str]; 9] = [
+    for test in real_tests() {
+        exec(
+            cargo(root)
+                .args(test)
+                .env("IKARI_DICT_DIR", &dict)
+                .env("IKARI_ZENZ_MODEL", &zenz)
+                .env("IKARI_EDGE_MODEL", &edge),
+        )?;
+    }
+    Ok(())
+}
+
+/// 実データの `#[ignore]` テスト（cargo の引数。`cargo xtask cov --real` も同じものを流す）
+pub(crate) fn real_tests() -> [&'static [&'static str]; 9] {
+    [
         &[
             "test",
             "-p",
@@ -381,17 +408,7 @@ fn real(root: &Path, consts: &LibConsts) -> Result<(), Failure> {
             "--",
             "--ignored",
         ],
-    ];
-    for test in tests {
-        exec(
-            cargo(root)
-                .args(test)
-                .env("IKARI_DICT_DIR", &dict)
-                .env("IKARI_ZENZ_MODEL", &zenz)
-                .env("IKARI_EDGE_MODEL", &edge),
-        )?;
-    }
-    Ok(())
+    ]
 }
 
 fn perf(root: &Path) -> Result<(), Failure> {

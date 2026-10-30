@@ -35,6 +35,7 @@
 | X3 | `data fetch`、`data install` | データの取得と配置 | `scripts/fetch-data.sh`、`scripts/install-data.sh` |
 | X4 | `eval snapshot` | 全セットの 1 位の比較 | `eval/scripts/snapshot.sh` |
 | L-P（ADR 0041 §6.3） | `perf shell`、`perf engine`、`perf smoke`、`perf compare` | 殻の性能の計測と基準値との比較 | `check.sh --perf` の `run_perf` は `perf engine` が包む |
+| cov（#158） | `cov` | テストの行カバレッジ（cargo-llvm-cov）。crate ごとの表、低いファイル、変換のロジックの小計。`--lm`（llama.cpp）、`--real`（実辞書。`check --real` と同じテスト）、`--out`（`eval/reports/` に記録）。目標値とゲートは持たない（`--fail-under` は任意）。`check` には入れない（遅い） | — |
 
 - 最初は X1（`check`）と X2（辞書のビルド）。X1 は記録の書式を保つことを、`scripts/test-hooks.sh` の既存の検査で確かめる。
 - 各段の完了の条件: 包んだシェルとの出力の同等（`check` は同じ SHA で `CHECK_EXIT` が一致、`dict` は出力の辞書のバイト列が一致）、macOS で `scripts/check.sh` が `CHECK_EXIT=0`、Windows の CI（ADR 0040 の W0）で `cargo xtask check --no-swift` が通る（W0 が入った後）。
