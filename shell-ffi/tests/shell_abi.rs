@@ -122,9 +122,17 @@ fn dispatch_round_trips_protobuf_bytes() {
     ] {
         let (status, actions) = dispatch_bytes(s, &event);
         assert_eq!(status, IKARI_SHELL_OK);
-        // Shell::dispatch は L-A2 まで stub（空の列）
-        assert_eq!(actions, Vec::new());
+        // 返った列は proto から読めて、Rust の `Shell::dispatch` の結果と同じ形（L-A2 で stub でなくなった。
+        // 中身はシナリオが縛る。ここは FFI の往復だけを見る）
+        assert!(
+            actions
+                .iter()
+                .all(|action| !matches!(action, ShellAction::BridgeReply { .. }))
+        );
     }
+    // 最初のキー（Space、idle）はアプリへ渡す
+    let (_, first) = dispatch_bytes(s, &space());
+    assert!(first.contains(&ShellAction::PassThrough));
     unsafe { ikari_shell_free(s) };
     assert_eq!(fake.released.load(Ordering::SeqCst), 1);
 }

@@ -105,6 +105,13 @@ pub(crate) fn strings(list: &[&str]) -> Vec<String> {
     list.iter().map(|s| (*s).to_string()).collect()
 }
 
+/// 既定値の設定の一式（`SettingsSnapshot::default()` と同じ）。
+impl Default for SettingsSnapshot {
+    fn default() -> Self {
+        default_snapshot()
+    }
+}
+
 /// 既定値の設定の一式（ファイルがない、または読めないときに使う。Swift の `Settings.default`）
 pub fn default_snapshot() -> SettingsSnapshot {
     SettingsSnapshot {

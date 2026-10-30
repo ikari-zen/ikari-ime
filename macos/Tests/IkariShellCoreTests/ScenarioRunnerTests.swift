@@ -14,6 +14,8 @@ import Testing
         for (name, file) in files {
             let defaults = file.defaults ?? ScenarioSetup()
             for scenario in file.scenarios {
+                // 殻の判断（IkariIME にあり、このテストから呼べない）は Rust の実行器だけで流す
+                if scenario.rustOnly != nil { continue }
                 count += 1
                 do {
                     try run(scenario, setup: defaults.resolve(scenario.setup))
@@ -41,23 +43,36 @@ import Testing
             guard pages.indices.contains(index) else { throw EngineClientError.engine(.badRequest) }
             return pages[index].conversionPage
         }
-        engine.onSegmentPage = { _, _, _ in
-            throw script.next("segment_page") ?? EngineClientError.engine(.badRequest)
+        let engineScript = setup.engine
+        engine.onSegmentPage = { _, segment, index in
+            if let error = script.next("segment_page") { throw error }
+            guard let page = engineScript.segmentPage(segment: segment, index: index) else {
+                throw EngineClientError.engine(.badRequest)
+            }
+            return page
         }
-        engine.onResize = { _, _, _ in
-            throw script.next("resize_segment") ?? EngineClientError.engine(.badRequest)
+        let layoutRevs = LayoutRevs()
+        engine.onResize = { _, segment, delta in
+            if let error = script.next("resize_segment") { throw error }
+            guard let layout = engineScript.resize(segment: segment, delta: delta, layoutRev: layoutRevs.last) else {
+                throw EngineClientError.engine(.badRequest)
+            }
+            return layout
         }
         engine.onReconvert = { _ in
-            throw script.next("reconvert") ?? EngineClientError.engine(.badRequest)
+            if let error = script.next("reconvert") { throw error }
+            guard let layout = engineScript.reconvert?.value else { throw EngineClientError.engine(.badRequest) }
+            return layout
         }
-        engine.onPostalLookup = { _ in
+        engine.onPostalLookup = { code in
             if let error = script.next("postal_lookup") { throw error }
-            return []
+            return engineScript.postal[code] ?? []
         }
 
+        let table = ShortcodeTable(entries: setup.engine.emojiTable.map { ShortcodeEntry(name: $0.name, emoji: $0.emoji) })
         let h = try Harness(
             preset: parsed.settings.keymapPreset, settings: parsed.settings, secure: setup.client.secure,
-            engine: engine, bundleID: setup.client.bundleID)
+            engine: engine, bundleID: setup.client.bundleID, shortcodeTable: table)
         h.surroundingText = setup.surrounding.machineValue
 
         for (index, step) in scenario.steps.enumerated() {
@@ -67,8 +82,20 @@ import Testing
             let before = engine.calls.count
             var actions: [KeyAction] = []
             for key in try step.keys() {
+                // `resize_segment` の台本の `layout_rev` は、要求の版で引く
+                layoutRevs.last = h.converting?.layoutRev ?? 0
                 actions += h.machine.handle(
                     key, surrounding: h.surroundingText, selection: h.selection, isRepeat: false)
+            }
+            switch step.host {
+            case nil: break
+            case .commitComposition: actions += h.machine.commitComposition()
+            case .panelShown(let side): h.machine.setPanelSide(side)
+            case .panelHidden: h.machine.setPanelSide(.below)
+            case .unsupported(let type): throw ScenarioFormatError("\(at): the Swift runner cannot run host \(type)")
+            }
+            if let request = step.modeRequest, request != "none" {
+                throw ScenarioFormatError("\(at): the Swift state machine never requests a mode")
             }
             if let expected = step.expect {
                 let actual = actions.map(ScenarioAction.init)
@@ -88,6 +115,11 @@ import Testing
             }
         }
     }
+}
+
+/// 区切り直しの要求の版（`MockEngine.onResize` は版を受け取らないので、キーの前の状態から写す）
+private final class LayoutRevs: @unchecked Sendable {
+    var last: UInt32 = 0
 }
 
 /// 台本の失敗を、要求の種類ごとの回数で引く

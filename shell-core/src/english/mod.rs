@@ -6,6 +6,8 @@
 
 use std::sync::Arc;
 
+use unicode_segmentation::UnicodeSegmentation;
+
 use crate::diag::{DiagEpisode, DiagFinishedEpisode};
 use crate::keymap::{KeyChord, Keymap, KeymapAction};
 use crate::postal::PostalMachine;
@@ -344,92 +346,20 @@ pub(crate) fn marked_text(text: &str, underlined: bool) -> ShellAction {
     })
 }
 
-/// 末尾の「見た目の 1 文字」の始まりのバイト位置。
-///
-/// 拡張書記素クラスタの完全な実装ではなく、キー入力で現れる範囲（結合文字、異体字選択子、肌色修飾、ZWJ でつないだ絵文字、
-/// 国旗の組、CRLF）を扱う近似。`unicode-segmentation` を足さないための代わり（契約の Cargo.toml を変えない）。
+/// 末尾の「見た目の 1 文字」（拡張書記素クラスタ。Swift の `Character`）の始まりのバイト位置。空なら 0。
 fn last_grapheme_start(text: &str) -> usize {
-    let chars: Vec<(usize, char)> = text.char_indices().collect();
-    let Some(mut index) = chars.len().checked_sub(1) else {
-        return 0;
-    };
-    if is_regional_indicator(chars[index].1) {
-        // 国旗は 2 つで 1 文字。末尾に並ぶ数が奇数なら最後の 1 つだけ
-        let run = chars
-            .iter()
-            .rev()
-            .take_while(|(_, c)| is_regional_indicator(*c))
-            .count();
-        if run % 2 == 0 {
-            index -= 1;
-        }
-        return chars[index].0;
-    }
-    while index > 0 {
-        let (current, previous) = (chars[index].1, chars[index - 1].1);
-        let joins =
-            is_extend(current) || previous == '\u{200D}' || (previous == '\r' && current == '\n');
-        if !joins {
-            break;
-        }
-        index -= 1;
-    }
-    chars[index].0
-}
-
-fn is_regional_indicator(c: char) -> bool {
-    ('\u{1F1E6}'..='\u{1F1FF}').contains(&c)
-}
-
-/// 直前の文字につながる文字（結合記号、異体字選択子、肌色修飾、ZWJ、タグ）。
-fn is_extend(c: char) -> bool {
-    matches!(
-        c,
-        '\u{0300}'..='\u{036F}'
-            | '\u{1AB0}'..='\u{1AFF}'
-            | '\u{1DC0}'..='\u{1DFF}'
-            | '\u{20D0}'..='\u{20FF}'
-            | '\u{3099}'..='\u{309A}'
-            | '\u{FE00}'..='\u{FE0F}'
-            | '\u{FE20}'..='\u{FE2F}'
-            | '\u{200C}'..='\u{200D}'
-            | '\u{1F3FB}'..='\u{1F3FF}'
-            | '\u{E0020}'..='\u{E007F}'
-            | '\u{E0100}'..='\u{E01EF}'
-    )
+    text.grapheme_indices(true)
+        .next_back()
+        .map_or(0, |(start, _)| start)
 }
 
 #[cfg(test)]
 pub(crate) mod test_support {
-    use std::collections::BTreeMap;
+    use crate::types::{KeyInput, KeyKind, Modifiers, SettingsSnapshot};
 
-    use crate::types::{
-        InputMethodKind, KeyInput, KeyKind, KeymapPreset, Modifiers, SettingsSnapshot,
-    };
-
-    /// 既定の設定の一式（`settings::validate("")` が返す値と同じにする。ここでは殻の周辺が読む欄だけが意味を持つ）。
+    /// 既定の設定の一式（`SettingsSnapshot::default()`。重複を持たない）。
     pub fn default_settings() -> SettingsSnapshot {
-        SettingsSnapshot {
-            input_method: InputMethodKind::Romaji,
-            keymap_preset: KeymapPreset::Macos,
-            keymap_overrides: BTreeMap::new(),
-            paging_wrap: true,
-            page_size: 3,
-            engine_lm: true,
-            engine_idle_unload_secs: 300,
-            engine_lm_deadline_ms: 0,
-            engine_convert_wait_ms: 0,
-            context_shared_exclude: Vec::new(),
-            emoji_shortcode: false,
-            emoji_shortcode_exclude: vec!["com.apple.Terminal".to_string()],
-            emoji_small_letters: false,
-            postal_japanese: false,
-            postal_english: false,
-            postal_te_prefix: false,
-            unicode_notation: false,
-            date_weekday_dates: false,
-            candidate_hide_when_confident: false,
-        }
+        SettingsSnapshot::default()
     }
 
     pub fn key(kind: KeyKind) -> KeyInput {

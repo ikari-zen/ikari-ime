@@ -92,6 +92,11 @@ struct ScenarioSurrounding: Decodable {
 struct ScenarioEngineScript: Decodable, Sendable {
     var pages: [ScenarioPage] = []
     var failures: [ScenarioFailure] = []
+    var segmentPages: [ScenarioSegmentPage] = []
+    var resizes: [ScenarioResize] = []
+    var reconvert: ScenarioLayout?
+    var emojiTable: [ScenarioEmoji] = []
+    var postal: [String: [String]] = [:]
 
     init() {}
 
@@ -99,9 +104,32 @@ struct ScenarioEngineScript: Decodable, Sendable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         pages = try c.decodeIfPresent([ScenarioPage].self, forKey: .pages) ?? []
         failures = try c.decodeIfPresent([ScenarioFailure].self, forKey: .failures) ?? []
+        segmentPages = try c.decodeIfPresent([ScenarioSegmentPage].self, forKey: .segmentPages) ?? []
+        resizes = try c.decodeIfPresent([ScenarioResize].self, forKey: .resizes) ?? []
+        reconvert = try c.decodeIfPresent(ScenarioLayout.self, forKey: .reconvert)
+        emojiTable = try c.decodeIfPresent([ScenarioEmoji].self, forKey: .emojiTable) ?? []
+        postal = try c.decodeIfPresent([String: [String]].self, forKey: .postal) ?? [:]
     }
 
-    enum CodingKeys: String, CodingKey { case pages, failures }
+    enum CodingKeys: String, CodingKey {
+        case pages, failures, reconvert, postal, resizes
+        case segmentPages = "segment_pages"
+        case emojiTable = "emoji_table"
+    }
+
+    /// `segment_page` の返事（Rust の `EngineScript::segment_page` と同じ規則）
+    func segmentPage(segment: Int, index: Int) -> SegmentPage? {
+        segmentPages.first { $0.segment == segment && $0.pageIndex == index }.map {
+            SegmentPage(
+                segment: $0.segment, pageIndex: $0.pageIndex, candidates: $0.candidates.map(\.item), hasNext: $0.hasNext)
+        }
+    }
+
+    /// `resize_segment` の返事（Rust の `EngineScript::resize` と同じ規則）
+    func resize(segment: Int, delta: Int, layoutRev: UInt32) -> SegmentLayoutInfo? {
+        resizes.first { $0.segment == segment && $0.delta == delta && ($0.layoutRev.map { $0 == layoutRev } ?? true) }?
+            .layout.value
+    }
 
     func failure(for request: String, nth: Int) -> EngineClientError? {
         failures.first { $0.request == request && $0.nth == nth }?.error
@@ -115,6 +143,7 @@ struct ScenarioPage: Decodable, Sendable {
     var hasNext: Bool
     var lmApplied: Bool
     var confident: Bool
+    var layout: ScenarioLayout?
 
     enum CodingKeys: String, CodingKey {
         case conversionID = "conversion_id"
@@ -122,7 +151,7 @@ struct ScenarioPage: Decodable, Sendable {
         case candidates
         case hasNext = "has_next"
         case lmApplied = "lm_applied"
-        case confident
+        case confident, layout
     }
 
     init(from decoder: Decoder) throws {
@@ -133,13 +162,107 @@ struct ScenarioPage: Decodable, Sendable {
         hasNext = try c.decode(Bool.self, forKey: .hasNext)
         lmApplied = try c.decodeIfPresent(Bool.self, forKey: .lmApplied) ?? false
         confident = try c.decodeIfPresent(Bool.self, forKey: .confident) ?? false
+        layout = try c.decodeIfPresent(ScenarioLayout.self, forKey: .layout)
     }
 
     var conversionPage: ConversionPage {
         ConversionPage(
             conversionID: conversionID, pageIndex: pageIndex, candidates: candidates.map(\.item), hasNext: hasNext,
-            lmApplied: lmApplied, confident: confident)
+            lmApplied: lmApplied, confident: confident, layout: layout?.value)
     }
+}
+
+/// 区切り（Rust の `ScriptLayout`）
+struct ScenarioLayout: Decodable, Sendable {
+    var value: SegmentLayoutInfo
+
+    enum CodingKeys: String, CodingKey {
+        case conversionID = "conversion_id"
+        case layoutRev = "layout_rev"
+        case segments, focused
+        case focusedPage = "focused_page"
+    }
+
+    struct Segment: Decodable {
+        var reading: String
+        var surface: String
+    }
+
+    struct Candidates: Decodable {
+        var pageIndex: Int
+        var candidates: [ScenarioCandidate]
+        var hasNext: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case pageIndex = "page_index"
+            case candidates
+            case hasNext = "has_next"
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            pageIndex = try c.decodeIfPresent(Int.self, forKey: .pageIndex) ?? 0
+            candidates = try c.decode([ScenarioCandidate].self, forKey: .candidates)
+            hasNext = try c.decodeIfPresent(Bool.self, forKey: .hasNext) ?? false
+        }
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let focused = try c.decodeIfPresent(Int.self, forKey: .focused) ?? 0
+        let page = try c.decodeIfPresent(Candidates.self, forKey: .focusedPage)
+        value = SegmentLayoutInfo(
+            conversionID: try c.decode(UInt64.self, forKey: .conversionID),
+            layoutRev: try c.decodeIfPresent(UInt32.self, forKey: .layoutRev) ?? 0,
+            segments: try c.decode([Segment].self, forKey: .segments).map {
+                SegmentSummary(reading: $0.reading, surface: $0.surface)
+            },
+            focused: focused,
+            focusedPage: page.map {
+                SegmentPage(
+                    segment: focused, pageIndex: $0.pageIndex, candidates: $0.candidates.map(\.item), hasNext: $0.hasNext)
+            })
+    }
+}
+
+/// `segment_page` の返事（Rust の `ScriptSegmentPage`）
+struct ScenarioSegmentPage: Decodable, Sendable {
+    var segment: Int
+    var pageIndex: Int
+    var candidates: [ScenarioCandidate]
+    var hasNext: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case segment, candidates
+        case pageIndex = "page_index"
+        case hasNext = "has_next"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        segment = try c.decode(Int.self, forKey: .segment)
+        pageIndex = try c.decodeIfPresent(Int.self, forKey: .pageIndex) ?? 0
+        candidates = try c.decode([ScenarioCandidate].self, forKey: .candidates)
+        hasNext = try c.decodeIfPresent(Bool.self, forKey: .hasNext) ?? false
+    }
+}
+
+/// `resize_segment` の返事（Rust の `ScriptResize`）
+struct ScenarioResize: Decodable, Sendable {
+    var segment: Int
+    var delta: Int
+    var layoutRev: UInt32?
+    var layout: ScenarioLayout
+
+    enum CodingKeys: String, CodingKey {
+        case segment, delta, layout
+        case layoutRev = "layout_rev"
+    }
+}
+
+struct ScenarioEmoji: Decodable, Sendable {
+    var name: String
+    var emoji: String
 }
 
 struct ScenarioFailure: Decodable, Sendable {
@@ -193,8 +316,40 @@ struct ScenarioFormatError: Error, CustomStringConvertible {
 struct Scenario: Decodable {
     var name: String
     var from: String?
+    /// Rust の実行器だけで流す理由（Swift の実行器は飛ばす）
+    var rustOnly: String?
     var setup: ScenarioSetup?
     var steps: [ScenarioStep]
+
+    enum CodingKeys: String, CodingKey {
+        case name, from, setup, steps
+        case rustOnly = "rust_only"
+    }
+}
+
+/// `ShellEvent` で表せない OS とのやりとり（Rust の `HostCall`）。Swift の状態機械で流せるものだけ
+enum ScenarioHostCall: Decodable {
+    case commitComposition
+    case panelShown(PanelSide)
+    case panelHidden
+    case unsupported(String)
+
+    enum CodingKeys: String, CodingKey { case type, side }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        switch try c.decode(String.self, forKey: .type) {
+        case "commit_composition": self = .commitComposition
+        case "panel_hidden": self = .panelHidden
+        case "panel_shown":
+            switch try c.decode(String.self, forKey: .side) {
+            case "above": self = .panelShown(.above)
+            case "below": self = .panelShown(.below)
+            case let side: throw ScenarioFormatError("unknown panel side \(side)")
+            }
+        case let type: self = .unsupported(type)
+        }
+    }
 }
 
 struct ScenarioStep: Decodable {
@@ -206,16 +361,22 @@ struct ScenarioStep: Decodable {
     var selection: ScenarioSelection?
     var expect: [ScenarioAction]?
     var engine: [[String: JSONValue]]?
+    var host: ScenarioHostCall?
+    var modeRequest: String?
 
     enum CodingKeys: String, CodingKey {
-        case note, event, press, surrounding, selection, expect, engine
+        case note, event, press, surrounding, selection, expect, engine, host
         case typeText = "type_text"
+        case modeRequest = "mode_request"
     }
 
-    /// この手順で状態機械に渡すキー（Rust の `Step::events` と同じ規則）
+    /// この手順で状態機械に渡すキー（Rust の `Step::events` と同じ規則）。`host` の手順は空
     func keys() throws -> [KeyInput] {
-        let given = [event != nil, press != nil, typeText != nil].filter { $0 }.count
-        guard given == 1 else { throw ScenarioFormatError("a step needs exactly one of event, press, type_text") }
+        let given = [event != nil, press != nil, typeText != nil, host != nil].filter { $0 }.count
+        guard given == 1 else {
+            throw ScenarioFormatError("a step needs exactly one of event, press, type_text, host")
+        }
+        if host != nil { return [] }
         if let event {
             guard case .key(let input) = event else {
                 throw ScenarioFormatError("the Swift runner handles only key events")

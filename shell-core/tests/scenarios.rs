@@ -1,8 +1,8 @@
 //! 共通のシナリオ（`shell-core/scenarios/*.json`）の Rust の実行器（ADR 0041 §5）。
 //!
 //! - `scenarios_are_well_formed`: すべてのファイルが Rust の型で読め、手順の形が正しいこと（いつも流す）。
-//! - `scenarios_match_on_rust`: `Shell` に流して期待と比べる。M1-a では `Shell` が stub なので `#[ignore]`。
-//!   L-A2（状態機械）と L-B（エンジン通信）が入ったら `#[ignore]` を外す。
+//! - `scenarios_match_on_rust`: `Shell` に流して期待と比べる（`rust_only` を含む全件）。
+//! - `record_expectations`: 期待を書くときの記録（手で流す。README）。
 
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -10,11 +10,17 @@ use std::time::Duration;
 
 use ikari_proto::v1;
 use ikari_proto::v1::envelope::Body;
-use ikari_shell_core::scenario::{self, EngineScript, ScenarioSurrounding, ScriptPage};
+use ikari_shell_core::controller::BackgroundMode;
+use ikari_shell_core::english::InputMode;
+use ikari_shell_core::panel::PanelSide;
+use ikari_shell_core::scenario::{
+    self, EngineScript, HostCall, ScenarioSurrounding, ScriptLayout, ScriptPage,
+    ScriptSegmentCandidates,
+};
 use ikari_shell_core::{
-    CandidateKind, Clock, EngineError, EngineErrorCode, EngineTransport, SelectedText,
-    SettingsSource, Shell, ShellConfig, ShellEvent, SurroundingText, TextAccess, TransportError,
-    TransportHandle,
+    CandidateItem, CandidateKind, Clock, EngineError, EngineErrorCode, EngineTransport,
+    SelectedText, SettingsSource, Shell, ShellConfig, ShellEvent, SurroundingText, TextAccess,
+    TransportError, TransportHandle,
 };
 use prost::Message;
 use serde_json::{Map, Value, json};
@@ -45,7 +51,6 @@ fn scenarios_are_well_formed() {
 // ---------------------------------------------------------------- 実行
 
 #[test]
-#[ignore = "M1-a: Shell は stub。L-A2（状態機械）と L-B（エンジン通信）が入ったら外す"]
 fn scenarios_match_on_rust() {
     let files = scenario::load_dir(&scenario::scenarios_dir()).expect("scenarios load");
     let mut failures = Vec::new();
@@ -54,7 +59,7 @@ fn scenarios_match_on_rust() {
         for scenario in &file.scenarios {
             count += 1;
             let setup = file.defaults.resolve(&scenario.setup);
-            if let Err(message) = run(&setup, scenario) {
+            if let Err(message) = run(&setup, scenario, None) {
                 failures.push(format!("{} / {}: {message}", display(path), scenario.name));
             }
         }
@@ -67,7 +72,46 @@ fn scenarios_match_on_rust() {
     );
 }
 
-fn run(setup: &scenario::ResolvedSetup, scenario: &scenario::Scenario) -> Result<(), String> {
+/// 期待を書くための記録（ADR 0041 §5。今の振る舞いを JSON に固めるとき）。
+///
+/// `IKARI_SCENARIO_RECORD_IN` の JSON（`{"<ファイル名>": ScenarioFile}`）の全シナリオを流し、手順ごとの動作とエンジンへの送信を
+/// `IKARI_SCENARIO_RECORD_OUT` に書く。記録した期待は、Swift の実行器が通ることで今の振る舞いと確かめる（README）。
+#[test]
+#[ignore = "期待を書くときだけ手で流す"]
+fn record_expectations() {
+    let (Ok(input), Ok(output)) = (
+        std::env::var("IKARI_SCENARIO_RECORD_IN"),
+        std::env::var("IKARI_SCENARIO_RECORD_OUT"),
+    ) else {
+        return;
+    };
+    let text = std::fs::read_to_string(input).expect("record input");
+    let files: std::collections::BTreeMap<String, scenario::ScenarioFile> =
+        serde_json::from_str(&text).expect("record input is scenario files");
+    let mut recorded = Map::new();
+    for (name, file) in &files {
+        let mut scenarios = Map::new();
+        for scenario in &file.scenarios {
+            let setup = file.defaults.resolve(&scenario.setup);
+            let mut steps = Vec::new();
+            if let Err(message) = run(&setup, scenario, Some(&mut steps)) {
+                panic!("{name} / {}: {message}", scenario.name);
+            }
+            scenarios.insert(scenario.name.clone(), Value::Array(steps));
+        }
+        recorded.insert(name.clone(), Value::Object(scenarios));
+    }
+    std::fs::write(output, Value::Object(recorded).to_string()).expect("record output");
+}
+
+/// 記録に残さない欄（実行器ごとに値が違う。README）
+const UNRECORDED_FIELDS: [&str; 2] = ["session_id", "context_rev"];
+
+fn run(
+    setup: &scenario::ResolvedSetup,
+    scenario: &scenario::Scenario,
+    mut recorder: Option<&mut Vec<Value>>,
+) -> Result<(), String> {
     let log = Arc::new(Mutex::new(EngineLog::new(setup.engine.clone())));
     let config = ShellConfig {
         shell_version: "scenario".into(),
@@ -82,6 +126,8 @@ fn run(setup: &scenario::ResolvedSetup, scenario: &scenario::Scenario) -> Result
         Arc::new(FixedClock),
     )
     .map_err(|error| format!("Shell::new: {error}"))?;
+    // エンジンへの非同期の問い合わせ（絵文字の表、Hello、郵便番号）を、その場で流す（結果の順を決める）
+    shell.set_background_mode(BackgroundMode::Inline);
     let mut text = ScenarioText {
         surrounding: setup.surrounding.clone(),
         selection: None,
@@ -109,6 +155,39 @@ fn run(setup: &scenario::ResolvedSetup, scenario: &scenario::Scenario) -> Result
         for event in events {
             actions.extend(shell.dispatch(event, &mut text));
         }
+        if let Some(call) = &step.host {
+            actions.extend(host_call(&mut shell, call).map_err(|error| format!("{at}: {error}"))?);
+        }
+        let requested = match shell.take_mode_request() {
+            Some(InputMode::Japanese) => "japanese",
+            Some(InputMode::English) => "english",
+            None => "none",
+        };
+        if let Some(recorder) = recorder.as_deref_mut() {
+            let sent: Vec<Value> = std::mem::take(&mut lock(&log).sent)
+                .into_iter()
+                .map(|mut request| {
+                    for field in UNRECORDED_FIELDS {
+                        request.remove(field);
+                    }
+                    Value::Object(request)
+                })
+                .collect();
+            recorder.push(json!({
+                "actions": actions,
+                "engine": sent,
+                "mode_request": requested,
+            }));
+            continue;
+        }
+        if let Some(expected) = &step.mode_request {
+            let actual = requested;
+            if actual != expected {
+                return Err(format!(
+                    "{at}: mode request differs: expected {expected}, actual {actual}"
+                ));
+            }
+        }
         if let Some(expected) = &step.expect
             && &actions != expected
         {
@@ -135,6 +214,31 @@ fn run(setup: &scenario::ResolvedSetup, scenario: &scenario::Scenario) -> Result
         }
     }
     Ok(())
+}
+
+/// `ShellEvent` で表せない OS とのやりとり。
+fn host_call(
+    shell: &mut Shell,
+    call: &HostCall,
+) -> Result<Vec<ikari_shell_core::ShellAction>, String> {
+    Ok(match call {
+        HostCall::InputModeChanged { mode_id } => shell.input_mode_changed(mode_id),
+        HostCall::CommitComposition => shell.commit_composition(),
+        HostCall::AbsorbModeKey => shell.absorb_mode_key(),
+        HostCall::PanelShown { side } => {
+            let side = match side.as_str() {
+                "above" => PanelSide::Above,
+                "below" => PanelSide::Below,
+                other => return Err(format!("unknown panel side {other}")),
+            };
+            shell.panel_shown(side, None);
+            Vec::new()
+        }
+        HostCall::PanelHidden => {
+            shell.panel_hidden();
+            Vec::new()
+        }
+    })
 }
 
 // ---------------------------------------------------------------- ホストの替え玉
@@ -273,11 +377,49 @@ fn answer(script: &EngineScript, body: &Body) -> Body {
             Some(page) => Body::PageReply(convert_reply(page)),
             None => error_reply(EngineErrorCode::BadRequest),
         },
-        Body::SegmentPage(_) | Body::ResizeSegment(_) | Body::Reconvert(_) => {
-            error_reply(EngineErrorCode::BadRequest)
+        Body::SegmentPage(request) => match script.segment_page(request.segment, request.index) {
+            Some(page) => Body::SegmentPageReply(segment_page_reply(
+                page.segment,
+                &ScriptSegmentCandidates {
+                    page_index: page.page_index,
+                    candidates: page.candidates.clone(),
+                    has_next: page.has_next,
+                },
+            )),
+            None => error_reply(EngineErrorCode::BadRequest),
+        },
+        Body::ResizeSegment(request) => {
+            match script.resize(request.segment, request.delta, request.layout_rev) {
+                Some(layout) => Body::SegmentLayout(layout_reply(layout)),
+                None => error_reply(EngineErrorCode::BadRequest),
+            }
         }
-        Body::PostalLookup(_) => Body::PostalLookupReply(v1::PostalLookupReply::default()),
-        Body::EmojiTable(_) => Body::EmojiTableReply(v1::EmojiTableReply::default()),
+        Body::Reconvert(_) => match &script.reconvert {
+            Some(layout) => Body::SegmentLayout(layout_reply(layout)),
+            None => error_reply(EngineErrorCode::BadRequest),
+        },
+        Body::PostalLookup(request) => Body::PostalLookupReply(v1::PostalLookupReply {
+            addresses: script
+                .postal
+                .get(&request.code)
+                .cloned()
+                .unwrap_or_default(),
+        }),
+        Body::EmojiTable(_) => Body::EmojiTableReply(v1::EmojiTableReply {
+            entries: script
+                .emoji_table
+                .iter()
+                .map(|entry| v1::EmojiEntry {
+                    name: entry.name.clone(),
+                    emoji: entry.emoji.clone(),
+                })
+                .collect(),
+            data_label: if script.emoji_table.is_empty() {
+                String::new()
+            } else {
+                "scenario".into()
+            },
+        }),
         _ => Body::Ack(v1::Ack {}),
     }
 }
@@ -286,19 +428,54 @@ fn convert_reply(page: &ScriptPage) -> v1::ConvertReply {
     v1::ConvertReply {
         conversion_id: page.conversion_id,
         page_index: page.page_index,
-        candidates: page
-            .candidates
-            .iter()
-            .map(|candidate| v1::Candidate {
-                surface: candidate.surface.clone(),
-                annotation: candidate.annotation.clone(),
-                kind: candidate_kind(candidate.kind) as i32,
-            })
-            .collect(),
+        candidates: candidates(&page.candidates),
         has_next: page.has_next,
         lm_applied: page.lm_applied,
         confident: page.confident,
+        layout: page.layout.as_ref().map(layout_reply),
         ..Default::default()
+    }
+}
+
+fn candidates(items: &[CandidateItem]) -> Vec<v1::Candidate> {
+    items
+        .iter()
+        .map(|candidate| v1::Candidate {
+            surface: candidate.surface.clone(),
+            annotation: candidate.annotation.clone(),
+            kind: candidate_kind(candidate.kind) as i32,
+        })
+        .collect()
+}
+
+fn segment_page_reply(segment: u32, page: &ScriptSegmentCandidates) -> v1::SegmentPageReply {
+    v1::SegmentPageReply {
+        segment,
+        page_index: page.page_index,
+        candidates: candidates(&page.candidates),
+        has_next: page.has_next,
+        ..Default::default()
+    }
+}
+
+fn layout_reply(layout: &ScriptLayout) -> v1::SegmentLayout {
+    v1::SegmentLayout {
+        conversion_id: layout.conversion_id,
+        layout_rev: layout.layout_rev,
+        segments: layout
+            .segments
+            .iter()
+            .map(|segment| v1::SegmentInfo {
+                reading: segment.reading.clone(),
+                surface: segment.surface.clone(),
+            })
+            .collect(),
+        focused: layout.focused,
+        focused_page: layout
+            .focused_page
+            .as_ref()
+            .map(|page| segment_page_reply(layout.focused, page)),
+        engine_micros: 0,
     }
 }
 

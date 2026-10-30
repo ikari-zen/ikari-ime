@@ -7,21 +7,11 @@
 
 use ikari_proto::v1;
 
-/// 属性プロファイルの分野ごとの重み。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ProfileWeight {
-    Off,
-    Sometimes,
-    Often,
-}
+/// 属性プロファイルの分野ごとの重み（入力メニューと同じ型）。
+pub use crate::menu::ProfileWeight;
 
-/// 属性プロファイルの 1 行。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProfileDomainRow {
-    pub id: String,
-    pub name: String,
-    pub weight: ProfileWeight,
-}
+/// 属性プロファイルの 1 行（入力メニューの `ProfileDomain` と同じ型）。
+pub type ProfileDomainRow = crate::menu::ProfileDomain;
 
 /// 読めない重みは `Off`（`Unspecified` と未知の値）
 pub fn profile_weight_from_proto(kind: i32) -> ProfileWeight {

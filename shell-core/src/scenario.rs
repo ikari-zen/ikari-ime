@@ -161,7 +161,10 @@ impl ScenarioSurrounding {
 /// 替え玉のエンジンの台本。
 ///
 /// - `convert` は `pages[0]`、`page`（index = i）は `pages[i]` を返す。ないときは `engine: bad_request`。
-/// - `segment_page`・`resize_segment`・`reconvert` は `engine: bad_request`。`postal_lookup` は空。`hello` は成功。
+/// - `segment_page` は `segment_pages` の中で `segment` と `page_index`（要求の `index`）が合うもの、
+///   `resize_segment` は `resizes` の中で `segment` と `delta`（と、書いてあれば `layout_rev`）が合うもの、
+///   `reconvert` は `reconvert` を返す。ないときは `engine: bad_request`。
+/// - `postal_lookup` は `postal` の番号の住所（なければ空）。`emoji_table` は `emoji_table`。`hello` は成功。
 /// - `failures` に書いた要求は、その回だけ失敗させる。
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -170,6 +173,21 @@ pub struct EngineScript {
     pub pages: Vec<ScriptPage>,
     #[serde(default)]
     pub failures: Vec<ScriptFailure>,
+    /// 文節の候補のページ（L-A2 で足した）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub segment_pages: Vec<ScriptSegmentPage>,
+    /// 区切り直しの返事（L-A2 で足した）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resizes: Vec<ScriptResize>,
+    /// 再変換の返事（L-A2 で足した）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reconvert: Option<ScriptLayout>,
+    /// 絵文字のショートコードの表（名前の昇順。L-A2 で足した）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub emoji_table: Vec<ScriptEmoji>,
+    /// 郵便番号 → 住所（L-A2 で足した）
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub postal: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 /// 1 ページ分の返事（`ConvertReply`）。
@@ -184,6 +202,93 @@ pub struct ScriptPage {
     pub lm_applied: bool,
     #[serde(default)]
     pub confident: bool,
+    /// 区切り（`ConvertReply.layout`）。`convert` の返事だけに付ける（L-A2 で足した）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout: Option<ScriptLayout>,
+}
+
+/// 区切り（`SegmentLayout`）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ScriptLayout {
+    pub conversion_id: u64,
+    #[serde(default)]
+    pub layout_rev: u32,
+    pub segments: Vec<ScriptSegment>,
+    #[serde(default)]
+    pub focused: u32,
+    /// フォーカスしている文節の 1 ページ目（`segment` は `focused`）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub focused_page: Option<ScriptSegmentCandidates>,
+}
+
+/// 文節 1 つ（`SegmentInfo`）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ScriptSegment {
+    pub reading: String,
+    pub surface: String,
+}
+
+/// 文節の候補の 1 ページの中身（`SegmentPageReply` の `segment` 以外）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ScriptSegmentCandidates {
+    #[serde(default)]
+    pub page_index: u32,
+    pub candidates: Vec<CandidateItem>,
+    #[serde(default)]
+    pub has_next: bool,
+}
+
+/// `segment_page` の返事。`segment` と `page_index` で引く。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ScriptSegmentPage {
+    pub segment: u32,
+    #[serde(default)]
+    pub page_index: u32,
+    pub candidates: Vec<CandidateItem>,
+    #[serde(default)]
+    pub has_next: bool,
+}
+
+/// `resize_segment` の返事。`segment` と `delta`（と、書いてあれば `layout_rev`）で引く。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ScriptResize {
+    pub segment: u32,
+    pub delta: i32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout_rev: Option<u32>,
+    pub layout: ScriptLayout,
+}
+
+/// 絵文字の表の 1 行。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ScriptEmoji {
+    pub name: String,
+    pub emoji: String,
+}
+
+impl EngineScript {
+    pub fn segment_page(&self, segment: u32, index: u32) -> Option<&ScriptSegmentPage> {
+        self.segment_pages
+            .iter()
+            .find(|page| page.segment == segment && page.page_index == index)
+    }
+
+    pub fn resize(&self, segment: u32, delta: i32, layout_rev: u32) -> Option<&ScriptLayout> {
+        self.resizes
+            .iter()
+            .find(|resize| {
+                resize.segment == segment
+                    && resize.delta == delta
+                    && resize.layout_rev.is_none_or(|rev| rev == layout_rev)
+            })
+            .map(|resize| &resize.layout)
+    }
 }
 
 /// `request`（要求の種類。`engine.proto` の `Envelope.body` の欄の名前）の `nth` 回目（1 から）を `error` で失敗させる。
@@ -214,12 +319,16 @@ pub struct Scenario {
     /// 移した元のテスト（`ファイル名 型名.関数名`）
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub from: String,
+    /// Rust の実行器だけで流す理由（殻の判断のうち、Swift では IkariIME（AppKit）にあってテストから呼べないもの。
+    /// Swift の実行器は飛ばして数える。L-A2 で足した）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rust_only: Option<String>,
     #[serde(default)]
     pub setup: Setup,
     pub steps: Vec<Step>,
 }
 
-/// 手順の 1 つ。`event`、`press`、`type_text` のどれか 1 つを書く。
+/// 手順の 1 つ。`event`、`press`、`type_text`、`host` のどれか 1 つを書く。
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Step {
@@ -234,6 +343,12 @@ pub struct Step {
     /// 文字ごとに修飾なしの `character` のキーを打つ
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub type_text: Option<String>,
+    /// `ShellEvent` で表せない OS とのやりとり（`Shell` の公開の関数。L-A2 で足した）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<HostCall>,
+    /// この手順のあとに `Shell::take_mode_request` が返すモード（`japanese`、`english`、`none`。L-A2 で足した）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode_request: Option<String>,
     /// この手順から先の周辺テキスト（次に書くまで続く）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub surrounding: Option<ScenarioSurrounding>,
@@ -246,6 +361,22 @@ pub struct Step {
     /// この手順でエンジンへ送った要求の列（`type` と、書いた欄だけを比べる）。`[]` は「何も送らない」。省けば比べない
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub engine: Option<Vec<Map<String, Value>>>,
+}
+
+/// `ShellEvent` で表せない OS とのやりとり（`Shell` の公開の関数。ADR 0041 §4.1 に足す候補）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum HostCall {
+    /// `Shell::input_mode_changed`（macOS の `setValue(_:forTag:)`）
+    InputModeChanged { mode_id: String },
+    /// `Shell::commit_composition`（IMK の `commitComposition`）
+    CommitComposition,
+    /// `Shell::absorb_mode_key`（JIS の英数・かなキー）
+    AbsorbModeKey,
+    /// `Shell::panel_shown`（候補ウィンドウの上下。`above` か `below`）
+    PanelShown { side: String },
+    /// `Shell::panel_hidden`
+    PanelHidden,
 }
 
 /// シナリオの誤り（形の誤り）。
@@ -281,17 +412,21 @@ pub const ENGINE_REQUEST_TYPES: &[&str] = &[
 ];
 
 impl Step {
-    /// この手順で送るイベントの列。`secure` は `press`・`type_text` のキーに入れる。
+    /// この手順で送るイベントの列。`secure` は `press`・`type_text` のキーに入れる。`host` の手順は空。
     pub fn events(&self, secure: bool) -> Result<Vec<ShellEvent>, ScenarioError> {
         let given = [
             self.event.is_some(),
             self.press.is_some(),
             self.type_text.is_some(),
+            self.host.is_some(),
         ];
         if given.iter().filter(|set| **set).count() != 1 {
             return Err(ScenarioError(
-                "a step needs exactly one of event, press, type_text".into(),
+                "a step needs exactly one of event, press, type_text, host".into(),
             ));
+        }
+        if self.host.is_some() {
+            return Ok(Vec::new());
         }
         if let Some(event) = &self.event {
             return Ok(vec![event.clone()]);
