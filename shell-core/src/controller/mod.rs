@@ -145,6 +145,10 @@ pub struct Shell {
     /// LM の読み込み中の次の取り直し（回数、世代）。`LM_POLL_TIMER` で流す
     pending_lm_poll: Option<(u32, u64)>,
     last_menu: Option<MenuModel>,
+    /// 最後にメニューを作ったときの入力（設定の版、LM の状態、分野の版）。同じなら作り直さない（打鍵ごとの手間を減らす）
+    menu_inputs: Option<(u64, Option<EngineLmState>, u64)>,
+    /// 分野を受け取るたびに進める
+    profile_version: u64,
 
     background: Background,
     background_poll_scheduled: bool,
@@ -187,6 +191,8 @@ impl Shell {
             poll_generation: 0,
             pending_lm_poll: None,
             last_menu: None,
+            menu_inputs: None,
+            profile_version: 0,
             background,
             background_poll_scheduled: false,
         })
@@ -754,10 +760,14 @@ impl Shell {
         for result in self.background.drain() {
             actions.extend(self.accept(result));
         }
-        let menu = self.menu_model();
-        if self.last_menu.as_ref() != Some(&menu) {
-            self.last_menu = Some(menu.clone());
-            actions.push(ShellAction::ShowMenu(menu));
+        let inputs = (self.settings.version(), self.lm_state, self.profile_version);
+        if self.menu_inputs != Some(inputs) {
+            self.menu_inputs = Some(inputs);
+            let menu = self.menu_model();
+            if self.last_menu.as_ref() != Some(&menu) {
+                self.last_menu = Some(menu.clone());
+                actions.push(ShellAction::ShowMenu(menu));
+            }
         }
         if self.background.has_outstanding() && !self.background_poll_scheduled {
             self.background_poll_scheduled = true;
@@ -800,6 +810,7 @@ impl Shell {
                     self.lm_state = Some(lm);
                     if let Some(profile) = profile {
                         self.profile = Some(profile);
+                        self.profile_version += 1;
                     }
                     if lm == EngineLmState::Loading && attempt < LM_POLL_LIMIT {
                         self.pending_lm_poll = Some((attempt + 1, generation));
@@ -829,6 +840,7 @@ impl Shell {
             JobResult::Profile(domains) => {
                 if let Some(domains) = domains {
                     self.profile = Some(domains);
+                    self.profile_version += 1;
                 }
                 Vec::new()
             }
