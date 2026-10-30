@@ -11,3 +11,8 @@ ikari-proto.workspace = true
 prost.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+
+# 殻の性能の測り手（ADR 0041 §6.3。`cargo xtask perf shell` が呼ぶ。自前の main を持つので harness を使わない）
+[[bench]]
+name = "shell_perf"
+harness = false
