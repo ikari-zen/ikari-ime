@@ -1,5 +1,5 @@
-//! Rust 版の殻の性能の測り手（ADR 0041 §6.3。P1・P3・P4）。`macos/Sources/IkariShellBench/main.swift`（Swift 版）と
-//! 同じ手順・同じ出力の形で、`cargo xtask perf shell` が両方を呼んで比べる。
+//! Rust 版の殻の性能の測り手（ADR 0041 §6.3。P1・P3・P4）。移行の前の Swift 版の測り手（M5 で消した）と同じ手順・同じ
+//! 出力の形で、`cargo xtask perf shell` が呼ぶ。基準値（`eval/reports/shell-perf/baseline.json` の `swift.*`）は固定。
 //!
 //! - P1: キー 1 回の `Shell::dispatch` の時間（ナノ秒）。同期のエンジン要求（convert、page、segment_page、resize_segment、
 //!   reconvert、postal_lookup）を送ったキーは除く（「Convert を含まない」）。共通のシナリオ全部を `--repeat` 回くり返す

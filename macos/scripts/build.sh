@@ -141,7 +141,7 @@ build_swift() {
   log "swift build ($CONFIG)"
   mkdir -p "$OUT"
   local build_log="$OUT/swift-build.log"
-  # 配るプロダクトだけをビルドする。全体のビルドには ikari-shell-bench（@testable。-enable-testing が要る。cargo xtask perf が自前でビルドする）が入り、release で失敗する
+  # 配るプロダクトだけをビルドする
   # `--product` を並べると最後の 1 つしかビルドされない（swift 6.2）ので、1 つずつビルドする
   local product
   : >"$build_log"

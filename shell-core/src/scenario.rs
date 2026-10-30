@@ -1,7 +1,7 @@
 //! 共通のシナリオ（JSON）の形（ADR 0041 §5）。**契約**。説明は `shell-core/scenarios/README.md`。
 //!
-//! Rust の実行器（`shell-core/tests/scenarios.rs`）、Swift の実行器（`macos/Tests/IkariShellCoreTests/ScenarioRunnerTests.swift`。
-//! 移行の間だけ）、性能の計測（`cargo xtask perf shell`。L-P）が同じファイルを読む。
+//! Rust の実行器（`shell-core/tests/scenarios.rs`）と、性能の計測（`cargo xtask perf shell`。L-P）が同じファイルを読む
+//! （移行の間の Swift の実行器は M5 で消した）。
 
 use std::path::{Path, PathBuf};
 

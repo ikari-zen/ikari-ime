@@ -1,4 +1,4 @@
-//! `Envelope` の組み立てと読み取り、要求の検証、返事の検証（今の Swift の `EnvelopeCodec`、`PostalLookupCodec`、
+//! `Envelope` の組み立てと読み取り、要求の検証、返事の検証（移行の前の Swift の `EnvelopeCodec`、`PostalLookupCodec`、
 //! `EmojiTableCodec`。ADR 0004 §5.2「信用しない入力」）。
 //!
 //! 文字数は Unicode のスカラー値（`char`）で数える。Swift の `String.count`（書記素クラスタ）とは、結合文字や

@@ -26,7 +26,7 @@ message SettingsSnapshot { repeated SettingEntry effective = 1; } // すべて�
 message UpdateSettings { repeated SettingEntry set = 1; repeated string reset = 2; }   // reset = その行を消して既定に戻す
 message Event { oneof kind { SettingsChanged settings_changed = 1; OpenTab open_tab = 2; } }
 message SettingsChanged {}                                        // メニューや手の編集で変わった。設定アプリは取り直す
-message OpenTab { string tab = 1; }                               // IkariShellCore.SettingsTab の rawValue
+message OpenTab { string tab = 1; }                               // 設定アプリのタブの名前（input、conversion、dictionary、learning、about）
 message BridgeError { BridgeErrorCode code = 1; string key = 2; }  // key は不正だった設定のキー名だけ
 enum BridgeErrorCode { BRIDGE_ERROR_UNSPECIFIED = 0; VERSION_MISMATCH = 1; INVALID_SETTING = 2; NOT_ALLOWED = 3;
                        ENGINE_UNAVAILABLE = 4; TOO_LARGE = 5; WRITE_FAILED = 6; }
