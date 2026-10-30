@@ -142,10 +142,13 @@ build_swift() {
   mkdir -p "$OUT"
   local build_log="$OUT/swift-build.log"
   # 配るプロダクトだけをビルドする。全体のビルドには ikari-shell-bench（@testable。-enable-testing が要る。cargo xtask perf が自前でビルドする）が入り、release で失敗する
-  local product_args=() product
-  for product in ikari IkariEngine ikari-smoke IkariSettings; do product_args+=(--product "$product"); done
-  swift build -c "$CONFIG" --manifest-cache none --package-path "$IKARI_MACOS_DIR" "${product_args[@]}" >"$build_log" 2>&1 \
-    || { tail -40 "$build_log" >&2; die "swift build が失敗しました（${build_log}）"; }
+  # `--product` を並べると最後の 1 つしかビルドされない（swift 6.2）ので、1 つずつビルドする
+  local product
+  : >"$build_log"
+  for product in ikari IkariEngine ikari-smoke IkariSettings; do
+    swift build -c "$CONFIG" --manifest-cache none --package-path "$IKARI_MACOS_DIR" --product "$product" >>"$build_log" 2>&1 \
+      || { tail -40 "$build_log" >&2; die "swift build が失敗しました（${build_log}）"; }
+  done
   tail -1 "$build_log"
   BIN_DIR="$(swift build -c "$CONFIG" --manifest-cache none --package-path "$IKARI_MACOS_DIR" --show-bin-path)"
   for product in ikari IkariEngine ikari-smoke IkariSettings; do
