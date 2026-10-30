@@ -1,12 +1,11 @@
 # 共通のシナリオ（JSON）
 
 殻の振る舞いを、OS と言語に依存しない形で書いたもの（ADR 0041 §5。`docs/adr/0041-shell-state-machine-in-rust.md`。PR #136）。
-同じファイルを次の 3 つが読む。
+同じファイルを次の 2 つが読む（移行の間は Swift の実行器も読んでいたが、M5 で Swift の状態機械と一緒に消した）。
 
 | 読み手 | 場所 | いつまで |
 | --- | --- | --- |
 | Rust の実行器 | `shell-core/tests/scenarios.rs`（`cargo test -p ikari-shell-core`） | ずっと。照合の `scenarios_match_on_rust`（全件）と形の検査 `scenarios_are_well_formed` |
-| Swift の実行器 | `macos/Tests/IkariShellCoreTests/ScenarioRunnerTests.swift`（`swift test`） | 移行の間だけ（M5 で消す）。今の Swift の状態機械で、`rust_only` 以外が全部通ること |
 | 性能の計測 | `cargo xtask perf shell`（L-P） | ずっと |
 
 形の正は Rust の serde の型（`shell-core/src/scenario.rs` と `types.rs`）。知らない欄は誤りにする（綴りの誤りで黙って通らないように）。
@@ -82,6 +81,7 @@
 - `diag` と `emoji_table` は比べない（片道・非同期で、順が決まらない）。`prefetch` は `page_size` を持たない（`engine.proto` に合わせる）。
 
 ### Rust だけで流すシナリオ（`rust_only`）
+（移行の間の印。Swift の実行器は M5 で消したので、今はすべて Rust の実行器で流れる。印と理由は記録として残す）
 殻の判断（`IkariInputController`・`AppContext` の、セッション、英語のモード、モードの切り替え、メニューの命令）は、Swift では
 `IkariIME`（AppKit）にあって、テストから呼べない。これらは `rust_only` に理由を書き、Swift の実行器は飛ばす。
 Swift の替え玉が本物と違うもの（かな入力の合成器が文字を受け取る、キーリピートを渡せない）も同じ扱いにする。
@@ -90,12 +90,12 @@ Swift の替え玉が本物と違うもの（かな入力の合成器が文字�
 1. 期待を省いたシナリオ（`{"name": …, "steps": […]}`）を、`{"<ファイル名>": ScenarioFile}` の形の JSON に書く。
 2. `IKARI_SCENARIO_RECORD_IN=<その JSON> IKARI_SCENARIO_RECORD_OUT=<出力> cargo test -p ikari-shell-core --test scenarios record_expectations -- --ignored`
    で、手順ごとの動作とエンジンへの送信（`session_id`、`context_rev` を除く）を書き出す（`EngineLink` が要る）。
-3. 期待を埋めてファイルに置き、**Swift の実行器が通ることを確かめる**（今の振る舞いと同じであることの証拠）。`rust_only` は、殻の Swift のコードを読んで確かめる。
+3. 期待を埋めてファイルに置き、記録した動作が意図どおりかを読んで確かめる（移行の間は、Swift の実行器が通ることを今の振る舞いと同じである証拠にしていた。M5 で Swift の実行器を消したので、今は Rust の実行器だけ）。
 
 ## 書くときの約束
-- **ローマ字は、Swift の替え玉（`macos/Tests/IkariShellCoreTests/Support/Doubles.swift` の `FakeComposer`）と本物の合成器（`ikari_input`）で同じ結果になる綴りだけを使う**。Swift の実行器は替え玉で、Rust の実行器は本物で流すため。かな入力の `jis:<番号>` も替え玉の表にある番号だけ。字種変換は F6〜F8（ひらがな、全角カタカナ、半角カタカナ）だけを使う（替え玉の F9・F10 は本物と違う）。
+- 移行の間に書いたシナリオは、Swift の替え玉の合成器と本物の合成器（`ikari_input`）で同じ結果になる綴りと、F6〜F8 だけを使っている（Swift の実行器は M5 で消した。今は本物の合成器だけなので、この制約はない）。
 - 振る舞いを変えたら、まずシナリオを足すか直す（ADR 0041 §8）。
-- 期待は、今の振る舞いを確かめてから書く（Swift の実行器が通ること）。
+- 期待は、今の振る舞いを確かめてから書く。
 
 ## 今あるもの（M1-a、L-A2）
 | ファイル | 中身 | 件数 |

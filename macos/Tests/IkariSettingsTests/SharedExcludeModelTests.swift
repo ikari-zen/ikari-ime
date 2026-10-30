@@ -2,7 +2,6 @@
 #if IKARI_HAS_SHELL_FFI
 // 「文脈を共有しないアプリ」の欄（ADR 0015 D6）のモデル。
 import Foundation
-import IkariShellCore
 import Testing
 
 @testable import IkariSettings
@@ -12,7 +11,9 @@ import Testing
         let harness = try await Harness.make()
         defer { harness.close() }
         let model = await makeSettingsModel(harness)
-        #expect(model.values.contextSharedExclude == Settings.defaultContextSharedExclude)
+        // 既定の一覧は shell-core が返す（空でないこと。下のテストは既定の項目を消して確かめる）
+        #expect(!SettingsValues.defaults.contextSharedExclude.isEmpty)
+        #expect(model.values.contextSharedExclude == SettingsValues.defaults.contextSharedExclude)
     }
 
     @Test func addRemoveAndResetGoThroughTheShell() async throws {
@@ -29,14 +30,14 @@ import Testing
         #expect(!model.values.contextSharedExclude.contains("com.apple.Terminal"))
 
         await model.resetSharedExclude()
-        #expect(model.values.contextSharedExclude == Settings.defaultContextSharedExclude)
+        #expect(model.values.contextSharedExclude == SettingsValues.defaults.contextSharedExclude)
     }
 
     @Test func removingEveryEntryStoresAnEmptyList() async throws {
         let harness = try await Harness.make()
         defer { harness.close() }
         let model = await makeSettingsModel(harness)
-        for id in Settings.defaultContextSharedExclude { await model.removeSharedExclude(id) }
+        for id in SettingsValues.defaults.contextSharedExclude { await model.removeSharedExclude(id) }
         #expect(model.errorMessage == nil)
         #expect(model.values.contextSharedExclude.isEmpty)
         #expect(harness.shell.state.snapshot.settings["context.shared_exclude"] == "")
@@ -49,11 +50,11 @@ import Testing
         await model.addSharedExclude("com.a b")
         #expect(model.errorMessage != nil)
         await model.addSharedExclude("com.a,com.b")
-        #expect(model.values.contextSharedExclude == Settings.defaultContextSharedExclude)
+        #expect(model.values.contextSharedExclude == SettingsValues.defaults.contextSharedExclude)
         model.dismissError()
         await model.addSharedExclude("com.apple.Terminal")
         #expect(model.errorMessage == nil)
-        #expect(model.values.contextSharedExclude == Settings.defaultContextSharedExclude)
+        #expect(model.values.contextSharedExclude == SettingsValues.defaults.contextSharedExclude)
     }
 }
 
@@ -114,7 +115,7 @@ import Testing
         let model = await makeSettingsModel(harness)
         await model.addSharedExclude(appAt: try makeApp(named: "NoID", bundleID: nil))
         #expect(model.errorMessage?.contains("NoID") == true)
-        #expect(model.values.contextSharedExclude == Settings.defaultContextSharedExclude)
+        #expect(model.values.contextSharedExclude == SettingsValues.defaults.contextSharedExclude)
     }
 }
 

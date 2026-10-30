@@ -2,7 +2,6 @@
 #if IKARI_HAS_SHELL_FFI
 // 「Unicode 表記」の欄のモデル
 import Foundation
-import IkariShellCore
 import Testing
 
 @testable import IkariSettings

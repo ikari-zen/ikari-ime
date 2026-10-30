@@ -75,7 +75,7 @@ fn scenarios_match_on_rust() {
 /// 期待を書くための記録（ADR 0041 §5。今の振る舞いを JSON に固めるとき）。
 ///
 /// `IKARI_SCENARIO_RECORD_IN` の JSON（`{"<ファイル名>": ScenarioFile}`）の全シナリオを流し、手順ごとの動作とエンジンへの送信を
-/// `IKARI_SCENARIO_RECORD_OUT` に書く。記録した期待は、Swift の実行器が通ることで今の振る舞いと確かめる（README）。
+/// `IKARI_SCENARIO_RECORD_OUT` に書く。記録した期待は、読んで意図どおりかを確かめる（README）。
 #[test]
 #[ignore = "期待を書くときだけ手で流す"]
 fn record_expectations() {

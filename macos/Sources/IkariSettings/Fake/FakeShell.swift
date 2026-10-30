@@ -9,7 +9,6 @@ import Foundation
 import IkariBridge
 import IkariProto
 import IkariShellABI
-import IkariShellCore
 
 /// 小さな排他つきの箱（テストが状態を覗くため）
 final class Locked<Value>: @unchecked Sendable {

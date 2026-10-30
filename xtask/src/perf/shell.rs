@@ -1,13 +1,14 @@
 //! `cargo xtask perf shell`: P1（キー 1 回）、P3（殻の起動）、P4（メモリ）（ADR 0041 §6.3）。
 //!
-//! 共通のシナリオ（`shell-core/scenarios/`）を替え玉のエンジンで再生する測り手を、実装ごとに呼ぶ。
-//! - Swift 版: `macos/Sources/IkariShellBench/`（macOS のみ。移行の間だけ。M5 で消す）。`swift build` で作って流す
+//! 共通のシナリオ（`shell-core/scenarios/`）を替え玉のエンジンで再生する測り手を呼ぶ。
 //! - Rust 版: `shell-core/benches/shell_perf.rs`。`Shell` が stub の間（`"stub": true`）は、結果に入れない
+//! - Swift 版: 測り手（`IkariShellBench`）は移行の片付け（M5）で Swift の状態機械と一緒に消した。もう測れない。
+//!   `eval/reports/shell-perf/baseline.json` の `swift.*` は、移行の前に取った基準値として固定で残す（`perf compare` の既定の比較相手）
 //!
 //! 1 回の計測 = P1 の測り手を 1 プロセス（キー全部を `--repeat` 回）+ P3 の測り手を 1 プロセス（初期化を `--repeat` 回）。
 //! それを `--runs` 回（既定 5）くり返し、指標ごとに中央値と最小・最大を記録する。P4 は P1 のプロセスの最大 RSS。
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
 use serde_json::{Value, json};
@@ -19,6 +20,8 @@ pub const DEFAULT_RUNS: usize = 5;
 pub const DEFAULT_REPEAT: usize = 100;
 pub const DEFAULT_SHORTCODE_ENTRIES: usize = 2000;
 
+/// 指標の名前の接頭辞（`swift.`・`rust.`）になる実装。`Swift` は基準値のファイルを読むときの名前としてだけ残す
+/// （測り手は M5 で消した。`perf shell --impl swift` は誤りになる）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum Implementation {
     Swift,
@@ -36,7 +39,7 @@ impl Implementation {
 
 #[derive(Debug, clap::Args)]
 pub struct Args {
-    /// 測る実装（くり返して指定。既定は両方。Swift は macOS のみ）
+    /// 測る実装（既定は rust。swift の測り手は M5 で消したので、指定すると誤りになる）
     #[arg(long = "impl", value_enum)]
     pub implementations: Vec<Implementation>,
     /// 計測をくり返す回数（指標ごとに中央値と最小・最大を記録する）
@@ -90,109 +93,59 @@ pub fn parse_bench_output(stdout: &str) -> Result<BenchResult, XtaskError> {
     })
 }
 
-/// 実装ごとの測り手を呼ぶ口。
-struct Bench {
-    implementation: Implementation,
-    swift_binary: Option<PathBuf>,
-}
+/// Rust 版の測り手を呼ぶ口。
+struct Bench;
 
 impl Bench {
     fn prepare(implementation: Implementation) -> Result<Self, XtaskError> {
-        let swift_binary = match implementation {
-            Implementation::Swift => Some(build_swift_bench()?),
-            Implementation::Rust => {
-                // ビルドは先に済ませる（計測の中に入れない）
-                capture(
-                    Command::new("cargo").current_dir(repo_root()).args([
-                        "bench",
-                        "-p",
-                        "ikari-shell-core",
-                        "--bench",
-                        "shell_perf",
-                        "--no-run",
-                    ]),
-                    "cargo bench --no-run",
-                )?;
-                None
-            }
-        };
-        Ok(Self {
-            implementation,
-            swift_binary,
-        })
+        if implementation == Implementation::Swift {
+            return Err(swift_bench_removed());
+        }
+        // ビルドは先に済ませる（計測の中に入れない）
+        capture(
+            Command::new("cargo").current_dir(repo_root()).args([
+                "bench",
+                "-p",
+                "ikari-shell-core",
+                "--bench",
+                "shell_perf",
+                "--no-run",
+            ]),
+            "cargo bench --no-run",
+        )?;
+        Ok(Self)
     }
 
     fn run(&self, metric: &str, args: &Args) -> Result<BenchResult, XtaskError> {
         let repeat = args.repeat.to_string();
         let entries = args.shortcode_entries.to_string();
-        let stdout = match (&self.swift_binary, self.implementation) {
-            (Some(binary), Implementation::Swift) => capture(
-                Command::new(binary).args([
-                    "--metric",
-                    metric,
-                    "--scenarios",
-                    &repo_root().join("shell-core/scenarios").to_string_lossy(),
-                    "--resources",
-                    &repo_root().join("macos/Resources").to_string_lossy(),
-                    "--repeat",
-                    &repeat,
-                    "--shortcode-entries",
-                    &entries,
-                ]),
-                "ikari-shell-bench",
-            )?,
-            _ => capture(
-                Command::new("cargo").current_dir(repo_root()).args([
-                    "bench",
-                    "-p",
-                    "ikari-shell-core",
-                    "--bench",
-                    "shell_perf",
-                    "--",
-                    "--metric",
-                    metric,
-                    "--repeat",
-                    &repeat,
-                    "--shortcode-entries",
-                    &entries,
-                ]),
+        let stdout = capture(
+            Command::new("cargo").current_dir(repo_root()).args([
+                "bench",
+                "-p",
+                "ikari-shell-core",
+                "--bench",
                 "shell_perf",
-            )?,
-        };
+                "--",
+                "--metric",
+                metric,
+                "--repeat",
+                &repeat,
+                "--shortcode-entries",
+                &entries,
+            ]),
+            "shell_perf",
+        )?;
         parse_bench_output(&stdout)
     }
 }
 
-/// Swift 版の測り手をリリースでビルドし、実行ファイルの場所を返す。
-/// `Doubles.swift` が `@testable import` を使うので、`-enable-testing` を付ける（最適化は効いたまま）。
-fn build_swift_bench() -> Result<PathBuf, XtaskError> {
-    if !cfg!(target_os = "macos") {
-        return Err(err(
-            "Swift 版の測り手は macOS でだけ流せます（--impl rust を使う）",
-        ));
-    }
-    let macos = repo_root().join("macos");
-    let build = |extra: &[&str]| {
-        let mut command = Command::new("swift");
-        command.current_dir(&macos).args([
-            "build",
-            "-c",
-            "release",
-            "--product",
-            "ikari-shell-bench",
-            "-Xswiftc",
-            "-enable-testing",
-        ]);
-        command.args(extra);
-        capture(&mut command, "swift build")
-    };
-    build(&[])?;
-    let bin_path = build(&["--show-bin-path"])?;
-    let binary = Path::new(bin_path.trim()).join("ikari-shell-bench");
-    if !binary.exists() {
-        return Err(err(format!("{} がありません", binary.display())));
-    }
-    Ok(binary)
+/// Swift 版の測り手はもうない（M5）。基準値は `baseline.json` の `swift.*` に固定で残っている
+fn swift_bench_removed() -> XtaskError {
+    err(
+        "Swift 版の測り手（IkariShellBench）は M5 で消したので測れません。基準値は \
+         eval/reports/shell-perf/baseline.json の swift.* に固定で残っています（--impl rust を使う）",
+    )
 }
 
 pub fn run(args: Args) -> Result<(), XtaskError> {
@@ -200,14 +153,13 @@ pub fn run(args: Args) -> Result<(), XtaskError> {
         return Err(err("--runs と --repeat は 1 以上"));
     }
     let implementations = if args.implementations.is_empty() {
-        if cfg!(target_os = "macos") {
-            vec![Implementation::Swift, Implementation::Rust]
-        } else {
-            vec![Implementation::Rust]
-        }
+        vec![Implementation::Rust]
     } else {
         args.implementations.clone()
     };
+    if implementations.contains(&Implementation::Swift) {
+        return Err(swift_bench_removed());
+    }
 
     let mut collector = Collector::default();
     let mut skipped = Vec::new();
@@ -309,6 +261,19 @@ mod tests {
     fn missing_fields_are_errors() {
         assert!(parse_bench_output("{\"p50_ns\":1}").is_err());
         assert!(parse_bench_output("no json").is_err());
+    }
+
+    #[test]
+    fn the_swift_bench_is_gone() {
+        let args = Args {
+            implementations: vec![Implementation::Swift],
+            runs: 1,
+            repeat: 1,
+            shortcode_entries: 1,
+            out: None,
+        };
+        let message = run(args).unwrap_err().to_string();
+        assert!(message.contains("M5"), "{message}");
     }
 
     #[test]

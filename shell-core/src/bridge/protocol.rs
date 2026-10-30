@@ -1,4 +1,4 @@
-//! 設定アプリと殻のブリッジの約束（ADR 0005 §6.3。今の Swift の `BridgeProtocol`、`BridgeLimits`、`Frame.error`、
+//! 設定アプリと殻のブリッジの約束（ADR 0005 §6.3。移行の前の Swift の `BridgeProtocol`、`BridgeLimits`、`Frame.error`、
 //! `BridgeHandshake`）。
 
 use super::proto::Frame;

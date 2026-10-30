@@ -1,11 +1,12 @@
-// EngineClient の XPC 実装（ADR 0004 §5.1、§7.5）。
+// エンジンの XPC の型付きの口（ADR 0004 §5.1、§7.5）。**今は smoke（IkariSmoke）だけが使う。**
+// IME の殻は shell-core（Rust）がエンジンと話し、Swift は輸送（`XPCEngineConnections`）だけを持つ（ADR 0041）。
 // 接続、署名要件、interruption / invalidation の処理、再接続、タイムアウト、
 // 60秒に3回落ちたら5分休む、を持つ。メッセージの運搬は EngineTransport に任せる。
+// 殻だけが使っていた口（絵文字の表、郵便番号、診断ログ、分野の管理）は M5 で消した。
 import Foundation
 import IkariProto
-import IkariShellCore
 
-public final class XPCEngineClient: EngineClient, @unchecked Sendable {
+public final class XPCEngineClient: @unchecked Sendable {
     /// 落ちた回数がこの数に達したら休む（ADR 0004 §7.5）
     static let crashLimit = 3
     static let crashWindow: TimeInterval = 60
@@ -31,9 +32,6 @@ public final class XPCEngineClient: EngineClient, @unchecked Sendable {
     private var crashDates: [Date] = []
     private var suspendedUntil: Date?
     private var observedEngineVersion: String?
-    /// 前回の `sh_engine` を送ってからの事象の数（ADR 0034 §4.2）。`condition` が守る。メモリ上の整数だけ
-    private var engineCounts = DiagEngineCounts()
-
     /// 同梱の XPC サービスにつなぐ。`signing` で署名要件（相手 = エンジン）が決まる。
     public convenience init(serviceName: String = IkariIdentifiers.engine, signing: SigningMode) {
         let requirement = SigningRequirements.engine(mode: signing)
@@ -74,7 +72,7 @@ public final class XPCEngineClient: EngineClient, @unchecked Sendable {
         return false
     }
 
-    // MARK: EngineClient
+    // MARK: 要求と通知
 
     public func hello(shellVersion: String, timeout: Duration) throws -> EngineHello {
         condition.lock()
@@ -131,16 +129,6 @@ public final class XPCEngineClient: EngineClient, @unchecked Sendable {
     }
 
     public func convert(_ request: ConversionRequest, timeout: Duration) throws -> ConversionPage {
-        do {
-            return try convertOnce(request, timeout: timeout)
-        } catch {
-            // 殻は、失敗した変換をエンジンなしの候補で補う
-            count { $0.fallbackConvs += 1 }
-            throw error
-        }
-    }
-
-    private func convertOnce(_ request: ConversionRequest, timeout: Duration) throws -> ConversionPage {
         guard Self.isValid(request) else { throw EngineClientError.engine(.badRequest) }
         let env = try roundTrip(timeout: timeout) { env in
             var msg = Ikari_Engine_V1_Convert()
@@ -249,71 +237,12 @@ public final class XPCEngineClient: EngineClient, @unchecked Sendable {
         }
     }
 
-    /// 診断ログの事象（ADR 0034）。`commitText` と同じ片道。キーを並べ替えて同じ入力から同じバイト列にする
-    public func diag(_ event: DiagEventValue) {
-        postEngineCountsIfAny(sessionID: event.sessionID)
-        post(Self.diagMessage(event))
-    }
-
-    private static func diagMessage(_ event: DiagEventValue) -> (inout Envelope) -> Void {
-        { env in
-            var msg = Ikari_Engine_V1_DiagEvent()
-            msg.sessionID = event.sessionID
-            msg.kind = event.kind
-            msg.nums = event.nums.sorted { $0.key < $1.key }.map { key, value in
-                var num = Ikari_Engine_V1_DiagNum()
-                num.key = key
-                num.value = value
-                return num
-            }
-            msg.tags = event.tags.sorted { $0.key < $1.key }.map { key, value in
-                var tag = Ikari_Engine_V1_DiagTag()
-                tag.key = key
-                tag.value = value
-                return tag
-            }
-            env.diag = msg
-        }
-    }
-
-    /// 前回から事象があれば `sh_engine` を 1 行送る（ADR 0034 §4.2）。送る専用のタイマーは持たず、殻の事象（`sh_episode` など）に
-    /// 相乗りする。つながらなくて送れなかったら、数は持ち越す。secure のセッションでは `diag` 自体が呼ばれない
-    private func postEngineCountsIfAny(sessionID: UInt64) {
-        condition.lock()
-        let counts = engineCounts
-        condition.unlock()
-        guard !counts.isEmpty else { return }
-        let event = counts.event(sessionID: sessionID)
-        guard post(Self.diagMessage(event)) else { return }
-        condition.lock()
-        engineCounts.subtract(counts)
-        condition.unlock()
-    }
-
     public func cancel(conversionID: UInt64) {
         post { env in
             var msg = Ikari_Engine_V1_Cancel()
             msg.conversionID = conversionID
             env.cancel = msg
         }
-    }
-
-    /// 絵文字のショートコードの表（ADR 0027 §9.2）。主スレッドの外で呼ぶ（返事を待つ）
-    public func emojiTable(timeout: Duration) throws -> EmojiTableInfo {
-        let env = try roundTrip(timeout: timeout) { env in
-            env.emojiTable = Ikari_Engine_V1_EmojiTableRequest()
-        }
-        return try EnvelopeCodec.emojiTable(env)
-    }
-
-    /// 郵便番号（ASCII 数字 7 桁）の住所のリスト（ADR 0032 §9.1）。表にない番号は空。主スレッドの外で呼ぶ（返事を待つ）
-    public func postalLookup(code: String, timeout: Duration) throws -> [String] {
-        let env = try roundTrip(timeout: timeout) { env in
-            var request = Ikari_Engine_V1_PostalLookupRequest()
-            request.code = code
-            env.postalLookup = request
-        }
-        return try EnvelopeCodec.postalLookup(env)
     }
 
     /// エンジンに保存して終了するよう頼む（返事は最大 1 秒待つ）。終了は異常として数えない。
@@ -376,10 +305,10 @@ public final class XPCEngineClient: EngineClient, @unchecked Sendable {
     }
 
     /// 左文脈は末尾 2000 文字に切る（殻の責任だが、ここでも守る）
-    private static func clipped(_ text: IkariShellCore.SurroundingText) -> IkariShellCore.SurroundingText {
-        guard text.left.count > IkariShellCore.SurroundingText.maxCharacters else { return text }
+    private static func clipped(_ text: SurroundingText) -> SurroundingText {
+        guard text.left.count > SurroundingText.maxCharacters else { return text }
         var out = text
-        out.left = String(text.left.suffix(IkariShellCore.SurroundingText.maxCharacters))
+        out.left = String(text.left.suffix(SurroundingText.maxCharacters))
         return out
     }
 
@@ -396,7 +325,6 @@ public final class XPCEngineClient: EngineClient, @unchecked Sendable {
         if let existing = transport {
             current = existing
         } else {
-            if generation > 0 { engineCounts.reconnect += 1 }
             generation += 1
             let mine = generation
             current = makeTransport { [weak self] down in self?.handleDown(down, generation: mine) }
@@ -404,7 +332,6 @@ public final class XPCEngineClient: EngineClient, @unchecked Sendable {
         }
         if needsResync {
             needsResync = false
-            engineCounts.resync += 1
             // 落ちたあとに起動し直したエンジンには、セッションの記憶がない。返事は待たずに送り直す
             if let version = shellVersion {
                 var hello = Ikari_Engine_V1_Hello()
@@ -444,13 +371,7 @@ public final class XPCEngineClient: EngineClient, @unchecked Sendable {
     private func roundTripOnce(timeout: Duration, _ build: (inout Envelope) -> Void) throws -> Envelope {
         let (transport, requestID) = try prepare()
         let data = encoded(requestID: requestID, build)
-        let reply: Data
-        do {
-            reply = try transport.request(data, timeout: timeout)
-        } catch {
-            if case EngineClientError.timeout = error { count { $0.timeout += 1 } }
-            throw error
-        }
+        let reply = try transport.request(data, timeout: timeout)
         let envelope = try EnvelopeCodec.decode(reply, expectedRequestID: requestID)
         if case .error(let failure)? = envelope.body, failure.code == .engineNotReady {
             // エンジンがまだ開けていない（ロックを別のプロセスが持っている、など）。あとで開いたエンジンには
@@ -463,17 +384,9 @@ public final class XPCEngineClient: EngineClient, @unchecked Sendable {
     }
 
     /// 返事を待たずに送る。つながらなければ捨てる（入力を止めない）。
-    @discardableResult
-    private func post(_ build: (inout Envelope) -> Void) -> Bool {
-        guard let (transport, requestID) = try? prepare() else { return false }
+    private func post(_ build: (inout Envelope) -> Void) {
+        guard let (transport, requestID) = try? prepare() else { return }
         transport.post(encoded(requestID: requestID, build))
-        return true
-    }
-
-    private func count(_ update: (inout DiagEngineCounts) -> Void) {
-        condition.lock()
-        update(&engineCounts)
-        condition.unlock()
     }
 
     private func handleDown(_ down: TransportDown, generation gen: Int) {
@@ -484,9 +397,6 @@ public final class XPCEngineClient: EngineClient, @unchecked Sendable {
         needsResync = true
         if down == .invalidated {
             transport = nil
-            engineCounts.invalidated += 1
-        } else {
-            engineCounts.interrupted += 1
         }
         if expectingExit {
             expectingExit = false
@@ -504,7 +414,6 @@ public final class XPCEngineClient: EngineClient, @unchecked Sendable {
         if crashDates.count >= Self.crashLimit {
             suspendedUntil = current.addingTimeInterval(Self.suspension)
             crashDates.removeAll()
-            engineCounts.breakerOpen += 1
         }
     }
 

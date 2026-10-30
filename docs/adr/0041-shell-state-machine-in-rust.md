@@ -253,6 +253,7 @@ M1-b 契約（C ABI。M0-a の後）──────┤
 | M5 片付け | `IkariShellCore`、仮の口、`ikari_composer_*`、Swift の実行器、`IkariShellBench` を消す。`docs/architecture.md` の依存の向き（`input`、`proto` ← `shell-core` ← `shell-ffi`）を更新。最後の §6.3 の比較 |
 
 - 作者の実機への入れ替えは、L-B、L-C、L-E が終わるたびに行う（インストールは聞かずに行ってよい。smoke は了解を取る）。戻すときは前の版を入れ直す（切り替えの設定は持たない）。入れ替えたら開いているアプリを再起動する。
+- 追記（M5、#138）: `IkariShellCore` とそのテスト（Swift の実行器を含む）、`IkariShellBench`、`ikari_composer_*`・`ikari_convert_script` を消した。仮の口は L-E で消えていた。smoke が使う型付きの口（`XPCEngineClient`）は `IkariXPC` に残し、設定アプリだけが使う `RelayPolicy`・`BridgeHandshake` は `IkariSettings` に移した。Swift 版の基準値（`eval/reports/shell-perf/baseline.json` の `swift.*`）は取り直せないので固定。
 
 ## 8. 移行の間の運用
 - 新機能の凍結はしない。ただし、**移す範囲の新機能とバグ修正は、まだ Swift にあるものでも、まず共通のシナリオを足す**（移すときにシナリオが Rust を縛る）。すでに Rust に移したものは Rust にだけ入れる。

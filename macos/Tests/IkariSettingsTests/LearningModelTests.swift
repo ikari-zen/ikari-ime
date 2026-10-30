@@ -251,7 +251,7 @@ private func sampleState() -> FakeState {
         let file = directory.appendingPathComponent("huge.tsv")
         FileManager.default.createFile(atPath: file.path, contents: nil)
         let handle = try FileHandle(forWritingTo: file)
-        try handle.truncate(atOffset: UInt64(AdminLimits.maxImportBytes) + 1)  // 疎なファイル
+        try handle.truncate(atOffset: SettingsCore.constants.maxImportBytes + 1)  // 疎なファイル
         try handle.close()
 
         let harness = try await Harness.make()

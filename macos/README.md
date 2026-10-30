@@ -43,18 +43,18 @@ Bundle ID `io.github.ikari-zen.inputmethod.ikari.settings`。Sandbox なし、Ha
 ## テスト
 
 ```sh
-swift test --manifest-cache none --package-path macos     # IkariShellCore、IkariBridge、IkariSettings（偽の殻）、IkariXPC（モック）、署名要件
+swift test --manifest-cache none --package-path macos     # IkariIME、IkariShellABI、IkariBridge、IkariSettings（偽の殻）、IkariXPC（モック）、署名要件
 macos/scripts/smoke.sh --signing adhoc                     # XPC 経由の E2E（約 25 秒。先に build.sh が要る）
 ```
 
-`ikari-smoke` の内容: Hello（署名要件を通ること）、文脈つきの変換（「ユーザー辞書に単語を登録するときは」+ ひんし → 1位が「品詞」）、確定、`kill -9` からの復帰（1 秒以内）、版の不一致（Shutdown が働き、プロセスが替わる）、打鍵のシミュレーション（120ms 間隔）での Convert の時間（p99 16ms 以下）。管理の E2E（ADR 0005 §10.1）: `UserDictAdd`（見張りの語「いかりすもーく → IKARI_SMOKE」）→ `Convert` に出る → `UserDictRemove` → 出なくなる、`LearningStatus`、`ProfileGet`、`ExportData` → `ImportData{dry_run}` の件数が一致、壊れた入力を断る。**本物のユーザーデータに触れる**ので、書き込むのは見張りの語の追加と削除だけで、インポートは `dry_run` だけ（学習のリセットとインポートの実行はしない。途中で失敗しても見張りの語は最後に消す）。XPC の `relay` を使うので、殻側の実装（`XPCEngineClient.relay`）とエンジンの管理（`admin.rs`）が揃っているときに通る。文節と再変換の E2E（`SegmentE2E.swift`。ADR 0006 §10.1）: **secure のセッション（ID 2）で行うので学習を汚さない**。`Convert`（はじめてしった。2 文節以上になり、読みの合計が元の読みに戻り、文節の最初の表記をつないだものが全体の第一候補と一致する）→ `SegmentPage`（文節 1。候補の 0 番が表示中の表記。古い版は `STALE_LAYOUT`、知らない変換は `UNKNOWN_CONVERSION`）→ `ResizeSegment`（りぽじとりめい を りぽじとり｜めい に。`layout_rev` が上がる）→ `CommitSegments`（変換が閉じる）、`Reconvert`（見張りの文字列「品詞」。最初の表示が選択と同じ）→ `Cancel`（変換が閉じる）。エンジンが文節に対応していないと FAIL になる。エンジンが `ENGINE_NOT_READY` を返すと FAIL になる。ikari を使っている間は IME のエンジンが `engine.lock` を持つので、smoke は最初にロックを試し、使用中なら「実行できない」と出して終了コード 2 で止まる（ABC などに切り替えてから流す）。
+`ikari-smoke` の内容: Hello（署名要件を通ること）、文脈つきの変換（「ユーザー辞書に単語を登録するときは」+ ひんし → 1位が「品詞」）、確定、`kill -9` からの復帰（1 秒以内）、版の不一致（Shutdown が働き、プロセスが替わる）、打鍵のシミュレーション（120ms 間隔）での Convert の時間（p99 16ms 以下）。管理の E2E（ADR 0005 §10.1）: `UserDictAdd`（見張りの語「いかりすもーく → IKARI_SMOKE」）→ `Convert` に出る → `UserDictRemove` → 出なくなる、`LearningStatus`、`ProfileGet`、`ExportData` → `ImportData{dry_run}` の件数が一致、壊れた入力を断る。**本物のユーザーデータに触れる**ので、書き込むのは見張りの語の追加と削除だけで、インポートは `dry_run` だけ（学習のリセットとインポートの実行はしない。途中で失敗しても見張りの語は最後に消す）。XPC の `relay` を使うので、smoke の型付きの口（`XPCEngineClient.relay`。IME の殻は shell-core がエンジンと話す）とエンジンの管理（`admin.rs`）が揃っているときに通る。文節と再変換の E2E（`SegmentE2E.swift`。ADR 0006 §10.1）: **secure のセッション（ID 2）で行うので学習を汚さない**。`Convert`（はじめてしった。2 文節以上になり、読みの合計が元の読みに戻り、文節の最初の表記をつないだものが全体の第一候補と一致する）→ `SegmentPage`（文節 1。候補の 0 番が表示中の表記。古い版は `STALE_LAYOUT`、知らない変換は `UNKNOWN_CONVERSION`）→ `ResizeSegment`（りぽじとりめい を りぽじとり｜めい に。`layout_rev` が上がる）→ `CommitSegments`（変換が閉じる）、`Reconvert`（見張りの文字列「品詞」。最初の表示が選択と同じ）→ `Cancel`（変換が閉じる）。エンジンが文節に対応していないと FAIL になる。エンジンが `ENGINE_NOT_READY` を返すと FAIL になる。ikari を使っている間は IME のエンジンが `engine.lock` を持つので、smoke は最初にロックを試し、使用中なら「実行できない」と出して終了コード 2 で止まる（ABC などに切り替えてから流す）。
 
 ## 知っておくこと
 
 - **Package.swift と manifest のキャッシュ**: `Package.swift` は `Frameworks/*.xcframework` の有無で依存を変える（`swift test` を Rust のビルドなしで流せるようにするため）。SwiftPM はこの結果をキャッシュするので、XCFramework を作り直したあとは `--manifest-cache none` を付ける（`build.sh` は付けている）。
 - **XCFramework のヘッダ**: 2つの XCFramework が同じ `include/module.modulemap` を出力して衝突するため、ヘッダと modulemap は `Headers/<モジュール名>/` の下に置く（`build.sh` の `stage_headers`）。
 - **launchd の再起動の間隔**: 起動して約 10 秒以内に終わったサービスは、launchd が再起動を遅らせる。smoke は kill の前にエンジンが十分長く動いていることを待つ。
-- **版の照合**: `XPCEngineClient.hello(shellVersion:)` は、`HelloReply.engine_version` が `shellVersion` と等しいことを求める。違えば `Shutdown` を送って起動し直し、それでも違えば `unavailable`（殻は単独で動く）。バンドルの版（`CFBundleShortVersionString`）は `Cargo.toml` の `[workspace.package] version`。エンジンはこれと同じ文字列を `engine_version` に入れること。
+- **版の照合**: 殻（shell-core の `EngineLink`）と smoke（`XPCEngineClient.hello(shellVersion:)`）は、`HelloReply.engine_version` が `shellVersion` と等しいことを求める。違えば `Shutdown` を送って起動し直し、それでも違えば `unavailable`（殻は単独で動く）。バンドルの版（`CFBundleShortVersionString`）は `Cargo.toml` の `[workspace.package] version`。エンジンはこれと同じ文字列を `engine_version` に入れること。
 - **XPC サービスの例外**: サービスは中身を解釈しないが、`Shutdown` だけは返事のあとにエンジンを閉じてプロセスを終える。
 - **アイコン**: `macos/Resources/icons/*.pdf` は、バンドルの `Contents/Resources/` の直下にコピーされる。Info.plist が使うのは `ikari.pdf`、`ikari-japanese.pdf`、`ikari-english.pdf`（英語のモード。輪郭の円に「A」。ADR 0026 §5.1）。
 - **署名の方式を切り替えたとき（adhoc と team）**: サンドボックスのコンテナ `~/Library/Containers/io.github.ikari-zen.inputmethod.ikari.engine` は署名に結び付く。署名が違うコンテナが残っていると、エンジンが起動時（`_libsecinit_appsandbox`）で止まり、Hello がタイムアウトすることがある。そのときはコンテナを消す（Finder で削除するか、ターミナルにフルディスクアクセスを許可して `rm -rf`）。

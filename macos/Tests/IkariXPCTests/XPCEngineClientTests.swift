@@ -1,6 +1,5 @@
 import Foundation
 import IkariProto
-import IkariShellCore
 import Testing
 
 @testable import IkariXPC
@@ -623,97 +622,6 @@ private final class LockedCounter: @unchecked Sendable {
     }
 }
 
-@Suite struct EngineAdminTests {
-    @Test func readsTheProfileDomains() throws {
-        let harness = Harness()
-        harness.respond = { _ in
-            profileReply([
-                ("it", "IT・ソフトウェア", .profileWeightOften), ("novel", "小説", .profileWeightOff),
-                ("biz", "ビジネス", .profileWeightSometimes), ("x", "未指定", .profileWeightUnspecified),
-            ])
-        }
-        let domains = try EngineAdmin(client: harness.makeClient()).profile()
-        #expect(
-            domains == [
-                ProfileDomain(id: "it", name: "IT・ソフトウェア", weight: .often),
-                ProfileDomain(id: "novel", name: "小説", weight: .off),
-                ProfileDomain(id: "biz", name: "ビジネス", weight: .sometimes),
-                ProfileDomain(id: "x", name: "未指定", weight: .off),
-            ])
-        guard case .getProfile? = harness.latest.requests.last?.body else {
-            Issue.record("expected get_profile")
-            return
-        }
-    }
-
-    @Test func setProfileSendsOnlyTheDomainsThatAreNotOff() throws {
-        let harness = Harness()
-        harness.respond = { _ in profileReply([("it", "IT", .profileWeightOften)]) }
-        let result = try EngineAdmin(client: harness.makeClient()).setProfile([
-            ProfileDomain(id: "it", name: "IT", weight: .often),
-            ProfileDomain(id: "novel", name: "小説", weight: .off),
-            ProfileDomain(id: "biz", name: "ビジネス", weight: .sometimes),
-        ])
-        guard case .setProfile(let message)? = harness.latest.requests.last?.body else {
-            Issue.record("expected set_profile")
-            return
-        }
-        #expect(message.domains.map(\.id) == ["it", "biz"])
-        #expect(message.domains.map(\.weight) == [.profileWeightOften, .profileWeightSometimes])
-        #expect(result == [ProfileDomain(id: "it", name: "IT", weight: .often)])
-    }
-
-    @Test func setWeightReadsTheLatestStateFirstSoOtherDomainsSurvive() throws {
-        let harness = Harness()
-        harness.respond = { request in
-            switch request.body {
-            case .getProfile?:
-                return profileReply([
-                    ("it", "IT", .profileWeightOften), ("biz", "ビジネス", .profileWeightSometimes),
-                    ("novel", "小説", .profileWeightOff),
-                ])
-            case .setProfile(let set)?:
-                return profileReply(set.domains.map { ($0.id, $0.name, $0.weight) })
-            default:
-                return nil
-            }
-        }
-        let result = try EngineAdmin(client: harness.makeClient()).setWeight(.often, forDomain: "novel")
-        #expect(result.filter { $0.weight != .off }.map(\.id).sorted() == ["biz", "it", "novel"])
-        #expect(result.first { $0.id == "biz" }?.weight == .sometimes)
-        #expect(result.first { $0.id == "novel" }?.weight == .often)
-    }
-
-    @Test func setWeightForAnUnknownDomainFailsWithoutWriting() {
-        let harness = Harness()
-        harness.respond = { request in
-            if case .setProfile? = request.body { Issue.record("must not write") }
-            return profileReply([("it", "IT", .profileWeightOften)])
-        }
-        #expect(throws: EngineClientError.engine(.badRequest)) {
-            try EngineAdmin(client: harness.makeClient()).setWeight(.off, forDomain: "nope")
-        }
-    }
-
-    @Test func anOldEngineAnswersBadRequestWhichSurfacesAsAnError() {
-        let harness = Harness()
-        harness.respond = { _ in errorReply(.badRequest) }
-        #expect(throws: EngineClientError.engine(.badRequest)) { try EngineAdmin(client: harness.makeClient()).profile() }
-    }
-
-    @Test func aWrongReplyKindIsInvalid() {
-        let harness = Harness()
-        harness.respond = { _ in Harness.envelope { $0.ack = Ikari_Engine_V1_Ack() } }
-        #expect(throws: EngineClientError.invalidReply) { try EngineAdmin(client: harness.makeClient()).profile() }
-    }
-
-    @Test func tooManyDomainsIsInvalid() {
-        let harness = Harness()
-        harness.respond = { _ in profileReply((0..<65).map { ("d\($0)", "n", .profileWeightOff) }) }
-        #expect(throws: EngineClientError.invalidReply) { try EngineAdmin(client: harness.makeClient()).profile() }
-    }
-}
-
 // MARK: 文節と再変換（ADR 0006）
 
 private func layoutEnvelope(
@@ -916,76 +824,5 @@ private func layoutEnvelope(
         #expect(BuildSigning.mode(from: "bogus") == .team)
         #expect(BuildSigning.mode(from: "adhoc") == .adhoc)
         #expect(BuildSigning.mode(from: "team") == .team)
-    }
-}
-
-// 診断ログ D4b: `sh_engine`（ADR 0034 §4.2）。ほかの殻の事象に相乗りして、前回から事象があるときだけ送る
-@Suite struct XPCEngineDiagTests {
-    private static let episode = DiagEventValue(sessionID: 1, kind: "sh_episode", tags: ["mode": "romaji"])
-
-    private func diags(_ transport: MockTransport) -> [Ikari_Engine_V1_DiagEvent] {
-        transport.posts.compactMap { if case .diag(let event)? = $0.body { event } else { nil } }
-    }
-
-    private func nums(_ event: Ikari_Engine_V1_DiagEvent) -> [String: Int64] {
-        Dictionary(uniqueKeysWithValues: event.nums.map { ($0.key, $0.value) })
-    }
-
-    @Test func nothingIsSentWhenNothingHappened() throws {
-        let harness = Harness()
-        let client = harness.makeClient()
-        _ = try client.convert(sampleRequest, timeout: .seconds(1))
-        client.diag(Self.episode)
-        #expect(diags(harness.latest).map(\.kind) == ["sh_episode"])
-    }
-
-    @Test func aTimeoutAndTheShellFallbackAreSentOnceWithTheNextEvent() throws {
-        let harness = Harness()
-        harness.respond = { _ in nil }
-        let client = harness.makeClient()
-        #expect(throws: EngineClientError.timeout) { try client.convert(sampleRequest, timeout: .milliseconds(1)) }
-        client.diag(Self.episode)
-        client.diag(Self.episode)
-
-        let sent = diags(harness.latest)
-        #expect(sent.map(\.kind) == ["sh_engine", "sh_episode", "sh_episode"])  // 2 回目は相乗りしない
-        #expect(nums(sent[0]) == ["timeout": 1, "fallback_convs": 1])
-        #expect(sent[0].sessionID == 1)
-        #expect(sent[0].tags.isEmpty)
-    }
-
-    @Test func crashesInterruptionsAndResyncAreCounted() throws {
-        let harness = Harness()
-        let client = harness.makeClient()
-        _ = try client.hello(shellVersion: "1.0", timeout: .seconds(1))
-        client.beginSession(SessionInfo(sessionID: 1, clientBundleID: "com.apple.TextEdit", secure: false))
-        harness.latest.onDown(.interrupted)
-        harness.advance(100)
-        harness.latest.onDown(.invalidated)
-        _ = try client.convert(sampleRequest, timeout: .seconds(1))  // 接続を作り直し、送り直す
-        client.diag(Self.episode)
-
-        let sent = diags(harness.latest)
-        let engine = try #require(sent.first { $0.kind == "sh_engine" })
-        #expect(nums(engine) == ["interrupted": 1, "invalidated": 1, "reconnect": 1, "resync": 1])
-    }
-
-    @Test func openingTheBreakerIsCountedAndUnsentCountsCarryOver() throws {
-        let harness = Harness()
-        let client = harness.makeClient()
-        _ = try client.convert(sampleRequest, timeout: .seconds(1))
-        for _ in 0..<3 {
-            harness.latest.onDown(.interrupted)
-            harness.advance(10)
-        }
-        // 休んでいる間は送れない（数は持ち越す）
-        client.diag(Self.episode)
-        #expect(diags(harness.latest).allSatisfy { $0.kind != "sh_engine" })
-
-        harness.advance(XPCEngineClient.suspension + 1)
-        client.diag(Self.episode)
-        let engine = try #require(diags(harness.latest).first { $0.kind == "sh_engine" })
-        #expect(nums(engine)["breaker_open"] == 1)
-        #expect(nums(engine)["interrupted"] == 3)
     }
 }

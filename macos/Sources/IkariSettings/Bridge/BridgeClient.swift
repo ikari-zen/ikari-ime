@@ -4,7 +4,7 @@
 import Foundation
 import IkariBridge
 import IkariProto
-import IkariShellCore
+import IkariXPC
 
 typealias EngineBody = EngineEnvelope.OneOf_Body
 typealias SettingEntry = Ikari_Bridge_V1_SettingEntry
@@ -44,8 +44,6 @@ protocol SettingsBridge: Sendable {
 enum AdminLimits {
     /// 管理の要求の上限（インポート以外）。エンジンの `MAX_REQUEST_BYTES` と同じ（ADR 0005 §8.3）
     static let maxRequestBytes = 256 * 1024
-    /// インポートの上限。枠の上限と同じ（ADR 0005 §8.4）
-    static let maxImportBytes = BridgeLimits.maxFrameBytes
 }
 
 final class BridgeClient: SettingsBridge, @unchecked Sendable {

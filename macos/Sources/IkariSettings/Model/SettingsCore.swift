@@ -1,10 +1,9 @@
 // 設定の検証・整形・既定値・変更の組み立てを shell-core（Rust）に頼む薄い層（ADR 0041 §2.3）。
-// `ikari_settings_app`（`IkariShellABI.ShellSettings`）を呼び、proto の型と画面の型（IkariShellCore の列挙）を写すだけ。
+// `ikari_settings_app`（`IkariShellABI.ShellSettings`）を呼び、proto の型と画面の型（`ScreenTypes.swift` の列挙）を写すだけ。
 // 判断はここに書かない（入口に分岐が増えたら Rust に移す。CLAUDE.md「判断の置き場所」）。
 import Foundation
 import IkariProto
 import IkariShellABI
-import IkariShellCore
 
 typealias SettingsAppBody = Ikari_Settings_V1_AppReply.OneOf_Body
 
@@ -27,7 +26,7 @@ enum SettingsCore {
         return lower...max(lower, Int(range.max))
     }
 
-    // MARK: 列挙の写し（proto ↔ IkariShellCore）
+    // MARK: 列挙の写し（proto ↔ 画面の型）
 
     static func method(_ kind: Ikari_Shell_V1_InputMethodKind) -> InputMethodKind? {
         switch kind {

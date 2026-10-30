@@ -1,7 +1,7 @@
 #!/bin/bash
 # build.sh / install.sh / smoke.sh の共通部分（source して使う）。
 # 識別子は docs/phase2-contract.md §1 に揃える。頭とチームID は、このファイルの 2 行にだけ書く（ADR 0036 §3）。
-# 環境変数 IKARI_ID_PREFIX と TEAM_ID で上書きできる。Swift 側の macos/Sources/IkariShellCore/Identity.swift は
+# 環境変数 IKARI_ID_PREFIX と TEAM_ID で上書きできる。Swift 側の macos/Sources/IkariXPC/Identity.swift は
 # macos/scripts/gen-identity.sh がここから生成する（build.sh が呼ぶ。既定値との違いは scripts/check.sh が落とす）。
 
 IKARI_SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

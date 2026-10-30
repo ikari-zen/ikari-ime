@@ -1,7 +1,6 @@
 // XPC の下の層（ADR 0004 §5.1）。メッセージの意味は知らず、バイト列を運ぶだけ。
 // テストでは `EngineTransport` をモックに差し替えて、XPCEngineClient の再接続や休止の処理を確かめる。
 import Foundation
-import IkariShellCore
 
 /// 接続が使えなくなった理由。
 enum TransportDown: Sendable {

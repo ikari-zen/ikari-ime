@@ -2,7 +2,6 @@
 // メッセージの意味は知らず、接続ごとの番号（再接続の世代を兼ねる）で `XPCTransport` を引き、バイト列を運ぶだけ。
 // 再接続、休止、要求番号、返事の検証は shell-core の `EngineLink` が持つ。
 import Foundation
-import IkariShellCore  // XPCTransport の誤りの型（M5 で IkariShellCore を消すときに、ここへ移す）
 
 /// 落ちた通知の種類（`ikari_shell_engine_down` の kind）。
 public enum EngineConnectionDown: Sendable {

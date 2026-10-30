@@ -2,7 +2,6 @@
 #if IKARI_HAS_SHELL_FFI
 // 「郵便番号」の欄（ADR 0032）のモデル
 import Foundation
-import IkariShellCore
 import Testing
 
 @testable import IkariSettings

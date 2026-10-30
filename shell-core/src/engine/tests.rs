@@ -1,4 +1,4 @@
-//! `EngineLink` の単体テスト（Swift の `XPCEngineClientTests`、`RelayTests`、`EngineAdminTests`、`XPCSegmentTests`、
+//! `EngineLink` の単体テスト（移行の前の Swift の `XPCEngineClientTests`、`RelayTests`、`EngineAdminTests`、`XPCSegmentTests`、
 //! `XPCEngineDiagTests`、絵文字と郵便番号の口のテストを写した）。替え玉のトランスポートと時計で、落ちる・遅れる・休むを流す。
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};

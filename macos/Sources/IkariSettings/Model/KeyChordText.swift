@@ -2,7 +2,7 @@
 // 表記の読み書きと表示は shell-core（`KeyChord`。ADR 0041 §2.3）。ここに残すのは macOS の keyCode からの記録だけ。
 import Foundation
 import IkariProto
-import IkariShellCore
+import IkariShellABI
 
 enum KeyChordText {
     private static func info(for chord: KeyChord) -> Ikari_Settings_V1_ChordInfo? {
@@ -46,15 +46,18 @@ enum KeyChordText {
     }
 
     /// 押されたキーを記録する。状態機械が引くのは「F キー」「←/→/↑/↓（修飾キーの有無を問わない）」
-    /// 「Ctrl / Option / Command を伴う 1 文字」だけ（`InputStateMachine.boundAction`）なので、それ以外は断る。
+    /// 「Ctrl / Option / Command を伴う 1 文字」だけ（shell-core の `bound_action`）なので、それ以外は断る。
     /// `charactersIgnoringModifiers` は `NSEvent` のもの（Ctrl を伴っても押したキーの文字になる）
     static func record(keyCode: UInt16, charactersIgnoringModifiers: String, modifiers: KeyModifiers) -> Recording {
-        if keyCode == KeyCodes.escape, modifiers.isEmpty { return .cancel }
-        let input = KeyCodes.keyInput(
-            keyCode: keyCode, characters: charactersIgnoringModifiers, modifiers: modifiers, inputMethod: .romaji)
-        switch input.key {
-        case .function(let number):
-            return validated(KeyChord(key: "f\(number)", modifiers: modifiers))
+        if keyCode == KeyEvents.escape, modifiers.isEmpty { return .cancel }
+        let input = KeyEvents.keyInput(
+            keyCode: keyCode, characters: charactersIgnoringModifiers, modifiers: SettingsCore.modifiers(modifiers),
+            isRepeat: false, secure: false)
+        // JIS の位置にあるキー（文字のキー）は、配列が出す文字（`layout_text`）で記録する
+        let text: String
+        switch input.kind {
+        case .function:
+            return validated(KeyChord(key: "f\(input.function)", modifiers: modifiers))
         case .left:
             return validated(KeyChord(key: "left", modifiers: modifiers))
         case .right:
@@ -63,14 +66,17 @@ enum KeyChordText {
             return validated(KeyChord(key: "up", modifiers: modifiers))
         case .down:
             return validated(KeyChord(key: "down", modifiers: modifiers))
-        case .character(let text):
-            guard text.count == 1 else { return .rejected(.unsupportedKey) }
-            let commandModifiers: KeyModifiers = [.control, .option, .command]
-            guard !modifiers.intersection(commandModifiers).isEmpty else { return .rejected(.needsModifier) }
-            return validated(KeyChord(key: text.lowercased(), modifiers: modifiers))
+        case .character:
+            text = input.text
+        case .jis:
+            text = input.layoutText
         default:
             return .rejected(.unsupportedKey)
         }
+        guard text.count == 1 else { return .rejected(.unsupportedKey) }
+        let commandModifiers: KeyModifiers = [.control, .option, .command]
+        guard !modifiers.intersection(commandModifiers).isEmpty else { return .rejected(.needsModifier) }
+        return validated(KeyChord(key: text.lowercased(), modifiers: modifiers))
     }
 
     /// 表記に直して読み戻せるものだけを通す（shell-core が確かめる）

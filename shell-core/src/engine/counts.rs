@@ -1,4 +1,4 @@
-//! エンジンとの通信の事象の数（ADR 0034 §4.2 の `sh_engine`。今の Swift の `DiagEngineCounts`）。
+//! エンジンとの通信の事象の数（ADR 0034 §4.2 の `sh_engine`。移行の前の Swift の `DiagEngineCounts`）。
 //! メモリ上の整数だけ。キーは engine の許可リスト（`engine/src/diag_schema.rs`）に合わせる。
 
 use ikari_proto::v1;

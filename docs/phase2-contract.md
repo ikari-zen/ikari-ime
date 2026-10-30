@@ -61,7 +61,7 @@ Swift の定数は `macos/Sources/IkariXPC/Identifiers.swift`（`IkariIdentifier
 | `postal.english` | `on` / `off` | `off` | 殻 | 英語のモードで郵便番号の候補を出す（ADR 0032 §9。段階 3。エンジンの `Settings` も値は読む） |
 | `postal.te_prefix` | `on` / `off` | `off` | エンジン・殻 | `て` + 郵便番号 → 〒つきの候補（ADR 0032 §8）。日本語・英語の両方に効く。設定画面にはまだ項目がない |
 
-操作の名前は `KeymapAction`（`IkariShellCore/Keymap.swift`）の rawValue。
+操作の名前は `KeymapAction`（`shell-core/src/keymap.rs`）の名前。
 
 ## 4. キー割り当て
 
@@ -117,9 +117,9 @@ ADR 0004 §6.3 の表のとおり。ページ送りは、Space が次の候補�
 ### 5.1 ブリッジ（設定アプリ ⇄ 殻）
 - 輸送: 殻が `~/Library/Application Support/ikari-ime/run/bridge.sock`（`BridgeProtocol.socketRelativePath`）の Unix ドメインソケットで待つ。`run/` は 0700、ソケットは 0600。起動時に古いファイルを消してから作る。同時に受ける接続は1つだけ。
 - 相手の確認: `getsockopt(LOCAL_PEERTOKEN)` の audit token からコードを得て、§2 の `SigningRequirements.settingsApp(mode:)` で確かめる。
-- 枠: 4バイト（ビッグエンディアン）の長さ + `Frame`（`proto/ikari/bridge/v1/bridge.proto`）。1つの枠の上限は 64 MiB（`BridgeLimits.maxFrameBytes`）。長さ0と上限超えは壊れた枠として接続を閉じる。実装は `macos/Sources/IkariBridge`。
+- 枠: 4バイト（ビッグエンディアン）の長さ + `Frame`（`proto/ikari/bridge/v1/bridge.proto`）。1つの枠の上限は 64 MiB（`BridgeLimits.maxFrameBytes`）。長さ0と上限超えは壊れた枠として接続を閉じる。輸送の実装は `macos/Sources/IkariBridge`、照合と中継の判断は `shell-core/src/bridge`。
 - 最初の枠は `BridgeHello`（`bridge_version = 1`、`BridgeProtocol.version`）。合わなければ `VERSION_MISMATCH`。
-- 中継の許可リスト: 殻は `Frame.engine` の `Envelope` の種類だけを見て、`Hello` と §5.2 の管理の要求だけをエンジンへ流す。ほかは `NOT_ALLOWED`（`RelayPolicy`）。
+- 中継の許可リスト: 殻は `Frame.engine` の `Envelope` の種類だけを見て、`Hello` と §5.2 の管理の要求だけをエンジンへ流す。ほかは `NOT_ALLOWED`（shell-core の `bridge/relay_policy.rs`）。
 
 ### 5.2 管理のメッセージ（殻 ⇄ エンジン）
 - `engine.proto` の `Envelope.body` の 40〜53。`Envelope.schema_version` は 1 のまま（追加だけなら上げない。意味を変えるか消すときに上げる）。
@@ -156,6 +156,8 @@ ADR 0004 §6.3 の表のとおり。ページ送りは、Space が次の候補�
 - 学習の形式（`learning.tsv`）は変えない。
 
 ### 6.3 IkariShellCore（Swift）
+> 移行の前の記録。`IkariShellCore` は Rust への移行の片付け（M5、#138）で消し、同じ契約は `shell-core`（`machine`、`engine`、`bridge`）が持つ。
+
 - `KeyInput.Key.left` / `.right`、`KeyCodes.leftArrow` / `.rightArrow`、`KeymapAction` の 5 つ（`isScriptConversion`）、`MarkedText.segments` / `focused` / `replacementRange`、`TextRange`、`SelectedText`。
 - `InputStateMachine.handle(_:surrounding:selection:)`: `selection` は `reconvert` のキーのときだけ評価する。
 - `ConvertingState.segments` / `focused` / `layoutRev` / `origin`（`ConvertingSegment`、`ConversionOrigin`）。

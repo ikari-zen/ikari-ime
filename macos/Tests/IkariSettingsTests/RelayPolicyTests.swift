@@ -1,9 +1,9 @@
 import Foundation
 import IkariProto
-import IkariShellCore
+import IkariBridge
 import Testing
 
-@testable import IkariBridge
+@testable import IkariSettings
 
 private func engineFrame(id: UInt64 = 4, _ build: (inout EngineEnvelope) -> Void) -> Frame {
     var envelope = EngineEnvelope()

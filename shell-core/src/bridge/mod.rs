@@ -1,4 +1,4 @@
-//! 設定アプリとの連絡（今の `FrameCodec`、`RelayPolicy`、`BridgeProtocol`、`BridgeServer` の判断。
+//! 設定アプリとの連絡（移行の前の Swift の `FrameCodec`、`RelayPolicy`、`BridgeProtocol`、`BridgeServer` の判断。
 //! ADR 0005 §6.3、ADR 0041 §4.3。レーン L-B）。
 //!
 //! OS 側に残すもの: ソケットの待ち受け、接続元の確認（同じユーザー、署名）、接続ごとの読み書きのスレッド、

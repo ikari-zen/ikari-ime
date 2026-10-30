@@ -1,7 +1,7 @@
 // 設定アプリと殻のブリッジ（ADR 0005 §6.3）。契約。枠の実装とテストは契約コミットで完成させてあり、
 // 以後はレーン S3 も U も変えない（変えるときは契約として直す）。
 //
-// 依存の向き: IkariBridge → IkariProto, IkariShellCore。殻（IkariIME）が待ち受け側、設定アプリ（IkariSettings）が接続する側。
+// 依存の向き: IkariBridge → IkariProto。殻（IkariIME）が待ち受け側、設定アプリ（IkariSettings）が接続する側。
 import Foundation
 import IkariProto
 
@@ -32,34 +32,6 @@ extension Frame {
         var frame = Frame()
         frame.requestID = requestID
         frame.error = error
-        return frame
-    }
-}
-
-/// 最初の枠で交わす `BridgeHello` の照合（ADR 0005 §6.3「版の照合」）。
-public enum BridgeHandshake {
-    /// 殻側: 設定アプリの `BridgeHello` に返事を作る。版が合わなければ `VERSION_MISMATCH` の `BridgeError`
-    public static func reply(to hello: Ikari_Bridge_V1_BridgeHello, requestID: UInt64, shellVersion: String) -> Frame {
-        guard hello.bridgeVersion == BridgeProtocol.version else {
-            return .error(requestID: requestID, code: .versionMismatch)
-        }
-        var reply = Ikari_Bridge_V1_BridgeHelloReply()
-        reply.bridgeVersion = BridgeProtocol.version
-        reply.shellVersion = shellVersion
-        var frame = Frame()
-        frame.requestID = requestID
-        frame.helloReply = reply
-        return frame
-    }
-
-    /// 設定アプリ側: 最初に送る枠
-    public static func hello(requestID: UInt64, appVersion: String) -> Frame {
-        var hello = Ikari_Bridge_V1_BridgeHello()
-        hello.bridgeVersion = BridgeProtocol.version
-        hello.appVersion = appVersion
-        var frame = Frame()
-        frame.requestID = requestID
-        frame.hello = hello
         return frame
     }
 }

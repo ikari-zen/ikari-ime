@@ -1,5 +1,5 @@
-//! 合成器（ローマ字、JIS かな）と字種変換。今の `Composing`・`ScriptConverting` と、その実装の `RustComposer`・`RustScripts`
-//! （shell-ffi の `ikari_composer_*`・`ikari_convert_script`）。`shell-core` は `ikari-input` を直接使う（ADR 0041 §4.4）。
+//! 合成器（ローマ字、JIS かな）と字種変換。旧い Swift の `Composing`・`ScriptConverting` に当たる（Swift の実装と
+//! shell-ffi の `ikari_composer_*`・`ikari_convert_script` は M5 で消した）。`shell-core` は `ikari-input` を直接使う（ADR 0041 §4.4）。
 
 use std::sync::OnceLock;
 
