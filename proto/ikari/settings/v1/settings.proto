@@ -192,6 +192,8 @@ message ChordInfo {
   bool function_key = 4;
   // record の判定結果（record 以外は UNSPECIFIED）。ACCEPTED のとき valid は true
   ChordOutcome outcome = 5;
+  // ACCEPTED のとき、受け入れたキーの名前と修飾（Swift が KeyChord に写す。表記を読み直さない）
+  ChordParts accepted = 6;
 }
 
 // ---------------------------------------------------------------- ユーザー辞書

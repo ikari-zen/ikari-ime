@@ -14,7 +14,8 @@ use ikari_shell_core::{KeymapPreset, SettingsChanges};
 use prost::Message;
 
 use crate::convert::{
-    key_from_pb, method_from_pb, method_to_pb, modifiers_from_pb, preset_from_pb, preset_to_pb,
+    key_from_pb, method_from_pb, method_to_pb, modifiers_from_pb, modifiers_to_pb, preset_from_pb,
+    preset_to_pb,
 };
 use crate::panel::run;
 use crate::shell::IKARI_SHELL_ERR_DECODE;
@@ -337,6 +338,10 @@ fn record_chord(input: &ikari_shell_core::KeyInput) -> app::ChordInfo {
         display: chord.as_ref().map(KeyChord::display).unwrap_or_default(),
         function_key: chord.as_ref().is_some_and(KeyChord::is_function_key),
         outcome: outcome as i32,
+        accepted: chord.as_ref().map(|chord| app::ChordParts {
+            key: chord.key.clone(),
+            modifiers: modifiers_to_pb(&chord.modifiers),
+        }),
     }
 }
 
@@ -514,6 +519,9 @@ mod tests {
         let accepted = judge(pb::KeyKind::Character, "j", 0, ctrl);
         assert_eq!(accepted.outcome, O::Accepted as i32);
         assert!(accepted.valid);
+        let parts = accepted.accepted.clone().expect("accepted parts");
+        assert_eq!(parts.key, "j");
+        assert!(parts.modifiers.is_some_and(|m| m.control && !m.shift));
         assert_eq!(
             (accepted.text.as_str(), accepted.display.as_str()),
             ("ctrl+j", "⌃J")
@@ -532,7 +540,7 @@ mod tests {
             judge(pb::KeyKind::Space, "", 0, ctrl).outcome,
             O::UnsupportedKey as i32
         );
-        // 範囲を超える番号は decode できない欄ではなく、使えないキー
+        // 読み戻せない番号は、使えないキー
         assert_eq!(
             judge(pb::KeyKind::Function, "", 21, none).outcome,
             O::UnsupportedKey as i32

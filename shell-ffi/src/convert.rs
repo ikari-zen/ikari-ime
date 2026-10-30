@@ -162,7 +162,7 @@ pub(crate) fn modifiers_from_pb(modifiers: Option<pb::Modifiers>) -> Modifiers {
     })
 }
 
-fn modifiers_to_pb(modifiers: &Modifiers) -> Option<pb::Modifiers> {
+pub(crate) fn modifiers_to_pb(modifiers: &Modifiers) -> Option<pb::Modifiers> {
     (!modifiers.is_empty()).then_some(pb::Modifiers {
         shift: modifiers.shift,
         control: modifiers.control,
