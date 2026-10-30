@@ -151,11 +151,11 @@ mod tests {
     }
 
     impl EngineTransport for ProfileEngine {
-        fn connect(&mut self) -> Result<TransportHandle, TransportError> {
+        fn connect(&self) -> Result<TransportHandle, TransportError> {
             Ok(TransportHandle(1))
         }
         fn request(
-            &mut self,
+            &self,
             _: TransportHandle,
             bytes: &[u8],
             _: Duration,
@@ -178,8 +178,8 @@ mod tests {
             }
             .encode_to_vec())
         }
-        fn post(&mut self, _: TransportHandle, _: &[u8]) {}
-        fn close(&mut self, _: TransportHandle) {}
+        fn post(&self, _: TransportHandle, _: &[u8]) {}
+        fn close(&self, _: TransportHandle) {}
         fn pid(&self, _: TransportHandle) -> Option<i32> {
             None
         }

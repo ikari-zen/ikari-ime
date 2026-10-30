@@ -41,20 +41,24 @@ pub enum DownKind {
 ///
 /// macOS は `NSXPCConnection`、Windows は名前付きパイプ。落ちた通知は、ホストが別のスレッドから
 /// `EngineLink::notify_down` を呼んで知らせる（境界の唯一の例外。ADR 0041 §4.3）。
-pub trait EngineTransport: Send {
+///
+/// すべて `&self` で、複数のスレッドから同時に呼ばれる（ADR 0041 §4.3 の C の関数ポインタ `engine_*` と同じ形）。
+/// 往復の要求は並行に流れる（設定アプリの中継が返事を待つ間も、主スレッドの変換を止めない）。
+/// 実装は、ホストが `request` の中から同じスレッドで `notify_down` を呼んでもよい（`EngineLink` はロックを持ったまま呼ばない）。
+pub trait EngineTransport: Send + Sync {
     /// 新しい接続を作る（macOS は署名の要件を付けて `resume`）。
-    fn connect(&mut self) -> Result<TransportHandle, TransportError>;
+    fn connect(&self) -> Result<TransportHandle, TransportError>;
     /// 要求を送り、返事のバイト列を同期に待つ。
     fn request(
-        &mut self,
+        &self,
         handle: TransportHandle,
         bytes: &[u8],
         timeout: Duration,
     ) -> Result<Vec<u8>, TransportError>;
     /// 返事を待たずに送る。
-    fn post(&mut self, handle: TransportHandle, bytes: &[u8]);
+    fn post(&self, handle: TransportHandle, bytes: &[u8]);
     /// 接続を閉じる。
-    fn close(&mut self, handle: TransportHandle);
+    fn close(&self, handle: TransportHandle);
     /// 相手のプロセスの番号。分からなければ `None`。
     fn pid(&self, handle: TransportHandle) -> Option<i32>;
 }

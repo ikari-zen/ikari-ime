@@ -9,18 +9,18 @@
 //! スレッド: `EngineLink` は `Send + Sync`。状態機械からは 1 つのスレッドで呼ぶ。`notify_down` だけは、どのスレッドからでも呼べる。
 //!
 //! # スレッドとロックの設計
-//! - **`state`**（`Mutex<LinkState>`）: 今の接続、要求番号、セッション、再同期の要否、落ちた時刻の列、休止の期限、診断の数、
-//!   片道の送信の待ち行列。短い間だけ持つ。**持ったままトランスポートを呼ばない**（ホストが `request` の中から
-//!   `notify_down` を同じスレッドで呼んでも、行き詰まらない）。
-//! - **`slot`**（トランスポートの貸し出し）: `EngineTransport` は `&mut self` で呼ぶので、使う間は `Box` を借り出す
-//!   （`Lease`）。`Mutex` を持ったまま返事を待たないので、`notify_down` は要求の待ちに止められない（ADR 0041 §4.3）。
-//!   - 往復の要求（`convert` など）は、借りられるまで `timeout` の残りだけ待ち、超えたら `Timeout`。
-//!     設定アプリの中継（インポートで最大 30 秒）が借りている間に主スレッドが `convert` を呼んでも、`timeout` より長く止まらない。
-//!   - 片道（`post`）は待たない: 待ち行列に入れ、借りられればその場で送り、借りられなければ今借りている側が返すときに送る。
-//!     送る順は入れた順のまま。
-//! - ロックの順: `slot` → `state` だけ（逆はない）。`notify_down` は `state` だけを取る。
-//! - 版の不一致のときの終了の確認（`shutdown_and_wait_for_exit`）は、`state` の `Condvar`（`exited`）で、
-//!   トランスポートを借りずに待つ（`notify_down` が起こす）。待ちは実時間（`Clock` は経過の判断だけに使う）。
+//! - トランスポート（`EngineTransport`）は `&self` で、複数のスレッドから同時に呼ぶ。往復の要求は並行に流れ、
+//!   設定アプリの中継（インポートで最大 30 秒）が返事を待つ間も、主スレッドの変換は止まらない（Swift の XPC と同じ）。
+//! - **`state`**（`Mutex<LinkState>`）: 今の接続、要求番号、セッション、再同期の要否、落ちた時刻の列、休止の期限、診断の数。
+//!   短い間だけ持つ。**持ったままトランスポートを呼ばない**（ホストが `request` の中から `notify_down` を
+//!   同じスレッドで呼んでも、行き詰まらない）。
+//! - **`prepare_lock`**（`Mutex<()>`）: 接続の用意（無効になった接続を閉じる、つなぐ、再同期の `Hello` とセッションを送る）を
+//!   1 本にする。持つ間にトランスポートの `close`・`connect`・`post` を呼ぶが、返事を待つ `request` は持たずに呼ぶ。
+//!   再同期を送り終えるまで、ほかのスレッドの要求は送られない（Swift の `prepare` がロックの中で送っていたのと同じ）。
+//! - ロックの順: `prepare_lock` → `state` だけ（逆はない）。`notify_down` は `state` だけを取るので、待っている要求にも
+//!   接続の用意にも止められない（ADR 0041 §4.3）。
+//! - 版の不一致のときの終了の確認（`shutdown_and_wait_for_exit`）は、`state` の `Condvar`（`exited`）で待つ
+//!   （`notify_down` が起こす）。待ちは実時間（`Clock` は経過の判断だけに使う）。
 
 mod admin;
 mod codec;
@@ -40,7 +40,7 @@ pub use codec::{
 pub use counts::EngineCounts;
 pub use gate::{EngineGate, GateClose};
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::BTreeMap;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -84,7 +84,7 @@ struct LinkState {
     current: Option<TransportHandle>,
     /// 一度でもつないだか（2 回目からのつなぎ直しを `reconnect` に数える）
     connected_once: bool,
-    /// 無効になった接続。次にトランスポートを借りたときに `close` する
+    /// 無効になった接続。次に接続を用意するときに `close` する
     stale: Vec<TransportHandle>,
     next_request_id: u64,
     /// 開いているセッション（落ちたあとに送り直す）。番号の順に送る
@@ -98,10 +98,6 @@ struct LinkState {
     observed_engine_version: Option<String>,
     /// 前回の `sh_engine` を送ってからの事象の数（ADR 0034 §4.2）
     counts: EngineCounts,
-    /// まだ送っていない片道のメッセージ（要求番号は付け済み）
-    pending_posts: VecDeque<Vec<u8>>,
-    /// 最後に読めた相手のプロセスの番号（トランスポートを借りられないときに返す）
-    last_pid: Option<i32>,
 }
 
 impl LinkState {
@@ -135,35 +131,11 @@ impl LinkState {
     }
 }
 
-/// トランスポートの貸し出しの場所
-struct Slot {
-    transport: Mutex<Option<Box<dyn EngineTransport>>>,
-    returned: Condvar,
-}
-
-/// 借りたトランスポート。落とすと（返す前に待ち行列の片道を送ってから）返す
-struct Lease<'a> {
-    link: &'a EngineLink,
-    transport: Option<Box<dyn EngineTransport>>,
-}
-
-impl Lease<'_> {
-    fn get(&mut self) -> Option<&mut (dyn EngineTransport + 'static)> {
-        self.transport.as_deref_mut()
-    }
-}
-
-impl Drop for Lease<'_> {
-    fn drop(&mut self) {
-        if let Some(transport) = self.transport.take() {
-            self.link.give_back(transport);
-        }
-    }
-}
-
 /// エンジンへの口。
 pub struct EngineLink {
-    slot: Slot,
+    transport: Box<dyn EngineTransport>,
+    /// 接続の用意を 1 本にする（上の「スレッドとロックの設計」）
+    prepare_lock: Mutex<()>,
     state: Mutex<LinkState>,
     /// `down_events` が増えたら起こす（終了の確認の待ち）
     exited: Condvar,
@@ -174,10 +146,8 @@ impl EngineLink {
     /// まだつながない（最初の要求のときにつなぐ）。
     pub fn new(transport: Box<dyn EngineTransport>, clock: Arc<dyn Clock>) -> Self {
         Self {
-            slot: Slot {
-                transport: Mutex::new(Some(transport)),
-                returned: Condvar::new(),
-            },
+            transport,
+            prepare_lock: Mutex::new(()),
             state: Mutex::new(LinkState {
                 next_request_id: 1,
                 ..LinkState::default()
@@ -370,16 +340,13 @@ impl EngineLink {
             return Err(bad_request());
         }
         let mut request = v1::Envelope::decode(envelope).map_err(|_| bad_request())?;
-        let deadline = Instant::now() + timeout;
-        let mut lease = self.checkout(Some(deadline)).ok_or(EngineError::Timeout)?;
-        let transport = lease.get().ok_or(EngineError::Unavailable)?;
-        let handle = self.prepare(transport)?;
+        let handle = self.prepare()?;
         request.schema_version = SCHEMA_VERSION;
         request.request_id = lock(&self.state).take_request_id();
-        let reply = transport
-            .request(handle, &request.encode_to_vec(), remaining(deadline))
+        let reply = self
+            .transport
+            .request(handle, &request.encode_to_vec(), timeout)
             .map_err(transport_error)?;
-        drop(lease);
         if reply.is_empty() || reply.len() > MAX_RELAY_BYTES {
             return Err(EngineError::InvalidReply);
         }
@@ -411,18 +378,8 @@ impl EngineLink {
 
     /// 今の接続の相手のプロセスの番号。
     pub fn pid(&self) -> Option<i32> {
-        // ほかのスレッドが返事を待っている間は待たず、最後に読めた値を返す
-        if let Some(mut lease) = self.checkout(None) {
-            let current = lock(&self.state).current;
-            let pid = match (current, lease.get()) {
-                (Some(handle), Some(transport)) => transport.pid(handle),
-                _ => None,
-            };
-            lock(&self.state).last_pid = pid;
-            return pid;
-        }
-        let state = lock(&self.state);
-        state.current.and(state.last_pid)
+        let current = lock(&self.state).current;
+        current.and_then(|handle| self.transport.pid(handle))
     }
 
     /// 接続が落ちた（**どのスレッドからでも呼べる**。ADR 0041 §4.3）。
@@ -468,68 +425,22 @@ impl EngineLink {
 
     // ------------------------------------------------------------ 内部
 
-    /// トランスポートを借りる。`deadline` が `None` なら待たない
-    fn checkout(&self, deadline: Option<Instant>) -> Option<Lease<'_>> {
-        let mut slot = lock(&self.slot.transport);
-        loop {
-            if let Some(transport) = slot.take() {
-                return Some(Lease {
-                    link: self,
-                    transport: Some(transport),
-                });
-            }
-            let wait = deadline?.checked_duration_since(Instant::now())?;
-            if wait.is_zero() {
-                return None;
-            }
-            slot = self
-                .slot
-                .returned
-                .wait_timeout(slot, wait)
-                .unwrap_or_else(PoisonError::into_inner)
-                .0;
-        }
-    }
-
-    /// 返す前に、待ち行列の片道を送る。返す判断と待ち行列の確認を `slot` を持ったまま行うので、
-    /// その間に入った片道は、入れた側が借りて送る（取りこぼさない）
-    fn give_back(&self, mut transport: Box<dyn EngineTransport>) {
-        loop {
-            let mut slot = lock(&self.slot.transport);
-            if lock(&self.state).pending_posts.is_empty() {
-                *slot = Some(transport);
-                drop(slot);
-                self.slot.returned.notify_one();
-                return;
-            }
-            drop(slot);
-            match self.prepare(transport.as_mut()) {
-                Ok(_) => {}
-                // 送れない（休止中、つながらない）。片道は捨てる（入力を止めない）
-                Err(_) => lock(&self.state).pending_posts.clear(),
-            }
-        }
-    }
-
-    /// 接続を用意して（要るなら、つなぎ直しと再同期をして）、待ち行列の片道を送り、接続を返す。
-    /// `state` を持ったままトランスポートを呼ばない
-    fn prepare(&self, transport: &mut dyn EngineTransport) -> Result<TransportHandle, EngineError> {
+    /// 接続を用意して（要るなら、つなぎ直しと再同期をして）、接続を返す。`state` を持ったままトランスポートを呼ばない
+    fn prepare(&self) -> Result<TransportHandle, EngineError> {
+        let _preparing = lock(&self.prepare_lock);
         let now = self.clock.now();
         let (current, stale) = {
             let mut state = lock(&self.state);
-            if let Err(error) = state.admit(now) {
-                state.pending_posts.clear();
-                return Err(error);
-            }
+            state.admit(now)?;
             (state.current, std::mem::take(&mut state.stale))
         };
         for handle in stale {
-            transport.close(handle);
+            self.transport.close(handle);
         }
         let handle = match current {
             Some(handle) => handle,
             None => {
-                let handle = transport.connect().map_err(transport_error)?;
+                let handle = self.transport.connect().map_err(transport_error)?;
                 let mut state = lock(&self.state);
                 if state.connected_once {
                     state.counts.reconnect += 1;
@@ -539,7 +450,7 @@ impl EngineLink {
                 handle
             }
         };
-        let outgoing: Vec<Vec<u8>> = {
+        let resync: Vec<Vec<u8>> = {
             let mut state = lock(&self.state);
             let mut outgoing = Vec::new();
             if state.needs_resync {
@@ -561,35 +472,21 @@ impl EngineLink {
                     outgoing.push(codec::encode(id, Body::BeginSession(session)));
                 }
             }
-            outgoing.extend(state.pending_posts.drain(..));
             outgoing
         };
-        for bytes in outgoing {
-            transport.post(handle, &bytes);
+        for bytes in resync {
+            self.transport.post(handle, &bytes);
         }
         Ok(handle)
     }
 
-    /// 返事を待たずに送る。休んでいれば捨てる（入力を止めない）。送る順に入れたら真
+    /// 返事を待たずに送る。つながらなければ捨てる（入力を止めない）。送ったら真
     fn post(&self, body: Body) -> bool {
-        let now = self.clock.now();
-        {
-            let mut state = lock(&self.state);
-            if state.admit(now).is_err() {
-                return false;
-            }
-            let id = state.take_request_id();
-            state.pending_posts.push_back(codec::encode(id, body));
-        }
-        // 借りられなければ、今借りている側が返すときに送る
-        if let Some(mut lease) = self.checkout(None)
-            && let Some(transport) = lease.get()
-            && self.prepare(transport).is_err()
-        {
-            // 送れない（つながらない）。片道は捨てる（入力を止めない）
-            lock(&self.state).pending_posts.clear();
+        let Ok(handle) = self.prepare() else {
             return false;
-        }
+        };
+        let id = lock(&self.state).take_request_id();
+        self.transport.post(handle, &codec::encode(id, body));
         true
     }
 
@@ -630,16 +527,13 @@ impl EngineLink {
     }
 
     fn exchange(&self, timeout: Duration, body: &Body) -> Result<v1::Envelope, EngineError> {
-        let deadline = Instant::now() + timeout;
-        let mut lease = self.checkout(Some(deadline)).ok_or(EngineError::Timeout)?;
-        let transport = lease.get().ok_or(EngineError::Unavailable)?;
-        let handle = self.prepare(transport)?;
+        let handle = self.prepare()?;
         let request_id = lock(&self.state).take_request_id();
         let bytes = codec::encode(request_id, body.clone());
-        let reply = transport
-            .request(handle, &bytes, remaining(deadline))
+        let reply = self
+            .transport
+            .request(handle, &bytes, timeout)
             .map_err(transport_error)?;
-        drop(lease);
         codec::decode(&reply, request_id)
     }
 
@@ -675,11 +569,6 @@ impl EngineLink {
     }
 }
 
-/// 期限までの残り（過ぎていれば 0）
-fn remaining(deadline: Instant) -> Duration {
-    deadline.saturating_duration_since(Instant::now())
-}
-
 impl Drop for EngineLink {
     fn drop(&mut self) {
         let state = self.state.get_mut().unwrap_or_else(PoisonError::into_inner);
@@ -689,15 +578,8 @@ impl Drop for EngineLink {
             .into_iter()
             .chain(state.stale.drain(..))
             .collect();
-        let slot = self
-            .slot
-            .transport
-            .get_mut()
-            .unwrap_or_else(PoisonError::into_inner);
-        if let Some(transport) = slot.as_mut() {
-            for handle in handles {
-                transport.close(handle);
-            }
+        for handle in handles {
+            self.transport.close(handle);
         }
     }
 }

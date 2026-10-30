@@ -38,7 +38,7 @@ struct FakeTransport {
 }
 
 impl EngineTransport for FakeTransport {
-    fn connect(&mut self) -> Result<TransportHandle, TransportError> {
+    fn connect(&self) -> Result<TransportHandle, TransportError> {
         let mut shared = self.shared.lock().unwrap();
         let handle = 10 + shared.conns.len() as u64;
         shared.conns.push(Conn {
@@ -49,7 +49,7 @@ impl EngineTransport for FakeTransport {
     }
 
     fn request(
-        &mut self,
+        &self,
         handle: TransportHandle,
         bytes: &[u8],
         _timeout: Duration,
@@ -72,13 +72,13 @@ impl EngineTransport for FakeTransport {
         Ok(reply.encode_to_vec())
     }
 
-    fn post(&mut self, handle: TransportHandle, bytes: &[u8]) {
+    fn post(&self, handle: TransportHandle, bytes: &[u8]) {
         let env = v1::Envelope::decode(bytes).unwrap();
         let mut shared = self.shared.lock().unwrap();
         conn_mut(&mut shared, handle).posts.push(env);
     }
 
-    fn close(&mut self, handle: TransportHandle) {
+    fn close(&self, handle: TransportHandle) {
         let mut shared = self.shared.lock().unwrap();
         conn_mut(&mut shared, handle).closed = true;
     }
@@ -740,7 +740,7 @@ fn a_down_notice_from_another_thread_is_not_blocked_by_a_waiting_request() {
 }
 
 #[test]
-fn posts_while_another_thread_waits_are_sent_in_order_when_it_returns() {
+fn posts_while_another_thread_waits_are_sent_at_once() {
     let h = Harness::new();
     h.link.convert(sample_request(), SEC).unwrap();
     let (release, gate) = mpsc::channel();
@@ -759,14 +759,13 @@ fn posts_while_another_thread_waits_are_sent_in_order_when_it_returns() {
         surface: "か".into(),
     });
     assert!(started.elapsed() < Duration::from_millis(100));
-    assert!(h.latest().posts.is_empty());
+    assert_eq!(kinds(&h.latest().posts), vec!["commit", "commit_text"]);
     release.send(()).unwrap();
     waiting.join().unwrap().unwrap();
-    assert_eq!(kinds(&h.latest().posts), vec!["commit", "commit_text"]);
 }
 
 #[test]
-fn a_request_waits_for_the_transport_no_longer_than_its_timeout() {
+fn a_convert_is_not_blocked_by_a_long_relay() {
     let h = Harness::new();
     h.link.convert(sample_request(), SEC).unwrap();
     let (release, gate) = mpsc::channel();
@@ -776,10 +775,13 @@ fn a_request_waits_for_the_transport_no_longer_than_its_timeout() {
     while h.latest().requests.len() < 2 {
         thread::yield_now();
     }
+    // 中継（インポートで最大 30 秒）が返事を待っている間も、主スレッドの変換は並行に通る
     let started = Instant::now();
     assert_eq!(
-        h.link.convert(sample_request(), 50 * MS),
-        Err(EngineError::Timeout)
+        h.link
+            .convert(sample_request(), 50 * MS)
+            .map(|r| r.conversion_id),
+        Ok(7)
     );
     assert!(started.elapsed() < Duration::from_secs(1));
     release.send(()).unwrap();
