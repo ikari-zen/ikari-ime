@@ -60,7 +60,7 @@ fn scenarios_match_on_rust() {
         for scenario in &file.scenarios {
             count += 1;
             let setup = file.defaults.resolve(&scenario.setup);
-            if let Err(message) = run(&setup, scenario) {
+            if let Err(message) = run(&setup, scenario, None) {
                 failures.push(format!("{} / {}: {message}", display(path), scenario.name));
             }
         }
@@ -73,7 +73,46 @@ fn scenarios_match_on_rust() {
     );
 }
 
-fn run(setup: &scenario::ResolvedSetup, scenario: &scenario::Scenario) -> Result<(), String> {
+/// 期待を書くための記録（ADR 0041 §5。今の振る舞いを JSON に固めるとき）。
+///
+/// `IKARI_SCENARIO_RECORD_IN` の JSON（`{"<ファイル名>": ScenarioFile}`）の全シナリオを流し、手順ごとの動作とエンジンへの送信を
+/// `IKARI_SCENARIO_RECORD_OUT` に書く。記録した期待は、Swift の実行器が通ることで今の振る舞いと確かめる（README）。
+#[test]
+#[ignore = "期待を書くときだけ手で流す"]
+fn record_expectations() {
+    let (Ok(input), Ok(output)) = (
+        std::env::var("IKARI_SCENARIO_RECORD_IN"),
+        std::env::var("IKARI_SCENARIO_RECORD_OUT"),
+    ) else {
+        return;
+    };
+    let text = std::fs::read_to_string(input).expect("record input");
+    let files: std::collections::BTreeMap<String, scenario::ScenarioFile> =
+        serde_json::from_str(&text).expect("record input is scenario files");
+    let mut recorded = Map::new();
+    for (name, file) in &files {
+        let mut scenarios = Map::new();
+        for scenario in &file.scenarios {
+            let setup = file.defaults.resolve(&scenario.setup);
+            let mut steps = Vec::new();
+            if let Err(message) = run(&setup, scenario, Some(&mut steps)) {
+                panic!("{name} / {}: {message}", scenario.name);
+            }
+            scenarios.insert(scenario.name.clone(), Value::Array(steps));
+        }
+        recorded.insert(name.clone(), Value::Object(scenarios));
+    }
+    std::fs::write(output, Value::Object(recorded).to_string()).expect("record output");
+}
+
+/// 記録に残さない欄（実行器ごとに値が違う。README）
+const UNRECORDED_FIELDS: [&str; 2] = ["session_id", "context_rev"];
+
+fn run(
+    setup: &scenario::ResolvedSetup,
+    scenario: &scenario::Scenario,
+    mut recorder: Option<&mut Vec<Value>>,
+) -> Result<(), String> {
     let log = Arc::new(Mutex::new(EngineLog::new(setup.engine.clone())));
     let config = ShellConfig {
         shell_version: "scenario".into(),
@@ -120,13 +159,30 @@ fn run(setup: &scenario::ResolvedSetup, scenario: &scenario::Scenario) -> Result
         if let Some(call) = &step.host {
             actions.extend(host_call(&mut shell, call).map_err(|error| format!("{at}: {error}"))?);
         }
-        let requested = shell.take_mode_request();
+        let requested = match shell.take_mode_request() {
+            Some(InputMode::Japanese) => "japanese",
+            Some(InputMode::English) => "english",
+            None => "none",
+        };
+        if let Some(recorder) = recorder.as_deref_mut() {
+            let sent: Vec<Value> = std::mem::take(&mut lock(&log).sent)
+                .into_iter()
+                .map(|mut request| {
+                    for field in UNRECORDED_FIELDS {
+                        request.remove(field);
+                    }
+                    Value::Object(request)
+                })
+                .collect();
+            recorder.push(json!({
+                "actions": actions,
+                "engine": sent,
+                "mode_request": requested,
+            }));
+            continue;
+        }
         if let Some(expected) = &step.mode_request {
-            let actual = match requested {
-                Some(InputMode::Japanese) => "japanese",
-                Some(InputMode::English) => "english",
-                None => "none",
-            };
+            let actual = requested;
             if actual != expected {
                 return Err(format!(
                     "{at}: mode request differs: expected {expected}, actual {actual}"
