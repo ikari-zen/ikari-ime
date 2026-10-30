@@ -148,6 +148,17 @@ IkariShellBuf ikari_settings_rewrite(IkariStr file, IkariStr changes);
 3. 今の Swift の `handle` の時間を、検証用のログで作者の日常の打鍵から集める（Convert を含むキーと含まないキーに分ける）。検証版を入れる前にテストの入力と通常の入力を確かめ、入れ替えたら開いているアプリを再起動する。
 4. 結果を本 ADR に追記する。比べる目標は ADR 0004 §12（Space から 1 ページ目まで p99 16ms 以下、XPC 込み）。**許す時間はユーザーが計測を見て決める**（2026-10-30 ユーザー決定）。
 
+- **結果（2026-10-30。ブランチ `spike/ffi-time`、`spike/ffi-time/RESULT.md`。捨てるコード）**: 1 万回、ウォームアップ 1 千回を捨て、5 回流した範囲。符号化、FFI、復号、全欄の読み出し、解放を含む。負荷は静かではない（load average 約 3）。
+
+  | 形 | コールバック | p50 | p99 | max |
+  | --- | --- | --- | --- | --- |
+  | proto | なし | 3.0〜4.3us | 3.3〜8.7us | 11.7〜18.9us |
+  | proto | あり | 3.1〜3.3us | 3.3〜3.8us | 10.9〜15.7us |
+  | C の構造体 | なし | 0.62〜0.67us | 0.67〜0.83us | 0.8〜8.6us |
+  | C の構造体 | あり | 0.75〜0.79us | 0.83〜0.92us | 1.0〜10.4us |
+
+  ADR 0004 §12 の p99 16ms に対し、proto の p99 は 0.05% 以下（FFI を 5 回またいでも 0.2% 以下）。C の構造体との差は 1 回約 2.4us で、目標に対して意味がない。C の構造体は、手書きの構造体、ヘッダ、Swift の変換の 3 か所を合わせる必要があり、`unsafe` と解放の管理も増える。**決定: 符号化は proto**（§4.4。Q5 の推奨どおり）。測っていないもの: Swift の型への写し替え、実エンジンの待ち、XPC。
+
 ### 6.2 M0-b: macOS の入口を Rust で作れるか（捨てるコード）
 - 作るもの: Rust だけの入力メソッドのバンドル（`objc2` で `IMKInputController` の子クラスを実行時に登録し、`IMKServer` を立てる）。キーを受けて、決まった文字列（例: 「あ」）を `insertText` で確定するだけ。署名と配置は今の `macos/scripts/` の手順を写す。
 - 確かめること: (1) TextEdit、Safari、VS Code でキーが届き、確定できる。(2) `Info.plist` の `InputMethodServerControllerClass` で、Rust が登録したクラスを IMK が見つける。(3) `NSEvent` の keyCode と修飾が取れ、マークした文字列（`setMarkedText`）が出せる。(4) cargo だけでバンドルを作り、Apple Development の署名で入力ソースに出せる。(5) panic を `catch_unwind` で止めたとき、IMK のプロセスが落ちない。
