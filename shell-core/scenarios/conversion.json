@@ -1,0 +1,254 @@
+{
+  "description": "変換中の Space、ページ送り、数字、Esc / BackSpace、確定。ADR 0004 §6.3、ADR 0014",
+  "defaults": {"client": {"bundle_id": "com.apple.TextEdit"}, "surrounding": {"left": "ユーザー辞書に単語を登録するときは"}, "engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": true, "candidates": [{"surface": "品詞", "annotation": "ひんし(品詞)"}, {"surface": "瀕死", "annotation": "ひんし(瀕死)"}, {"surface": "ひんし", "kind": "hiragana"}]}, {"conversion_id": 7, "page_index": 1, "has_next": true, "candidates": [{"surface": "ヒンシ", "kind": "katakana"}, {"surface": "貧士"}, {"surface": "品指"}]}, {"conversion_id": 7, "page_index": 2, "has_next": false, "candidates": [{"surface": "牝糸"}, {"surface": "ﾋﾝｼ", "kind": "katakana"}]}]}},
+  "scenarios": [
+    {
+      "name": "space converts the kana only with context and the LM budget timeout",
+      "from": "InputStateMachineTests.swift ConversionTests.spaceConvertsTheKanaOnlyWithContextAndTheLmBudgetTimeout",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "品詞", "annotation": "ひんし(品詞)"}, {"surface": "瀕死", "annotation": "ひんし(瀕死)"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "annotation": "ひんし(品詞)", "reserved_rows": 9}], "engine": [{"type": "convert", "reading": "ひんし", "page_size": 9, "timeout_ms": 70, "context": {"left": "ユーザー辞書に単語を登録するときは", "right": "", "available": true}}]}
+      ]
+    },
+    {
+      "name": "pending consonant is excluded from the reading",
+      "from": "InputStateMachineTests.swift ConversionTests.pendingConsonantIsExcludedFromTheReading",
+      "steps": [
+        {"type_text": "hik"},
+        {"press": "space", "engine": [{"type": "convert", "reading": "ひ"}]}
+      ]
+    },
+    {
+      "name": "space with only pending does nothing",
+      "from": "InputStateMachineTests.swift ConversionTests.spaceWithOnlyPendingDoesNothing",
+      "steps": [
+        {"type_text": "k"},
+        {"press": "space", "expect": [{"type": "consume"}], "engine": []}
+      ]
+    },
+    {
+      "name": "surrounding text is cut to the engine limit",
+      "from": "InputStateMachineTests.swift ConversionTests.surroundingTextIsCutToTheEngineLimit",
+      "setup": {"surrounding": {"left": "ああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ末尾", "right": "いいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいい"}},
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "space", "engine": [{"type": "convert", "reading": "ひ", "context": {"left": "ああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ末尾", "right": "いいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいいい", "available": true}}]}
+      ]
+    },
+    {
+      "name": "unavailable surrounding text is passed as unavailable",
+      "from": "InputStateMachineTests.swift ConversionTests.unavailableSurroundingTextIsPassedAsUnavailable",
+      "setup": {"surrounding": {"available": false}},
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "space", "engine": [{"type": "convert", "reading": "ひ", "context": {"available": false}}]}
+      ]
+    },
+    {
+      "name": "empty document is treated as unavailable",
+      "from": "SurroundingAvailabilityTests.swift（ClientAccess.isAvailable）",
+      "setup": {"surrounding": {"left": "", "document_length": 0}},
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "space", "engine": [{"type": "convert", "reading": "ひ", "context": {"available": false}}]}
+      ]
+    },
+    {
+      "name": "the engine always gets the full page size and the setting is how many are shown first",
+      "from": "InputStateMachineTests.swift ConversionTests.theEngineAlwaysGetsTheFullPageSizeAndTheSettingIsHowManyAreShownFirst",
+      "setup": {"settings": ["paging.size\t2"]},
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "品詞", "annotation": "ひんし(品詞)"}, {"surface": "瀕死", "annotation": "ひんし(瀕死)"}], "selected": 0, "annotation": "ひんし(品詞)", "reserved_rows": 9}], "engine": [{"type": "convert", "reading": "ひ", "page_size": 9}]}
+      ]
+    },
+    {
+      "name": "space moves through the candidates of the page",
+      "from": "InputStateMachineTests.swift ConversionTests.spaceMovesThroughTheCandidatesOfThePage",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "space"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "瀕死", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "品詞", "annotation": "ひんし(品詞)"}, {"surface": "瀕死", "annotation": "ひんし(瀕死)"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 1, "annotation": "ひんし(瀕死)", "reserved_rows": 9}], "engine": []}
+      ]
+    },
+    {
+      "name": "space on the last candidate of a page fetches the next page and selects its first",
+      "from": "InputStateMachineTests.swift ConversionTests.spaceOnTheLastCandidateOfAPageFetchesTheNextPageAndSelectsItsFirst",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "ヒンシ", "highlighted_length": 3}, {"type": "show_candidates", "candidates": [{"surface": "ヒンシ", "kind": "katakana"}, {"surface": "貧士"}, {"surface": "品指"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "page", "conversion_id": 7, "index": 1, "timeout_ms": 70}]}
+      ]
+    },
+    {
+      "name": "space on the last page wraps to the first page by default",
+      "from": "InputStateMachineTests.swift ConversionTests.spaceOnTheLastPageWrapsToTheFirstPageByDefault",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "ﾋﾝｼ", "highlighted_length": 3}, {"type": "move_selection", "candidates": [{"surface": "牝糸"}, {"surface": "ﾋﾝｼ", "kind": "katakana"}], "selected": 1, "reserved_rows": 9}]},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "品詞", "annotation": "ひんし(品詞)"}, {"surface": "瀕死", "annotation": "ひんし(瀕死)"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "annotation": "ひんし(品詞)", "reserved_rows": 9}], "engine": []}
+      ]
+    },
+    {
+      "name": "space on the last page stops when wrap is off",
+      "from": "InputStateMachineTests.swift ConversionTests.spaceOnTheLastPageStopsWhenWrapIsOff",
+      "setup": {"settings": ["paging.wrap\tfalse"]},
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "space", "expect": [{"type": "consume"}], "engine": []}
+      ]
+    },
+    {
+      "name": "shift space goes back and crosses to the last candidate of the previous page",
+      "from": "InputStateMachineTests.swift ConversionTests.shiftSpaceGoesBackAndCrossesToTheLastCandidateOfThePreviousPage",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "shift+space", "expect": [{"type": "set_marked_text", "text": "品指", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "ヒンシ", "kind": "katakana"}, {"surface": "貧士"}, {"surface": "品指"}], "selected": 2, "reserved_rows": 9}], "engine": []},
+        {"press": "shift+space", "expect": [{"type": "set_marked_text", "text": "貧士", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "ヒンシ", "kind": "katakana"}, {"surface": "貧士"}, {"surface": "品指"}], "selected": 1, "reserved_rows": 9}]}
+      ]
+    },
+    {
+      "name": "shift space on the very first candidate stays",
+      "from": "InputStateMachineTests.swift ConversionTests.shiftSpaceOnTheVeryFirstCandidateStays",
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "space"},
+        {"press": "shift+space", "expect": [{"type": "consume"}]}
+      ]
+    },
+    {
+      "name": "failed page fetch keeps the current selection",
+      "from": "InputStateMachineTests.swift ConversionTests.failedPageFetchKeepsTheCurrentSelection",
+      "setup": {"engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": true, "candidates": [{"surface": "品詞", "annotation": "ひんし(品詞)"}, {"surface": "瀕死", "annotation": "ひんし(瀕死)"}, {"surface": "ひんし", "kind": "hiragana"}]}, {"conversion_id": 7, "page_index": 1, "has_next": true, "candidates": [{"surface": "ヒンシ", "kind": "katakana"}, {"surface": "貧士"}, {"surface": "品指"}]}, {"conversion_id": 7, "page_index": 2, "has_next": false, "candidates": [{"surface": "牝糸"}, {"surface": "ﾋﾝｼ", "kind": "katakana"}]}], "failures": [{"request": "page", "nth": 1, "error": "timeout"}]}},
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "space", "expect": [{"type": "consume"}], "engine": [{"type": "page", "index": 1}]},
+        {"press": "enter", "expect": [{"type": "commit", "text": "ひんし"}, {"type": "hide_candidates"}]}
+      ]
+    },
+    {
+      "name": "a failed convert falls back to the reading",
+      "from": "InputStateMachineTests.swift（convert の失敗。台本の failures の例）",
+      "setup": {"engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": true, "candidates": [{"surface": "品詞", "annotation": "ひんし(品詞)"}, {"surface": "瀕死", "annotation": "ひんし(瀕死)"}, {"surface": "ひんし", "kind": "hiragana"}]}, {"conversion_id": 7, "page_index": 1, "has_next": true, "candidates": [{"surface": "ヒンシ", "kind": "katakana"}, {"surface": "貧士"}, {"surface": "品指"}]}, {"conversion_id": 7, "page_index": 2, "has_next": false, "candidates": [{"surface": "牝糸"}, {"surface": "ﾋﾝｼ", "kind": "katakana"}]}], "failures": [{"request": "convert", "nth": 1, "error": "unavailable"}]}},
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "space", "engine": [{"type": "convert", "reading": "ひ"}]}
+      ]
+    },
+    {
+      "name": "number key selects and commits that candidate",
+      "from": "InputStateMachineTests.swift ConversionTests.numberKeySelectsAndCommitsThatCandidate",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "space"},
+        {"press": "2", "expect": [{"type": "commit", "text": "瀕死"}, {"type": "hide_candidates"}], "engine": [{"type": "commit", "conversion_id": 7, "candidate_index": 1}]}
+      ]
+    },
+    {
+      "name": "number key on a later page uses the cumulative index",
+      "from": "InputStateMachineTests.swift ConversionTests.numberKeyOnLaterPageUsesTheCumulativeIndex",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "3", "expect": [{"type": "commit", "text": "品指"}, {"type": "hide_candidates"}], "engine": [{"type": "commit", "conversion_id": 7, "candidate_index": 5}]}
+      ]
+    },
+    {
+      "name": "number beyond the candidates is ignored",
+      "from": "InputStateMachineTests.swift ConversionTests.numberBeyondTheCandidatesIsIgnored",
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "space"},
+        {"press": "9", "expect": [{"type": "consume"}], "engine": []}
+      ]
+    },
+    {
+      "name": "JIS digit keys also select in kana mode",
+      "from": "InputStateMachineTests.swift ConversionTests.jisDigitKeysAlsoSelectInKanaMode",
+      "setup": {"settings": ["input.method\tkana"]},
+      "steps": [
+        {"press": "jis:22"},
+        {"press": "space"},
+        {"press": "jis:1", "expect": [{"type": "commit", "text": "瀕死"}, {"type": "hide_candidates"}]}
+      ]
+    },
+    {
+      "name": "enter commits the selected candidate",
+      "from": "InputStateMachineTests.swift ConversionTests.enterCommitsTheSelectedCandidate",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "space"},
+        {"press": "space"},
+        {"press": "enter", "expect": [{"type": "commit", "text": "瀕死"}, {"type": "hide_candidates"}], "engine": [{"type": "commit", "conversion_id": 7, "candidate_index": 1}]}
+      ]
+    },
+    {
+      "name": "escape goes back to the reading without deleting",
+      "from": "InputStateMachineTests.swift ConversionTests.escapeAndBackspaceGoBackToTheReadingWithoutDeleting",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "space"},
+        {"press": "escape", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ひんし", "highlighted_length": 3}], "engine": [{"type": "cancel", "conversion_id": 7}]},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "品詞", "annotation": "ひんし(品詞)"}, {"surface": "瀕死", "annotation": "ひんし(瀕死)"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "annotation": "ひんし(品詞)", "reserved_rows": 9}], "engine": [{"type": "convert", "reading": "ひんし"}]}
+      ]
+    },
+    {
+      "name": "backspace goes back to the reading without deleting",
+      "from": "InputStateMachineTests.swift ConversionTests.escapeAndBackspaceGoBackToTheReadingWithoutDeleting",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "space"},
+        {"press": "backspace", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ひんし", "highlighted_length": 3}], "engine": [{"type": "cancel", "conversion_id": 7}]},
+        {"press": "space", "engine": [{"type": "convert", "reading": "ひんし"}]}
+      ]
+    },
+    {
+      "name": "typing a character while converting commits and starts a new composition",
+      "from": "InputStateMachineTests.swift ConversionTests.typingACharacterWhileConvertingCommitsAndStartsANewComposition",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "space"},
+        {"press": "k", "expect": [{"type": "commit", "text": "品詞"}, {"type": "hide_candidates"}, {"type": "set_marked_text", "text": "k"}], "engine": [{"type": "commit", "conversion_id": 7, "candidate_index": 0}]}
+      ]
+    },
+    {
+      "name": "command shortcut while converting commits first then passes through",
+      "from": "InputStateMachineTests.swift ConversionTests.commandShortcutWhileConvertingCommitsFirstThenPassesThrough",
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "space"},
+        {"press": "cmd+v", "expect": [{"type": "commit", "text": "品詞"}, {"type": "hide_candidates"}, {"type": "pass_through"}]}
+      ]
+    }
+  ]
+}

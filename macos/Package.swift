@@ -31,11 +31,11 @@ var targets: [Target] = [
     ),
     // EngineClient の XPC 実装、署名要件
     .target(name: "IkariXPC", dependencies: ["IkariShellCore", "IkariProto"]),
-    // IMKServer、IkariInputController、CandidatePanel
+    // IMKServer、IkariInputController、CandidatePanel。判断は shell-core（`IkariShellABI` の 1 本の口。ADR 0041 L-E）
     .executableTarget(
         name: "IkariIME",
-        dependencies: ["IkariShellCore", "IkariXPC", "IkariBridge", "IkariProto"] + (hasShellFFI ? ["IkariShellFFI"] : []),
-        swiftSettings: [.define("IKARI_HAS_BRIDGE")] + (hasShellFFI ? [.define("IKARI_HAS_SHELL_FFI")] : [])
+        dependencies: ["IkariShellABI", "IkariXPC", "IkariBridge", "IkariProto"],
+        swiftSettings: hasShellFFI ? [.define("IKARI_HAS_SHELL_FFI")] : []
     ),
     // 設定アプリと殻のブリッジ（ADR 0005 §6.3）。枠の読み書き、BridgeTransport、中継の許可リスト。
     // 契約コミットで完成させてあり、以後はレーン S3 も U も変えない
@@ -49,10 +49,27 @@ var targets: [Target] = [
         swiftSettings: hasEngineFFI ? [.define("IKARI_HAS_ENGINE_FFI")] : [],
         linkerSettings: hasEngineFFI ? rustNativeLibs : []
     ),
+    // 殻の 1 本の口（ADR 0041 §4.4。`ikari_shell_*`）の薄い層。L-E が IkariIME から使う
+    .target(
+        name: "IkariShellABI",
+        dependencies: ["IkariProto", .product(name: "SwiftProtobuf", package: "swift-protobuf")] + (hasShellFFI ? ["IkariShellFFI"] : []),
+        swiftSettings: hasShellFFI ? [.define("IKARI_HAS_SHELL_FFI")] : []
+    ),
+    // 殻の性能の測り手（ADR 0041 §6.3。移行の間だけ。M5 で消す）。`cargo xtask perf shell` が -enable-testing つきでビルドする
+    .executableTarget(name: "IkariShellBench", dependencies: ["IkariShellCore"]),
     // XPC 経由の E2E
     .executableTarget(name: "IkariSmoke", dependencies: ["IkariShellCore", "IkariXPC", "IkariProto"]),
-    .testTarget(name: "IkariIMETests", dependencies: ["IkariIME", "IkariBridge", "IkariProto", "IkariShellCore", "IkariXPC"]),
+    .testTarget(
+        name: "IkariIMETests",
+        dependencies: ["IkariIME", "IkariShellABI", "IkariBridge", "IkariProto", "IkariXPC"],
+        swiftSettings: hasShellFFI ? [.define("IKARI_HAS_SHELL_FFI")] : []
+    ),
     .testTarget(name: "IkariShellCoreTests", dependencies: ["IkariShellCore"]),
+    .testTarget(
+        name: "IkariShellABITests",
+        dependencies: ["IkariShellABI", "IkariProto"],
+        swiftSettings: hasShellFFI ? [.define("IKARI_HAS_SHELL_FFI")] : []
+    ),
     .testTarget(name: "IkariBridgeTests", dependencies: ["IkariBridge", "IkariProto", "IkariShellCore"]),
     .testTarget(name: "IkariSettingsTests", dependencies: ["IkariSettings", "IkariBridge", "IkariProto", "IkariShellCore", "IkariXPC"]),
     .testTarget(name: "IkariXPCTests", dependencies: ["IkariXPC", "IkariShellCore", "IkariProto"]),
@@ -75,6 +92,7 @@ let package = Package(
         .executable(name: "ikari", targets: ["IkariIME"]),
         .executable(name: "IkariEngine", targets: ["IkariEngineService"]),
         .executable(name: "ikari-smoke", targets: ["IkariSmoke"]),
+        .executable(name: "ikari-shell-bench", targets: ["IkariShellBench"]),
         .executable(name: "IkariSettings", targets: ["IkariSettings"]),
     ],
     dependencies: [

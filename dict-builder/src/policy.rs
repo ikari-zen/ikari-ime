@@ -39,9 +39,13 @@ pub const CHEAP_RARE_HOMOPHONE: &str = "cheap_rare_homophone";
 pub const OFFICIAL_KA_COUNTER: &str = "official_ka_counter";
 pub const KATAKANA_PLACE_PEER: &str = "katakana_place_peer";
 pub const DEFAULT_COST_HOMOPHONE: &str = "default_cost_homophone";
+pub const RARE_KANJI_VARIANT: &str = "rare_kanji_variant";
+pub const HONORIFIC_GO_KANJI: &str = "honorific_go_kanji";
+pub const SHORT_KATAKANA_COUNTER: &str = "short_katakana_counter";
+pub const PERSON_NAME_KANJI: &str = "person_name_kanji";
 
 /// 述語の一覧。添字が `Verdict::hit_mask` のビット位置。
-pub const PREDICATES: [&str; 22] = [
+pub const PREDICATES: [&str; 26] = [
     ASCII_LOWER,
     ASCII_OTHER,
     NUMERIC_SURFACE,
@@ -64,6 +68,10 @@ pub const PREDICATES: [&str; 22] = [
     OFFICIAL_KA_COUNTER,
     KATAKANA_PLACE_PEER,
     DEFAULT_COST_HOMOPHONE,
+    RARE_KANJI_VARIANT,
+    HONORIFIC_GO_KANJI,
+    SHORT_KATAKANA_COUNTER,
+    PERSON_NAME_KANJI,
 ];
 const IDX_ASCII_LOWER: usize = 0;
 const IDX_ASCII_OTHER: usize = 1;
@@ -87,6 +95,10 @@ const IDX_PLACE_NAME: usize = 18;
 const IDX_OFFICIAL_KA_COUNTER: usize = 19;
 const IDX_KATAKANA_PLACE_PEER: usize = 20;
 const IDX_DEFAULT_COST_HOMOPHONE: usize = 21;
+const IDX_RARE_KANJI_VARIANT: usize = 22;
+const IDX_HONORIFIC_GO_KANJI: usize = 23;
+const IDX_SHORT_KATAKANA_COUNTER: usize = 24;
+const IDX_PERSON_NAME_KANJI: usize = 25;
 
 const POS_SEPARATOR: char = ',';
 /// 長音記号「ー」(U+30FC)
@@ -95,6 +107,10 @@ const POS1_SYMBOL: &str = "記号";
 const POS2_NUMERAL: &str = "数詞";
 const POS2_PROPER_NOUN: &str = "固有名詞";
 const POS1_NOUN: &str = "名詞";
+const POS1_PREFIX: &str = "接頭辞";
+/// 敬語の接頭語の漢字（`honorific_go_kanji`）と、その読み
+const HONORIFIC_PREFIX_KANJI: &str = "御";
+const HONORIFIC_PREFIX_READINGS: [&str; 2] = ["ご", "お"];
 const POS2_COMMON_NOUN: &str = "普通名詞";
 const POS3_PERSON_NAME: &str = "人名";
 const POS3_PLACE_NAME: &str = "地名";
@@ -118,6 +134,8 @@ const KANJI_ZERO: &str = "\u{3007}";
 /// 品詞の5列目（活用型）が活用しないことを表す値
 const CONJ_TYPE_NONE: &str = "*";
 const POS_CONJ_TYPE_FIELD: usize = 4;
+/// `rare_kanji_variant` の対象の品詞1
+const RARE_KANJI_VARIANT_POS1: [&str; 2] = ["動詞", "形容詞"];
 /// ascii_lower に含められる、英小文字と数字以外の文字
 const ASCII_LOWER_PUNCT: [char; 5] = [' ', '.', '\'', '&', '-'];
 /// `lemma_rank` が無料にする頻度順位の桁数（順位 1000 位までは加算しない）
@@ -172,6 +190,8 @@ const KATAKANA_ANALYSIS_MAX_CHARS: usize = 3;
 /// `katakana_analysis` の対象にする、カタカナ語自身の chiVe の頻度順位の下限。
 /// 1 万位より上（ドル、ピン、タブ、テンポ。実際に使うカタカナ語）は対象にしない
 const KATAKANA_ANALYSIS_MIN_RANK: usize = 10_000;
+/// `short_katakana_counter` の対象にする表記の長さの上限（文字数）
+const SHORT_KATAKANA_MAX_CHARS: usize = 2;
 /// `katakana_analysis` の対象にする、同じ読みの漢字の語との頻度の差（`log10(順位 + 1)` の差。1.0 = 10 倍）
 const KATAKANA_ANALYSIS_MIN_DECADE_GAP: f64 = 1.0;
 /// `cheap_rare_homophone` の対象にする表記の長さの下限（文字数）
@@ -278,6 +298,8 @@ pub struct PolicyRow<'a> {
     pub default_cost_peer_total: Option<i32>,
     /// 異字同訓の表（`policy/kun.tsv`）での分類（ADR 0009）。表を使わない行は `KunInfo::default()`
     pub kun: KunInfo,
+    /// 活用する動詞・形容詞で、辞書形の表記が lemma（正規化表記）と違い、chiVe の語彙にない漢字を含むか（舁ぐ/担ぐ。`is_rare_kanji_variant`）
+    pub rare_kanji_variant: bool,
     /// `cheap_rare_homophone` が使う、コストと同音語の頻度順位（ADR 0016）
     pub homophone: HomophoneInfo,
     /// Full の notcore の行のとき、その情報（ADR 0012 §11.3）。Core の行は `None`
@@ -509,6 +531,8 @@ impl Policy {
             || self.effects[IDX_CHEAP_RARE_HOMOPHONE].is_some()
             || self.effects[IDX_KATAKANA_PLACE_PEER].is_some()
             || self.effects[IDX_DEFAULT_COST_HOMOPHONE].is_some()
+            || self.effects[IDX_RARE_KANJI_VARIANT].is_some()
+            || self.effects[IDX_SHORT_KATAKANA_COUNTER].is_some()
     }
 
     /// 異字同訓の表の述語（`kun_*`）が書かれているか。
@@ -578,6 +602,8 @@ impl Policy {
         hit[IDX_SYMBOL_KANA] = pos1 == POS1_SYMBOL;
         hit[IDX_PROPER_NOUN] = pos2 == POS2_PROPER_NOUN;
         hit[IDX_PERSON_NAME] = pos3 == POS3_PERSON_NAME;
+        // 漢字で書く人名（田所、浩二）。カタカナの人名（スズキ、ハル）は対象にしない（ブランド名・普通名詞との比較が崩れる）
+        hit[IDX_PERSON_NAME_KANJI] = pos3 == POS3_PERSON_NAME && row.surface.chars().any(is_han);
         hit[IDX_PLACE_NAME] = pos2 == POS2_PROPER_NOUN && pos3 == POS3_PLACE_NAME;
         hit[IDX_OFFICIAL_KA_COUNTER] = is_official_ka_counter(row, pos1, pos2, pos3);
         hit[IDX_KATAKANA_PLACE_PEER] =
@@ -587,6 +613,10 @@ impl Policy {
             == Some(CONJ_TYPE_NONE)
             && row.surface != row.lemma
             && row.surface.chars().any(is_han);
+        hit[IDX_RARE_KANJI_VARIANT] = row.rare_kanji_variant;
+        hit[IDX_HONORIFIC_GO_KANJI] = is_honorific_go_kanji(row, pos1);
+        hit[IDX_SHORT_KATAKANA_COUNTER] =
+            is_short_katakana_counter(row, (pos1, pos2, pos3), chive_vocab);
         hit[IDX_WAVE_DASH] =
             row.surface.chars().count() > 1 && row.surface.chars().any(is_wave_dash);
         hit[IDX_KATAKANA_ANALYSIS] = is_katakana_analysis(row, pos1, pos2, chive_vocab);
@@ -730,6 +760,27 @@ fn is_official_ka_counter(row: &PolicyRow<'_>, pos1: &str, pos2: &str, pos3: &st
     first == KA_COUNTER_HIRAGANA
         && KA_COUNTER_SUFFIXES.contains(&second)
         && row.lemma.chars().eq([KA_COUNTER_KANJI, second])
+}
+
+/// 活用する動詞・形容詞の行で、辞書形の表記が lemma（正規化表記）と違い、chiVe の語彙にない漢字を含むか（舁ぐ/担ぐ。#119）。
+/// 活用しない語の `variant_surface` に対応する。lemma が同じなので chiVe の頻度では区別できず、Sudachi の解析用のコストだけで
+/// 難読字の表記が先に出る。`dict_surface` は行の辞書形の表記（活用形の行でも辞書形）。`is_rare_kanji` は漢字 1 字が chiVe の語彙にないか。
+/// 送り仮名のゆれや、よく使う異字同訓の漢字（捕らわれる/囚われる、挙げる/上げる）は対象にしない（正しい表記が選ばれる場面がある）。
+/// 異字同訓の表にある lemma は、表の規則（`kun_*`）が表記を決めるので対象にしない
+pub(crate) fn is_rare_kanji_variant(
+    pos: &str,
+    lemma: &str,
+    dict_surface: &str,
+    in_kun_table: bool,
+    is_rare_kanji: impl Fn(char) -> bool,
+) -> bool {
+    let mut fields = pos.split(POS_SEPARATOR);
+    let pos1 = fields.next().unwrap_or("");
+    RARE_KANJI_VARIANT_POS1.contains(&pos1)
+        && fields.nth(POS_CONJ_TYPE_FIELD - 1) != Some(CONJ_TYPE_NONE)
+        && !in_kun_table
+        && dict_surface != lemma
+        && dict_surface.chars().any(|c| is_han(c) && is_rare_kanji(c))
 }
 
 /// 助詞・助動詞で、カタカナを含み lemma にはカタカナがない表記か（タ、ダ、デス、マス、ネ。治っタ のように
@@ -896,6 +947,42 @@ fn is_katakana_analysis(
     own_rank >= KATAKANA_ANALYSIS_MIN_RANK
         && (own_rank as f64 + 1.0).log10() - (peer_rank as f64 + 1.0).log10()
             >= KATAKANA_ANALYSIS_MIN_DECADE_GAP
+}
+
+/// 接頭辞の「御」（読みは ご・お）か。公用文の書き表し方では敬語の接頭語の「ご」「お」は仮名書き（ご案内、お願い）で、
+/// 「御」は Sudachi の解析用の表記。「の + 御 + 変換」が 「の + 誤変換」に勝つ（#91）。熟語（御社、御礼）は別の行で、対象にしない
+fn is_honorific_go_kanji(row: &PolicyRow<'_>, pos1: &str) -> bool {
+    pos1 == POS1_PREFIX
+        && row.surface == HONORIFIC_PREFIX_KANJI
+        && HONORIFIC_PREFIX_READINGS.contains(&row.reading)
+}
+
+/// 同じ読みの漢字の語がなくても、Sudachi の解析用に安い、短いカタカナの助数詞可能の名詞か（ナノ: コスト 2607。
+/// 「意味 + ナノ + に」が 「意味 + な + のに」に勝つ。#90）。`is_katakana_analysis` と同じ形（普通名詞、表記 = lemma、
+/// 長音記号を含むカタカナだけの短い語、自身の chiVe の順位が低い）で、同じ読みの漢字の語との頻度の差を要らない代わりに、
+/// 助数詞可能（ナノ、ギガ、ケタ など）に絞る。広げると カタカナの未知語（ファイナリゼーション）の分割に副作用が出る（eval/reports/short-katakana-90.md）。
+/// `is_katakana_analysis` に当たる行は、そちらで後ろに回しているので除く
+fn is_short_katakana_counter(
+    row: &PolicyRow<'_>,
+    (pos1, pos2, pos3): (&str, &str, &str),
+    chive_vocab: Option<&ChiveVocab>,
+) -> bool {
+    let Some(vocab) = chive_vocab else {
+        return false;
+    };
+    let len = row.surface.chars().count();
+    pos3 == POS3_COUNTABLE
+        && pos1 == POS1_NOUN
+        && pos2 == POS2_COMMON_NOUN
+        && row.surface == row.lemma
+        && len > 0
+        && len <= SHORT_KATAKANA_MAX_CHARS
+        && row
+            .surface
+            .chars()
+            .all(|c| is_katakana(c) || c == PROLONGED_SOUND_MARK)
+        && vocab.rank_or_last(row.lemma) >= KATAKANA_ANALYSIS_MIN_RANK
+        && !is_katakana_analysis(row, pos1, pos2, chive_vocab)
 }
 
 /// CJK 統合漢字（拡張A を含む）と々。
@@ -1146,6 +1233,7 @@ mod tests {
                 notcore: None,
                 homophone: HomophoneInfo::default(),
                 kun: KunInfo::default(),
+                rare_kanji_variant: false,
             },
             None,
         )
@@ -1201,6 +1289,8 @@ mod tests {
                 CHEAP_RARE_HOMOPHONE,
                 KATAKANA_PLACE_PEER,
                 DEFAULT_COST_HOMOPHONE,
+                RARE_KANJI_VARIANT,
+                SHORT_KATAKANA_COUNTER,
             ]
             .contains(n)
         }) {
@@ -1297,7 +1387,8 @@ mod tests {
             eval(&p, "更生", "更生", PLACE).penalty,
             1000 + PLACE_NAME_ADD
         );
-        assert_eq!(eval(&p, "更生", "更生", PERSON).penalty, 2000);
+        // 漢字の人名: 1000 + 1000 + person_name_kanji（-500）
+        assert_eq!(eval(&p, "更生", "更生", PERSON).penalty, 1500);
         assert_eq!(eval(&p, "更生", "更生", NOUN).penalty, 0);
         // カタカナの人名: 5000 + 1000 + 1000
         assert_eq!(eval(&p, "ナッ", "なっ", PERSON).penalty, 7000);
@@ -1360,6 +1451,101 @@ mod tests {
     }
 
     #[test]
+    fn rare_kanji_variant_adds_its_value_only_to_flagged_rows() {
+        let p = Policy::parse("rare_kanji_variant\t1500\n").unwrap();
+        let verb = "動詞,一般,*,*,五段-ガ行,終止形-一般";
+        let row = |rare_kanji_variant| PolicyRow {
+            surface: "舁ぐ",
+            lemma: "担ぐ",
+            reading: "かつぐ",
+            pos: verb,
+            kanji_peer_rank: None,
+            noun_peer_rank: None,
+            place_peer_rank: None,
+            place_peer_total: None,
+            compound_parts_rank: None,
+            default_cost_peer_total: None,
+            notcore: None,
+            homophone: HomophoneInfo::default(),
+            kun: KunInfo::default(),
+            rare_kanji_variant,
+        };
+        let hit = p.evaluate(&row(true), None);
+        assert_eq!(hit.penalty, 1500);
+        assert!(hit.hits(RARE_KANJI_VARIANT));
+        assert_eq!(p.evaluate(&row(false), None).penalty, 0);
+    }
+
+    #[test]
+    fn is_rare_kanji_variant_needs_an_inflecting_verb_or_adjective_with_a_rare_kanji_that_differs_from_the_lemma()
+     {
+        let verb = "動詞,一般,*,*,五段-ガ行,連用形-イ音便";
+        let adjective = "形容詞,一般,*,*,形容詞,連体形-一般";
+        let noun = "名詞,普通名詞,一般,*,*,*";
+        let rare = |c: char| c == '舁';
+        // 辞書形の表記が lemma と違い、語彙にない漢字を含む（活用形の行でも、辞書形で見る）
+        assert!(is_rare_kanji_variant(verb, "担ぐ", "舁ぐ", false, rare));
+        assert!(is_rare_kanji_variant(
+            adjective, "担ぐ", "舁い", false, rare
+        ));
+        // lemma と同じ表記は対象外
+        assert!(!is_rare_kanji_variant(verb, "担ぐ", "担ぐ", false, rare));
+        // 漢字がすべて語彙にある（捕らわれる/囚われる、挙げる/上げる）なら対象外
+        assert!(!is_rare_kanji_variant(
+            verb,
+            "捕らわれる",
+            "囚われる",
+            false,
+            rare
+        ));
+        // 活用しない語（variant_surface の担当）と、動詞・形容詞でない語は対象外
+        assert!(!is_rare_kanji_variant(noun, "担", "舁", false, rare));
+        // 異字同訓の表にある lemma は、表の規則が決める
+        assert!(!is_rare_kanji_variant(verb, "担ぐ", "舁ぐ", true, rare));
+    }
+
+    #[test]
+    fn honorific_go_kanji_needs_the_prefix_surface_with_go_or_o_reading() {
+        let p = Policy::parse("honorific_go_kanji\t1500\n").unwrap();
+        let prefix = "接頭辞,*,*,*,*,*";
+        let eval = |surface, reading, pos| eval_with_reading(&p, surface, reading, pos);
+        // 敬語の接頭語の 御（ご・お）に当たる
+        let go = eval("御", "ご", prefix);
+        assert_eq!(go.penalty, 1500);
+        assert!(go.hits(HONORIFIC_GO_KANJI));
+        assert_eq!(eval("御", "お", prefix).penalty, 1500);
+        // 仮名の ご、ほかの読み（おん）、名詞の熟語（御社）、名詞の 御 は対象外
+        assert_eq!(eval("ご", "ご", prefix).penalty, 0);
+        assert_eq!(eval("御", "おん", prefix).penalty, 0);
+        assert_eq!(eval("御社", "おんしゃ", NOUN).penalty, 0);
+        assert_eq!(eval("御", "ご", NOUN).penalty, 0);
+    }
+
+    #[test]
+    fn person_name_kanji_adds_to_person_name_only_for_surfaces_with_kanji() {
+        let p = Policy::parse("proper_noun\t1000\nperson_name\t1000\nperson_name_kanji\t-500\n")
+            .unwrap();
+        let name = "名詞,固有名詞,人名,名,*,*";
+        // 漢字の人名: 1000 + 1000 - 500
+        let kanji = eval_with_reading(&p, "浩二", "こうじ", name);
+        assert_eq!(kanji.penalty, 1500);
+        assert!(kanji.hits(PERSON_NAME_KANJI));
+        // カタカナ・ひらがなの人名は person_name までで、変わらない
+        assert_eq!(
+            eval_with_reading(&p, "コウジ", "こうじ", name).penalty,
+            2000
+        );
+        assert_eq!(
+            eval_with_reading(&p, "こうじ", "こうじ", name).penalty,
+            2000
+        );
+        // 人名でない固有名詞（地名）と普通名詞には当たらない
+        let place = "名詞,固有名詞,地名,一般,*,*";
+        assert!(!eval_with_reading(&p, "梅田", "うめだ", place).hits(PERSON_NAME_KANJI));
+        assert_eq!(eval_with_reading(&p, "工事", "こうじ", NOUN).penalty, 0);
+    }
+
+    #[test]
     fn wave_dash_penalizes_decorated_surfaces_but_not_the_mark_itself() {
         let p = Policy::builtin();
         for s in ["の〜", "た〜", "あ～あ", "あれ~"] {
@@ -1388,6 +1574,7 @@ mod tests {
                 notcore: None,
                 homophone: HomophoneInfo::default(),
                 kun: KunInfo::default(),
+                rare_kanji_variant: false,
             },
             None,
         )
@@ -1567,6 +1754,7 @@ mod tests {
                     notcore: None,
                     homophone: HomophoneInfo::default(),
                     kun,
+                    rare_kanji_variant: false,
                 },
                 None,
             )
@@ -1623,6 +1811,7 @@ mod tests {
                     lemma_default_excess: Some(10),
                     reading_default: true,
                 },
+                rare_kanji_variant: false,
             },
             None,
         );
@@ -1675,6 +1864,7 @@ mod tests {
                     notcore: None,
                     homophone: HomophoneInfo::default(),
                     kun: KunInfo::default(),
+                    rare_kanji_variant: false,
                 },
                 Some(&vocab),
             )
@@ -1714,6 +1904,7 @@ mod tests {
                     notcore: None,
                     homophone: HomophoneInfo::default(),
                     kun: KunInfo::default(),
+                    rare_kanji_variant: false,
                 },
                 Some(&vocab),
             )
@@ -1755,6 +1946,7 @@ mod tests {
                         ..HomophoneInfo::default()
                     },
                     kun: KunInfo::default(),
+                    rare_kanji_variant: false,
                 },
                 Some(&vocab),
             )
@@ -1825,6 +2017,7 @@ mod tests {
                 notcore: None,
                 homophone: HomophoneInfo::default(),
                 kun: KunInfo::default(),
+                rare_kanji_variant: false,
             },
             Some(&guarded_vocab()),
         )
@@ -1873,6 +2066,7 @@ mod tests {
                 notcore: None,
                 homophone: HomophoneInfo::default(),
                 kun: KunInfo::default(),
+                rare_kanji_variant: false,
             })
         };
         assert!(peer("葬式", NOUN));
@@ -1910,6 +2104,7 @@ mod tests {
                 notcore: None,
                 homophone: HomophoneInfo::default(),
                 kun: KunInfo::default(),
+                rare_kanji_variant: false,
             };
             p.evaluate(&row, Some(&vocab)).penalty
         };
@@ -1937,6 +2132,7 @@ mod tests {
             notcore: None,
             homophone: HomophoneInfo::default(),
             kun: KunInfo::default(),
+            rare_kanji_variant: false,
         };
         assert_eq!(p.evaluate(&row, None).penalty, 0);
     }
@@ -1950,6 +2146,8 @@ mod tests {
             (4_000, "ペン"),
             (9_999, "ドル"),
             (15_500, "メモリ"),
+            (16_000, "ナノ"),
+            (16_001, "ナノナ"),
         ] {
             keys[rank] = lemma.to_string();
         }
@@ -1971,6 +2169,7 @@ mod tests {
             notcore: None,
             homophone: HomophoneInfo::default(),
             kun: KunInfo::default(),
+            rare_kanji_variant: false,
         };
         p.evaluate(&row, Some(&analysis_vocab())).penalty
     }
@@ -2008,6 +2207,7 @@ mod tests {
             notcore: None,
             homophone: HomophoneInfo::default(),
             kun: KunInfo::default(),
+            rare_kanji_variant: false,
         };
         assert_eq!(p.evaluate(&row, None).penalty, 0);
         // lemma が表記と違う行（コウ/こう）は対象外（katakana_variant の担当）
@@ -2025,8 +2225,45 @@ mod tests {
             notcore: None,
             homophone: HomophoneInfo::default(),
             kun: KunInfo::default(),
+            rare_kanji_variant: false,
         };
         assert_eq!(p.evaluate(&variant, Some(&analysis_vocab())).penalty, 0);
+    }
+
+    #[test]
+    fn short_katakana_counter_hits_only_rare_short_katakana_countable_nouns_without_a_kanji_peer_rule()
+     {
+        let p = Policy::parse("short_katakana_counter\t3000\n").unwrap();
+        assert!(p.uses_chive_vocab());
+        const COUNTABLE: &str = "名詞,普通名詞,助数詞可能,*,*,*";
+        // ナノ（16000 位）は、同じ読みの漢字の語がなくても当たる
+        assert_eq!(analysis_penalty(&p, "ナノ", COUNTABLE, None), 3000);
+        // 助数詞可能でない普通名詞（メイ）、1 万位より上（ペン、ドル）、3 文字以上（ナノナ）は対象外
+        assert_eq!(analysis_penalty(&p, "メイ", NOUN, None), 0);
+        assert_eq!(analysis_penalty(&p, "ペン", COUNTABLE, None), 0);
+        assert_eq!(analysis_penalty(&p, "ナノナ", COUNTABLE, None), 0);
+        // 漢字の語が桁違いに頻度が高いものは katakana_analysis の担当（二重に足さない）
+        let both =
+            Policy::parse("short_katakana_counter\t3000\nkatakana_analysis\t4000\n").unwrap();
+        assert_eq!(analysis_penalty(&both, "メイ", COUNTABLE, Some(10)), 4000);
+        // 語彙がなければ当たらない
+        let row = PolicyRow {
+            surface: "ナノ",
+            lemma: "ナノ",
+            reading: "ー",
+            pos: COUNTABLE,
+            kanji_peer_rank: None,
+            noun_peer_rank: None,
+            place_peer_rank: None,
+            place_peer_total: None,
+            compound_parts_rank: None,
+            default_cost_peer_total: None,
+            notcore: None,
+            homophone: HomophoneInfo::default(),
+            kun: KunInfo::default(),
+            rare_kanji_variant: false,
+        };
+        assert_eq!(p.evaluate(&row, None).penalty, 0);
     }
 
     #[test]
@@ -2046,6 +2283,7 @@ mod tests {
                 notcore: None,
                 homophone: HomophoneInfo::default(),
                 kun: KunInfo::default(),
+                rare_kanji_variant: false,
             })
         };
         assert!(peer("名", NOUN));
@@ -2102,6 +2340,7 @@ mod tests {
                 notcore: None,
                 homophone: HomophoneInfo::default(),
                 kun: KunInfo::default(),
+                rare_kanji_variant: false,
                 pos,
             };
             let v = p.evaluate(&row, None);
@@ -2166,6 +2405,7 @@ mod tests {
                     peer_rank: peer,
                 },
                 kun: KunInfo::default(),
+                rare_kanji_variant: false,
             },
             Some(vocab),
         )
@@ -2267,6 +2507,7 @@ mod tests {
                 peer_rank: Some(956),
             },
             kun: KunInfo::default(),
+            rare_kanji_variant: false,
         };
         assert_eq!(p.evaluate(&row("製鋼", "製鋼"), Some(&vocab)).penalty, 1518);
         assert_eq!(p.evaluate(&row("製剛", "製鋼"), Some(&vocab)).penalty, 0);
@@ -2297,6 +2538,7 @@ mod tests {
             notcore: None,
             homophone: HomophoneInfo::default(),
             kun: KunInfo::default(),
+            rare_kanji_variant: false,
         }
     }
 
@@ -2437,6 +2679,7 @@ mod tests {
                 peer_rank: None,
             },
             kun: KunInfo::default(),
+            rare_kanji_variant: false,
         };
         // 目標（10662 − 600 = 10062）が今の総コスト 7401 より高いときは上げない
         let above = p.evaluate(&row(Some(10_662)), None);

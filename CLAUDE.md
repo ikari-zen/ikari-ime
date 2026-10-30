@@ -23,6 +23,7 @@
 ## ブランチと PR（main への直接コミットと push は禁止）
 - 作業は必ずブランチで行う（`feat/…`、`fix/…`、`docs/…`）。main への反映は GitHub の PR を通してだけ行う。
 - 手元でもフックで止めている（`.githooks/`。`git config core.hooksPath .githooks` で有効）。フックを外したり `--no-verify` で回避したりしない。
+- Claude Code のフック（`.claude/settings.json`。`.claude/hooks/`）: `gh pr merge` は、PR の先頭コミットで `scripts/check.sh` が `CHECK_EXIT=0` だった記録がないと止まる。`.rs` の編集のあとは `cargo fmt` を流す。回避は、Claude Code の起動前に `IKARI_ALLOW_UNCHECKED_MERGE=1` を設定する（ユーザーだけ）。
 - レーンの worktree のブランチは、リードが統合用のブランチにまとめ、そこから PR を作る。
 - コミットの末尾には、システムが指定する Co-Authored-By の行を付ける。
 - **こまめにコミットする**。意味のある小さな単位ごとにコミットし、作業の終わりにまとめない。
@@ -46,6 +47,12 @@ cargo run --release -p ikari-eval -- --ranker full --set eval/sets/homophones-ex
 - **smoke はユーザーの了解を取ってから行う。** smoke は別のエンジンを起動して学習ファイルのロックを取るので、その間ユーザーの ikari は漢字に変換できなくなる。
 - ユーザーデータ（`~/Library/Application Support/ikari-ime/`）と `data/raw/` は書き換えない。システムのプロセスを kill しない。入力ソースの設定を変えない。
 - 署名は Apple Development 証明書、チームID は `macos/scripts/lib.sh` の `TEAM_ID`（ADR 0004 §15.1）。
+
+## 優先順位と技術選定（2026-10-30 ユーザー決定。ADR 0042）
+- **Rust への移行は、すべてのタスクのなかで最優先**（影響範囲が大きく、遅れるほど変更が積み上がるため）。ほかのタスクとぶつかるときは、移行を先にする。
+- **OS に依存しないものは Rust**。判断は Rust に置く。Swift などは、OS の入口（薄く）と UI（設定画面、候補窓。きれいさ優先。保守性を妥協してよいのはここだけ）だけ。言語をまたぐ境界は数を減らして細く保つ。入口に判断が増えたら Rust に移す。
+- ビルド・検証のスクリプトも、Windows で要るものは `cargo xtask`（Rust）に寄せる。macOS 専用（署名、install、smoke）はシェルのまま。
+- 作者以外の利用者がまだいない間は、大胆に移行してよい（長い併存や互換を持たない）。
 
 ## 守る決定（詳細は ADR と user-feedback.md）
 - **方針の3本柱**（2026-10-20 ユーザー決定。詳細は spec「基本原則」）: (1) ユーザーの思考を止めない（こまめに確定する）。(2) ユーザーの意図に忠実（入力の補完をしない。必要のない機能、入力の結果を変える機能は既定でオフ。ユーザーが選ぶ候補は変換であって補完ではない）。(3) 速さは補完ではなく、入力配列（大西配列、薙刀式など）とショートカットで出す。

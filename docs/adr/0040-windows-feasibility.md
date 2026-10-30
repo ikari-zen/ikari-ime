@@ -138,5 +138,5 @@ W0 には契約は要らない（中のパスと `cfg` だけ）。TIP と状態
 - spec「OS別の実装メモ」「非機能要件」（NFR-14、NFR-40〜42、プロセス間通信の表）: [ikari-ime_spec.md](../ikari-ime_spec.md)
 - [ADR 0004](0004-phase2-macos.md)（殻とエンジンの分け方）、[ADR 0006](0006-segment-editing.md)、[ADR 0021](0021-lm-lookahead.md)、[ADR 0026](0026-english-mode-and-key-stats.md)、[ADR 0033](0033-place-data-distribution.md)（データの入れ替え）
 - 外部（調査時点の観察。§0.2）: Microsoft「IME requirements」、Mozc `src/win32/tip`、azooKey-Windows、Azure Artifact Signing の quickstart。他に researcher が挙げた参考: khiin-rs、PIME、saschanaz/ime-rs（本 ADR では中身を確かめていない）
-- ADR 0041（殻の Rust への移行。PR #136）、ADR 0042（技術選定の方針。PR #137）。どちらも main にはまだない
+- [ADR 0041](0041-shell-state-machine-in-rust.md)（殻の Rust への移行。承認済み）、[ADR 0042](0042-technology-policy.md)（技術選定の方針）、[ADR 0043](0043-xtask.md)（`cargo xtask`）
 - 関連する Issue: #81、#99、#128、#138

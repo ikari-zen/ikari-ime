@@ -1,0 +1,74 @@
+{
+  "description": "Shift＋英字で始める一時的な英数の並び",
+  "defaults": {"client": {"bundle_id": "com.apple.TextEdit"}, "surrounding": {"left": "ユーザー辞書に単語を登録するときは"}, "engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": true, "candidates": [{"surface": "品詞", "annotation": "ひんし(品詞)"}, {"surface": "瀕死", "annotation": "ひんし(瀕死)"}, {"surface": "ひんし", "kind": "hiragana"}]}, {"conversion_id": 7, "page_index": 1, "has_next": true, "candidates": [{"surface": "ヒンシ", "kind": "katakana"}, {"surface": "貧士"}, {"surface": "品指"}]}, {"conversion_id": 7, "page_index": 2, "has_next": false, "candidates": [{"surface": "牝糸"}, {"surface": "ﾋﾝｼ", "kind": "katakana"}]}]}},
+  "scenarios": [
+    {
+      "name": "shift letters start a temporary alphanumeric run",
+      "from": "InputStateMachineTests.swift AsciiRunTests.shiftLettersStartATemporaryAlphanumericRun",
+      "steps": [
+        {"press": "shift+A"},
+        {"press": "shift+P"},
+        {"press": "shift+I", "expect": [{"type": "set_marked_text", "text": "API", "highlighted_length": 3}]},
+        {"press": "enter", "expect": [{"type": "commit", "text": "API"}]}
+      ]
+    },
+    {
+      "name": "following lowercase letters stay ASCII",
+      "from": "InputStateMachineTests.swift AsciiRunTests.followingLowercaseLettersStayAscii",
+      "steps": [
+        {"press": "shift+K"},
+        {"type_text": "ubernete"},
+        {"press": "s", "expect": [{"type": "set_marked_text", "text": "Kubernetes", "highlighted_length": 10}]},
+        {"press": "enter", "expect": [{"type": "commit", "text": "Kubernetes"}]}
+      ]
+    },
+    {
+      "name": "shift letter after kana keeps the kana as a prefix",
+      "from": "InputStateMachineTests.swift AsciiRunTests.shiftLetterAfterKanaKeepsTheKanaAsAPrefix",
+      "steps": [
+        {"type_text": "hin"},
+        {"press": "shift+A", "expect": [{"type": "set_marked_text", "text": "ひんA", "highlighted_length": 3}]}
+      ]
+    },
+    {
+      "name": "escape leaves the run back to the kana",
+      "from": "InputStateMachineTests.swift AsciiRunTests.escapeLeavesTheRunBackToTheKanaOrToIdle",
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "shift+A"},
+        {"press": "escape", "expect": [{"type": "set_marked_text", "text": "ひ", "highlighted_length": 1}]}
+      ]
+    },
+    {
+      "name": "escape leaves the run back to idle",
+      "from": "InputStateMachineTests.swift AsciiRunTests.escapeLeavesTheRunBackToTheKanaOrToIdle",
+      "steps": [
+        {"press": "shift+A"},
+        {"press": "escape", "expect": [{"type": "set_marked_text", "text": ""}]},
+        {"press": "escape", "expect": [{"type": "resolve_stray_marked_text"}]}
+      ]
+    },
+    {
+      "name": "backspace removes one ASCII character and leaves when none is left",
+      "from": "InputStateMachineTests.swift AsciiRunTests.backspaceRemovesOneAsciiCharacterAndLeavesWhenNoneIsLeft",
+      "steps": [
+        {"press": "shift+A"},
+        {"type_text": "pi"},
+        {"press": "backspace", "expect": [{"type": "set_marked_text", "text": "Ap", "highlighted_length": 2}]},
+        {"press": "backspace"},
+        {"press": "backspace", "expect": [{"type": "set_marked_text", "text": ""}]},
+        {"press": "backspace", "expect": [{"type": "pass_through"}]}
+      ]
+    },
+    {
+      "name": "space converts the run as the reading and escape returns to the run",
+      "from": "InputStateMachineTests.swift AsciiRunTests.spaceConvertsTheRunAsTheReadingAndEscapeReturnsToTheRun",
+      "steps": [
+        {"press": "shift+A"},
+        {"press": "shift+P"},
+        {"press": "space", "engine": [{"type": "convert", "reading": "AP"}]},
+        {"press": "escape", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "AP", "highlighted_length": 2}]}
+      ]
+    }
+  ]
+}

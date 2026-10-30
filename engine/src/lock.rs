@@ -51,6 +51,32 @@ impl EngineLock {
     }
 }
 
+/// テスト用: 解放したはずのロックが、一瞬だけ「使用中」に見えることがあるので、少しだけ待ち直す。
+///
+/// 同じプロセスの別のスレッドが外部コマンド（`ps` など）を起動すると、子プロセスが exec するまでの
+/// 間、親の開いているファイル（他のテストの `engine.lock` を含む）を引き継ぎ、flock の解放が遅れる
+/// （#77）。実機の排他の仕様は変えず、テストの側で、解放を期待する箇所だけ待ち直す。
+/// 本当に持たれているときは、`LOCK_RETRY_LIMIT` が過ぎたら最後の結果を返す。
+#[cfg(test)]
+pub(crate) fn retry_while_held<T, E: fmt::Display>(
+    mut f: impl FnMut() -> Result<T, E>,
+) -> Result<T, E> {
+    const LOCK_RETRY_LIMIT: std::time::Duration = std::time::Duration::from_secs(5);
+    const LOCK_RETRY_STEP: std::time::Duration = std::time::Duration::from_millis(10);
+    let started = std::time::Instant::now();
+    loop {
+        match f() {
+            Err(e)
+                if e.to_string().contains(&LockError::Held.to_string())
+                    && started.elapsed() < LOCK_RETRY_LIMIT =>
+            {
+                std::thread::sleep(LOCK_RETRY_STEP);
+            }
+            other => return other,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -81,7 +107,7 @@ mod tests {
         let first = EngineLock::acquire(&dir).unwrap();
         assert!(matches!(EngineLock::acquire(&dir), Err(LockError::Held)));
         drop(first);
-        assert!(EngineLock::acquire(&dir).is_ok());
+        assert!(retry_while_held(|| EngineLock::acquire(&dir)).is_ok());
         let _ = std::fs::remove_dir_all(dir);
     }
 

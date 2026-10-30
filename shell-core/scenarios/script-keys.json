@@ -1,0 +1,135 @@
+{
+  "description": "字種変換のキー（F6〜F8、プリセットの Ctrl のキー、上書き）。ADR 0004 §15",
+  "defaults": {"client": {"bundle_id": "com.apple.TextEdit"}, "surrounding": {"left": "ユーザー辞書に単語を登録するときは"}, "engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": true, "candidates": [{"surface": "品詞", "annotation": "ひんし(品詞)"}, {"surface": "瀕死", "annotation": "ひんし(瀕死)"}, {"surface": "ひんし", "kind": "hiragana"}]}, {"conversion_id": 7, "page_index": 1, "has_next": true, "candidates": [{"surface": "ヒンシ", "kind": "katakana"}, {"surface": "貧士"}, {"surface": "品指"}]}, {"conversion_id": 7, "page_index": 2, "has_next": false, "candidates": [{"surface": "牝糸"}, {"surface": "ﾋﾝｼ", "kind": "katakana"}]}]}},
+  "scenarios": [
+    {
+      "name": "F6 converts the reading into a single candidate",
+      "from": "InputStateMachineTests.swift ScriptConversionKeyTests.functionKeysConvertTheReadingAndEnterASingleCandidateConversion",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "f6", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ひんし", "highlighted_length": 3}], "engine": []}
+      ]
+    },
+    {
+      "name": "F7 converts the reading into a single candidate",
+      "from": "InputStateMachineTests.swift ScriptConversionKeyTests.functionKeysConvertTheReadingAndEnterASingleCandidateConversion",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "f7", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ヒンシ", "highlighted_length": 3}], "engine": []}
+      ]
+    },
+    {
+      "name": "F8 converts the reading into a single candidate",
+      "from": "InputStateMachineTests.swift ScriptConversionKeyTests.functionKeysConvertTheReadingAndEnterASingleCandidateConversion",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "f8", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ﾋﾝｼ", "highlighted_length": 3}], "engine": []}
+      ]
+    },
+    {
+      "name": "macOS preset binds ctrl+j",
+      "from": "InputStateMachineTests.swift ScriptConversionKeyTests.macosPresetBindsControlKeys",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "ctrl+j", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ひんし", "highlighted_length": 3}]}
+      ]
+    },
+    {
+      "name": "macOS preset binds ctrl+k",
+      "from": "InputStateMachineTests.swift ScriptConversionKeyTests.macosPresetBindsControlKeys",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "ctrl+k", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ヒンシ", "highlighted_length": 3}]}
+      ]
+    },
+    {
+      "name": "macOS preset binds ctrl+;",
+      "from": "InputStateMachineTests.swift ScriptConversionKeyTests.macosPresetBindsControlKeys",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "ctrl+;", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ﾋﾝｼ", "highlighted_length": 3}]}
+      ]
+    },
+    {
+      "name": "MS-IME preset binds ctrl+u",
+      "from": "InputStateMachineTests.swift ScriptConversionKeyTests.msImePresetBindsItsControlKeys",
+      "setup": {"settings": ["keymap.preset\tms-ime"]},
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "ctrl+u", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ひんし", "highlighted_length": 3}]}
+      ]
+    },
+    {
+      "name": "MS-IME preset binds ctrl+i",
+      "from": "InputStateMachineTests.swift ScriptConversionKeyTests.msImePresetBindsItsControlKeys",
+      "setup": {"settings": ["keymap.preset\tms-ime"]},
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "ctrl+i", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ヒンシ", "highlighted_length": 3}]}
+      ]
+    },
+    {
+      "name": "MS-IME preset binds ctrl+o",
+      "from": "InputStateMachineTests.swift ScriptConversionKeyTests.msImePresetBindsItsControlKeys",
+      "setup": {"settings": ["keymap.preset\tms-ime"]},
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "ctrl+o", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ﾋﾝｼ", "highlighted_length": 3}]}
+      ]
+    },
+    {
+      "name": "preset keys of the other preset are not bound",
+      "from": "InputStateMachineTests.swift ScriptConversionKeyTests.presetKeysOfTheOtherPresetAreNotBound",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "ctrl+i", "expect": [{"type": "commit", "text": "ひんし"}, {"type": "pass_through"}]}
+      ]
+    },
+    {
+      "name": "overriding a key replaces the preset character key",
+      "from": "InputStateMachineTests.swift ScriptConversionKeyTests.overridingAKeyReplacesThePresetCharacterKeyButKeepsFunctionKeys",
+      "setup": {"settings": ["keymap.convert.fullwidth_katakana\tctrl+g"]},
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "ctrl+k", "expect": [{"type": "commit", "text": "ひんし"}, {"type": "pass_through"}]}
+      ]
+    },
+    {
+      "name": "overridden key works and the function key still works",
+      "from": "InputStateMachineTests.swift ScriptConversionKeyTests.overriddenKeyWorksAndFunctionKeyStillWorks",
+      "setup": {"settings": ["keymap.convert.fullwidth_katakana\tctrl+g"]},
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "ctrl+g", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ヒンシ", "highlighted_length": 3}]},
+        {"press": "escape"},
+        {"press": "f7", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ヒンシ", "highlighted_length": 3}]}
+      ]
+    },
+    {
+      "name": "script keys do nothing when idle",
+      "from": "InputStateMachineTests.swift ScriptConversionKeyTests.scriptKeysDoNothingWhenIdle",
+      "steps": [
+        {"press": "f7", "expect": [{"type": "pass_through"}]}
+      ]
+    },
+    {
+      "name": "script key while converting replaces the conversion and cancels the engine one",
+      "from": "InputStateMachineTests.swift ScriptConversionKeyTests.scriptKeyWhileConvertingReplacesTheConversionAndCancelsTheEngineOne",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "space"},
+        {"press": "f7", "engine": [{"type": "cancel", "conversion_id": 7}]},
+        {"press": "enter", "expect": [{"type": "commit", "text": "ヒンシ"}, {"type": "hide_candidates"}], "engine": [{"type": "commit_text", "reading": "ひんし", "surface": "ヒンシ"}]}
+      ]
+    },
+    {
+      "name": "escape from a script conversion returns to the reading",
+      "from": "InputStateMachineTests.swift ScriptConversionKeyTests.escapeFromAScriptConversionReturnsToTheReading",
+      "steps": [
+        {"type_text": "hinsi"},
+        {"press": "f7"},
+        {"press": "escape", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ひんし", "highlighted_length": 3}]}
+      ]
+    }
+  ]
+}

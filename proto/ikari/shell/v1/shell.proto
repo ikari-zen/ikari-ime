@@ -1,0 +1,303 @@
+// 殻の OS の入口と shell-core の間のメッセージ（ADR 0041 §4.1・§4.4。契約）。
+// shell-core の types.rs の型を FFI のために写したもの。欄の意味は types.rs の注釈を正とする。
+// 位置と長さは UTF-16 の単位。
+// 変更したら macos/scripts/gen-proto.sh を流して shell.pb.swift の差分をコミットする。
+// engine.proto に依存しない（FFI の入口だけで閉じる）。
+syntax = "proto3";
+package ikari.shell.v1;
+
+// ---------------------------------------------------------------- 共通
+
+message Empty {}
+
+message Utf16Range { uint32 location = 1; uint32 length = 2; }
+
+message Modifiers { bool shift = 1; bool control = 2; bool option = 3; bool command = 4; }
+
+enum KeyKind {
+  KEY_KIND_UNSPECIFIED = 0;
+  KEY_KIND_CHARACTER = 1;   // KeyInput.text
+  KEY_KIND_JIS = 2;         // KeyInput.jis
+  KEY_KIND_SPACE = 3;
+  KEY_KIND_ENTER = 4;
+  KEY_KIND_ESCAPE = 5;
+  KEY_KIND_BACKSPACE = 6;
+  KEY_KIND_LEFT = 7;
+  KEY_KIND_RIGHT = 8;
+  KEY_KIND_UP = 9;
+  KEY_KIND_DOWN = 10;
+  KEY_KIND_FUNCTION = 11;   // KeyInput.function（1〜20）
+  KEY_KIND_OTHER = 12;
+  KEY_KIND_EISU = 13;       // JIS の英数キー（L-E で追加）
+  KEY_KIND_KANA = 14;       // JIS のかなキー（L-E で追加）
+}
+
+message KeyInput {
+  KeyKind kind = 1;
+  string text = 2;          // KEY_KIND_CHARACTER のときだけ
+  uint32 jis = 3;           // KEY_KIND_JIS のときだけ
+  uint32 function = 4;      // KEY_KIND_FUNCTION のときだけ
+  Modifiers modifiers = 5;
+  bool is_repeat = 6;
+  bool secure = 7;
+  // KEY_KIND_JIS のときだけ。OS の配列がそのキーで出す文字（Shift だけを適用）。ないキーは空。
+  // かな入力でないとき、英語のモード、Ctrl / Option / Command つきのとき、shell-core が文字のキーとして読む（L-E で追加）
+  optional string layout_text = 8;
+}
+
+// ホストの口の返事（IkariShellHost.surrounding / selection。§4.4）
+message SurroundingText { string left = 1; string right = 2; uint32 document_length = 3; }
+message SelectedText { Utf16Range range = 1; string text = 2; }
+
+// ---------------------------------------------------------------- 表示
+
+message MarkedText {
+  string text = 1;
+  uint32 highlighted_length = 2;
+  repeated uint32 segments = 3;
+  optional uint32 focused = 4;
+  Utf16Range replacement_range = 5;   // ないときは省く
+  bool underlined = 6;
+}
+
+enum CandidateKind {
+  CANDIDATE_KIND_UNSPECIFIED = 0;
+  CANDIDATE_KIND_DICTIONARY = 1;
+  CANDIDATE_KIND_HIRAGANA = 2;
+  CANDIDATE_KIND_KATAKANA = 3;
+  CANDIDATE_KIND_REWRITER = 4;
+  CANDIDATE_KIND_LITERAL = 5;
+}
+
+message CandidateItem { string surface = 1; string annotation = 2; CandidateKind kind = 3; string label = 4; }
+
+message CandidatePanelModel {
+  repeated CandidateItem candidates = 1;
+  uint32 selected = 2;
+  string annotation = 3;
+  uint32 reserved_rows = 4;
+}
+
+// ---------------------------------------------------------------- メニュー
+
+enum KeymapPreset {
+  KEYMAP_PRESET_UNSPECIFIED = 0;
+  KEYMAP_PRESET_MACOS = 1;
+  KEYMAP_PRESET_MS_IME = 2;
+  KEYMAP_PRESET_ATOK = 3;
+}
+
+enum InputMethodKind {
+  INPUT_METHOD_KIND_UNSPECIFIED = 0;
+  INPUT_METHOD_KIND_ROMAJI = 1;
+  INPUT_METHOD_KIND_KANA = 2;
+}
+
+// UNSPECIFIED は「前回のタブ」
+enum SettingsTab {
+  SETTINGS_TAB_UNSPECIFIED = 0;
+  SETTINGS_TAB_INPUT = 1;
+  SETTINGS_TAB_CONVERSION = 2;
+  SETTINGS_TAB_USER_DICTIONARY = 3;
+  SETTINGS_TAB_LEARNING = 4;
+  SETTINGS_TAB_ABOUT = 5;
+}
+
+message SetProfileDomain { string id = 1; bool included = 2; }
+message OpenSettings { SettingsTab tab = 1; }
+
+message MenuCommand {
+  oneof command {
+    KeymapPreset select_keymap_preset = 1;
+    InputMethodKind select_input_method = 2;
+    bool set_lm = 3;
+    SetProfileDomain set_profile_domain = 4;
+    OpenSettings open_settings = 5;
+  }
+}
+
+enum MenuRadioGroup {
+  MENU_RADIO_GROUP_UNSPECIFIED = 0;
+  MENU_RADIO_GROUP_KEYMAP_PRESET = 1;
+  MENU_RADIO_GROUP_INPUT_METHOD = 2;
+}
+
+enum MenuItemKind {
+  MENU_ITEM_KIND_UNSPECIFIED = 0;
+  MENU_ITEM_KIND_SEPARATOR = 1;
+  MENU_ITEM_KIND_ACTION = 2;
+  MENU_ITEM_KIND_TOGGLE = 3;
+  MENU_ITEM_KIND_RADIO = 4;   // MenuItem.group
+}
+
+message MenuItem {
+  MenuItemKind kind = 1;
+  MenuRadioGroup group = 2;
+  string title = 3;
+  MenuCommand command = 4;    // SEPARATOR では省く
+  bool checked = 5;
+  bool enabled = 6;
+}
+
+message MenuModel { repeated MenuItem items = 1; }
+
+// ---------------------------------------------------------------- イベント（ikari_shell_dispatch の入力）
+
+message Activate { string bundle_id = 1; bool secure = 2; }
+message TimerFired { uint32 id = 1; }
+message BridgeFrame { uint64 conn = 1; bytes frame = 2; }
+
+// ---- L-E で追加（ADR 0041 §4.1 の口で表せなかった OS とのやりとり）
+
+// OS が入力モードを替えた（macOS の setValue(_:forTag: kTextServiceInputModePropertyTag)。値はモードの ID）
+message InputModeChanged { string mode_id = 1; bool secure = 2; }
+
+enum PanelSide {
+  PANEL_SIDE_UNSPECIFIED = 0;
+  PANEL_SIDE_BELOW = 1;
+  PANEL_SIDE_ABOVE = 2;
+}
+
+// UNSPECIFIED は「分からない・今回は新しく取っていない」
+enum AnchorSource {
+  ANCHOR_SOURCE_UNSPECIFIED = 0;
+  ANCHOR_SOURCE_CLIENT = 1;
+  ANCHOR_SOURCE_ACCESSIBILITY = 2;
+  ANCHOR_SOURCE_LAST_KNOWN = 3;
+  ANCHOR_SOURCE_MOUSE_SCREEN = 4;
+}
+
+// 候補ウィンドウを出した・動かした（OS が位置を決めたあと）
+message PanelShown { PanelSide side = 1; AnchorSource source = 2; }
+
+// 設定アプリとの接続が切れた
+message BridgeClosed { uint64 conn = 1; }
+
+message ShellEvent {
+  oneof event {
+    KeyInput key = 1;
+    Activate activate = 2;
+    Empty deactivate = 3;
+    MenuCommand menu_command = 4;
+    Empty settings_file_changed = 5;
+    TimerFired timer = 6;
+    BridgeFrame bridge_frame = 7;
+    // L-E で追加
+    InputModeChanged input_mode_changed = 8;
+    Empty commit_composition = 9;     // IMK の commitComposition（クリックなどで外から確定させられた）
+    PanelShown panel_shown = 10;
+    Empty panel_hidden = 11;
+    BridgeClosed bridge_closed = 12;
+  }
+}
+
+// ---------------------------------------------------------------- 動作（ikari_shell_dispatch の出力）
+
+message Commit { string text = 1; }
+message Restore { string text = 1; Utf16Range replacing = 2; }
+message Prefetch { string reading = 1; }
+message ScheduleTimer { uint32 id = 1; uint32 after_ms = 2; }
+message CancelTimer { uint32 id = 1; }
+message BridgeReply { uint64 conn = 1; bytes frame = 2; }
+message SelectMode { string mode_id = 1; }   // OS にモードを選んでもらう（macOS の client.selectMode）。L-E で追加
+message BridgeClose { uint64 conn = 1; }     // 設定アプリとの接続を閉じる。L-E で追加
+
+message ShellAction {
+  oneof action {
+    Empty pass_through = 1;
+    Empty consume = 2;
+    MarkedText set_marked_text = 3;
+    Commit commit = 4;
+    CandidatePanelModel show_candidates = 5;
+    CandidatePanelModel move_selection = 6;
+    Empty hide_candidates = 7;
+    Restore restore = 8;
+    Empty resolve_stray_marked_text = 9;
+    Prefetch prefetch = 10;
+    MenuModel show_menu = 11;
+    ScheduleTimer schedule_timer = 12;
+    CancelTimer cancel_timer = 13;
+    BridgeReply bridge_reply = 14;
+    OpenSettings open_settings = 15;
+    // L-E で追加
+    SelectMode select_mode = 16;
+    BridgeClose bridge_close = 17;
+  }
+}
+
+// ikari_shell_dispatch の戻り値
+message ShellActions { repeated ShellAction actions = 1; }
+
+// ---------------------------------------------------------------- 候補ウィンドウの配置（ikari_panel_*。状態を持たない。L-E で追加）
+// 座標は AppKit と同じ（左下が原点、y は上向き）
+
+message Rect { double x = 1; double y = 2; double width = 3; double height = 4; }
+
+// ikari_panel_resolve_anchor の入力。取れなかったものは省く
+message PanelAnchorRequest {
+  Rect client = 1;
+  Rect accessibility = 2;
+  Rect last_known = 3;
+  Rect mouse_screen_visible_frame = 4;
+}
+message PanelAnchor { Rect rect = 1; AnchorSource source = 2; }
+
+// ikari_panel_layout の入力
+message PanelLayoutRequest {
+  Rect anchor = 1;
+  double width = 2;
+  double height = 3;
+  optional double reserved_height = 4;
+  Rect visible_frame = 5;
+}
+message PanelPlacement { Rect frame = 1; PanelSide side = 2; }
+
+// ---------------------------------------------------------------- 設定（ikari_settings_validate / rewrite。ADR 0041 §2.3）
+
+message SettingsSnapshot {
+  InputMethodKind input_method = 1;
+  KeymapPreset keymap_preset = 2;
+  map<string, string> keymap_overrides = 3;
+  bool paging_wrap = 4;
+  uint32 page_size = 5;
+  bool engine_lm = 6;
+  uint32 engine_idle_unload_secs = 7;
+  uint32 engine_lm_deadline_ms = 8;
+  uint32 engine_convert_wait_ms = 9;
+  repeated string context_shared_exclude = 10;
+  bool emoji_shortcode = 11;
+  repeated string emoji_shortcode_exclude = 12;
+  bool emoji_small_letters = 13;
+  bool postal_japanese = 14;
+  bool postal_english = 15;
+  bool postal_te_prefix = 16;
+  bool unicode_notation = 17;
+  bool date_weekday_dates = 18;
+  bool candidate_hide_when_confident = 19;
+}
+
+enum SettingsIssueKind {
+  SETTINGS_ISSUE_KIND_UNSPECIFIED = 0;
+  SETTINGS_ISSUE_KIND_MALFORMED = 1;
+  SETTINGS_ISSUE_KIND_UNKNOWN_KEY = 2;
+  SETTINGS_ISSUE_KIND_INVALID_VALUE = 3;
+}
+
+message SettingsIssue { uint32 line = 1; string key = 2; SettingsIssueKind kind = 3; }
+
+// ikari_settings_validate の戻り値
+message SettingsValidation { SettingsSnapshot snapshot = 1; repeated SettingsIssue issues = 2; }
+
+message SettingsEntry { string key = 1; string value = 2; }
+// ikari_settings_rewrite の changes
+message SettingsChanges { repeated SettingsEntry set = 1; repeated string reset = 2; }
+
+message SettingsIssues { repeated SettingsIssue issues = 1; }
+
+// ikari_settings_rewrite の戻り値。成功なら text、警告が増えるなら増えた警告（ファイルは書かない）
+message SettingsRewrite {
+  oneof result {
+    string text = 1;
+    SettingsIssues issues_added = 2;
+  }
+}

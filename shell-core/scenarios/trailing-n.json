@@ -1,0 +1,55 @@
+{
+  "description": "変換の直前に末尾の n 1 文字を「ん」にする（FR-07）",
+  "defaults": {"surrounding": {"left": "これは"}, "engine": {"pages": [{"conversion_id": 5, "page_index": 0, "has_next": false, "candidates": [{"surface": "変換"}]}]}},
+  "scenarios": [
+    {
+      "name": "a trailing n becomes ん when space starts the conversion",
+      "from": "TrailingNTests.swift TrailingNTests.aTrailingNBecomesNWhenSpaceStartsTheConversion",
+      "steps": [
+        {"type_text": "henkan"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "変換", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "変換"}], "selected": 0, "reserved_rows": 1}], "engine": [{"type": "convert", "reading": "へんかん", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]}
+      ]
+    },
+    {
+      "name": "other pending consonants are still excluded",
+      "from": "TrailingNTests.swift TrailingNTests.otherPendingConsonantsAreStillExcluded",
+      "steps": [
+        {"type_text": "henk"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "変換", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "変換"}], "selected": 0, "reserved_rows": 1}], "engine": [{"type": "convert", "reading": "へん", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]}
+      ]
+    },
+    {
+      "name": "nn is not changed",
+      "from": "TrailingNTests.swift TrailingNTests.nnIsNotChanged",
+      "steps": [
+        {"type_text": "hennkann"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "変換", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "変換"}], "selected": 0, "reserved_rows": 1}], "engine": [{"type": "convert", "reading": "へんかん", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]}
+      ]
+    },
+    {
+      "name": "a lone n does not start an empty reading",
+      "from": "TrailingNTests.swift TrailingNTests.aLoneNDoesNotStartAnEmptyReading",
+      "steps": [
+        {"type_text": "n"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "変換", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "変換"}], "selected": 0, "reserved_rows": 1}], "engine": [{"type": "convert", "reading": "ん", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]}
+      ]
+    },
+    {
+      "name": "going back to the reading keeps the confirmed n",
+      "from": "TrailingNTests.swift TrailingNTests.goingBackToTheReadingKeepsTheConfirmedN",
+      "steps": [
+        {"type_text": "henkan"},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "変換", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "変換"}], "selected": 0, "reserved_rows": 1}], "engine": [{"type": "convert", "reading": "へんかん", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "backspace", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "へんかん", "highlighted_length": 4}], "engine": [{"type": "cancel", "conversion_id": 5}, {"type": "prefetch", "reading": "へんかん", "context": {"available": true, "left": "これは", "right": ""}}]}
+      ]
+    },
+    {
+      "name": "a script conversion also confirms the trailing n",
+      "from": "TrailingNTests.swift TrailingNTests.aScriptConversionAlsoConfirmsTheTrailingN",
+      "steps": [
+        {"type_text": "henkan"},
+        {"press": "f7", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ヘンカン", "highlighted_length": 4}], "engine": []}
+      ]
+    }
+  ]
+}

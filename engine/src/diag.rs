@@ -2,7 +2,8 @@
 //! エンジン自身の事象（`lm_load` `lm_unload` `stat`）と、`begin_session` の `app=` を作る。
 //!
 //! 書くのは固定の語と数だけ（NFR-19）。例外は `app=` の Bundle ID（ADR 0034 §7、§9-1。ユーザー決定
-//! 2026-10-25）で、`begin_session` の行にだけ、文字の種類と長さを確かめて書く。secure は何も書かない（NFR-18）。
+//! 2026-10-25。2026-10-30 に `convert` の行へ広げた）で、`begin_session` と `convert` の行にだけ、
+//! 文字の種類と長さを確かめて書く。secure は何も書かない（NFR-18）。
 //! ディスクには触らない（`EngineLog::record_note` はキューに入れるだけ。ADR 0034 §3.1）。
 
 use super::*;
@@ -73,7 +74,7 @@ impl DiagState {
     }
 }
 
-/// `begin_session` の行の `app=`。`[A-Za-z0-9.-]` だけ 128 バイトまで。外れたら `invalid`、空なら `none`。
+/// `begin_session` と `convert` の行の `app=`。`[A-Za-z0-9.-]` だけ 128 バイトまで。外れたら `invalid`、空なら `none`。
 /// 戻りに入れてよいのは、確かめ済みの文字列だけ
 fn app_word(bundle_id: &str) -> &str {
     let valid = bundle_id.len() <= MAX_BUNDLE_ID_BYTES
@@ -90,15 +91,15 @@ fn app_word(bundle_id: &str) -> &str {
 /// `begin_session` の行の注記。`session=` は `sh_episode` などの行と結ぶため（エンジンが
 /// `DiagEvent` の行に同じ `session=` を足す）。secure は Bundle ID を書かない（NFR-18）
 pub(crate) fn begin_session_note(b: &pb::BeginSession) -> String {
-    if b.secure {
-        format!("session={}", b.session_id)
-    } else {
-        format!(
-            "session={} app={}",
-            b.session_id,
-            app_word(&b.client_bundle_id)
-        )
+    match session_app(b) {
+        None => format!("session={}", b.session_id),
+        Some(app) => format!("session={} app={app}", b.session_id),
     }
+}
+
+/// セッションが持つ、ログに書いてよい `app=` の語。secure は None（Bundle ID を書かない。NFR-18）
+pub(crate) fn session_app(b: &pb::BeginSession) -> Option<String> {
+    (!b.secure).then(|| app_word(&b.client_bundle_id).to_owned())
 }
 
 /// `commit` / `commit_segments` の行に足す `rw=`。確定した候補のうち Rewriter のものの名前

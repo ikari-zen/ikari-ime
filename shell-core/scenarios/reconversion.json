@@ -1,0 +1,245 @@
+{
+  "description": "確定済みの文字列の再変換と、Esc で元に戻す。ADR 0006 §9、§16.3",
+  "defaults": {"surrounding": {"left": "これは"}, "engine": {"reconvert": {"conversion_id": 21, "layout_rev": 0, "segments": [{"reading": "ひんし", "surface": "品詞"}], "focused": 0, "focused_page": {"candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "has_next": true}}, "segment_pages": [{"segment": 0, "page_index": 1, "candidates": [{"surface": "ヒンシ", "kind": "katakana"}, {"surface": "貧士"}]}], "resizes": [{"segment": 0, "delta": -1, "layout": {"conversion_id": 21, "layout_rev": 1, "segments": [{"reading": "ひん", "surface": "品"}, {"reading": "し", "surface": "詞"}], "focused": 0, "focused_page": {"candidates": [{"surface": "品"}]}}}]}},
+  "scenarios": [
+    {
+      "name": "the key starts a conversion that shows the original and replaces the selection",
+      "from": "ReconversionTests.swift ReconversionStartTests.theKeyStartsAConversionThatShowsTheOriginalAndReplacesTheSelection",
+      "steps": [
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 10, "length": 2}, "text": "品詞"}, "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2, "replacement_range": {"length": 2, "location": 10}}, {"type": "show_candidates", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "reconvert", "surface": "品詞", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]}
+      ]
+    },
+    {
+      "name": "exactly sixty four characters are accepted",
+      "from": "ReconversionTests.swift ReconversionStartTests.exactlySixtyFourCharactersAreAccepted",
+      "setup": {"engine": {}},
+      "steps": [
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 0, "length": 64}, "text": "ああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ"}, "expect": [{"type": "consume"}], "engine": [{"type": "reconvert", "surface": "ああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 340}]}
+      ]
+    },
+    {
+      "name": "sixty five characters are refused",
+      "from": "ReconversionTests.swift ReconversionStartTests.exactlySixtyFourCharactersAreAccepted",
+      "steps": [
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 0, "length": 65}, "text": "あああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ"}, "expect": [{"type": "consume"}], "engine": []}
+      ]
+    },
+    {
+      "name": "a newline is refused",
+      "from": "ReconversionTests.swift ReconversionStartTests (断る条件)",
+      "steps": [
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 0, "length": 3}, "text": "品\n詞"}, "expect": [{"type": "consume"}], "engine": []}
+      ]
+    },
+    {
+      "name": "refuses when the left surrounding text cannot be read",
+      "from": "ReconversionTests.swift ReconversionStartTests.refusesWhenTheLeftSurroundingTextCannotBeRead",
+      "setup": {"surrounding": {"available": false}},
+      "steps": [
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 10, "length": 2}, "text": "品詞"}, "expect": [{"type": "consume"}], "engine": []}
+      ]
+    },
+    {
+      "name": "refuses in a secure session",
+      "from": "ReconversionTests.swift ReconversionStartTests.refusesInASecureSessionWithoutReadingTheSelection",
+      "setup": {"client": {"secure": true}},
+      "steps": [
+        {"type_text": "a"},
+        {"press": "escape", "expect": [{"type": "pass_through"}], "engine": []},
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 10, "length": 2}, "text": "品詞"}, "expect": [{"type": "pass_through"}], "engine": []}
+      ]
+    },
+    {
+      "name": "does nothing while composing or converting",
+      "from": "ReconversionTests.swift ReconversionStartTests.doesNothingWhileComposingOrConverting",
+      "setup": {"engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": false, "candidates": [{"surface": "日"}]}]}},
+      "steps": [
+        {"type_text": "hi"},
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 10, "length": 2}, "text": "品詞"}, "expect": [{"type": "consume"}], "engine": []},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "日", "highlighted_length": 1}, {"type": "show_candidates", "candidates": [{"surface": "日"}], "selected": 0, "reserved_rows": 1}], "engine": [{"type": "convert", "reading": "ひ", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 10, "length": 2}, "text": "品詞"}, "expect": [{"type": "consume"}], "engine": []}
+      ]
+    },
+    {
+      "name": "an engine failure leaves the document alone",
+      "from": "ReconversionTests.swift ReconversionStartTests.anEngineFailureLeavesTheDocumentAlone",
+      "setup": {"engine": {}},
+      "steps": [
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 10, "length": 2}, "text": "品詞"}, "expect": [{"type": "consume"}], "engine": [{"type": "reconvert", "surface": "品詞", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]}
+      ]
+    },
+    {
+      "name": "a reply whose surface differs from the selection is never shown",
+      "from": "ReconversionTests.swift ReconversionStartTests.aReplyWhoseSurfaceDiffersFromTheSelectionIsNeverShown",
+      "setup": {"engine": {"reconvert": {"conversion_id": 21, "layout_rev": 0, "segments": [{"reading": "ひんし", "surface": "瀕死"}], "focused": 0, "focused_page": {"candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "has_next": true}}}},
+      "steps": [
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 10, "length": 2}, "text": "品詞"}, "expect": [{"type": "consume"}], "engine": [{"type": "reconvert", "surface": "品詞", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}, {"type": "cancel", "conversion_id": 21}]}
+      ]
+    },
+    {
+      "name": "the key can be rebound",
+      "from": "ReconversionTests.swift ReconversionStartTests.theKeyCanBeRebound",
+      "setup": {"settings": ["keymap.reconvert\tctrl+e"]},
+      "steps": [
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 10, "length": 2}, "text": "品詞"}, "expect": [{"type": "pass_through"}], "engine": []},
+        {"press": "ctrl+e", "selection": {"range": {"location": 10, "length": 2}, "text": "品詞"}, "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2, "replacement_range": {"length": 2, "location": 10}}, {"type": "show_candidates", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "reconvert", "surface": "品詞", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]}
+      ]
+    },
+    {
+      "name": "escape writes the original back with one restore",
+      "from": "ReconversionTests.swift ReconversionKeysTests.escapeWritesTheOriginalBackWithOneRestoreAndCancelsTheConversion",
+      "steps": [
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 10, "length": 2}, "text": "品詞"}, "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2, "replacement_range": {"length": 2, "location": 10}}, {"type": "show_candidates", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "reconvert", "surface": "品詞", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "escape", "expect": [{"type": "hide_candidates"}, {"type": "restore", "text": "品詞", "replacing": {"length": 2, "location": 10}}], "engine": [{"type": "cancel", "conversion_id": 21}]}
+      ]
+    },
+    {
+      "name": "escape restores the original even after the choice changed",
+      "from": "ReconversionTests.swift ReconversionKeysTests.escapeRestoresTheOriginalEvenAfterTheChoiceChanged",
+      "steps": [
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 10, "length": 2}, "text": "品詞"}, "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2, "replacement_range": {"length": 2, "location": 10}}, {"type": "show_candidates", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "reconvert", "surface": "品詞", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "瀕死", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 1, "reserved_rows": 9}], "engine": []},
+        {"press": "escape", "expect": [{"type": "hide_candidates"}, {"type": "restore", "text": "品詞", "replacing": {"length": 2, "location": 10}}], "engine": [{"type": "cancel", "conversion_id": 21}]}
+      ]
+    },
+    {
+      "name": "escape after a script conversion still restores",
+      "from": "ReconversionTests.swift ReconversionKeysTests.escapeAfterAScriptConversionStillRestores",
+      "steps": [
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 10, "length": 2}, "text": "品詞"}, "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2, "replacement_range": {"length": 2, "location": 10}}, {"type": "show_candidates", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "reconvert", "surface": "品詞", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "f7", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ヒンシ", "highlighted_length": 3}], "engine": []},
+        {"press": "escape", "expect": [{"type": "hide_candidates"}, {"type": "restore", "text": "品詞", "replacing": {"length": 3, "location": 10}}], "engine": [{"type": "cancel", "conversion_id": 21}]}
+      ]
+    },
+    {
+      "name": "enter without any change cancels and learns nothing",
+      "from": "ReconversionTests.swift ReconversionKeysTests.enterWithoutAnyChangeCancelsAndLearnsNothing",
+      "steps": [
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 10, "length": 2}, "text": "品詞"}, "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2, "replacement_range": {"length": 2, "location": 10}}, {"type": "show_candidates", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "reconvert", "surface": "品詞", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "enter", "expect": [{"type": "commit", "text": "品詞"}, {"type": "hide_candidates"}], "engine": [{"type": "cancel", "conversion_id": 21}]}
+      ]
+    },
+    {
+      "name": "moving through candidates and back is still unchanged",
+      "from": "ReconversionTests.swift ReconversionKeysTests.movingThroughCandidatesAndBackToTheOriginalIsStillUnchanged",
+      "steps": [
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 10, "length": 2}, "text": "品詞"}, "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2, "replacement_range": {"length": 2, "location": 10}}, {"type": "show_candidates", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "reconvert", "surface": "品詞", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "瀕死", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 1, "reserved_rows": 9}], "engine": []},
+        {"press": "shift+space", "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": []},
+        {"press": "enter", "expect": [{"type": "commit", "text": "品詞"}, {"type": "hide_candidates"}], "engine": [{"type": "cancel", "conversion_id": 21}]}
+      ]
+    },
+    {
+      "name": "a changed choice is committed by segments",
+      "from": "ReconversionTests.swift ReconversionKeysTests.aChangedChoiceIsCommittedBySegmentsReplacingTheSelection",
+      "steps": [
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 10, "length": 2}, "text": "品詞"}, "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2, "replacement_range": {"length": 2, "location": 10}}, {"type": "show_candidates", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "reconvert", "surface": "品詞", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "瀕死", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 1, "reserved_rows": 9}], "engine": []},
+        {"press": "enter", "expect": [{"type": "commit", "text": "瀕死"}, {"type": "hide_candidates"}], "engine": [{"type": "commit_segments", "choices": [{"candidate_index": 1}], "conversion_id": 21, "layout_rev": 0}]}
+      ]
+    },
+    {
+      "name": "a number key on a single segment commits by segments",
+      "from": "ReconversionTests.swift ReconversionKeysTests.aNumberKeyOnASingleSegmentCommitsTheChoiceBySegments",
+      "steps": [
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 10, "length": 2}, "text": "品詞"}, "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2, "replacement_range": {"length": 2, "location": 10}}, {"type": "show_candidates", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "reconvert", "surface": "品詞", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "2", "expect": [{"type": "commit", "text": "瀕死"}, {"type": "hide_candidates"}], "engine": [{"type": "commit_segments", "choices": [{"candidate_index": 1}], "conversion_id": 21, "layout_rev": 0}]}
+      ]
+    },
+    {
+      "name": "next pages come from the segment request",
+      "from": "ReconversionTests.swift ReconversionKeysTests.nextPagesComeFromTheSegmentRequest",
+      "steps": [
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 10, "length": 2}, "text": "品詞"}, "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2, "replacement_range": {"length": 2, "location": 10}}, {"type": "show_candidates", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "reconvert", "surface": "品詞", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "瀕死", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 1, "reserved_rows": 9}], "engine": []},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "ひんし", "highlighted_length": 3}, {"type": "move_selection", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 2, "reserved_rows": 9}], "engine": []},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "ヒンシ", "highlighted_length": 3}, {"type": "show_candidates", "candidates": [{"surface": "ヒンシ", "kind": "katakana"}, {"surface": "貧士"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "segment_page", "conversion_id": 21, "index": 1, "layout_rev": 0, "left": [], "segment": 0, "timeout_ms": 70}]}
+      ]
+    },
+    {
+      "name": "a resize counts as a change",
+      "from": "ReconversionTests.swift ReconversionKeysTests.aResizeCountsAsAChangeEvenIfTheSurfaceIsTheSame",
+      "steps": [
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 10, "length": 2}, "text": "品詞"}, "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2, "replacement_range": {"length": 2, "location": 10}}, {"type": "show_candidates", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "reconvert", "surface": "品詞", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "shift+left", "expect": [{"type": "set_marked_text", "text": "品詞", "segments": [1, 1], "focused": 0}, {"type": "show_candidates", "candidates": [{"surface": "品"}], "selected": 0, "reserved_rows": 1}], "engine": [{"type": "resize_segment", "conversion_id": 21, "delta": -1, "layout_rev": 0, "left": [], "segment": 0, "timeout_ms": 70}]},
+        {"press": "enter", "expect": [{"type": "commit", "text": "品詞"}, {"type": "hide_candidates"}], "engine": [{"type": "commit_segments", "choices": [{"candidate_index": 0}, {"candidate_index": 0}], "conversion_id": 21, "layout_rev": 1}]}
+      ]
+    },
+    {
+      "name": "the IME commit composition learns nothing if unchanged",
+      "from": "ReconversionTests.swift ReconversionKeysTests.theImeCommitCompositionCommitsWhatIsShownAndLearnsNothingIfUnchanged",
+      "steps": [
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 10, "length": 2}, "text": "品詞"}, "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2, "replacement_range": {"length": 2, "location": 10}}, {"type": "show_candidates", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "reconvert", "surface": "品詞", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"host": {"type": "commit_composition"}, "expect": [{"type": "commit", "text": "品詞"}, {"type": "hide_candidates"}], "engine": [{"type": "cancel", "conversion_id": 21}]}
+      ]
+    },
+    {
+      "name": "typing a character commits and starts a composition",
+      "from": "ReconversionTests.swift ReconversionKeysTests.typingACharacterCommitsAndStartsAComposition",
+      "steps": [
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 10, "length": 2}, "text": "品詞"}, "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2, "replacement_range": {"length": 2, "location": 10}}, {"type": "show_candidates", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "reconvert", "surface": "品詞", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "瀕死", "highlighted_length": 2}, {"type": "move_selection", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 1, "reserved_rows": 9}], "engine": []},
+        {"press": "k", "expect": [{"type": "commit", "text": "瀕死"}, {"type": "hide_candidates"}, {"type": "set_marked_text", "text": "k"}], "engine": [{"type": "commit_segments", "choices": [{"candidate_index": 1}], "conversion_id": 21, "layout_rev": 0}]}
+      ]
+    },
+    {
+      "name": "backspace returns to the estimated reading as a composition",
+      "from": "ReconversionTests.swift ReconversionBackToReadingTests.backspaceReturnsToTheEstimatedReadingAsAComposition",
+      "steps": [
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 10, "length": 2}, "text": "品詞"}, "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2, "replacement_range": {"length": 2, "location": 10}}, {"type": "show_candidates", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "reconvert", "surface": "品詞", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "backspace", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ひんし", "highlighted_length": 3}], "engine": [{"type": "cancel", "conversion_id": 21}, {"type": "prefetch", "reading": "ひんし", "context": {"available": true, "left": "これは", "right": ""}}]}
+      ]
+    },
+    {
+      "name": "escape in that composition writes the original back",
+      "from": "ReconversionTests.swift ReconversionBackToReadingTests.escapeInThatCompositionWritesTheOriginalBack",
+      "steps": [
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 10, "length": 2}, "text": "品詞"}, "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2, "replacement_range": {"length": 2, "location": 10}}, {"type": "show_candidates", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "reconvert", "surface": "品詞", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "backspace", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ひんし", "highlighted_length": 3}], "engine": [{"type": "cancel", "conversion_id": 21}, {"type": "prefetch", "reading": "ひんし", "context": {"available": true, "left": "これは", "right": ""}}]},
+        {"press": "escape", "expect": [{"type": "restore", "text": "品詞", "replacing": {"length": 3, "location": 10}}], "engine": []}
+      ]
+    },
+    {
+      "name": "enter in that composition commits the kana as it is",
+      "from": "ReconversionTests.swift ReconversionBackToReadingTests.enterInThatCompositionCommitsTheKanaAsItIs",
+      "steps": [
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 10, "length": 2}, "text": "品詞"}, "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2, "replacement_range": {"length": 2, "location": 10}}, {"type": "show_candidates", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "reconvert", "surface": "品詞", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "backspace", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ひんし", "highlighted_length": 3}], "engine": [{"type": "cancel", "conversion_id": 21}, {"type": "prefetch", "reading": "ひんし", "context": {"available": true, "left": "これは", "right": ""}}]},
+        {"press": "enter", "expect": [{"type": "commit", "text": "ひんし"}], "engine": [{"type": "commit_text", "reading": "ひんし", "surface": "ひんし"}]}
+      ]
+    },
+    {
+      "name": "converting again from that composition still restores on the second escape",
+      "from": "ReconversionTests.swift ReconversionBackToReadingTests.convertingAgainFromThatCompositionStillRestoresOnTheSecondEscape",
+      "setup": {"engine": {"reconvert": {"conversion_id": 21, "layout_rev": 0, "segments": [{"reading": "ひんし", "surface": "品詞"}], "focused": 0, "focused_page": {"candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "has_next": true}}, "segment_pages": [{"segment": 0, "page_index": 1, "candidates": [{"surface": "ヒンシ", "kind": "katakana"}, {"surface": "貧士"}]}], "resizes": [{"segment": 0, "delta": -1, "layout": {"conversion_id": 21, "layout_rev": 1, "segments": [{"reading": "ひん", "surface": "品"}, {"reading": "し", "surface": "詞"}], "focused": 0, "focused_page": {"candidates": [{"surface": "品"}]}}}], "pages": [{"conversion_id": 7, "page_index": 0, "has_next": false, "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}]}]}},
+      "steps": [
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 10, "length": 2}, "text": "品詞"}, "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2, "replacement_range": {"length": 2, "location": 10}}, {"type": "show_candidates", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "reconvert", "surface": "品詞", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "backspace", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ひんし", "highlighted_length": 3}], "engine": [{"type": "cancel", "conversion_id": 21}, {"type": "prefetch", "reading": "ひんし", "context": {"available": true, "left": "これは", "right": ""}}]},
+        {"press": "space", "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2}, {"type": "show_candidates", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "reserved_rows": 3}], "engine": [{"type": "convert", "reading": "ひんし", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "escape", "expect": [{"type": "hide_candidates"}, {"type": "set_marked_text", "text": "ひんし", "highlighted_length": 3}], "engine": [{"type": "cancel", "conversion_id": 7}]},
+        {"press": "escape", "expect": [{"type": "restore", "text": "品詞", "replacing": {"length": 3, "location": 10}}], "engine": []}
+      ]
+    },
+    {
+      "name": "kana input cannot rebuild the reading so backspace does nothing",
+      "from": "ReconversionTests.swift ReconversionBackToReadingTests.kanaInputCannotRebuildTheReadingSoBackspaceDoesNothing",
+      "rust_only": "Swift の実行器の替え玉の合成器（FakeComposer）は、かな入力でも文字を受け取る（本物の合成器は受け取らない）",
+      "setup": {"settings": ["input.method\tkana"]},
+      "steps": [
+        {"press": "ctrl+shift+r", "selection": {"range": {"location": 10, "length": 2}, "text": "品詞"}, "expect": [{"type": "set_marked_text", "text": "品詞", "highlighted_length": 2, "replacement_range": {"length": 2, "location": 10}}, {"type": "show_candidates", "candidates": [{"surface": "品詞"}, {"surface": "瀕死"}, {"surface": "ひんし", "kind": "hiragana"}], "selected": 0, "reserved_rows": 9}], "engine": [{"type": "reconvert", "surface": "品詞", "context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "timeout_ms": 70}]},
+        {"press": "backspace", "expect": [{"type": "consume"}], "engine": []},
+        {"press": "escape", "expect": [{"type": "hide_candidates"}, {"type": "restore", "text": "品詞", "replacing": {"length": 2, "location": 10}}], "engine": [{"type": "cancel", "conversion_id": 21}]}
+      ]
+    },
+    {
+      "name": "enter and escape inside an active composition are not stray",
+      "from": "ReconversionTests.swift StrayMarkedTextTests.enterAndEscapeInsideAnActiveCompositionAreNotStray",
+      "steps": [
+        {"press": "enter", "expect": [{"type": "resolve_stray_marked_text"}], "engine": []},
+        {"press": "escape", "expect": [{"type": "resolve_stray_marked_text"}], "engine": []},
+        {"type_text": "hi"},
+        {"press": "escape", "expect": [{"type": "set_marked_text", "text": ""}], "engine": []}
+      ]
+    }
+  ]
+}
