@@ -2,7 +2,8 @@
 //!
 //! - このファイル: 入力処理（`ikari_composer_*`、`ikari_convert_script`。ADR 0004 §4.3）と、共通の型と解放
 //! - `shell`: 殻の 1 本の口（`ikari_shell_*`。ADR 0041 §4.4）
-//! - `settings`: 設定アプリ用（`ikari_settings_*`。ADR 0041 §2.3）
+//! - `settings`: 設定アプリ用（`ikari_settings_validate`・`rewrite`。ADR 0041 §2.3）
+//! - `settings_app`: 設定アプリの Model 用（`ikari_settings_app`。入出力は `ikari.settings.v1`）
 //! - `convert`: `shell-core` の型と proto（`ikari.shell.v1`）の写し
 //!
 //! すべての入口で `catch_unwind` を使い、panic を FFI の外へ出さない。
@@ -11,9 +12,11 @@
 pub mod convert;
 mod panel;
 mod settings;
+mod settings_app;
 mod shell;
 
 pub use settings::{ikari_settings_rewrite, ikari_settings_validate};
+pub use settings_app::ikari_settings_app;
 pub use shell::*;
 
 use std::mem::ManuallyDrop;
@@ -397,6 +400,7 @@ mod tests {
             "ikari_shell_buf_copy",
             "ikari_settings_validate",
             "ikari_settings_rewrite",
+            "ikari_settings_app",
         ] {
             assert!(
                 header.contains(name),
