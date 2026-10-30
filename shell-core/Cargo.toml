@@ -1,0 +1,13 @@
+[package]
+name = "ikari-shell-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "殻の OS に依存しない処理（状態機械、エンジンとの通信、設定）。macOS と Windows で共有する（ADR 0041）"
+
+[dependencies]
+ikari-input.workspace = true
+ikari-proto.workspace = true
+prost.workspace = true
+serde.workspace = true
+serde_json.workspace = true
