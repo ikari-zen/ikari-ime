@@ -8,7 +8,7 @@ use std::time::Duration;
 use ikari_proto::v1;
 
 use crate::diag::DiagEvent;
-use crate::engine::EngineLink;
+use crate::engine::{EngineLink, diag_message};
 use crate::types::EngineError;
 
 /// 状態機械が呼ぶエンジンの口。
@@ -48,30 +48,6 @@ pub trait MachineEngine: Send + Sync {
     ) -> Result<v1::SegmentLayout, EngineError>;
     /// 診断ログの事象（返事を待たない。secure のセッションでは呼ばない）
     fn diag(&self, event: &DiagEvent);
-}
-
-/// `diag::DiagEvent` を `engine.proto` の形にする（キーの昇順）。
-pub fn diag_message(event: &DiagEvent) -> v1::DiagEvent {
-    v1::DiagEvent {
-        session_id: event.session_id,
-        kind: event.kind.clone(),
-        nums: event
-            .nums
-            .iter()
-            .map(|(key, value)| v1::DiagNum {
-                key: key.clone(),
-                value: *value,
-            })
-            .collect(),
-        tags: event
-            .tags
-            .iter()
-            .map(|(key, value)| v1::DiagTag {
-                key: key.clone(),
-                value: value.clone(),
-            })
-            .collect(),
-    }
 }
 
 impl MachineEngine for EngineLink {

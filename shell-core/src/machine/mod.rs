@@ -18,7 +18,7 @@ use ikari_proto::v1;
 use unicode_segmentation::UnicodeSegmentation;
 
 pub use composer::{Composer, RomajiSource, convert_to_script};
-pub use engine::{MachineEngine, diag_message};
+pub use engine::MachineEngine;
 pub use state::{
     ConversionOrigin, ConversionPage, ConvertingSegment, ConvertingState, InputState,
     SegmentChoiceValue, SegmentLayoutInfo, SegmentPage, SegmentSummary,

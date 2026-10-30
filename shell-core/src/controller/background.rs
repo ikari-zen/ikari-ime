@@ -6,15 +6,12 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use ikari_proto::v1::{self, envelope::Body};
-use prost::Message;
+use ikari_proto::v1;
 
-use crate::engine::EngineLink;
+use crate::engine::{EngineAdmin, EngineLink, lm_state};
 use crate::menu::{EngineLmState, ProfileDomain, ProfileWeight};
 use crate::postal::PostalLookupRequest;
-use crate::settings::{profile_get_request, profile_rows, profile_set_request};
 use crate::timeouts;
-use crate::types::EngineError;
 
 /// 絵文字のショートコードの表の待ち（主スレッドの外で待つ。ADR 0027 §8.2）。
 pub const EMOJI_TABLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
@@ -158,9 +155,9 @@ fn run(engine: &EngineLink, shell_version: &str, job: Job) -> JobResult {
                 Ok(hello) => JobResult::EngineInfo {
                     attempt,
                     generation,
-                    lm: Some(lm_state(hello.lm)),
+                    lm: Some(lm_state(&hello)),
                     profile: if attempt == 0 {
-                        profile(engine).ok()
+                        EngineAdmin::new(engine).profile().ok()
                     } else {
                         None
                     },
@@ -185,54 +182,7 @@ fn run(engine: &EngineLink, shell_version: &str, job: Job) -> JobResult {
             } else {
                 ProfileWeight::Off
             };
-            JobResult::Profile(set_weight(engine, &id, weight).ok())
+            JobResult::Profile(EngineAdmin::new(engine).set_weight(weight, &id).ok())
         }
     }
-}
-
-pub(crate) fn lm_state(value: i32) -> EngineLmState {
-    match v1::LmState::try_from(value) {
-        Ok(v1::LmState::LmDisabled) => EngineLmState::Disabled,
-        Ok(v1::LmState::LmLoading) => EngineLmState::Loading,
-        Ok(v1::LmState::LmReady) => EngineLmState::Ready,
-        Ok(v1::LmState::LmFailed) => EngineLmState::Failed,
-        Ok(v1::LmState::Unspecified) | Err(_) => EngineLmState::Unspecified,
-    }
-}
-
-// 分野（属性プロファイル）の取得と変更。要求の中身は `settings::admin`（L-C）が作る。
-// L-B の `engine::admin::EngineAdmin` が main に入ったら、そちらに置き換える。
-
-fn profile(engine: &EngineLink) -> Result<Vec<ProfileDomain>, EngineError> {
-    match round_trip(engine, Body::GetProfile(profile_get_request()))? {
-        Body::ProfileReply(reply) => Ok(profile_rows(&reply)),
-        _ => Err(EngineError::InvalidReply),
-    }
-}
-
-/// 最新の状態を取り直してから 1 つだけ変える（メニューのキャッシュが古くても他の分野を壊さない）。
-fn set_weight(
-    engine: &EngineLink,
-    id: &str,
-    weight: ProfileWeight,
-) -> Result<Vec<ProfileDomain>, EngineError> {
-    let rows = profile(engine)?;
-    let Some(request) = profile_set_request(&rows, id, weight) else {
-        return Ok(rows);
-    };
-    match round_trip(engine, Body::SetProfile(request))? {
-        Body::ProfileReply(reply) => Ok(profile_rows(&reply)),
-        _ => Err(EngineError::InvalidReply),
-    }
-}
-
-fn round_trip(engine: &EngineLink, body: Body) -> Result<Body, EngineError> {
-    let request = v1::Envelope {
-        schema_version: ikari_proto::SCHEMA_VERSION,
-        request_id: 0,
-        body: Some(body),
-    };
-    let reply = engine.relay(&request.encode_to_vec(), timeouts::ADMIN)?;
-    let envelope = v1::Envelope::decode(reply.as_slice()).map_err(|_| EngineError::InvalidReply)?;
-    envelope.body.ok_or(EngineError::InvalidReply)
 }

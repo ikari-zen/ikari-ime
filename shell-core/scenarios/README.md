@@ -5,7 +5,7 @@
 
 | 読み手 | 場所 | いつまで |
 | --- | --- | --- |
-| Rust の実行器 | `shell-core/tests/scenarios.rs`（`cargo test -p ikari-shell-core`） | ずっと。照合の `scenarios_match_on_rust` は、`EngineLink`（L-B）が入るまで `#[ignore]`。形の検査 `scenarios_are_well_formed` は流す |
+| Rust の実行器 | `shell-core/tests/scenarios.rs`（`cargo test -p ikari-shell-core`） | ずっと。照合の `scenarios_match_on_rust`（全件）と形の検査 `scenarios_are_well_formed` |
 | Swift の実行器 | `macos/Tests/IkariShellCoreTests/ScenarioRunnerTests.swift`（`swift test`） | 移行の間だけ（M5 で消す）。今の Swift の状態機械で、`rust_only` 以外が全部通ること |
 | 性能の計測 | `cargo xtask perf shell`（L-P） | ずっと |
 
