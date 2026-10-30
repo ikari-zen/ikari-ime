@@ -2066,21 +2066,9 @@ impl InputStateMachine {
 
     /// キー割り当て。F キーと、Ctrl / Option / Command を伴う 1 文字は常に引く。←/→/↑/↓ は修飾キーの有無を問わず引く
     fn bound_action(&self, input: &KeyInput) -> Option<KeymapAction> {
-        let named = |name: &str| self.keymap.action(&KeyChord::new(name, input.modifiers));
-        match &input.key {
-            KeyKind::Function { number } => named(&format!("f{number}")),
-            KeyKind::Character { text } => {
-                if !has_command_modifiers(input) || grapheme_count(text) != 1 {
-                    return None;
-                }
-                named(&text.to_lowercase())
-            }
-            KeyKind::Left => named("left"),
-            KeyKind::Right => named("right"),
-            KeyKind::Up => named("up"),
-            KeyKind::Down => named("down"),
-            _ => None,
-        }
+        // 引くキーの規則は設定アプリの記録と共有する（`KeyChord::for_lookup`）
+        let chord = KeyChord::for_lookup(input).ok()?;
+        self.keymap.action(&chord)
     }
 
     /// 1 文節なら全体を太い下線。2 文節以上なら、文節ごとの UTF-16 の長さとフォーカス。

@@ -157,12 +157,29 @@ message ChordParts {
   ikari.shell.v1.Modifiers modifiers = 2;
 }
 
-// 設定の表記（`ctrl+j`）か、押したキー（キーの名前と修飾）
+// 設定の表記（`ctrl+j`）か、押したキー（キーの名前と修飾）か、押された生のキー
 message ChordRequest {
   oneof form {
     string text = 1;
     ChordParts parts = 2;
+    // 押された生のキー（OS の入口が作った KeyInput）。割り当てとして受け入れるかを shell-core が判定し、
+    // 返事の outcome に入れる（ChordInfo の text / display / function_key は受け入れたときだけ入る）
+    ikari.shell.v1.KeyInput record = 3;
   }
+}
+
+// record の判定結果
+enum ChordOutcome {
+  // record 以外の要求（text / parts）
+  CHORD_OUTCOME_UNSPECIFIED = 0;
+  // 割り当てとして受け入れる
+  CHORD_OUTCOME_ACCEPTED = 1;
+  // 修飾キーなしの Esc。記録をやめる
+  CHORD_OUTCOME_CANCEL = 2;
+  // 修飾キーのない文字キー（打鍵そのものを奪ってしまう）
+  CHORD_OUTCOME_NEEDS_MODIFIER = 3;
+  // 状態機械が割り当てとして引かないキー（Space、Enter、Backspace、複数文字、読み戻せない表記など）
+  CHORD_OUTCOME_UNSUPPORTED_KEY = 4;
 }
 
 message ChordInfo {
@@ -173,6 +190,10 @@ message ChordInfo {
   // 画面の表記（`⌃⇧J`）。読めない text はそのまま
   string display = 3;
   bool function_key = 4;
+  // record の判定結果（record 以外は UNSPECIFIED）。ACCEPTED のとき valid は true
+  ChordOutcome outcome = 5;
+  // ACCEPTED のとき、受け入れたキーの名前と修飾（Swift が KeyChord に写す。表記を読み直さない）
+  ChordParts accepted = 6;
 }
 
 // ---------------------------------------------------------------- ユーザー辞書

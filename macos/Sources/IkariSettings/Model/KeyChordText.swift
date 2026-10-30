@@ -45,43 +45,20 @@ enum KeyChordText {
         case unsupportedKey
     }
 
-    /// 押されたキーを記録する。状態機械が引くのは「F キー」「←/→/↑/↓（修飾キーの有無を問わない）」
-    /// 「Ctrl / Option / Command を伴う 1 文字」だけ（shell-core の `bound_action`）なので、それ以外は断る。
-    /// `charactersIgnoringModifiers` は `NSEvent` のもの（Ctrl を伴っても押したキーの文字になる）
+    /// 押されたキーを記録する。割り当てとして受け入れるか、断る理由（修飾キーが要る／使えないキー）は
+    /// shell-core が決める（`bound_action` と同じ規則。`KeyChord::record`）。ここは keyCode から `KeyInput` を作って頼み、
+    /// 返事を写すだけ。`charactersIgnoringModifiers` は `NSEvent` のもの（Ctrl を伴っても押したキーの文字になる）
     static func record(keyCode: UInt16, charactersIgnoringModifiers: String, modifiers: KeyModifiers) -> Recording {
-        if keyCode == KeyEvents.escape, modifiers.isEmpty { return .cancel }
         let input = KeyEvents.keyInput(
             keyCode: keyCode, characters: charactersIgnoringModifiers, modifiers: SettingsCore.modifiers(modifiers),
             isRepeat: false, secure: false)
-        // JIS の位置にあるキー（文字のキー）は、配列が出す文字（`layout_text`）で記録する
-        let text: String
-        switch input.kind {
-        case .function:
-            return validated(KeyChord(key: "f\(input.function)", modifiers: modifiers))
-        case .left:
-            return validated(KeyChord(key: "left", modifiers: modifiers))
-        case .right:
-            return validated(KeyChord(key: "right", modifiers: modifiers))
-        case .up:
-            return validated(KeyChord(key: "up", modifiers: modifiers))
-        case .down:
-            return validated(KeyChord(key: "down", modifiers: modifiers))
-        case .character:
-            text = input.text
-        case .jis:
-            text = input.layoutText
-        default:
-            return .rejected(.unsupportedKey)
+        guard let info = SettingsCore.chord(.record(input)) else { return .rejected(.unsupportedKey) }
+        switch info.outcome {
+        case .accepted:
+            return .chord(KeyChord(key: info.accepted.key, modifiers: SettingsCore.modifiers(info.accepted.modifiers)))
+        case .cancel: return .cancel
+        case .needsModifier: return .rejected(.needsModifier)
+        case .unsupportedKey, .unspecified, .UNRECOGNIZED: return .rejected(.unsupportedKey)
         }
-        guard text.count == 1 else { return .rejected(.unsupportedKey) }
-        let commandModifiers: KeyModifiers = [.control, .option, .command]
-        guard !modifiers.intersection(commandModifiers).isEmpty else { return .rejected(.needsModifier) }
-        return validated(KeyChord(key: text.lowercased(), modifiers: modifiers))
-    }
-
-    /// 表記に直して読み戻せるものだけを通す（shell-core が確かめる）
-    private static func validated(_ chord: KeyChord) -> Recording {
-        guard info(for: chord)?.valid == true else { return .rejected(.unsupportedKey) }
-        return .chord(chord)
     }
 }
