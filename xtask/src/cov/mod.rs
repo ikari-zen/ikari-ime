@@ -12,7 +12,7 @@ use std::process::Command;
 use crate::XtaskError;
 use crate::check::{real_inputs, real_tests};
 use crate::data::consts::LibConsts;
-use crate::data::run::{Failure, cargo, git, log, repo_root, run as exec, succeeds_quietly};
+use crate::data::run::{Failure, cargo, git, log, repo_root, run as exec, succeeds_quietly, warn};
 
 mod summary;
 
@@ -65,9 +65,12 @@ pub fn run(args: Args) -> Result<(), XtaskError> {
 fn run_inner(args: &Args) -> Result<(), Failure> {
     let root = repo_root();
     let lm = args.lm || args.real;
-    let json = match &args.from_json {
-        Some(path) => std::fs::read_to_string(path)
-            .map_err(|e| Failure::new(format!("{}: {e}", path.display())))?,
+    let (json, failed_real) = match &args.from_json {
+        Some(path) => (
+            std::fs::read_to_string(path)
+                .map_err(|e| Failure::new(format!("{}: {e}", path.display())))?,
+            Vec::new(),
+        ),
         None => measure(&root, lm, args.real)?,
     };
     let files = summary::parse(&json, &root.to_string_lossy()).map_err(Failure::new)?;
@@ -82,7 +85,7 @@ fn run_inner(args: &Args) -> Result<(), Failure> {
     println!("\n{tables}");
 
     if let Some(out) = &args.out {
-        let header = header(&root, args, lm);
+        let header = header(&root, args, lm, &failed_real);
         write_record(out, &format!("{header}\n{tables}"))?;
         log(&format!("記録: {}", out.display()));
     }
@@ -98,8 +101,8 @@ fn run_inner(args: &Args) -> Result<(), Failure> {
     Ok(())
 }
 
-/// 測って、JSON（要約だけ）を返す。
-fn measure(root: &Path, lm: bool, real: bool) -> Result<String, Failure> {
+/// 測って、JSON（要約だけ）と、失敗した実データのテストの名前を返す。
+fn measure(root: &Path, lm: bool, real: bool) -> Result<(String, Vec<String>), Failure> {
     ensure_tools()?;
     // 前提がなければ、長いテストを流す前に止める
     let real_paths = if real {
@@ -126,6 +129,7 @@ fn measure(root: &Path, lm: bool, real: bool) -> Result<String, Failure> {
     }
     exec(&mut base)?;
 
+    let mut failed_real = Vec::new();
     if let Some(inputs) = real_paths {
         log("実データのテスト（--ignored。check --real と同じ）");
         for test in real_tests() {
@@ -136,7 +140,15 @@ fn measure(root: &Path, lm: bool, real: bool) -> Result<String, Failure> {
                 .env("IKARI_DICT_DIR", &inputs.dict)
                 .env("IKARI_ZENZ_MODEL", &inputs.zenz)
                 .env("IKARI_EDGE_MODEL", &inputs.edge);
-            exec(&mut command)?;
+            // 測定が目的なので、テストの失敗では止めない（時間の上限を測るテストは、計装と負荷で落ちうる。
+            // 失敗したテストの実行分もカバレッジに入る）。合否は `check --real` が見る。失敗は警告と記録に残す
+            if exec(&mut command).is_err() {
+                let name = test[1..].join(" ");
+                warn(&format!(
+                    "実データのテストが失敗しました（測定は続けます）: {name}"
+                ));
+                failed_real.push(name);
+            }
         }
     }
 
@@ -158,7 +170,10 @@ fn measure(root: &Path, lm: bool, real: bool) -> Result<String, Failure> {
             String::from_utf8_lossy(&output.stderr)
         )));
     }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    Ok((
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+        failed_real,
+    ))
 }
 
 /// cargo-llvm-cov と llvm-tools-preview があるか。無ければ入れ方を案内して止まる（自動では入れない）。
@@ -191,7 +206,7 @@ fn llvm_tools_installed() -> bool {
 }
 
 /// 記録の先頭（いつ、どの版で、どの条件で測ったか）。
-fn header(root: &Path, args: &Args, lm: bool) -> String {
+fn header(root: &Path, args: &Args, lm: bool, failed_real: &[String]) -> String {
     let sha =
         git_output(root, &["rev-parse", "--short=7", "HEAD"]).unwrap_or_else(|| "不明".into());
     let dirty = git_output(root, &["status", "--porcelain"]).is_some_and(|s| !s.is_empty());
@@ -207,7 +222,7 @@ fn header(root: &Path, args: &Args, lm: bool) -> String {
          - 測り方: {source}。`cargo llvm-cov --workspace`（xtask を除く）、集計の除外 `{IGNORE_FILENAME_REGEX}`、行カバレッジ\n\
          - 機能つき（llama.cpp, Metal）: {}\n\
          - 実データ（check --real のテスト）: {}\n\
-         - 対象: {}\n",
+         - 対象: {}\n{}",
         if dirty {
             "（作業ツリーに未コミットの変更あり）"
         } else {
@@ -218,6 +233,14 @@ fn header(root: &Path, args: &Args, lm: bool) -> String {
         match args.group {
             Group::All => "全体",
             Group::Conversion => "変換のロジックのみ",
+        },
+        if failed_real.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "- 失敗した実データのテスト（測定は続け、実行した分は数えている）: {}\n",
+                failed_real.join("、")
+            )
         },
     )
 }
