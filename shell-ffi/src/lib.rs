@@ -405,6 +405,49 @@ mod tests {
     }
 
     #[test]
+    fn shell_constants_match_the_header() {
+        let header = include_str!("../include/ikari_shell.h");
+        for (name, value) in [
+            ("IKARI_SHELL_OK", IKARI_SHELL_OK),
+            ("IKARI_SHELL_ERR_NULL", IKARI_SHELL_ERR_NULL),
+            (
+                "IKARI_SHELL_ERR_INVALID_HANDLE",
+                IKARI_SHELL_ERR_INVALID_HANDLE,
+            ),
+            ("IKARI_SHELL_ERR_DECODE", IKARI_SHELL_ERR_DECODE),
+            ("IKARI_SHELL_ERR_BUSY", IKARI_SHELL_ERR_BUSY),
+            ("IKARI_SHELL_ERR_PANIC", IKARI_SHELL_ERR_PANIC),
+            (
+                "IKARI_SHELL_ERR_UNIMPLEMENTED",
+                IKARI_SHELL_ERR_UNIMPLEMENTED,
+            ),
+            ("IKARI_SHELL_TRANSPORT_OK", IKARI_SHELL_TRANSPORT_OK),
+            (
+                "IKARI_SHELL_TRANSPORT_UNAVAILABLE",
+                IKARI_SHELL_TRANSPORT_UNAVAILABLE,
+            ),
+            (
+                "IKARI_SHELL_TRANSPORT_TIMEOUT",
+                IKARI_SHELL_TRANSPORT_TIMEOUT,
+            ),
+            (
+                "IKARI_SHELL_DOWN_INTERRUPTED",
+                i32::from(IKARI_SHELL_DOWN_INTERRUPTED),
+            ),
+            (
+                "IKARI_SHELL_DOWN_INVALIDATED",
+                i32::from(IKARI_SHELL_DOWN_INVALIDATED),
+            ),
+        ] {
+            let line = format!("{name} = {value},");
+            assert!(
+                header.contains(&line),
+                "{line} is missing from ikari_shell.h"
+            );
+        }
+    }
+
+    #[test]
     fn jis_key_count_matches_the_header() {
         assert!(include_str!("../include/ikari_shell.h").contains("IKARI_JIS_KEY_COUNT = 48"));
         assert_eq!(ikari_input::JisKey::ALL.len(), 48);

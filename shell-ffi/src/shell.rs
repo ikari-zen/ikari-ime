@@ -529,4 +529,109 @@ pub(crate) mod tests {
         assert_eq!(call(s, &event).0, IKARI_SHELL_OK);
         unsafe { ikari_shell_free(s) };
     }
+
+    // ------------------------------------------------ ホストの口の包み（dispatch の stub が呼ばないので直接）
+
+    fn copy_into(out: *mut IkariShellBuf, bytes: &[u8]) {
+        unsafe { out.write(ikari_shell_buf_copy(IkariStr::of_bytes(bytes))) };
+    }
+
+    unsafe extern "C" fn text_ok(_: *mut c_void, out: *mut IkariShellBuf) -> i32 {
+        let message = ikari_proto::shell::v1::SurroundingText {
+            left: "左😀".into(),
+            right: "右".into(),
+            document_length: 4,
+        };
+        copy_into(out, &prost::Message::encode_to_vec(&message));
+        HOST_TEXT_OK
+    }
+    /// 取れないと言いつつ *out に入れる（Rust が解放する。リークしない）
+    unsafe extern "C" fn text_refused(_: *mut c_void, out: *mut IkariShellBuf) -> i32 {
+        copy_into(out, b"ignored");
+        1
+    }
+    unsafe extern "C" fn text_garbage(_: *mut c_void, out: *mut IkariShellBuf) -> i32 {
+        copy_into(out, &[0xff, 0xff]);
+        HOST_TEXT_OK
+    }
+    unsafe extern "C" fn connect_7(_: *mut c_void) -> u64 {
+        7
+    }
+    unsafe extern "C" fn request_echo(
+        _: *mut c_void,
+        handle: u64,
+        bytes: IkariStr,
+        timeout_ms: u32,
+        reply: *mut IkariShellBuf,
+    ) -> i32 {
+        match handle {
+            1 => IKARI_SHELL_TRANSPORT_TIMEOUT,
+            2 => 99, // 知らない値は unavailable
+            _ => {
+                let mut echoed = unsafe { crate::bytes(bytes.ptr, bytes.len) }.to_vec();
+                echoed.extend_from_slice(&timeout_ms.to_le_bytes());
+                copy_into(reply, &echoed);
+                IKARI_SHELL_TRANSPORT_OK
+            }
+        }
+    }
+    unsafe extern "C" fn pid_of(_: *mut c_void, handle: u64) -> i32 {
+        handle as i32
+    }
+
+    #[test]
+    fn host_text_reads_protobuf_and_treats_refusal_and_garbage_as_unavailable() {
+        let table = |surrounding: TextFn| {
+            HostTable::new(IkariShellHost {
+                surrounding: Some(surrounding),
+                ..host()
+            })
+            .unwrap()
+        };
+        let ok = table(text_ok);
+        let got = HostText(&ok).surrounding().unwrap();
+        assert_eq!(got.left, "左😀");
+        assert_eq!(got.right, "右");
+        assert_eq!(got.document_length, ikari_shell_core::Utf16Len(4));
+        assert!(HostText(&ok).selection().is_none()); // no_text
+        assert!(HostText(&table(text_refused)).surrounding().is_none());
+        assert!(HostText(&table(text_garbage)).surrounding().is_none());
+    }
+
+    #[test]
+    fn host_transport_maps_results_to_transport_errors() {
+        let transport = HostTransport(Arc::new(
+            HostTable::new(IkariShellHost {
+                engine_connect: Some(connect_7),
+                engine_request: Some(request_echo),
+                engine_pid: Some(pid_of),
+                ..host()
+            })
+            .unwrap(),
+        ));
+        assert_eq!(transport.connect(), Ok(TransportHandle(7)));
+        assert_eq!(
+            transport.request(TransportHandle(7), b"ab", Duration::from_millis(1500)),
+            Ok([b"ab".as_slice(), &1500u32.to_le_bytes()].concat())
+        );
+        // u32 を超える待ちは丸める
+        assert_eq!(
+            transport.request(TransportHandle(7), b"", Duration::from_secs(u64::MAX)),
+            Ok(u32::MAX.to_le_bytes().to_vec())
+        );
+        assert_eq!(
+            transport.request(TransportHandle(1), b"", Duration::ZERO),
+            Err(TransportError::Timeout)
+        );
+        assert_eq!(
+            transport.request(TransportHandle(2), b"", Duration::ZERO),
+            Err(TransportError::Unavailable)
+        );
+        assert_eq!(transport.pid(TransportHandle(42)), Some(42));
+        assert_eq!(transport.pid(TransportHandle(0)), None);
+
+        let no_connection = HostTransport(Arc::new(HostTable::new(host()).unwrap()));
+        assert_eq!(no_connection.connect(), Err(TransportError::Unavailable));
+        assert_eq!(no_connection.pid(TransportHandle(1)), None);
+    }
 }
