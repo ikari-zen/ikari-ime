@@ -33,3 +33,11 @@ samply load target/perf-tools/profile.json     # ブラウザで見る
   - 診断ログ（`DiagEpisode::event` の中）は、`dispatch` 内の確保の約 3.8%、`engine::codec` を通るものは約 2.9%（重なりあり）。確定のキーだけで見た割合は、まだ出していない。
 - CPU（[cpu-shell-2026-10-31.md](cpu-shell-2026-10-31.md)）: `dispatch` の時間のうち、**`Background::spawn`（スレッドの生成）が約 44%**、`libsystem_kernel`・`libsystem_malloc`・`libsystem_pthread` の記号なしの部分が自分の時間の約 66%（スレッド生成とヒープ確保）。`unicode_segmentation` の `grapheme_count`（`start_conversion` の中）が約 7%。
   - 推測: 測り手の P1 が、キーごとに背景のスレッドを作る経路（`BackgroundMode::Thread`）を通っている。実機の経路と同じかは、確かめていない。
+
+## 静かな状態の記録（2026-10-31。負荷平均 2.5〜2.8。基準の候補）
+
+`alloc-shell-quiet-2026-10-31.md`、`cpu-shell-quiet-2026-10-31.md`（コミット 5020a52）。最初の記録との違いは、暴走していた別のプロセスを止めたあとに測ったこと。確保の回数は最初の記録と同じ（`dispatch` 1 回あたり p50 15、p99 144、最大 194）で、負荷に左右されにくい。
+
+- **確保**: 上位は、候補・メニュー・設定の複製（`CandidateItem::clone` 3.8 回/dispatch、`KeyKind::clone` 1.4、`menu::radio` 1.4、`SettingsSnapshot::clone` 1.9、`MenuItem::clone` 1.2）。バイト数では `menu::build`（125 MB/測定）と `CandidateItem` の `to_vec`（75 MB）が大きい。診断ログの組み立て（`DiagEpisode::event`）は 0.65 + 0.44 回/dispatch で小さい。
+- **CPU**: 呼び出しを含めた時間の 40.6% が `Background::spawn`（スレッドの生成。カーネルと pthread の記号なしの部分が自分の時間の 44%）。次いで `Composer::kana`／`refresh_composing` 11.3%、`is_valid_reading` 10.8%、`grapheme_count` 8.9%（`unicode_segmentation` の書記素の走査）。
+- **読み方の注意**: `Background::spawn` を呼ぶのはキーごとではなく、入力の開始（エンジンへの hello）、郵便番号の問い合わせ、絵文字の表、設定の変更のとき（`controller/mod.rs` の 537、676、710、777、811、819、851 行）。測り手のシナリオはこうした場面を繰り返し含むので、本番のキー 1 回の平均より割合が大きく出ている（推測。本番の頻度は未測定）。替え玉のエンジン（`ScriptedTransport`）と、シナリオの周辺テキストの変換（`ScenarioSurrounding::to_host`）の確保も `dispatch` の中に入る。
