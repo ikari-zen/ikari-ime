@@ -355,6 +355,8 @@ fn startup_dispatch(
     text: &mut ScenarioText,
 ) -> Vec<ikari_shell_core::ShellAction> {
     // 末尾呼び出しにすると、呼び出しの列からこの関数の枠が消える。結果を `black_box` に通して避ける
+    // 三つの関数の中身が同じだとリンカが一つにまとめ、名前が区別できなくなる。違う値を通して避ける
+    std::hint::black_box("startup");
     std::hint::black_box(shell.dispatch(event, text))
 }
 
@@ -365,6 +367,8 @@ fn first_dispatch(
     event: ShellEvent,
     text: &mut ScenarioText,
 ) -> Vec<ikari_shell_core::ShellAction> {
+    // 三つの関数の中身が同じだとリンカが一つにまとめ、名前が区別できなくなる。違う値を通して避ける
+    std::hint::black_box("first");
     std::hint::black_box(shell.dispatch(event, text))
 }
 
@@ -376,6 +380,8 @@ fn steady_dispatch(
     text: &mut ScenarioText,
 ) -> Vec<ikari_shell_core::ShellAction> {
     // 末尾呼び出しにすると、呼び出しの列からこの関数の枠が消える。結果を `black_box` に通して避ける
+    // 三つの関数の中身が同じだとリンカが一つにまとめ、名前が区別できなくなる。違う値を通して避ける
+    std::hint::black_box("steady");
     std::hint::black_box(shell.dispatch(event, text))
 }
 
