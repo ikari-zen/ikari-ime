@@ -42,7 +42,7 @@ pub struct Args {
     #[arg(long)]
     pub out: Option<PathBuf>,
     /// このコードを含むサンプルだけを数え、その関数より外側（呼び出し元）は数えない。既定は、殻のキー 1 回なら
-    /// 既定は測り手の `steady_dispatch`（打鍵ごと。起動と準備を除く）。起動は `--focus shell_perf::startup_dispatch`、最初の 1 打は `shell_perf::first_dispatch`。`--` で対象を替えたときは全部。空文字で全部
+    /// 既定は測り手の `steady_dispatch`（打鍵ごと。起動と準備を除く）。起動は `--focus shell_perf::startup_dispatch`、最初の 1 打は `shell_perf::first_dispatch`。入力中は `shell_perf::typing_pending_dispatch`、`typing_reading_dispatch`、`typing_edit_dispatch`（`--focus shell_perf::typing_` で 3 つまとめて）。`--` で対象を替えたときは全部。空文字で全部
     #[arg(long)]
     pub focus: Option<String>,
     /// 対象を差し替える。`--` のあとに実行ファイルと引数を書く（関数名が要るので、`debug = 1` つきでビルドしたもの）
