@@ -46,6 +46,7 @@ scripts/check.sh                         # fmt、clippy、cargo test、swift tes
 scripts/check.sh --real --perf           # 実辞書・実モデルのテストと性能（data/ が要る）
 macos/scripts/build.sh --signing team --release   # アプリのビルドと署名（インストールはしない）
 cargo run --release -p ikari-eval -- --ranker full --set eval/sets/homophones-ext.tsv   # 評価
+cargo xtask cov                          # テストの行カバレッジ（cargo-llvm-cov が要る）。--group conversion、--lm、--real、--out eval/reports/coverage-日付.md。check.sh には入れない
 ```
 - 評価の数値は `eval/reports/README.md` の索引から。変換に手を入れたら、全セットで1位が悪化しないことを確かめる（`eval/scripts/snapshot.sh`）。
 

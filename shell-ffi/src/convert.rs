@@ -162,7 +162,7 @@ pub(crate) fn modifiers_from_pb(modifiers: Option<pb::Modifiers>) -> Modifiers {
     })
 }
 
-fn modifiers_to_pb(modifiers: &Modifiers) -> Option<pb::Modifiers> {
+pub(crate) fn modifiers_to_pb(modifiers: &Modifiers) -> Option<pb::Modifiers> {
     (!modifiers.is_empty()).then_some(pb::Modifiers {
         shift: modifiers.shift,
         control: modifiers.control,
@@ -181,7 +181,7 @@ fn small(value: u32, field: &'static str) -> Result<u8> {
 
 // ---------------------------------------------------------------- キー
 
-fn key_from_pb(key: pb::KeyInput) -> Result<KeyInput> {
+pub(crate) fn key_from_pb(key: pb::KeyInput) -> Result<KeyInput> {
     let kind = match enum_value::<pb::KeyKind>(key.kind, "KeyInput.kind")? {
         pb::KeyKind::Unspecified => return Err(ConvertError::OutOfRange("KeyInput.kind")),
         pb::KeyKind::Character => KeyKind::Character { text: key.text },

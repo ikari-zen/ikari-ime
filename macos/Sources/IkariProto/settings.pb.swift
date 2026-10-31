@@ -26,6 +26,63 @@ fileprivate nonisolated struct _GeneratedWithProtocGenSwiftVersion: SwiftProtobu
   typealias Version = _2
 }
 
+/// record の判定結果
+public nonisolated enum Ikari_Settings_V1_ChordOutcome: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+
+  /// record 以外の要求（text / parts）
+  case unspecified // = 0
+
+  /// 割り当てとして受け入れる
+  case accepted // = 1
+
+  /// 修飾キーなしの Esc。記録をやめる
+  case cancel // = 2
+
+  /// 修飾キーのない文字キー（打鍵そのものを奪ってしまう）
+  case needsModifier // = 3
+
+  /// 状態機械が割り当てとして引かないキー（Space、Enter、Backspace、複数文字、読み戻せない表記など）
+  case unsupportedKey // = 4
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .accepted
+    case 2: self = .cancel
+    case 3: self = .needsModifier
+    case 4: self = .unsupportedKey
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .accepted: return 1
+    case .cancel: return 2
+    case .needsModifier: return 3
+    case .unsupportedKey: return 4
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Ikari_Settings_V1_ChordOutcome] = [
+    .unspecified,
+    .accepted,
+    .cancel,
+    .needsModifier,
+    .unsupportedKey,
+  ]
+
+}
+
 public nonisolated enum Ikari_Settings_V1_DraftProblem: SwiftProtobuf.Enum, Swift.CaseIterable {
   public typealias RawValue = Int
   case unspecified // = 0
@@ -877,7 +934,7 @@ public nonisolated struct Ikari_Settings_V1_ChordParts: Sendable {
   fileprivate var _modifiers: Ikari_Shell_V1_Modifiers? = nil
 }
 
-/// 設定の表記（`ctrl+j`）か、押したキー（キーの名前と修飾）
+/// 設定の表記（`ctrl+j`）か、押したキー（キーの名前と修飾）か、押された生のキー
 public nonisolated struct Ikari_Settings_V1_ChordRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -901,11 +958,24 @@ public nonisolated struct Ikari_Settings_V1_ChordRequest: Sendable {
     set {form = .parts(newValue)}
   }
 
+  /// 押された生のキー（OS の入口が作った KeyInput）。割り当てとして受け入れるかを shell-core が判定し、
+  /// 返事の outcome に入れる（ChordInfo の text / display / function_key は受け入れたときだけ入る）
+  public var record: Ikari_Shell_V1_KeyInput {
+    get {
+      if case .record(let v)? = form {return v}
+      return Ikari_Shell_V1_KeyInput()
+    }
+    set {form = .record(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Form: Equatable, Sendable {
     case text(String)
     case parts(Ikari_Settings_V1_ChordParts)
+    /// 押された生のキー（OS の入口が作った KeyInput）。割り当てとして受け入れるかを shell-core が判定し、
+    /// 返事の outcome に入れる（ChordInfo の text / display / function_key は受け入れたときだけ入る）
+    case record(Ikari_Shell_V1_KeyInput)
 
   }
 
@@ -928,9 +998,24 @@ public nonisolated struct Ikari_Settings_V1_ChordInfo: Sendable {
 
   public var functionKey: Bool = false
 
+  /// record の判定結果（record 以外は UNSPECIFIED）。ACCEPTED のとき valid は true
+  public var outcome: Ikari_Settings_V1_ChordOutcome = .unspecified
+
+  /// ACCEPTED のとき、受け入れたキーの名前と修飾（Swift が KeyChord に写す。表記を読み直さない）
+  public var accepted: Ikari_Settings_V1_ChordParts {
+    get {_accepted ?? Ikari_Settings_V1_ChordParts()}
+    set {_accepted = newValue}
+  }
+  /// Returns true if `accepted` has been explicitly set.
+  public var hasAccepted: Bool {self._accepted != nil}
+  /// Clears the value of `accepted`. Subsequent reads from it will return its default value.
+  public mutating func clearAccepted() {self._accepted = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
+
+  fileprivate var _accepted: Ikari_Settings_V1_ChordParts? = nil
 }
 
 public nonisolated struct Ikari_Settings_V1_DictionaryDraft: Sendable {
@@ -1214,6 +1299,10 @@ public nonisolated struct Ikari_Settings_V1_Constants: Sendable {
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
 fileprivate nonisolated let _protobuf_package = "ikari.settings.v1"
+
+nonisolated extension Ikari_Settings_V1_ChordOutcome: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CHORD_OUTCOME_UNSPECIFIED\0\u{1}CHORD_OUTCOME_ACCEPTED\0\u{1}CHORD_OUTCOME_CANCEL\0\u{1}CHORD_OUTCOME_NEEDS_MODIFIER\0\u{1}CHORD_OUTCOME_UNSUPPORTED_KEY\0")
+}
 
 nonisolated extension Ikari_Settings_V1_DraftProblem: SwiftProtobuf._ProtoNameProviding {
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0DRAFT_PROBLEM_UNSPECIFIED\0\u{1}DRAFT_PROBLEM_READING_EMPTY\0\u{1}DRAFT_PROBLEM_SURFACE_EMPTY\0\u{1}DRAFT_PROBLEM_POS_NOT_CHOSEN\0\u{1}DRAFT_PROBLEM_CONJ_TYPE_NEEDED\0\u{1}DRAFT_PROBLEM_CONTROL_CHARACTERS\0")
@@ -2490,7 +2579,7 @@ nonisolated extension Ikari_Settings_V1_ChordParts: SwiftProtobuf.Message, Swift
 
 nonisolated extension Ikari_Settings_V1_ChordRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ChordRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}text\0\u{1}parts\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}text\0\u{1}parts\0\u{1}record\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2519,6 +2608,19 @@ nonisolated extension Ikari_Settings_V1_ChordRequest: SwiftProtobuf.Message, Swi
           self.form = .parts(v)
         }
       }()
+      case 3: try {
+        var v: Ikari_Shell_V1_KeyInput?
+        var hadOneofValue = false
+        if let current = self.form {
+          hadOneofValue = true
+          if case .record(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.form = .record(v)
+        }
+      }()
       default: break
       }
     }
@@ -2538,6 +2640,10 @@ nonisolated extension Ikari_Settings_V1_ChordRequest: SwiftProtobuf.Message, Swi
       guard case .parts(let v)? = self.form else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
     }()
+    case .record?: try {
+      guard case .record(let v)? = self.form else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    }()
     case nil: break
     }
     try unknownFields.traverse(visitor: &visitor)
@@ -2552,7 +2658,7 @@ nonisolated extension Ikari_Settings_V1_ChordRequest: SwiftProtobuf.Message, Swi
 
 nonisolated extension Ikari_Settings_V1_ChordInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ChordInfo"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}valid\0\u{1}text\0\u{1}display\0\u{3}function_key\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}valid\0\u{1}text\0\u{1}display\0\u{3}function_key\0\u{1}outcome\0\u{1}accepted\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2564,12 +2670,18 @@ nonisolated extension Ikari_Settings_V1_ChordInfo: SwiftProtobuf.Message, SwiftP
       case 2: try { try decoder.decodeSingularStringField(value: &self.text) }()
       case 3: try { try decoder.decodeSingularStringField(value: &self.display) }()
       case 4: try { try decoder.decodeSingularBoolField(value: &self.functionKey) }()
+      case 5: try { try decoder.decodeSingularEnumField(value: &self.outcome) }()
+      case 6: try { try decoder.decodeSingularMessageField(value: &self._accepted) }()
       default: break
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
     if self.valid != false {
       try visitor.visitSingularBoolField(value: self.valid, fieldNumber: 1)
     }
@@ -2582,6 +2694,12 @@ nonisolated extension Ikari_Settings_V1_ChordInfo: SwiftProtobuf.Message, SwiftP
     if self.functionKey != false {
       try visitor.visitSingularBoolField(value: self.functionKey, fieldNumber: 4)
     }
+    if self.outcome != .unspecified {
+      try visitor.visitSingularEnumField(value: self.outcome, fieldNumber: 5)
+    }
+    try { if let v = self._accepted {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -2590,6 +2708,8 @@ nonisolated extension Ikari_Settings_V1_ChordInfo: SwiftProtobuf.Message, SwiftP
     if lhs.text != rhs.text {return false}
     if lhs.display != rhs.display {return false}
     if lhs.functionKey != rhs.functionKey {return false}
+    if lhs.outcome != rhs.outcome {return false}
+    if lhs._accepted != rhs._accepted {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

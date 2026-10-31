@@ -79,6 +79,15 @@ enum SettingsCore {
         return out
     }
 
+    static func modifiers(_ modifiers: Ikari_Shell_V1_Modifiers) -> KeyModifiers {
+        var out: KeyModifiers = []
+        if modifiers.shift { out.insert(.shift) }
+        if modifiers.control { out.insert(.control) }
+        if modifiers.option { out.insert(.option) }
+        if modifiers.command { out.insert(.command) }
+        return out
+    }
+
     static func modifiers(_ modifiers: KeyModifiers) -> Ikari_Shell_V1_Modifiers {
         var out = Ikari_Shell_V1_Modifiers()
         out.shift = modifiers.contains(.shift)
