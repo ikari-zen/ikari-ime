@@ -3,7 +3,9 @@
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::fmt;
-use std::ops::Bound;
+
+#[cfg(test)]
+mod equivalence;
 
 const BUILTIN_TSV: &str = include_str!("../assets/romaji.tsv");
 const COMMENT_PREFIX: char = '#';
@@ -26,9 +28,29 @@ struct Rule {
 }
 
 /// Mozc 互換の TSV。「入力<TAB>出力[<TAB>次の未確定]」。# で始まる行と空行は無視する。
+///
+/// 検索は Trie（文字をキーにした木）で行う。1 回の `lookup` で「完全一致する規則」と「より長い入力があるか」が
+/// 同時に分かる（以前は `BTreeMap` を 2 回引いていた。その実装は `equivalence` のテストに参照として残している）。
 #[derive(Debug, Clone)]
 pub struct RomajiTable {
-    rules: BTreeMap<String, Rule>,
+    /// 先頭（添字 0）が根。根は空の入力に当たり、規則を持たない
+    nodes: Vec<Node>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct Node {
+    /// この節までの文字列が入力に完全一致するときの結果
+    rule: Option<Rule>,
+    /// 次の 1 文字 -> 子の添字（文字の昇順。二分探索で引く）
+    children: Vec<(char, usize)>,
+}
+
+/// `RomajiTable::lookup` の結果。
+struct Lookup<'a> {
+    /// 完全一致する規則
+    exact: Option<&'a Rule>,
+    /// 検索した文字列より長く、それで始まる入力が存在するか
+    has_longer: bool,
 }
 
 #[derive(Debug)]
@@ -45,50 +67,75 @@ impl fmt::Display for TableError {
 
 impl std::error::Error for TableError {}
 
+/// TSV を読み、入力 -> 規則の表にする。列数の不正、空の入力、入力の重複はエラー（行番号付き、1始まり）。
+fn parse_rules(tsv: &str) -> Result<BTreeMap<String, Rule>, TableError> {
+    let mut rules = BTreeMap::new();
+    for (idx, raw) in tsv.lines().enumerate() {
+        let line_no = idx + 1;
+        let line = raw.trim_end_matches('\r');
+        if line.is_empty() || is_comment(line) {
+            continue;
+        }
+        let cols: Vec<&str> = line.split(COLUMN_SEPARATOR).collect();
+        if !(MIN_COLUMNS..=MAX_COLUMNS).contains(&cols.len()) {
+            return Err(TableError {
+                line: line_no,
+                message: format!(
+                    "expected {MIN_COLUMNS} or {MAX_COLUMNS} tab-separated columns, found {}",
+                    cols.len()
+                ),
+            });
+        }
+        let input = cols[0];
+        if input.is_empty() {
+            return Err(TableError {
+                line: line_no,
+                message: "input must not be empty".to_string(),
+            });
+        }
+        let rule = Rule {
+            output: cols[1].to_string(),
+            next_pending: cols.get(2).copied().unwrap_or("").to_string(),
+        };
+        match rules.entry(input.to_string()) {
+            Entry::Occupied(_) => {
+                return Err(TableError {
+                    line: line_no,
+                    message: format!("duplicate input {input:?}"),
+                });
+            }
+            Entry::Vacant(v) => {
+                v.insert(rule);
+            }
+        }
+    }
+    Ok(rules)
+}
+
 impl RomajiTable {
     /// 列数の不正や入力の重複はエラー（行番号付き、1始まり）。
     pub fn parse(tsv: &str) -> Result<Self, TableError> {
-        let mut rules = BTreeMap::new();
-        for (idx, raw) in tsv.lines().enumerate() {
-            let line_no = idx + 1;
-            let line = raw.trim_end_matches('\r');
-            if line.is_empty() || is_comment(line) {
-                continue;
+        Ok(Self::from_rules(&parse_rules(tsv)?))
+    }
+
+    fn from_rules(rules: &BTreeMap<String, Rule>) -> Self {
+        let mut nodes = vec![Node::default()];
+        for (input, rule) in rules {
+            let mut at = 0;
+            for c in input.chars() {
+                at = match nodes[at].children.binary_search_by_key(&c, |(key, _)| *key) {
+                    Ok(found) => nodes[at].children[found].1,
+                    Err(place) => {
+                        nodes.push(Node::default());
+                        let child = nodes.len() - 1;
+                        nodes[at].children.insert(place, (c, child));
+                        child
+                    }
+                };
             }
-            let cols: Vec<&str> = line.split(COLUMN_SEPARATOR).collect();
-            if !(MIN_COLUMNS..=MAX_COLUMNS).contains(&cols.len()) {
-                return Err(TableError {
-                    line: line_no,
-                    message: format!(
-                        "expected {MIN_COLUMNS} or {MAX_COLUMNS} tab-separated columns, found {}",
-                        cols.len()
-                    ),
-                });
-            }
-            let input = cols[0];
-            if input.is_empty() {
-                return Err(TableError {
-                    line: line_no,
-                    message: "input must not be empty".to_string(),
-                });
-            }
-            let rule = Rule {
-                output: cols[1].to_string(),
-                next_pending: cols.get(2).copied().unwrap_or("").to_string(),
-            };
-            match rules.entry(input.to_string()) {
-                Entry::Occupied(_) => {
-                    return Err(TableError {
-                        line: line_no,
-                        message: format!("duplicate input {input:?}"),
-                    });
-                }
-                Entry::Vacant(v) => {
-                    v.insert(rule);
-                }
-            }
+            nodes[at].rule = Some(rule.clone());
         }
-        Ok(Self { rules })
+        Self { nodes }
     }
 
     /// 同梱の既定表（`input/assets/romaji.tsv`）。
@@ -96,17 +143,31 @@ impl RomajiTable {
         Self::parse(BUILTIN_TSV).expect("builtin romaji table must be valid")
     }
 
-    fn exact(&self, s: &str) -> Option<&Rule> {
-        self.rules.get(s)
+    /// `s` に完全一致する規則と、`s` より長く `s` で始まる入力があるかを、1 回の探索で返す。
+    /// バイト列の前方一致と文字の前方一致は UTF-8 では同じなので、文字ごとの木で足りる。
+    fn lookup(&self, s: &str) -> Lookup<'_> {
+        let mut at = 0;
+        for c in s.chars() {
+            let children = &self.nodes[at].children;
+            match children.binary_search_by_key(&c, |(key, _)| *key) {
+                Ok(found) => at = children[found].1,
+                Err(_) => {
+                    return Lookup {
+                        exact: None,
+                        has_longer: false,
+                    };
+                }
+            }
+        }
+        let node = &self.nodes[at];
+        Lookup {
+            exact: node.rule.as_ref(),
+            has_longer: !node.children.is_empty(),
+        }
     }
 
-    /// s より長く、s で始まる入力が存在するか。
-    fn has_longer(&self, s: &str) -> bool {
-        self.rules
-            .range::<str, _>((Bound::Excluded(s), Bound::Unbounded))
-            .take_while(|(k, _)| k.starts_with(s))
-            .next()
-            .is_some()
+    fn exact(&self, s: &str) -> Option<&Rule> {
+        self.lookup(s).exact
     }
 }
 
@@ -114,6 +175,8 @@ pub struct RomajiComposer<'t> {
     table: &'t RomajiTable,
     kana: String,
     pending: String,
+    /// 規則3で「処理し直す」文字（`push` の間だけ使う。領域を使い回して、打鍵ごとに確保しない）
+    queue: Vec<char>,
 }
 
 impl<'t> RomajiComposer<'t> {
@@ -122,45 +185,48 @@ impl<'t> RomajiComposer<'t> {
             table,
             kana: String::new(),
             pending: String::new(),
+            queue: Vec::new(),
         }
     }
 
     /// 1文字を追加する。変換規則は ADR §4.2 の 1〜3。
     pub fn push(&mut self, c: char) {
         // 規則3で「処理し直す」文字列をキューで扱い、再帰を避ける。
-        let mut queue: Vec<char> = vec![c];
-        queue.reverse();
-        while let Some(c) = queue.pop() {
-            let mut s = std::mem::take(&mut self.pending);
-            s.push(c);
+        let table = self.table;
+        self.queue.clear();
+        self.queue.push(c);
+        while let Some(c) = self.queue.pop() {
+            self.pending.push(c);
 
-            if self.table.has_longer(&s) {
-                // 規則1: より長い入力があるので待つ（s 自体が完全一致でも待つ）
-                self.pending = s;
-            } else if let Some(rule) = self.table.exact(&s) {
+            let found = table.lookup(&self.pending);
+            if found.has_longer {
+                // 規則1: より長い入力があるので待つ（pending 自体が完全一致でも待つ）
+            } else if let Some(rule) = found.exact {
                 // 規則2
                 self.kana.push_str(&rule.output);
-                self.pending = rule.next_pending.clone();
+                self.pending.clear();
+                self.pending.push_str(&rule.next_pending);
             } else {
                 // 規則3: p を確定して c を処理し直す。
-                let mut p = s;
-                p.pop();
-                if p.is_empty() {
+                self.pending.pop();
+                if self.pending.is_empty() {
                     self.kana.push(c);
-                } else if let Some(rule) = self.table.exact(&p) {
+                } else if let Some(rule) = table.exact(&self.pending) {
                     self.kana.push_str(&rule.output);
-                    self.pending = rule.next_pending.clone();
-                    queue.push(c);
+                    self.pending.clear();
+                    self.pending.push_str(&rule.next_pending);
+                    self.queue.push(c);
                 } else {
                     // p の先頭1文字を ASCII のまま確定し、残りと c を処理し直す。
-                    let mut chars = p.chars();
+                    let mut chars = self.pending.chars();
                     if let Some(first) = chars.next() {
                         self.kana.push(first);
                     }
-                    queue.push(c);
+                    self.queue.push(c);
                     for rest in chars.as_str().chars().rev() {
-                        queue.push(rest);
+                        self.queue.push(rest);
                     }
+                    self.pending.clear();
                 }
             }
         }
@@ -186,7 +252,8 @@ impl<'t> RomajiComposer<'t> {
     pub fn flush(&mut self) {
         if let Some(rule) = self.table.exact(&self.pending) {
             self.kana.push_str(&rule.output);
-            self.pending = rule.next_pending.clone();
+            self.pending.clear();
+            self.pending.push_str(&rule.next_pending);
         }
     }
 }
