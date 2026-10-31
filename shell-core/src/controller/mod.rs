@@ -149,8 +149,6 @@ pub struct Shell {
     /// LM の読み込み中の次の取り直し（回数、世代）。`LM_POLL_TIMER` で流す
     pending_lm_poll: Option<(u32, u64)>,
     last_menu: Option<MenuModel>,
-    /// 状態機械に渡す設定の共有（設定の版, 値）。版が変わったときだけ作り直す
-    shared_settings: Option<(u64, Arc<SettingsSnapshot>)>,
     /// 最後にメニューを作ったときの入力（設定の版、LM の状態、分野の版）。同じなら作り直さない（打鍵ごとの手間を減らす）
     menu_inputs: Option<(u64, Option<EngineLmState>, u64)>,
     /// 分野を受け取るたびに進める
@@ -201,7 +199,6 @@ impl Shell {
             poll_generation: 0,
             pending_lm_poll: None,
             last_menu: None,
-            shared_settings: None,
             menu_inputs: None,
             profile_version: 0,
             background,
@@ -389,7 +386,7 @@ impl Shell {
     /// 新しい入力先（IMK のコントローラを作るのと同じ）。セッションの ID を振り直す
     fn make_client(&mut self, bundle_id: &str) -> Client {
         self.refresh_keymap();
-        let settings = self.shared_settings();
+        let settings = self.settings.shared();
         let session = SessionInfo {
             session_id: self.next_session_id(),
             client_bundle_id: bundle_id.to_string(),
@@ -633,7 +630,7 @@ impl Shell {
             return;
         }
         self.refresh_keymap();
-        let settings = self.shared_settings();
+        let settings = self.settings.shared();
         let keymap = Arc::clone(&self.keymap);
         let romaji = self.romaji;
         let Some(client) = &mut self.client else {
@@ -648,19 +645,6 @@ impl Shell {
         if client.machine.reconfigure(settings, keymap, composer) {
             client.applied_settings_version = latest;
         }
-    }
-
-    /// 今の設定を `Arc` で返す。設定の版が前回と同じなら、複製せずに同じものを渡す
-    fn shared_settings(&mut self) -> Arc<SettingsSnapshot> {
-        let version = self.settings.version();
-        if let Some((cached, shared)) = &self.shared_settings
-            && *cached == version
-        {
-            return Arc::clone(shared);
-        }
-        let shared = Arc::new(self.settings.snapshot().clone());
-        self.shared_settings = Some((version, Arc::clone(&shared)));
-        shared
     }
 
     fn reload_settings(&mut self) {
