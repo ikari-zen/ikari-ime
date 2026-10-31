@@ -1554,8 +1554,7 @@ impl InputStateMachine {
         let mut converting = ConvertingState {
             reading: reading.clone(),
             conversion_id: page.conversion_id,
-            candidates: page.candidates.clone(),
-            has_next: page.has_next,
+            // `candidates` と `has_next` は、すぐ下の `sync_focused` が現在のページから写す（ここでは複製しない）
             is_fallback,
             layout_rev,
             whole_layout,
@@ -1639,7 +1638,6 @@ impl InputStateMachine {
         self.mode = SegmentMode::default();
         let mut converting = ConvertingState {
             reading: reading.clone(),
-            candidates: page.candidates.clone(),
             is_fallback: true,
             segments: vec![ConvertingSegment::new(reading, surface, vec![page])],
             origin: carried_origin,

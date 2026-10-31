@@ -212,7 +212,7 @@ pub enum CandidateKind {
 }
 
 /// 候補 1 件。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CandidateItem {
     pub surface: String,
@@ -224,6 +224,25 @@ pub struct CandidateItem {
     /// 行の右に薄く出す名前（ショートコードの `:eyes:`。ADR 0027 §3.4）
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub label: String,
+}
+
+impl Clone for CandidateItem {
+    fn clone(&self) -> Self {
+        Self {
+            surface: self.surface.clone(),
+            annotation: self.annotation.clone(),
+            kind: self.kind,
+            label: self.label.clone(),
+        }
+    }
+
+    /// 複製先の文字列の領域を使い回す（`Vec<CandidateItem>::clone_from` が要素ごとに呼ぶ。確保を減らす）
+    fn clone_from(&mut self, source: &Self) {
+        self.surface.clone_from(&source.surface);
+        self.annotation.clone_from(&source.annotation);
+        self.kind = source.kind;
+        self.label.clone_from(&source.label);
+    }
 }
 
 /// 候補ウィンドウに出す内容（縦一列）。Swift の `CandidatePanelModel`。
