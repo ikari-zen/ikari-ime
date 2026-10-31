@@ -118,9 +118,12 @@ fn radio(group: MenuRadioGroup, title: &str, command: MenuCommand, checked: bool
     )
 }
 
+/// 分野が無いときの項目数（キー割り当て 3 + 入力方式 2 + LM 1 + 設定 2 + 区切り 3）。分野があるときは伸びる
+const MENU_ITEM_CAPACITY: usize = 11;
+
 /// 入力メニューの項目（ADR 0005 §5.2 の順）。純関数: `state` が同じなら結果も同じ。
 pub fn build(state: &InputMenuState) -> MenuModel {
-    let mut items: Vec<MenuItem> = Vec::new();
+    let mut items: Vec<MenuItem> = Vec::with_capacity(MENU_ITEM_CAPACITY);
 
     let preset = state.keymap_preset;
     for (label, candidate) in [
