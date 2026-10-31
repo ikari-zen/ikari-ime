@@ -97,4 +97,29 @@ for row in \
   printf '%s\n' "$appout" | grep -qxF "$row" || die "アプリ別の集計に期待の行がありません: $row"
 done
 
+# smoke のセグメントのテストは、app= のない begin_session で始まる。smoke の begin_session があるエンジンの起動（epoch）の
+# 行は、app= のない begin_session があっても smoke として除く。app が smoke 以外の begin_session がある epoch は除かない。
+smk="$(mktemp -d)"
+trap 'rm -rf "$noapp" "$fill" "$appd" "$smk"' EXIT
+printf '%s\n' \
+  "1793114850000 begin_session 5us lm=ready err=- session=1 app=com.example.inputmethod.ikari.smoke" \
+  "1793114850100 convert 40us lm=ready err=- session=1 conv=1 segments=1 cache=hit lm_applied=1 ctx_rev=1" \
+  "1793114850200 end_session 3us lm=ready err=- session=1" \
+  "1793114850300 remove_user_dict 87us lm=ready err=NOT_FOUND" \
+  "1793114850400 begin_session 1us lm=ready err=- session=2" \
+  "1793114850500 convert 337us lm=ready err=- session=2 conv=4 segments=2 cache=miss lm_applied=0 miss=none" \
+  "1793114850600 segment_page 58us lm=ready err=- conv=4" > "$smk/engine.log"
+smkout="$(python3 -I "$REPORT" "$smk")"
+printf '%s\n' "$smkout" | grep -qxF '| 除いた smoke の行 | 7 |' || die "app= のない begin_session を含む smoke の epoch を除けていません"
+printf '%s\n' "$smkout" | grep -qxF '| miss=none | 1 | 100.0% |' && die "smoke のセグメントのテストの miss=none が通常の使用に数えられています"
+printf '%s\n' \
+  "1793114850000 begin_session 5us lm=ready err=- session=1 app=com.example.inputmethod.ikari.smoke" \
+  "1793114850100 begin_session 5us lm=ready err=- session=2 app=com.example.Editor" \
+  "1793114850200 begin_session 1us lm=ready err=- session=3" \
+  "1793114850300 convert 337us lm=ready err=- session=3 conv=4 segments=2 cache=miss lm_applied=0 miss=none" > "$smk/engine.log"
+mixout="$(python3 -I "$REPORT" "$smk")"
+# smoke のセッション自身の 1 行だけが smoke。利用者のセッションの行（app= のないものを含む）は除かない
+printf '%s\n' "$mixout" | grep -qxF '| 除いた smoke の行 | 1 |' || die "利用者のアプリの begin_session がある epoch を smoke として除いています"
+printf '%s\n' "$mixout" | grep -qxF '| miss=none | 1 | 100.0% |' || die "利用者の epoch の miss=none が数えられていません"
+
 log "diag-report のテスト: OK"

@@ -146,7 +146,10 @@ def split_epochs(events):
     - `end_session session=N`（D5 以降の行）のあとの begin_session
     - `app=` が替わる begin_session（end_session に session= がない古い行のための代わり）
     同じ app の begin_session は secure と文脈共有の更新で、続きとして扱う。
-    smoke の epoch = begin_session が 1 つ以上あり、すべて app が smoke。その epoch の行は session= がなくても smoke。
+    smoke の epoch = smoke の begin_session が 1 つ以上あり、app が smoke 以外の begin_session が 1 つもない。
+    その epoch の行は session= がなくても smoke。app= のない begin_session（smoke のセグメントのテストなど。secure と古い版の
+    行も app を持たない）は、smoke の epoch かどうかの判定に数えない。smoke は engine.lock のために自分のエンジンを起こす
+    ので、smoke の epoch に利用者のセッションは混ざらない（混ざっても app= がある）。
     """
     epoch, starts = 0, []
     pending = True
@@ -154,7 +157,7 @@ def split_epochs(events):
     live = {}  # (epoch, session) -> [通し番号, app, 終わったか, begin_session を見たか]
     instances = 0
     smoke_sessions = set()
-    begins = collections.defaultdict(lambda: [0, 0])  # epoch -> [smoke の begin 数, それ以外]
+    begins = collections.defaultdict(lambda: [0, 0])  # epoch -> [smoke の begin 数, app が smoke 以外の begin 数]
     for e in events:
         if e.lm == "loading" and prev_lm not in (None, "loading") and not lm_swapped:
             pending = True
@@ -186,11 +189,12 @@ def split_epochs(events):
                 cur[1] = app
             if not cur[3]:
                 cur[3] = True
-            # secure のセッションと古い版の行は app を持たない（NFR-18）。smoke ではないものとして数える
+            # secure のセッションと古い版の行は app を持たない（NFR-18）。セッションとしては smoke ではないものとして数える。
+            # smoke の epoch かどうかの判定には、app= のない begin_session を数えない（下の smoke_epochs）
             if app is not None and app.endswith(SMOKE_APP_SUFFIX):
                 smoke_sessions.add(cur[0])
                 begins[epoch][0] += 1
-            else:
+            elif app is not None:
                 begins[epoch][1] += 1
         elif cur is None:
             instances += 1  # begin_session が見えない（ログの先頭が欠けた、起動後に begin されなかった）
