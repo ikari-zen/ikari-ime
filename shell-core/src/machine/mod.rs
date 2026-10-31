@@ -752,9 +752,7 @@ impl InputStateMachine {
 
     /// かなと pending から表示を作り、読みが変わったら Prefetch を投げる。空なら idle に戻す
     fn refresh_composing(&mut self) -> Vec<ShellAction> {
-        let kana = self.composer.kana().to_string();
-        let pending = self.composer.pending().to_string();
-        if kana.is_empty() && pending.is_empty() {
+        if self.composer.kana().is_empty() && self.composer.pending().is_empty() {
             let end = if self.current_key == Some(KeyKind::Escape) {
                 DiagEnd::EscClear
             } else {
@@ -763,10 +761,23 @@ impl InputStateMachine {
             self.reset_composition(Some(end), None);
             return vec![clear_mark()];
         }
+        // 合成中なら、今の状態の文字列の領域を使い回す（打鍵ごとに確保しない）。取り出している間、状態は idle に見えるが、
+        // 先読みは状態を読まない。最後に必ず `Composing` に戻す
+        let (mut kana, mut pending) = match std::mem::take(&mut self.state) {
+            InputState::Composing { kana, pending } => (kana, pending),
+            _ => (String::new(), String::new()),
+        };
+        kana.clear();
+        kana.push_str(self.composer.kana());
+        pending.clear();
+        pending.push_str(self.composer.pending());
         self.prefetch_if_changed(&kana);
+        let mut shown = String::with_capacity(kana.len() + pending.len());
+        shown.push_str(&kana);
+        shown.push_str(&pending);
         let marked = MarkedText {
             highlighted_length: Utf16Len::of(&kana),
-            ..MarkedText::plain(format!("{kana}{pending}"))
+            ..MarkedText::plain(shown)
         };
         self.state = InputState::Composing { kana, pending };
         vec![ShellAction::SetMarkedText(marked)]
@@ -2053,17 +2064,26 @@ impl InputStateMachine {
     }
 
     fn prefetch_if_changed(&mut self, reading: &str) {
+        // 前回と同じなら、数える前に戻る（前回は上限以内だったので、結果は変わらない）。
+        // 上限の判定は、バイト数が上限以下なら書記素の数も上限以下（書記素は 1 バイト以上）なので、走査を省く
         if self.session.secure
             || reading.is_empty()
-            || grapheme_count(reading) > MAX_READING_CHARACTERS
             || self.last_prefetched_reading.as_deref() == Some(reading)
+            || (reading.len() > MAX_READING_CHARACTERS
+                && grapheme_count(reading) > MAX_READING_CHARACTERS)
         {
             if reading.is_empty() {
                 self.last_prefetched_reading = None;
             }
             return;
         }
-        self.last_prefetched_reading = Some(reading.to_string());
+        match &mut self.last_prefetched_reading {
+            Some(last) => {
+                last.clear();
+                last.push_str(reading);
+            }
+            None => self.last_prefetched_reading = Some(reading.to_string()),
+        }
         self.engine.prefetch(v1::Prefetch {
             session_id: self.session.session_id,
             reading: reading.to_string(),
