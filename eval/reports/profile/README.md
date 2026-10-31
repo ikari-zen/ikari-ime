@@ -41,3 +41,5 @@ samply load target/perf-tools/profile.json     # ブラウザで見る
 - **確保**: 上位は、候補・メニュー・設定の複製（`CandidateItem::clone` 3.8 回/dispatch、`KeyKind::clone` 1.4、`menu::radio` 1.4、`SettingsSnapshot::clone` 1.9、`MenuItem::clone` 1.2）。バイト数では `menu::build`（125 MB/測定）と `CandidateItem` の `to_vec`（75 MB）が大きい。診断ログの組み立て（`DiagEpisode::event`）は 0.65 + 0.44 回/dispatch で小さい。
 - **CPU**: 呼び出しを含めた時間の 40.6% が `Background::spawn`（スレッドの生成。カーネルと pthread の記号なしの部分が自分の時間の 44%）。次いで `Composer::kana`／`refresh_composing` 11.3%、`is_valid_reading` 10.8%、`grapheme_count` 8.9%（`unicode_segmentation` の書記素の走査）。
 - **読み方の注意**: `Background::spawn` を呼ぶのはキーごとではなく、入力の開始（エンジンへの hello）、郵便番号の問い合わせ、絵文字の表、設定の変更のとき（`controller/mod.rs` の 537、676、710、777、811、819、851 行）。測り手のシナリオはこうした場面を繰り返し含むので、本番のキー 1 回の平均より割合が大きく出ている（推測。本番の頻度は未測定）。替え玉のエンジン（`ScriptedTransport`）と、シナリオの周辺テキストの変換（`ScenarioSurrounding::to_host`）の確保も `dispatch` の中に入る。
+
+- `alloc-shell-after-settings-menu-2026-10-31.md`: 設定とメニューの複製を減らした前後の確保（issue #161）。

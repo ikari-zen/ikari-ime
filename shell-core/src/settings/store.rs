@@ -8,6 +8,7 @@
 use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use super::{SettingsChanges, SettingsEntry, SettingsError, rewrite, validate};
@@ -71,7 +72,8 @@ pub struct Updated {
 #[derive(Debug)]
 pub struct SettingsStore {
     path: PathBuf,
-    current: SettingsSnapshot,
+    /// 殻の各所へ複製せずに渡せるよう `Arc` で持つ
+    current: Arc<SettingsSnapshot>,
     version: u64,
     stamp: Option<FileStamp>,
 }
@@ -82,7 +84,7 @@ impl SettingsStore {
         let path = path.into();
         let parsed = parse_file(&path);
         let store = Self {
-            current: parsed.snapshot,
+            current: Arc::new(parsed.snapshot),
             version: 0,
             stamp: stamp_of(&path),
             path,
@@ -96,6 +98,11 @@ impl SettingsStore {
 
     pub fn snapshot(&self) -> &SettingsSnapshot {
         &self.current
+    }
+
+    /// 今の設定の共有。複製しない（`version` が変わるまで同じもの）
+    pub fn shared(&self) -> Arc<SettingsSnapshot> {
+        Arc::clone(&self.current)
     }
 
     /// `snapshot` が変わるたびに増える（コントローラが適用済みの版と比べる）
@@ -141,10 +148,10 @@ impl SettingsStore {
         // `validate` は失敗しない。失敗したら既定値に戻さず、今の設定のままにする
         let snapshot = validate(&updated)
             .map(|result| result.snapshot)
-            .unwrap_or_else(|_| self.current.clone());
+            .unwrap_or_else(|_| (*self.current).clone());
         let change = self.adopt(snapshot);
         Ok(Updated {
-            snapshot: self.current.clone(),
+            snapshot: (*self.current).clone(),
             version: self.version,
             change,
         })
@@ -152,14 +159,14 @@ impl SettingsStore {
 
     /// 設定が違えば、版を進めて変化を返す
     fn adopt(&mut self, snapshot: SettingsSnapshot) -> Option<SettingsChange> {
-        if snapshot == self.current {
+        if snapshot == *self.current {
             return None;
         }
-        let old = std::mem::replace(&mut self.current, snapshot);
+        let old = std::mem::replace(&mut self.current, Arc::new(snapshot));
         self.version += 1;
         Some(SettingsChange {
-            old,
-            new: self.current.clone(),
+            old: Arc::unwrap_or_clone(old),
+            new: (*self.current).clone(),
         })
     }
 }

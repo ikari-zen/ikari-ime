@@ -31,7 +31,7 @@ pub(crate) enum SettingsBackend {
     /// シナリオとテスト。書き込みはメモリの文字列に当てる（`settings::rewrite` は同じ）
     Inline {
         text: String,
-        snapshot: SettingsSnapshot,
+        snapshot: Arc<SettingsSnapshot>,
         version: u64,
     },
 }
@@ -48,7 +48,7 @@ impl SettingsBackend {
             .unwrap_or_default();
         Self::Inline {
             text,
-            snapshot,
+            snapshot: Arc::new(snapshot),
             version: 0,
         }
     }
@@ -57,6 +57,14 @@ impl SettingsBackend {
         match self {
             Self::File(store) => store.snapshot(),
             Self::Inline { snapshot, .. } => snapshot,
+        }
+    }
+
+    /// 今の設定の共有。複製しない（値が変わるまで同じもの）
+    pub(crate) fn shared(&self) -> Arc<SettingsSnapshot> {
+        match self {
+            Self::File(store) => store.shared(),
+            Self::Inline { snapshot, .. } => Arc::clone(snapshot),
         }
     }
 
@@ -100,12 +108,15 @@ impl SettingsBackend {
                     .map(|validation| validation.snapshot)
                     .map_err(|_| UpdateFailed::Rejected)?;
                 *text = updated;
-                if next == *snapshot {
+                if next == **snapshot {
                     return Ok(None);
                 }
-                let old = std::mem::replace(snapshot, next.clone());
+                let old = std::mem::replace(snapshot, Arc::new(next.clone()));
                 *version += 1;
-                Ok(Some(SettingsChange { old, new: next }))
+                Ok(Some(SettingsChange {
+                    old: Arc::unwrap_or_clone(old),
+                    new: next,
+                }))
             }
         }
     }

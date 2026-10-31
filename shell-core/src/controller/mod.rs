@@ -386,7 +386,7 @@ impl Shell {
     /// 新しい入力先（IMK のコントローラを作るのと同じ）。セッションの ID を振り直す
     fn make_client(&mut self, bundle_id: &str) -> Client {
         self.refresh_keymap();
-        let settings = Arc::new(self.settings.snapshot().clone());
+        let settings = self.settings.shared();
         let session = SessionInfo {
             session_id: self.next_session_id(),
             client_bundle_id: bundle_id.to_string(),
@@ -499,24 +499,21 @@ impl Shell {
                 consumed(actions)
             }
             EnglishKeyClass::Text => {
-                let settings = self
-                    .client
-                    .as_ref()
-                    .map(|client| client.machine.settings().clone())
-                    .unwrap_or_else(|| self.settings.snapshot().clone());
-                let bundle_id = self
-                    .client
-                    .as_ref()
-                    .map(|client| client.bundle_id.clone())
-                    .unwrap_or_default();
-                let environment = EnglishShortcodeEnvironment {
-                    settings: &settings,
-                    client_bundle_id: &bundle_id,
-                    secure: false,
-                    is_repeat: input.is_repeat,
-                };
+                // 設定と入力先の ID は借りる（打鍵ごとに複製しない）。借用はこの塊の中で終わる
                 let now = self.now();
-                let outcome = self.english.handle_text(&input, &environment, now);
+                let outcome = {
+                    let (settings, bundle_id) = match &self.client {
+                        Some(client) => (client.machine.settings(), client.bundle_id.as_str()),
+                        None => (self.settings.snapshot(), ""),
+                    };
+                    let environment = EnglishShortcodeEnvironment {
+                        settings,
+                        client_bundle_id: bundle_id,
+                        secure: false,
+                        is_repeat: input.is_repeat,
+                    };
+                    self.english.handle_text(&input, &environment, now)
+                };
                 let pass_key = outcome.pass_key;
                 let lookup = outcome.lookup.clone();
                 let mut actions = self.apply_english(outcome);
@@ -633,7 +630,7 @@ impl Shell {
             return;
         }
         self.refresh_keymap();
-        let settings = Arc::new(self.settings.snapshot().clone());
+        let settings = self.settings.shared();
         let keymap = Arc::clone(&self.keymap);
         let romaji = self.romaji;
         let Some(client) = &mut self.client else {
