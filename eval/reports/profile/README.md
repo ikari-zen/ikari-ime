@@ -60,3 +60,4 @@ samply load target/perf-tools/profile.json     # ブラウザで見る
 - 記録: `alloc-shell-steady-2026-10-31.md`、`cpu-shell-steady-2026-10-31.md`、結論は `steady-state-findings-2026-10-31.md`。
 - `after-candidate-clones-2026-10-31.md`: 候補と変換の状態の複製を減らした前後（確保と CPU と P1。issue #161）。
 - `typing-findings-2026-10-31.md`: 入力中のローマ字の 1 打の測定（`alloc-shell-typing-2026-10-31.md`、`cpu-shell-typing-2026-10-31.md`）と、直す対象の見立て（issue #161）。測り手に入力中の台本を足した（`TYPING_SCRIPTS`、`perf profile --focus shell_perf::typing_`）。
+- `after-typing-2026-10-31.md`: 入力中の毎キーの無駄（`refresh_composing`、`prefetch_if_changed`）を減らした前後（issue #161）。
