@@ -8,6 +8,9 @@
 //!
 //! `Shell` が stub のうち（M1-a）は、動作が 1 つも返らないので、出力に `"stub": true` を付ける（数値は比べられない）。
 //!
+//! - alloc（`--features dhat-heap` のときだけ。`cargo xtask perf alloc` が呼ぶ）: P1 と同じキーの列で、`dispatch` 1 回あたりの
+//!   ヒープ確保の回数とバイト数（dhat。同期のエンジン要求を送ったキーは除く）。確保の場所は `--dhat-file` に書く（dhat-heap.json）
+//!
 //! 使い方: `cargo bench -p ikari-shell-core --bench shell_perf -- --metric p1|p3 [--repeat 100] [--shortcode-entries 2000]`
 //! 出力: 標準出力に JSON を 1 つ。`cargo bench` が付ける `--bench` は読み捨てる。
 
@@ -35,6 +38,24 @@ use ikari_shell_core::{
 };
 use prost::Message;
 
+/// 確保の計測（`dhat-heap` のときだけ。ADR 0043）。付けないときは何も数えない
+#[cfg(feature = "dhat-heap")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
+
+/// いままでの確保の累計（回数、バイト数）。`dhat-heap` がなければ常に 0
+fn heap_totals() -> (u64, u64) {
+    #[cfg(feature = "dhat-heap")]
+    {
+        let stats = dhat::HeapStats::get();
+        (stats.total_blocks, stats.total_bytes)
+    }
+    #[cfg(not(feature = "dhat-heap"))]
+    {
+        (0, 0)
+    }
+}
+
 /// P3 の既定のショートコードの数（実データの emoji.tsv が約 1,970 行）
 const DEFAULT_SHORTCODE_ENTRIES: usize = 2000;
 const DEFAULT_REPEAT: usize = 100;
@@ -58,6 +79,8 @@ struct Options {
     shortcode_entries: usize,
     /// P1 のキーごとの内訳（遅い順の上位）を標準エラーに出す
     detail: bool,
+    /// alloc のときの dhat-heap.json の書き出し先
+    dhat_file: String,
 }
 
 fn parse_options() -> Result<Options, String> {
@@ -66,6 +89,7 @@ fn parse_options() -> Result<Options, String> {
         repeat: DEFAULT_REPEAT,
         shortcode_entries: DEFAULT_SHORTCODE_ENTRIES,
         detail: false,
+        dhat_file: "dhat-heap.json".into(),
     };
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -73,6 +97,7 @@ fn parse_options() -> Result<Options, String> {
         match arg.as_str() {
             "--bench" => {}
             "--detail" => options.detail = true,
+            "--dhat-file" => options.dhat_file = value("--dhat-file")?,
             "--metric" => options.metric = value("--metric")?,
             "--repeat" => {
                 options.repeat = value("--repeat")?
@@ -104,8 +129,21 @@ fn main() -> ExitCode {
 
 fn run() -> Result<(), String> {
     let options = parse_options()?;
+    // alloc: dhat の計測を始める。この変数が落ちるとき（run の終わり）に dhat-heap.json を書く
+    #[cfg(feature = "dhat-heap")]
+    let _profiler = (options.metric == "alloc").then(|| {
+        dhat::Profiler::builder()
+            .file_name(&options.dhat_file)
+            .build()
+    });
     let measured = match options.metric.as_str() {
         "p1" => measure_keys(&options)?,
+        "alloc" => {
+            if !cfg!(feature = "dhat-heap") {
+                return Err("alloc needs --features dhat-heap".into());
+            }
+            measure_keys(&options)?
+        }
         "p3" => measure_startup(&options)?,
         other => return Err(format!("unknown metric {other}")),
     };
@@ -126,6 +164,7 @@ fn report(options: &Options, measured: Measured) -> Result<(), String> {
         without_transport,
         excluded,
         stub,
+        allocs,
     } = measured;
     if samples.is_empty() {
         return Err("no samples".into());
@@ -157,8 +196,31 @@ fn report(options: &Options, measured: Measured) -> Result<(), String> {
     if let Some(bytes) = rss::max_rss_bytes() {
         object["max_rss_bytes"] = bytes.into();
     }
+    if options.metric == "alloc" {
+        object["alloc"] = alloc_summary(&allocs);
+        object["dhat_file"] = options.dhat_file.clone().into();
+    }
     println!("{object}");
     Ok(())
+}
+
+/// 確保の回数とバイト数の分布（p50・p99・max と、全部の合計）
+fn alloc_summary(allocs: &[(u64, u64)]) -> serde_json::Value {
+    let mut blocks: Vec<u64> = allocs.iter().map(|(blocks, _)| *blocks).collect();
+    let mut bytes: Vec<u64> = allocs.iter().map(|(_, bytes)| *bytes).collect();
+    blocks.sort_unstable();
+    bytes.sort_unstable();
+    let sum = |values: &[u64]| values.iter().sum::<u64>();
+    serde_json::json!({
+        "blocks_p50": percentile(&blocks, 0.5),
+        "blocks_p99": percentile(&blocks, 0.99),
+        "blocks_max": blocks[blocks.len() - 1],
+        "blocks_total": sum(&blocks),
+        "bytes_p50": percentile(&bytes, 0.5),
+        "bytes_p99": percentile(&bytes, 0.99),
+        "bytes_max": bytes[bytes.len() - 1],
+        "bytes_total": sum(&bytes),
+    })
 }
 
 // ---------------------------------------------------------------- P1
@@ -169,6 +231,8 @@ struct Measured {
     without_transport: Vec<u64>,
     excluded: usize,
     stub: bool,
+    /// alloc のとき: `dispatch` 1 回ごとの確保（回数、バイト数）
+    allocs: Vec<(u64, u64)>,
 }
 
 /// `--detail` 用: キー 1 つぶんの記録
@@ -176,6 +240,8 @@ struct KeyRecord {
     label: String,
     total: Vec<u64>,
     transport: Vec<u64>,
+    /// alloc のとき: `dispatch` ごとの確保の回数
+    blocks: Vec<u64>,
 }
 
 fn nanos(duration: Duration) -> u64 {
@@ -187,7 +253,15 @@ fn median(values: &mut [u64]) -> u64 {
     values[values.len() / 2]
 }
 
-fn print_detail(records: &mut [KeyRecord]) {
+fn print_detail(records: &mut [KeyRecord], alloc: bool) {
+    if alloc {
+        records.sort_by_key(|record| std::cmp::Reverse(median(&mut record.blocks.clone())));
+        eprintln!("# 確保の多いキー(確保の回数の中央値の降順の上位 25)  キー");
+        for record in records.iter_mut().take(25) {
+            eprintln!("{:>8}  {}", median(&mut record.blocks), record.label);
+        }
+        return;
+    }
     for record in records.iter_mut() {
         record.total.sort_unstable();
     }
@@ -219,6 +293,7 @@ fn measure_keys(options: &Options) -> Result<Measured, String> {
         scenario::load_dir(&scenario::scenarios_dir()).map_err(|error| error.to_string())?;
     let mut samples = Vec::new();
     let mut without_transport = Vec::new();
+    let mut allocs = Vec::new();
     let mut excluded = 0;
     let mut any_action = false;
     let mut records: Vec<KeyRecord> = Vec::new();
@@ -258,9 +333,11 @@ fn measure_keys(options: &Options) -> Result<Measured, String> {
                         } else {
                             String::new()
                         };
+                        let heap_before = heap_totals();
                         let started = Instant::now();
                         let actions = shell.dispatch(event, &mut text);
                         let elapsed = nanos(started.elapsed());
+                        let heap_after = heap_totals();
                         any_action |= !std::hint::black_box(actions).is_empty();
                         let guard = lock(&log);
                         let transport = guard.transport_ns - transport_before;
@@ -272,11 +349,13 @@ fn measure_keys(options: &Options) -> Result<Measured, String> {
                                     label,
                                     total: Vec::new(),
                                     transport: Vec::new(),
+                                    blocks: Vec::new(),
                                 });
                             }
                             if !is_sync && let Some(record) = records.get_mut(slot) {
                                 record.total.push(elapsed);
                                 record.transport.push(transport);
+                                record.blocks.push(heap_after.0 - heap_before.0);
                             }
                             slot += 1;
                         }
@@ -284,6 +363,8 @@ fn measure_keys(options: &Options) -> Result<Measured, String> {
                             excluded += 1;
                         } else {
                             samples.push(elapsed);
+                            allocs
+                                .push((heap_after.0 - heap_before.0, heap_after.1 - heap_before.1));
                             without_transport.push(elapsed.saturating_sub(transport));
                         }
                     }
@@ -293,13 +374,14 @@ fn measure_keys(options: &Options) -> Result<Measured, String> {
     }
     if options.detail {
         records.retain(|record| !record.total.is_empty());
-        print_detail(&mut records);
+        print_detail(&mut records, options.metric == "alloc");
     }
     Ok(Measured {
         samples,
         without_transport,
         excluded,
         stub: !any_action,
+        allocs,
     })
 }
 
@@ -335,6 +417,7 @@ fn measure_startup(options: &Options) -> Result<Measured, String> {
         without_transport: Vec::new(),
         excluded: 0,
         stub,
+        allocs: Vec::new(),
     })
 }
 

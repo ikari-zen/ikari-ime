@@ -35,6 +35,7 @@
 | X3 | `data fetch`、`data install` | データの取得と配置 | `scripts/fetch-data.sh`、`scripts/install-data.sh` |
 | X4 | `eval snapshot` | 全セットの 1 位の比較 | `eval/scripts/snapshot.sh` |
 | L-P（ADR 0041 §6.3） | `perf shell`、`perf engine`、`perf smoke`、`perf compare` | 殻の性能の計測と基準値との比較 | `check.sh --perf` の `run_perf` は `perf engine` が包む |
+| prof（#149） | `perf profile`、`perf alloc` | CPU プロファイル（samply。`cargo install samply --locked`。無ければ案内して止まる）と、ヒープ確保の回数とバイト数（dhat。`ikari-shell-core` の feature `dhat-heap`。道具のインストールは要らない）。どちらも上位の関数・確保の場所を文字の表にし、`--out` で `eval/reports/` に残せる。基準値の仕組み（`perf compare`）には載せない（値ではなく、どこが重いかを見る道具）。対象は殻のキー 1 回。`perf profile -- <コマンド>` で差し替えられる | — |
 | cov（#158） | `cov` | テストの行カバレッジ（cargo-llvm-cov）。crate ごとの表、低いファイル、変換のロジックの小計。`--lm`（llama.cpp）、`--real`（実辞書。`check --real` と同じテスト）、`--out`（`eval/reports/` に記録）。目標値とゲートは持たない（`--fail-under` は任意）。`check` には入れない（遅い） | — |
 
 - 最初は X1（`check`）と X2（辞書のビルド）。X1 は記録の書式を保つことを、`scripts/test-hooks.sh` の既存の検査で確かめる。
