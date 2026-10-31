@@ -421,7 +421,7 @@ fn measure_typing(options: &Options) -> Result<Typing, String> {
             let log = Arc::new(Mutex::new(EngineLog::new(EngineScript::default())));
             let mut shell = new_shell("", Arc::clone(&log))?;
             let mut text = empty_text();
-            std::hint::black_box(typing_activate_dispatch(&mut shell, activate(), &mut text));
+            std::hint::black_box(setup_activate_dispatch(&mut shell, activate(), &mut text));
             for (spec, class) in script.split_whitespace().zip(classes) {
                 let event = press(spec)?;
                 let heap_before = heap_totals();
@@ -482,7 +482,7 @@ macro_rules! typing_dispatch {
         }
     };
 }
-typing_dispatch!(typing_activate_dispatch, "typing_activate");
+typing_dispatch!(setup_activate_dispatch, "setup_activate");
 typing_dispatch!(typing_pending_dispatch, "typing_pending");
 typing_dispatch!(typing_reading_dispatch, "typing_reading");
 typing_dispatch!(typing_edit_dispatch, "typing_edit");
