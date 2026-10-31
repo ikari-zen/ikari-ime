@@ -12,6 +12,11 @@ prost.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 unicode-segmentation = "1.13.3"
+# 確保の計測（`cargo xtask perf alloc`。ADR 0043）。`dhat-heap` を付けたときだけ入る。通常のビルドには入らない
+dhat = { version = "0.3", optional = true }
+
+[features]
+dhat-heap = ["dep:dhat"]
 
 # 殻の性能の測り手（ADR 0041 §6.3。`cargo xtask perf shell` が呼ぶ。自前の main を持つので harness を使わない）
 [[bench]]

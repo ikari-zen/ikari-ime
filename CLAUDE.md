@@ -47,6 +47,8 @@ scripts/check.sh --real --perf           # 実辞書・実モデルのテスト�
 macos/scripts/build.sh --signing team --release   # アプリのビルドと署名（インストールはしない）
 cargo run --release -p ikari-eval -- --ranker full --set eval/sets/homophones-ext.tsv   # 評価
 cargo xtask cov                          # テストの行カバレッジ（cargo-llvm-cov が要る）。--group conversion、--lm、--real、--out eval/reports/coverage-日付.md。check.sh には入れない
+cargo xtask perf profile                 # CPU プロファイル（samply が要る: cargo install samply --locked）。上位の関数を表にする。--out eval/reports/…。-- コマンド で対象を替える
+cargo xtask perf alloc                   # ヒープ確保の回数とバイト数と場所（dhat。道具の導入は不要）。--detail でキーごと
 ```
 - 評価の数値は `eval/reports/README.md` の索引から。変換に手を入れたら、全セットで1位が悪化しないことを確かめる（`eval/scripts/snapshot.sh`）。
 
