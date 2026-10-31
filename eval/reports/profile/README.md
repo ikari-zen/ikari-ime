@@ -58,3 +58,4 @@ samply load target/perf-tools/profile.json     # ブラウザで見る
 - `perf alloc` は既定で 3 つの表を出す（`--within` を指定すると従来の 1 つの表）。`perf profile` の既定の範囲は `steady_dispatch`（起動は `--focus shell_perf::startup_dispatch`）。
 - 落とし穴 2 つ（直した）: 中身が同じ関数はリンカが 1 つにまとめる（名前が区別できなくなる）。末尾呼び出しにすると枠が消える。どちらも `black_box` で避けた。
 - 記録: `alloc-shell-steady-2026-10-31.md`、`cpu-shell-steady-2026-10-31.md`、結論は `steady-state-findings-2026-10-31.md`。
+- `after-candidate-clones-2026-10-31.md`: 候補と変換の状態の複製を減らした前後（確保と CPU と P1。issue #161）。

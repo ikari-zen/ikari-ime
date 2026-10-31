@@ -861,9 +861,9 @@ impl InputStateMachine {
         input: &KeyInput,
         text: &mut dyn TextAccess,
     ) -> Vec<ShellAction> {
-        let Some(current) = self.converting().cloned() else {
+        if self.converting().is_none() {
             return vec![ShellAction::Consume];
-        };
+        }
         if has_command_modifiers(input) {
             return self.commit_display_then_pass();
         }
@@ -882,6 +882,10 @@ impl InputStateMachine {
             }
             KeyKind::Enter => self.commit_display(),
             KeyKind::Escape => {
+                // 戻す処理は `self` を変えるので、状態は複製して渡す（Esc と Backspace だけ。打鍵ごとには複製しない）
+                let Some(current) = self.converting().cloned() else {
+                    return vec![ShellAction::Consume];
+                };
                 if let ConversionOrigin::Reconversion {
                     original,
                     replacing,
@@ -894,7 +898,12 @@ impl InputStateMachine {
                 }
                 self.return_to_reading(&current)
             }
-            KeyKind::Backspace => self.return_to_reading(&current),
+            KeyKind::Backspace => {
+                let Some(current) = self.converting().cloned() else {
+                    return vec![ShellAction::Consume];
+                };
+                self.return_to_reading(&current)
+            }
             KeyKind::Character { text: typed } => {
                 if !is_printable(typed) {
                     return vec![ShellAction::Consume];
@@ -968,52 +977,61 @@ impl InputStateMachine {
             return None;
         }
         current.candidates_hidden = false;
-        let current = current.clone();
-        Some(vec![ShellAction::ShowCandidates(
-            self.panel_model(&current),
-        )])
+        Some(vec![ShellAction::ShowCandidates(panel_model(
+            current,
+            to_usize(self.settings.page_size),
+        ))])
     }
 
     fn next_candidate(&mut self) -> Vec<ShellAction> {
         if let Some(revealed) = self.reveal_candidates_if_hidden() {
             return revealed;
         }
-        let Some(current) = self.converting().cloned() else {
+        // 状態は複製しない。必要な値だけを先に取り出し、変える段になってから `self.state` を直接書き換える
+        let Some(current) = self.converting() else {
             return vec![ShellAction::Consume];
         };
         let Some(segment) = current.segments.get(current.focused) else {
             return vec![ShellAction::Consume];
         };
         let visible = current.visible_count(self.page_size());
-        if current.selected + 1 < visible {
-            return self.select(current.selected + 1);
+        let selected = current.selected;
+        let candidate_count = current.candidates.len();
+        let focused = current.focused;
+        let next_index = current.page_index + 1;
+        let cached_pages = segment.pages.len();
+        let can_fetch = current.has_next && !current.is_fallback;
+        if selected + 1 < visible {
+            return self.select(selected + 1);
         }
         // 見せていない候補がページに残っているときは、ページ全体に広げて次の候補を選ぶ（ADR 0014 §2.3 (c)）
-        if visible < current.candidates.len() {
-            let mut expanded = current.clone();
-            if let Some(segment) = expanded.focused_segment_mut() {
+        if visible < candidate_count {
+            if let InputState::Converting(state) = &mut self.state
+                && let Some(segment) = state.focused_segment_mut()
+            {
                 segment.expanded = true;
             }
-            self.state = InputState::Converting(expanded);
-            return self.select(current.selected + 1);
+            return self.select(selected + 1);
         }
         // ページの最後の候補
-        let next_index = current.page_index + 1;
-        if next_index < segment.pages.len() {
+        if next_index < cached_pages {
             self.count_page();
             return self.show_page(next_index, 0);
         }
-        if current.has_next && !current.is_fallback {
-            let Some(page) = self.fetch_page(&current, current.focused, next_index) else {
+        if can_fetch {
+            let page = self
+                .converting()
+                .and_then(|current| self.fetch_page(current, focused, next_index));
+            let Some(page) = page else {
                 return vec![ShellAction::Consume];
             };
-            let mut latest = current.clone();
             let mut position = 0;
-            if let Some(segment) = latest.focused_segment_mut() {
+            if let InputState::Converting(state) = &mut self.state
+                && let Some(segment) = state.focused_segment_mut()
+            {
                 segment.pages.push(page);
                 position = segment.pages.len() - 1;
             }
-            self.state = InputState::Converting(latest);
             self.count_page();
             return self.show_page(position, 0);
         }
@@ -1100,11 +1118,11 @@ impl InputStateMachine {
             segment.literal = None;
         }
         current.sync_focused();
-        let current = current.clone();
-        let model = self.panel_model(&current);
+        let model = panel_model(current, to_usize(self.settings.page_size));
+        let marked = marked_text(current);
         // 字種変換で候補ウィンドウを閉じていたときは、開き直す
         vec![
-            ShellAction::SetMarkedText(self.marked_text(&current)),
+            ShellAction::SetMarkedText(marked),
             if had_literal {
                 ShellAction::ShowCandidates(model)
             } else {
@@ -1127,10 +1145,10 @@ impl InputStateMachine {
             segment.literal = None;
         }
         current.sync_focused();
-        let current = current.clone();
-        let model = self.panel_model(&current);
+        let model = panel_model(current, to_usize(self.settings.page_size));
+        let marked = marked_text(current);
         vec![
-            ShellAction::SetMarkedText(self.marked_text(&current)),
+            ShellAction::SetMarkedText(marked),
             if same_page {
                 ShellAction::MoveSelection(model)
             } else {
@@ -1194,7 +1212,7 @@ impl InputStateMachine {
         if !current.is_fallback {
             self.engine.cancel(current.conversion_id);
         }
-        let displayed = Utf16Len::of(&self.marked_text(current).text);
+        let displayed = Utf16Len::of(&marked_text(current).text);
         self.reset_composition(Some(DiagEnd::EscClear), None);
         vec![
             ShellAction::HideCandidates,
@@ -1274,7 +1292,7 @@ impl InputStateMachine {
                     self.move_focus(-1)
                 } else {
                     Some(vec![
-                        ShellAction::SetMarkedText(self.marked_text(&next)),
+                        ShellAction::SetMarkedText(marked_text(&next)),
                         ShellAction::ShowCandidates(self.panel_model(&next)),
                     ])
                 }
@@ -1381,7 +1399,7 @@ impl InputStateMachine {
         current.sync_focused();
         self.state = InputState::Converting(current.clone());
         Some(vec![
-            ShellAction::SetMarkedText(self.marked_text(&current)),
+            ShellAction::SetMarkedText(marked_text(&current)),
             ShellAction::ShowCandidates(self.panel_model(&current)),
         ])
     }
@@ -1443,7 +1461,7 @@ impl InputStateMachine {
         self.mode.layout_changed = true;
         self.state = InputState::Converting(next.clone());
         vec![
-            ShellAction::SetMarkedText(self.marked_text(&next)),
+            ShellAction::SetMarkedText(marked_text(&next)),
             ShellAction::ShowCandidates(self.panel_model(&next)),
         ]
     }
@@ -1536,8 +1554,7 @@ impl InputStateMachine {
         let mut converting = ConvertingState {
             reading: reading.clone(),
             conversion_id: page.conversion_id,
-            candidates: page.candidates.clone(),
-            has_next: page.has_next,
+            // `candidates` と `has_next` は、すぐ下の `sync_focused` が現在のページから写す（ここでは複製しない）
             is_fallback,
             layout_rev,
             whole_layout,
@@ -1554,12 +1571,12 @@ impl InputStateMachine {
             && !converting.candidates.is_empty()
         {
             converting.candidates_hidden = true;
-            let marked = self.marked_text(&converting);
+            let marked = marked_text(&converting);
             self.state = InputState::Converting(converting);
             return vec![ShellAction::SetMarkedText(marked)];
         }
         let actions = vec![
-            ShellAction::SetMarkedText(self.marked_text(&converting)),
+            ShellAction::SetMarkedText(marked_text(&converting)),
             ShellAction::ShowCandidates(self.panel_model(&converting)),
         ];
         self.state = InputState::Converting(converting);
@@ -1592,7 +1609,7 @@ impl InputStateMachine {
                     let current = current.clone();
                     return vec![
                         ShellAction::HideCandidates,
-                        ShellAction::SetMarkedText(self.marked_text(&current)),
+                        ShellAction::SetMarkedText(marked_text(&current)),
                     ];
                 }
                 carried_origin = current.origin.clone();
@@ -1621,14 +1638,13 @@ impl InputStateMachine {
         self.mode = SegmentMode::default();
         let mut converting = ConvertingState {
             reading: reading.clone(),
-            candidates: page.candidates.clone(),
             is_fallback: true,
             segments: vec![ConvertingSegment::new(reading, surface, vec![page])],
             origin: carried_origin,
             ..ConvertingState::default()
         };
         converting.sync_focused();
-        let marked = self.marked_text(&converting);
+        let marked = marked_text(&converting);
         self.state = InputState::Converting(converting);
         vec![
             ShellAction::HideCandidates,
@@ -1689,7 +1705,7 @@ impl InputStateMachine {
             ..ConvertingState::default()
         };
         converting.sync_focused();
-        let mut marked = self.marked_text(&converting);
+        let mut marked = marked_text(&converting);
         marked.replacement_range = Some(selected.range);
         let model = self.panel_model(&converting);
         self.state = InputState::Converting(converting);
@@ -2071,67 +2087,72 @@ impl InputStateMachine {
         self.keymap.action(&chord)
     }
 
-    /// 1 文節なら全体を太い下線。2 文節以上なら、文節ごとの UTF-16 の長さとフォーカス。
-    /// 全体の候補を出している間は、表示が最初の区切りの表記のままなら、区切りだけを付ける（フォーカスなし。§16.6）
-    fn marked_text(&self, state: &ConvertingState) -> MarkedText {
-        let surfaces: Vec<&str> = state
-            .segments
-            .iter()
-            .map(ConvertingSegment::displayed_surface)
-            .collect();
-        if let Some(layout) = &state.whole_layout {
-            let surface = surfaces.first().copied().unwrap_or_default();
-            if layout.joined_surface() == surface {
-                return MarkedText {
-                    segments: layout
-                        .segments
-                        .iter()
-                        .map(|s| Utf16Len::of(&s.surface))
-                        .collect(),
-                    ..MarkedText::plain(surface)
-                };
-            }
-            return highlighted_text(surface);
-        }
-        if surfaces.len() <= 1 {
-            let surface = surfaces.first().copied().unwrap_or_else(|| {
-                state
-                    .candidates
-                    .get(state.selected)
-                    .map_or("", |c| c.surface.as_str())
-            });
-            return highlighted_text(surface);
-        }
-        MarkedText {
-            segments: surfaces.iter().map(|s| Utf16Len::of(s)).collect(),
-            focused: Some(to_u32(state.focused)),
-            ..MarkedText::plain(surfaces.concat())
-        }
-    }
-
     fn panel_model(&self, state: &ConvertingState) -> CandidatePanelModel {
-        // このあと広がる、またはページが進み得るときは、位置を決める高さをページの上限で見込む（ADR 0014 §2.2）
-        let visible = state.visible_count(self.page_size());
-        let may_grow = state.has_next || state.page_index > 0;
-        let reserved = if may_grow {
-            to_usize(ENGINE_PAGE_SIZE)
-        } else {
-            state.candidates.len()
-        };
-        panel(
-            state.candidates.iter().take(visible).cloned().collect(),
-            state.selected,
-            state
-                .candidates
-                .get(state.selected)
-                .map(|c| c.annotation.clone())
-                .unwrap_or_default(),
-            reserved,
-        )
+        panel_model(state, self.page_size())
     }
 }
 
 // MARK: - 自由関数
+
+/// 1 文節なら全体を太い下線。2 文節以上なら、文節ごとの UTF-16 の長さとフォーカス。
+/// 全体の候補を出している間は、表示が最初の区切りの表記のままなら、区切りだけを付ける（フォーカスなし。§16.6）
+fn marked_text(state: &ConvertingState) -> MarkedText {
+    let surfaces: Vec<&str> = state
+        .segments
+        .iter()
+        .map(ConvertingSegment::displayed_surface)
+        .collect();
+    if let Some(layout) = &state.whole_layout {
+        let surface = surfaces.first().copied().unwrap_or_default();
+        if layout.joined_surface() == surface {
+            return MarkedText {
+                segments: layout
+                    .segments
+                    .iter()
+                    .map(|s| Utf16Len::of(&s.surface))
+                    .collect(),
+                ..MarkedText::plain(surface)
+            };
+        }
+        return highlighted_text(surface);
+    }
+    if surfaces.len() <= 1 {
+        let surface = surfaces.first().copied().unwrap_or_else(|| {
+            state
+                .candidates
+                .get(state.selected)
+                .map_or("", |c| c.surface.as_str())
+        });
+        return highlighted_text(surface);
+    }
+    MarkedText {
+        segments: surfaces.iter().map(|s| Utf16Len::of(s)).collect(),
+        focused: Some(to_u32(state.focused)),
+        ..MarkedText::plain(surfaces.concat())
+    }
+}
+
+/// 候補ウィンドウの中身。`self` を借りずに作れるので、状態を借りたまま呼べる（状態の複製をしない）
+fn panel_model(state: &ConvertingState, page_size: usize) -> CandidatePanelModel {
+    // このあと広がる、またはページが進み得るときは、位置を決める高さをページの上限で見込む（ADR 0014 §2.2）
+    let visible = state.visible_count(page_size);
+    let may_grow = state.has_next || state.page_index > 0;
+    let reserved = if may_grow {
+        to_usize(ENGINE_PAGE_SIZE)
+    } else {
+        state.candidates.len()
+    };
+    panel(
+        state.candidates.iter().take(visible).cloned().collect(),
+        state.selected,
+        state
+            .candidates
+            .get(state.selected)
+            .map(|c| c.annotation.clone())
+            .unwrap_or_default(),
+        reserved,
+    )
+}
 
 fn shortcode_mode(settings: &SettingsSnapshot) -> ShortcodeMode {
     if settings.input_method == crate::types::InputMethodKind::Kana {

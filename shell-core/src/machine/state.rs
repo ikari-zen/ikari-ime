@@ -257,7 +257,7 @@ impl ConvertingState {
             return;
         };
         self.page_index = segment.page_index;
-        self.candidates = page.candidates.clone();
+        self.candidates.clone_from(&page.candidates);
         self.has_next = page.has_next;
         self.selected = segment.selected;
         self.candidate_offset = segment.pages[..segment.page_index]
