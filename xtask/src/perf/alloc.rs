@@ -24,6 +24,24 @@ const DEFAULT_TOP: usize = 25;
 /// 測り手の `steady_dispatch`／`startup_dispatch`（`shell_perf.rs`）。定常（打鍵ごと）と起動（`Activate`）を分ける
 const STEADY_WITHIN: &str = "shell_perf::steady_dispatch";
 const FIRST_WITHIN: &str = "shell_perf::first_dispatch";
+/// 入力中の台本の区分（`shell_perf.rs` の `typing_*_dispatch`）。名前と見出し
+const TYPING_GROUPS: [(&str, &str, &str); 3] = [
+    (
+        "pending",
+        "入力中: ローマ字の途中（読みが変わらず、先読みを送らない）",
+        "shell_perf::typing_pending_dispatch",
+    ),
+    (
+        "reading",
+        "入力中: 読み（かな）が変わって先読みを送る",
+        "shell_perf::typing_reading_dispatch",
+    ),
+    (
+        "edit",
+        "入力中: Backspace、Esc",
+        "shell_perf::typing_edit_dispatch",
+    ),
+];
 const STARTUP_WITHIN: &str = "shell_perf::startup_dispatch";
 const NAME_LIMIT: usize = 150;
 const KEY_ROW_LIMIT: usize = 170;
@@ -69,6 +87,8 @@ pub struct Distribution {
     pub startup: Option<Box<Distribution>>,
     /// 起動の直後の最初の 1 打の分（測り手の `first`）
     pub first: Option<Box<Distribution>>,
+    /// 入力中の台本の区分ごとの分（測り手の `typing`。`TYPING_GROUPS` の名前）
+    pub typing: Vec<(String, Box<Distribution>)>,
     /// 定常（最初の 1 打のあと。打鍵ごと）の分（測り手の `steady`）
     pub steady: Option<Box<Distribution>>,
 }
@@ -114,27 +134,37 @@ pub fn run(args: Args) -> Result<(), XtaskError> {
             let steady_sites = aggregate_sites(&dhat, STEADY_WITHIN)?;
             let startup_sites = aggregate_sites(&dhat, STARTUP_WITHIN)?;
             let first_sites = aggregate_sites(&dhat, FIRST_WITHIN)?;
+            let typing_sites: Vec<Vec<Site>> = TYPING_GROUPS
+                .iter()
+                .map(|(_, _, within)| aggregate_sites(&dhat, within))
+                .collect::<Result<_, _>>()?;
+            let mut groups: Vec<(&str, &Distribution, &[Site], &str)> = vec![
+                (
+                    "定常（打鍵ごと。最初の 1 打のあと）",
+                    steady,
+                    &steady_sites,
+                    STEADY_WITHIN,
+                ),
+                (
+                    "起動直後の最初の 1 打（`Activate` 以外の最初のイベント）",
+                    first,
+                    &first_sites,
+                    FIRST_WITHIN,
+                ),
+                (
+                    "起動（`Activate`。`Shell::new` の直後と、入力先の切り替え）",
+                    startup,
+                    &startup_sites,
+                    STARTUP_WITHIN,
+                ),
+            ];
+            for ((name, title, within), sites) in TYPING_GROUPS.iter().zip(&typing_sites) {
+                if let Some((_, found)) = distribution.typing.iter().find(|(n, _)| n == name) {
+                    groups.push((title, found, sites, within));
+                }
+            }
             render_split(
-                &[
-                    (
-                        "定常（打鍵ごと。最初の 1 打のあと）",
-                        steady,
-                        &steady_sites,
-                        STEADY_WITHIN,
-                    ),
-                    (
-                        "起動直後の最初の 1 打（`Activate` 以外の最初のイベント）",
-                        first,
-                        &first_sites,
-                        FIRST_WITHIN,
-                    ),
-                    (
-                        "起動（`Activate`。`Shell::new` の直後と、入力先の切り替え）",
-                        startup,
-                        &startup_sites,
-                        STARTUP_WITHIN,
-                    ),
-                ],
+                &groups,
                 key_ranking.as_deref(),
                 &args,
                 &environment,
@@ -189,6 +219,15 @@ pub fn parse_distribution(stdout: &str) -> Result<Distribution, XtaskError> {
         values: numbers(alloc),
         startup: group_distribution(&value["startup"]),
         first: group_distribution(&value["first"]),
+        typing: TYPING_GROUPS
+            .iter()
+            .filter_map(|(name, _, _)| {
+                Some((
+                    (*name).to_owned(),
+                    group_distribution(&value["typing"][name])?,
+                ))
+            })
+            .collect(),
         steady: group_distribution(&value["steady"]),
     })
 }
@@ -208,6 +247,7 @@ fn group_distribution(group: &Value) -> Option<Box<Distribution>> {
         values: numbers(alloc),
         startup: None,
         first: None,
+        typing: Vec::new(),
         steady: None,
     }))
 }

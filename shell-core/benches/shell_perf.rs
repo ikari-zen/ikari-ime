@@ -73,6 +73,19 @@ const SYNC_REQUESTS: &[&str] = &[
     "postal_lookup",
 ];
 
+/// 入力中（ローマ字の 1 打）の台本。共通シナリオ（変換中の操作に偏る）が測れない、日常でいちばん多い打鍵を測る。
+/// 空白区切りのキーの指定（`parse_press` の書き方）。母音、子音+母音、促音、撥音、拗音、長い読み、Backspace、Esc を含む
+const TYPING_SCRIPTS: &[&str] = &[
+    "a r i g a t o u g o z a i m a s u",
+    "k y o u k a k k o i i n n j a n a i",
+    "w a t a s i h a k y o u z e n z e n k a i m o n o i k i m a s u",
+    "s i n b u n n backspace backspace backspace k a",
+    "t o k y o u t o r i t u escape",
+    "j y u t t y o u n n a k a n a k a n j i",
+];
+/// 入力中の台本をくり返す回数は、シナリオ全部のくり返し（`--repeat`）のこの倍にする（台本が短いので）
+const TYPING_REPEAT_FACTOR: usize = 20;
+
 struct Options {
     metric: String,
     repeat: usize,
@@ -147,7 +160,12 @@ fn run() -> Result<(), String> {
         "p3" => measure_startup(&options)?,
         other => return Err(format!("unknown metric {other}")),
     };
-    report(&options, measured)
+    let typing = if matches!(options.metric.as_str(), "p1" | "alloc") {
+        Some(measure_typing(&options)?)
+    } else {
+        None
+    };
+    report(&options, measured, typing)
 }
 
 // ---------------------------------------------------------------- 統計と出力
@@ -158,7 +176,7 @@ fn percentile(sorted: &[u64], fraction: f64) -> u64 {
     sorted[rank.clamp(1, sorted.len()) - 1]
 }
 
-fn report(options: &Options, measured: Measured) -> Result<(), String> {
+fn report(options: &Options, measured: Measured, typing: Option<Typing>) -> Result<(), String> {
     let Measured {
         mut samples,
         without_transport,
@@ -204,6 +222,13 @@ fn report(options: &Options, measured: Measured) -> Result<(), String> {
         object["startup"] = group_summary(&startup, options.metric == "alloc");
         object["first"] = group_summary(&first, options.metric == "alloc");
         object["steady"] = group_summary(&steady, options.metric == "alloc");
+    }
+    if let Some(typing) = typing {
+        object["typing"] = serde_json::json!({
+            "pending": group_summary(&typing.pending, options.metric == "alloc"),
+            "reading": group_summary(&typing.reading, options.metric == "alloc"),
+            "edit": group_summary(&typing.edit, options.metric == "alloc"),
+        });
     }
     if options.metric == "alloc" {
         object["alloc"] = alloc_summary(&allocs);
@@ -345,6 +370,122 @@ fn print_detail(records: &mut [KeyRecord], alloc: bool) {
         percentile(&medians, 0.99)
     );
 }
+
+/// 入力中の 1 打の区分（台本を一度流して決める）。
+#[derive(Clone, Copy, PartialEq)]
+enum TypingClass {
+    /// 読みが変わらない（ローマ字の途中。先読みは送らない）
+    Pending,
+    /// 読み（かな）が変わって先読み（prefetch）を送った
+    Reading,
+    /// Backspace、Esc
+    Edit,
+}
+
+#[derive(Default)]
+struct Typing {
+    pending: Group,
+    reading: Group,
+    edit: Group,
+}
+
+fn press(spec: &str) -> Result<ShellEvent, String> {
+    scenario::parse_press(spec)
+        .map(ShellEvent::Key)
+        .map_err(|error| error.to_string())
+}
+
+fn activate() -> ShellEvent {
+    ShellEvent::Activate {
+        bundle_id: "com.apple.TextEdit".into(),
+        secure: false,
+    }
+}
+
+fn empty_text() -> ScenarioText {
+    ScenarioText {
+        surrounding: ScenarioSurrounding::unavailable(),
+        selection: None,
+    }
+}
+
+/// 入力中の台本を流す。1 打ごとの区分は、最初に一度流して（時間と確保は数えない）決める。
+fn measure_typing(options: &Options) -> Result<Typing, String> {
+    let mut typing = Typing::default();
+    let classes: Vec<Vec<TypingClass>> = TYPING_SCRIPTS
+        .iter()
+        .map(|script| classify_typing(script))
+        .collect::<Result<_, _>>()?;
+    for _ in 0..options.repeat * TYPING_REPEAT_FACTOR {
+        for (script, classes) in TYPING_SCRIPTS.iter().zip(&classes) {
+            let log = Arc::new(Mutex::new(EngineLog::new(EngineScript::default())));
+            let mut shell = new_shell("", Arc::clone(&log))?;
+            let mut text = empty_text();
+            std::hint::black_box(setup_activate_dispatch(&mut shell, activate(), &mut text));
+            for (spec, class) in script.split_whitespace().zip(classes) {
+                let event = press(spec)?;
+                let heap_before = heap_totals();
+                let started = Instant::now();
+                let actions = match class {
+                    TypingClass::Pending => typing_pending_dispatch(&mut shell, event, &mut text),
+                    TypingClass::Reading => typing_reading_dispatch(&mut shell, event, &mut text),
+                    TypingClass::Edit => typing_edit_dispatch(&mut shell, event, &mut text),
+                };
+                let elapsed = nanos(started.elapsed());
+                let heap_after = heap_totals();
+                std::hint::black_box(actions);
+                let alloc = (heap_after.0 - heap_before.0, heap_after.1 - heap_before.1);
+                match class {
+                    TypingClass::Pending => typing.pending.push(false, elapsed, alloc),
+                    TypingClass::Reading => typing.reading.push(false, elapsed, alloc),
+                    TypingClass::Edit => typing.edit.push(false, elapsed, alloc),
+                }
+            }
+        }
+    }
+    Ok(typing)
+}
+
+fn classify_typing(script: &str) -> Result<Vec<TypingClass>, String> {
+    let log = Arc::new(Mutex::new(EngineLog::new(EngineScript::default())));
+    let mut shell = new_shell("", Arc::clone(&log))?;
+    let mut text = empty_text();
+    shell.dispatch(activate(), &mut text);
+    let mut classes = Vec::new();
+    for spec in script.split_whitespace() {
+        let prefetches = |log: &Mutex<EngineLog>| lock(log).counts.get("prefetch").copied();
+        let before = prefetches(&log);
+        shell.dispatch(press(spec)?, &mut text);
+        classes.push(if matches!(spec, "backspace" | "escape") {
+            TypingClass::Edit
+        } else if prefetches(&log) != before {
+            TypingClass::Reading
+        } else {
+            TypingClass::Pending
+        });
+    }
+    Ok(classes)
+}
+
+macro_rules! typing_dispatch {
+    ($name:ident, $tag:literal) => {
+        /// 入力中の `dispatch`。区分ごとに別の関数にして、確保と CPU の記録で呼び出しの列に名前が残るようにする
+        #[inline(never)]
+        fn $name(
+            shell: &mut Shell,
+            event: ShellEvent,
+            text: &mut ScenarioText,
+        ) -> Vec<ikari_shell_core::ShellAction> {
+            // 中身が同じ関数はリンカがまとめるので、違う値を通す
+            std::hint::black_box($tag);
+            std::hint::black_box(shell.dispatch(event, text))
+        }
+    };
+}
+typing_dispatch!(setup_activate_dispatch, "setup_activate");
+typing_dispatch!(typing_pending_dispatch, "typing_pending");
+typing_dispatch!(typing_reading_dispatch, "typing_reading");
+typing_dispatch!(typing_edit_dispatch, "typing_edit");
 
 /// 起動の `dispatch`（`Activate`）。確保と CPU の記録で、呼び出しの列に名前が残るよう、インライン化しない
 /// （`cargo xtask perf alloc` と `perf profile` が、この名前で起動と定常を分ける）
