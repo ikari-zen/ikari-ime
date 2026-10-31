@@ -19,7 +19,8 @@ use crate::XtaskError;
 
 pub const SAMPLY_INSTALL_HINT: &str = "cargo install samply --locked";
 const DEFAULT_REPEAT: usize = 3000;
-const DEFAULT_SHELL_FOCUS: &str = "ikari_shell_core::controller::Shell>::dispatch";
+/// 測り手の `steady_dispatch`（最初の 1 打のあとの打鍵ごと）。起動（`startup_dispatch`）、最初の 1 打（`first_dispatch`）、測り手の準備は数えない
+const DEFAULT_SHELL_FOCUS: &str = "shell_perf::steady_dispatch";
 const DEFAULT_TOP: usize = 25;
 const DEFAULT_RATE_HZ: u32 = 1000;
 const NAME_LIMIT: usize = 150;
@@ -41,7 +42,7 @@ pub struct Args {
     #[arg(long)]
     pub out: Option<PathBuf>,
     /// このコードを含むサンプルだけを数え、その関数より外側（呼び出し元）は数えない。既定は、殻のキー 1 回なら
-    /// `Shell::dispatch`（測り手の準備を除く）。`--` で対象を替えたときは全部。空文字で全部
+    /// 既定は測り手の `steady_dispatch`（打鍵ごと。起動と準備を除く）。起動は `--focus shell_perf::startup_dispatch`、最初の 1 打は `shell_perf::first_dispatch`。`--` で対象を替えたときは全部。空文字で全部
     #[arg(long)]
     pub focus: Option<String>,
     /// 対象を差し替える。`--` のあとに実行ファイルと引数を書く（関数名が要るので、`debug = 1` つきでビルドしたもの）

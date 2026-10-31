@@ -21,7 +21,10 @@ use crate::XtaskError;
 
 const DEFAULT_REPEAT: usize = 200;
 const DEFAULT_TOP: usize = 25;
-const DEFAULT_WITHIN: &str = "ikari_shell_core::controller::Shell>::dispatch";
+/// 測り手の `steady_dispatch`／`startup_dispatch`（`shell_perf.rs`）。定常（打鍵ごと）と起動（`Activate`）を分ける
+const STEADY_WITHIN: &str = "shell_perf::steady_dispatch";
+const FIRST_WITHIN: &str = "shell_perf::first_dispatch";
+const STARTUP_WITHIN: &str = "shell_perf::startup_dispatch";
 const NAME_LIMIT: usize = 150;
 const KEY_ROW_LIMIT: usize = 170;
 const DHAT_FILE: &str = "dhat-heap.json";
@@ -37,9 +40,10 @@ pub struct Args {
     /// シナリオ全部をくり返す回数（dhat は遅いので、P1 より少なくてよい）
     #[arg(long, default_value_t = DEFAULT_REPEAT)]
     pub repeat: usize,
-    /// 呼び出しの列にこの文字列を含む確保だけを、場所の表に入れる（空にすると全部）
-    #[arg(long, default_value = DEFAULT_WITHIN)]
-    pub within: String,
+    /// 呼び出しの列にこの文字列を含む確保だけを、場所の表 1 つに入れる（空にすると全部）。
+    /// 指定しないときは、定常（打鍵ごと）と起動（`Activate`）の 2 つの表に分ける
+    #[arg(long)]
+    pub within: Option<String>,
     /// キーごとの確保の回数（多い順の上位）も出す
     #[arg(long)]
     pub detail: bool,
@@ -61,6 +65,12 @@ pub struct Site {
 pub struct Distribution {
     pub dispatches: u64,
     pub values: BTreeMap<String, u64>,
+    /// 起動（`Activate`）の分（測り手の `startup`）。古い測り手では `None`
+    pub startup: Option<Box<Distribution>>,
+    /// 起動の直後の最初の 1 打の分（測り手の `first`）
+    pub first: Option<Box<Distribution>>,
+    /// 定常（最初の 1 打のあと。打鍵ごと）の分（測り手の `steady`）
+    pub steady: Option<Box<Distribution>>,
 }
 
 pub fn run(args: Args) -> Result<(), XtaskError> {
@@ -94,15 +104,56 @@ pub fn run(args: Args) -> Result<(), XtaskError> {
     let distribution = parse_distribution(&String::from_utf8_lossy(&output.stdout))?;
     let key_ranking = extract_key_ranking(&stderr);
     let dhat = read_dhat(&dhat_path)?;
-    let sites = aggregate_sites(&dhat, &args.within)?;
-    let report = render(
-        &distribution,
-        &sites,
-        key_ranking.as_deref(),
-        &args,
-        &environment,
-        &dhat_path,
-    );
+    let report = match (
+        &args.within,
+        &distribution.steady,
+        &distribution.startup,
+        &distribution.first,
+    ) {
+        (None, Some(steady), Some(startup), Some(first)) => {
+            let steady_sites = aggregate_sites(&dhat, STEADY_WITHIN)?;
+            let startup_sites = aggregate_sites(&dhat, STARTUP_WITHIN)?;
+            let first_sites = aggregate_sites(&dhat, FIRST_WITHIN)?;
+            render_split(
+                &[
+                    (
+                        "定常（打鍵ごと。最初の 1 打のあと）",
+                        steady,
+                        &steady_sites,
+                        STEADY_WITHIN,
+                    ),
+                    (
+                        "起動直後の最初の 1 打（`Activate` 以外の最初のイベント）",
+                        first,
+                        &first_sites,
+                        FIRST_WITHIN,
+                    ),
+                    (
+                        "起動（`Activate`。`Shell::new` の直後と、入力先の切り替え）",
+                        startup,
+                        &startup_sites,
+                        STARTUP_WITHIN,
+                    ),
+                ],
+                key_ranking.as_deref(),
+                &args,
+                &environment,
+                &dhat_path,
+            )
+        }
+        _ => {
+            let within = args.within.clone().unwrap_or_default();
+            let sites = aggregate_sites(&dhat, &within)?;
+            render(
+                &distribution,
+                &sites,
+                key_ranking.as_deref(),
+                &args,
+                &environment,
+                &dhat_path,
+            )
+        }
+    };
     tools::emit(&report, args.out.as_deref())
 }
 
@@ -135,11 +186,30 @@ pub fn parse_distribution(stdout: &str) -> Result<Distribution, XtaskError> {
     let count = |key: &str| value[key].as_u64().unwrap_or(0);
     Ok(Distribution {
         dispatches: count("samples") + count("excluded_samples"),
-        values: alloc
-            .iter()
-            .filter_map(|(key, number)| Some((key.clone(), number.as_u64()?)))
-            .collect(),
+        values: numbers(alloc),
+        startup: group_distribution(&value["startup"]),
+        first: group_distribution(&value["first"]),
+        steady: group_distribution(&value["steady"]),
     })
+}
+
+fn numbers(object: &serde_json::Map<String, Value>) -> BTreeMap<String, u64> {
+    object
+        .iter()
+        .filter_map(|(key, number)| Some((key.clone(), number.as_u64()?)))
+        .collect()
+}
+
+/// 測り手の `startup`／`steady`（`dispatches` と `alloc`）。なければ `None`
+fn group_distribution(group: &Value) -> Option<Box<Distribution>> {
+    let alloc = group["alloc"].as_object()?;
+    Some(Box::new(Distribution {
+        dispatches: group["dispatches"].as_u64()?,
+        values: numbers(alloc),
+        startup: None,
+        first: None,
+        steady: None,
+    }))
 }
 
 /// `--detail` の標準エラーから、確保の多いキーの表（`# 確保の多いキー…` の行から、dhat の要約の行の手前まで）を取り出す。
@@ -267,10 +337,11 @@ fn render(
         get("bytes_p99"),
         get("bytes_max"),
     ));
-    let filter = if args.within.is_empty() {
+    let within = args.within.clone().unwrap_or_default();
+    let filter = if within.is_empty() {
         "全部".to_owned()
     } else {
-        format!("`{}` の中", args.within)
+        format!("`{within}` の中")
     };
     text.push_str(&format!(
         "## 確保の場所の上位（{filter}。ikari の関数と行にまとめた）\n\n\
@@ -288,6 +359,77 @@ fn render(
     text.push('\n');
     if let Some(ranking) = key_ranking {
         text.push_str("## キーごとの確保の回数（多い順）\n\n```\n");
+        text.push_str(ranking);
+        text.push_str("```\n\n");
+    }
+    text
+}
+
+/// 分布の表（p50・p99・max）と、場所の上位の表。
+fn push_group(
+    text: &mut String,
+    title: &str,
+    distribution: &Distribution,
+    sites: &[Site],
+    within: &str,
+    top: usize,
+) {
+    let get = |key: &str| distribution.values.get(key).copied().unwrap_or(0);
+    text.push_str(&format!(
+        "## {title}: `dispatch` {} 回\n\n| | p50 | p99 | max |\n|---|---:|---:|---:|\n",
+        distribution.dispatches
+    ));
+    text.push_str(&format!(
+        "| 確保の回数 | {} | {} | {} |\n| 確保のバイト数 | {} | {} | {} |\n\n",
+        get("blocks_p50"),
+        get("blocks_p99"),
+        get("blocks_max"),
+        get("bytes_p50"),
+        get("bytes_p99"),
+        get("bytes_max"),
+    ));
+    text.push_str(&format!(
+        "確保の場所の上位（`{within}` の中。ikari の関数と行にまとめた。同期のエンジン要求を送った dispatch の確保も入る）\n\n\
+         | 回数 | 1 回の dispatch あたり | バイト数 | 場所 |\n|---:|---:|---:|---|\n"
+    ));
+    for site in sites.iter().take(top) {
+        let per_dispatch = site.blocks as f64 / distribution.dispatches.max(1) as f64;
+        text.push_str(&format!(
+            "| {} | {per_dispatch:.2} | {} | `{}` |\n",
+            site.blocks,
+            site.bytes,
+            tools::shorten(&site.place, NAME_LIMIT)
+        ));
+    }
+    text.push('\n');
+}
+
+/// 定常と起動を分けた表。
+fn render_split(
+    groups: &[(&str, &Distribution, &[Site], &str)],
+    key_ranking: Option<&str>,
+    args: &Args,
+    environment: &[String],
+    dhat_path: &Path,
+) -> String {
+    let mut text = String::from("# ヒープ確保（dhat。定常と起動に分けた）\n\n");
+    text.push_str(&format!(
+        "- 対象: 殻のキー（shell_perf --metric alloc。repeat {}）。測り手は dispatch ごとに新しい `Shell` を作るので、起動の費用（`Activate`）を分けて数える\n",
+        args.repeat
+    ));
+    for line in environment {
+        text.push_str(line);
+        text.push('\n');
+    }
+    text.push_str(&format!(
+        "- 記録: `{}`（dhat/dh_view.html で開ける）\n\n",
+        tools::repo_relative(dhat_path)
+    ));
+    for (title, distribution, sites, within) in groups {
+        push_group(&mut text, title, distribution, sites, within, args.top);
+    }
+    if let Some(ranking) = key_ranking {
+        text.push_str("## キーごとの確保の回数（多い順。起動のイベントも含む）\n\n```\n");
         text.push_str(ranking);
         text.push_str("```\n\n");
     }
@@ -320,7 +462,8 @@ mod tests {
 
     #[test]
     fn groups_by_own_frame_and_filters_within() {
-        let sites = aggregate_sites(&dhat(), DEFAULT_WITHIN).unwrap();
+        let sites =
+            aggregate_sites(&dhat(), "ikari_shell_core::controller::Shell>::dispatch").unwrap();
         assert_eq!(
             sites,
             vec![Site {
@@ -364,6 +507,15 @@ mod tests {
         assert_eq!(split_frame("[root]"), ("[root]", ""));
         assert_eq!(without_column("src/x.rs:1:2"), "src/x.rs:1");
         assert_eq!(without_column("src/x.rs"), "src/x.rs");
+    }
+
+    #[test]
+    fn reads_the_steady_and_startup_groups() {
+        let stdout = "{\"alloc\":{\"blocks_p50\":15},\"samples\":10,\"excluded_samples\":2,\"steady\":{\"dispatches\":8,\"alloc\":{\"blocks_p50\":7}},\"startup\":{\"dispatches\":4,\"alloc\":{\"blocks_p50\":90}}}\n";
+        let found = parse_distribution(stdout).unwrap();
+        assert_eq!(found.steady.as_ref().unwrap().dispatches, 8);
+        assert_eq!(found.steady.unwrap().values["blocks_p50"], 7);
+        assert_eq!(found.startup.unwrap().values["blocks_p50"], 90);
     }
 
     #[test]

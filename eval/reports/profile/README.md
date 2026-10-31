@@ -43,3 +43,18 @@ samply load target/perf-tools/profile.json     # ブラウザで見る
 - **読み方の注意**: `Background::spawn` を呼ぶのはキーごとではなく、入力の開始（エンジンへの hello）、郵便番号の問い合わせ、絵文字の表、設定の変更のとき（`controller/mod.rs` の 537、676、710、777、811、819、851 行）。測り手のシナリオはこうした場面を繰り返し含むので、本番のキー 1 回の平均より割合が大きく出ている（推測。本番の頻度は未測定）。替え玉のエンジン（`ScriptedTransport`）と、シナリオの周辺テキストの変換（`ScenarioSurrounding::to_host`）の確保も `dispatch` の中に入る。
 
 - `alloc-shell-after-settings-menu-2026-10-31.md`: 設定とメニューの複製を減らした前後の確保（issue #161）。
+
+## 起動と定常を分けた測り方（2026-10-31。issue #161、#149）
+
+最初の記録の「dispatch 1 回あたり」の場所の表には、測り手が dispatch ごとに作り直す `Shell` の**起動の費用**（`Activate`、最初の `finish` のメニュー、`Background::spawn` の hello、設定の複製）が混ざっていた（確保の回数の p50、p99 は元から `Activate` を除いていたので、混ざっていたのは場所の表と CPU の割合）。測り手（`shell-core/benches/shell_perf.rs`）は、イベントを 3 つに分けて数える。呼び出しの列に名前が残る別々の関数で呼ぶ（`perf alloc`、`perf profile` はこの名前で分ける）。
+
+| 区分 | 関数 | 中身 |
+|---|---|---|
+| 起動 | `startup_dispatch` | シナリオごとの最初の `Activate` と、手順の中の `Activate` |
+| 最初の 1 打 | `first_dispatch` | 起動のあとの最初の `Activate` 以外のイベント。取り直しの結果（エンジンの状態など）が入ってメニューが作り直される |
+| 定常 | `steady_dispatch` | それ以降の打鍵ごと |
+
+- 測り手の JSON に `startup`、`first`、`steady`（`dispatches`、`p50_ns`、`p99_ns`、`max_ns`、alloc のときは `alloc`）を足した。従来の指標（`p50_ns` など）の名前と意味、基準値の形は変えていない。
+- `perf alloc` は既定で 3 つの表を出す（`--within` を指定すると従来の 1 つの表）。`perf profile` の既定の範囲は `steady_dispatch`（起動は `--focus shell_perf::startup_dispatch`）。
+- 落とし穴 2 つ（直した）: 中身が同じ関数はリンカが 1 つにまとめる（名前が区別できなくなる）。末尾呼び出しにすると枠が消える。どちらも `black_box` で避けた。
+- 記録: `alloc-shell-steady-2026-10-31.md`、`cpu-shell-steady-2026-10-31.md`、結論は `steady-state-findings-2026-10-31.md`。

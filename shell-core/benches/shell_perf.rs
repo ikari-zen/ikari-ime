@@ -165,6 +165,9 @@ fn report(options: &Options, measured: Measured) -> Result<(), String> {
         excluded,
         stub,
         allocs,
+        startup,
+        first,
+        steady,
     } = measured;
     if samples.is_empty() {
         return Err("no samples".into());
@@ -196,12 +199,38 @@ fn report(options: &Options, measured: Measured) -> Result<(), String> {
     if let Some(bytes) = rss::max_rss_bytes() {
         object["max_rss_bytes"] = bytes.into();
     }
+    // 起動と定常の内訳（足した指標。上の `p50_ns` などは従来の意味のまま）
+    if options.metric == "p1" || options.metric == "alloc" {
+        object["startup"] = group_summary(&startup, options.metric == "alloc");
+        object["first"] = group_summary(&first, options.metric == "alloc");
+        object["steady"] = group_summary(&steady, options.metric == "alloc");
+    }
     if options.metric == "alloc" {
         object["alloc"] = alloc_summary(&allocs);
         object["dhat_file"] = options.dhat_file.clone().into();
     }
     println!("{object}");
     Ok(())
+}
+
+/// 起動か定常の 1 組の要約（時間の p50・p99・max と、alloc のときは確保の分布）
+fn group_summary(group: &Group, with_alloc: bool) -> serde_json::Value {
+    let mut object = serde_json::json!({
+        "dispatches": group.dispatches,
+        "samples": group.samples.len(),
+    });
+    if group.samples.is_empty() {
+        return object;
+    }
+    let mut sorted = group.samples.clone();
+    sorted.sort_unstable();
+    object["p50_ns"] = percentile(&sorted, 0.5).into();
+    object["p99_ns"] = percentile(&sorted, 0.99).into();
+    object["max_ns"] = sorted[sorted.len() - 1].into();
+    if with_alloc {
+        object["alloc"] = alloc_summary(&group.allocs);
+    }
+    object
 }
 
 /// 確保の回数とバイト数の分布（p50・p99・max と、全部の合計）
@@ -225,7 +254,36 @@ fn alloc_summary(allocs: &[(u64, u64)]) -> serde_json::Value {
 
 // ---------------------------------------------------------------- P1
 
+/// 起動（`Activate`。入力先の切り替えと、最初の `finish`）と、定常（それ以外のイベント。打鍵ごと）の分け前。
+/// 測り手は dispatch ごとに新しい `Shell` を作るので、起動の費用が全体に混ざる。それを分けて見るための集計
+#[derive(Default)]
+struct Group {
+    /// 同期のエンジン要求を送ったものも含めた dispatch の数
+    dispatches: usize,
+    /// 同期のエンジン要求を送ったものを除いた時間（ナノ秒）
+    samples: Vec<u64>,
+    /// 同じものを除いた確保（回数、バイト数）
+    allocs: Vec<(u64, u64)>,
+}
+
+impl Group {
+    fn push(&mut self, is_sync: bool, elapsed: u64, alloc: (u64, u64)) {
+        self.dispatches += 1;
+        if !is_sync {
+            self.samples.push(elapsed);
+            self.allocs.push(alloc);
+        }
+    }
+}
+
 struct Measured {
+    /// 起動（`Activate`）の分。P1 の指標（`samples` ほか）は従来どおり全部を含み、ここは別に足した指標
+    startup: Group,
+    /// 起動の直後の最初の 1 打（`Activate` 以外の最初のイベント。エンジンの状態や設定の取り直しの結果が、ここの
+    /// `finish` で取り込まれてメニューなどが作り直される）の分
+    first: Group,
+    /// 定常（最初の 1 打のあとの、`Activate` 以外のイベント）の分
+    steady: Group,
     samples: Vec<u64>,
     /// `samples` から替え玉のエンジンで使った時間を引いたもの（P1 のみ）
     without_transport: Vec<u64>,
@@ -288,6 +346,51 @@ fn print_detail(records: &mut [KeyRecord], alloc: bool) {
     );
 }
 
+/// 起動の `dispatch`（`Activate`）。確保と CPU の記録で、呼び出しの列に名前が残るよう、インライン化しない
+/// （`cargo xtask perf alloc` と `perf profile` が、この名前で起動と定常を分ける）
+#[inline(never)]
+fn startup_dispatch(
+    shell: &mut Shell,
+    event: ShellEvent,
+    text: &mut ScenarioText,
+) -> Vec<ikari_shell_core::ShellAction> {
+    // 末尾呼び出しにすると、呼び出しの列からこの関数の枠が消える。結果を `black_box` に通して避ける
+    // 三つの関数の中身が同じだとリンカが一つにまとめ、名前が区別できなくなる。違う値を通して避ける
+    std::hint::black_box("startup");
+    std::hint::black_box(shell.dispatch(event, text))
+}
+
+/// 起動の直後の最初の 1 打の `dispatch`。上と同じ理由でインライン化しない
+#[inline(never)]
+fn first_dispatch(
+    shell: &mut Shell,
+    event: ShellEvent,
+    text: &mut ScenarioText,
+) -> Vec<ikari_shell_core::ShellAction> {
+    // 三つの関数の中身が同じだとリンカが一つにまとめ、名前が区別できなくなる。違う値を通して避ける
+    std::hint::black_box("first");
+    std::hint::black_box(shell.dispatch(event, text))
+}
+
+/// 定常の `dispatch`（最初の 1 打のあとの、`Activate` 以外のイベント。打鍵ごと）。上と同じ理由でインライン化しない
+#[inline(never)]
+fn steady_dispatch(
+    shell: &mut Shell,
+    event: ShellEvent,
+    text: &mut ScenarioText,
+) -> Vec<ikari_shell_core::ShellAction> {
+    // 末尾呼び出しにすると、呼び出しの列からこの関数の枠が消える。結果を `black_box` に通して避ける
+    // 三つの関数の中身が同じだとリンカが一つにまとめ、名前が区別できなくなる。違う値を通して避ける
+    std::hint::black_box("steady");
+    std::hint::black_box(shell.dispatch(event, text))
+}
+
+/// 替え玉のエンジンの、同期の要求の数と、使った時間の合計
+fn sync_state(log: &Mutex<EngineLog>) -> (usize, u64) {
+    let guard = lock(log);
+    (guard.sync_requests, guard.transport_ns)
+}
+
 fn measure_keys(options: &Options) -> Result<Measured, String> {
     let files =
         scenario::load_dir(&scenario::scenarios_dir()).map_err(|error| error.to_string())?;
@@ -295,6 +398,9 @@ fn measure_keys(options: &Options) -> Result<Measured, String> {
     let mut without_transport = Vec::new();
     let mut allocs = Vec::new();
     let mut excluded = 0;
+    let mut startup = Group::default();
+    let mut first = Group::default();
+    let mut steady = Group::default();
     let mut any_action = false;
     let mut records: Vec<KeyRecord> = Vec::new();
     for round in 0..options.repeat {
@@ -308,13 +414,31 @@ fn measure_keys(options: &Options) -> Result<Measured, String> {
                     surrounding: setup.surrounding.clone(),
                     selection: None,
                 };
-                shell.dispatch(
-                    ShellEvent::Activate {
-                        bundle_id: setup.client.bundle_id.clone(),
-                        secure: false,
-                    },
-                    &mut text,
-                );
+                // 最初の `Activate`（`Shell::new` の直後。エンジンへの hello、最初の `finish` のメニューなどを含む起動）。
+                // P1 の従来の指標には入れず、`startup` にだけ数える
+                let first_activate = {
+                    let (before, _) = sync_state(&log);
+                    let heap_before = heap_totals();
+                    let started = Instant::now();
+                    let actions = startup_dispatch(
+                        &mut shell,
+                        ShellEvent::Activate {
+                            bundle_id: setup.client.bundle_id.clone(),
+                            secure: false,
+                        },
+                        &mut text,
+                    );
+                    let elapsed = nanos(started.elapsed());
+                    let heap_after = heap_totals();
+                    std::hint::black_box(actions);
+                    (
+                        sync_state(&log).0 > before,
+                        elapsed,
+                        (heap_after.0 - heap_before.0, heap_after.1 - heap_before.1),
+                    )
+                };
+                startup.push(first_activate.0, first_activate.1, first_activate.2);
+                let mut keys_seen = 0_usize;
                 for (step_index, step) in scenario.steps.iter().enumerate() {
                     if let Some(surrounding) = &step.surrounding {
                         text.surrounding = surrounding.clone();
@@ -324,10 +448,8 @@ fn measure_keys(options: &Options) -> Result<Measured, String> {
                         .events(setup.client.secure)
                         .map_err(|error| error.to_string())?;
                     for (event_index, event) in events.into_iter().enumerate() {
-                        let (before, transport_before) = {
-                            let guard = lock(&log);
-                            (guard.sync_requests, guard.transport_ns)
-                        };
+                        let (before, transport_before) = sync_state(&log);
+                        let is_startup = matches!(event, ShellEvent::Activate { .. });
                         let label = if options.detail && round == 0 {
                             format!("{} #{step_index}.{event_index} {event:?}", scenario.name)
                         } else {
@@ -335,7 +457,15 @@ fn measure_keys(options: &Options) -> Result<Measured, String> {
                         };
                         let heap_before = heap_totals();
                         let started = Instant::now();
-                        let actions = shell.dispatch(event, &mut text);
+                        let is_first = !is_startup && keys_seen == 0;
+                        keys_seen += usize::from(!is_startup);
+                        let actions = if is_startup {
+                            startup_dispatch(&mut shell, event, &mut text)
+                        } else if is_first {
+                            first_dispatch(&mut shell, event, &mut text)
+                        } else {
+                            steady_dispatch(&mut shell, event, &mut text)
+                        };
                         let elapsed = nanos(started.elapsed());
                         let heap_after = heap_totals();
                         any_action |= !std::hint::black_box(actions).is_empty();
@@ -358,6 +488,14 @@ fn measure_keys(options: &Options) -> Result<Measured, String> {
                                 record.blocks.push(heap_after.0 - heap_before.0);
                             }
                             slot += 1;
+                        }
+                        let alloc = (heap_after.0 - heap_before.0, heap_after.1 - heap_before.1);
+                        if is_startup {
+                            startup.push(is_sync, elapsed, alloc);
+                        } else if is_first {
+                            first.push(is_sync, elapsed, alloc);
+                        } else {
+                            steady.push(is_sync, elapsed, alloc);
                         }
                         if is_sync {
                             excluded += 1;
@@ -382,6 +520,9 @@ fn measure_keys(options: &Options) -> Result<Measured, String> {
         excluded,
         stub: !any_action,
         allocs,
+        startup,
+        first,
+        steady,
     })
 }
 
@@ -418,6 +559,9 @@ fn measure_startup(options: &Options) -> Result<Measured, String> {
         excluded: 0,
         stub,
         allocs: Vec::new(),
+        startup: Group::default(),
+        first: Group::default(),
+        steady: Group::default(),
     })
 }
 
