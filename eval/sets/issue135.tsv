@@ -1,0 +1,11 @@
+# #135: 「じんめい」が 人命 になる。人名が自然な文脈と人命が自然な文脈を対で置く（片方だけを優先する補正にしないため）。期待は一般名詞の 人名 / 人命。特定の個人の名前は使わない。
+# 掃引（LM の alpha、max_total）の評価用。レポートは eval/reports/lm-alpha-135.md
+# split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev。調整は dev だけで行う。
+id	kind	tags	profile	context	reading	expected	note	split	source
+i135-name-01	文脈	issue135,jinmei,人名		めずらしい	じんめい	人名	人名が期待。issue の例（左文脈 めずらしい）	test	issue135
+i135-name-02	文脈	issue135,jinmei,人名		これはめずらしい	じんめい	人名	人名が期待	dev	issue135
+i135-name-03	文脈	issue135,jinmei,人名		めずらしい名前の	じんめい	人名	人名が期待	dev	issue135
+i135-life-01	文脈	issue135,jinmei,人命		災害で失われた	じんめい	人命	人命が期待	dev	issue135
+i135-life-02	文脈	issue135,jinmei,人命		救助された	じんめい	人命	人命が期待	dev	issue135
+i135-life-03	文脈	issue135,jinmei,人命		事故で多くの	じんめい	人命	人命が期待	dev	issue135
+i135-life-04	文脈	issue135,jinmei,人命		何より尊い	じんめい	人命	人命が期待	dev	issue135
