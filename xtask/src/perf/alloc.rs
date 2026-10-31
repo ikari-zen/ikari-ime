@@ -23,6 +23,7 @@ const DEFAULT_REPEAT: usize = 200;
 const DEFAULT_TOP: usize = 25;
 /// 測り手の `steady_dispatch`／`startup_dispatch`（`shell_perf.rs`）。定常（打鍵ごと）と起動（`Activate`）を分ける
 const STEADY_WITHIN: &str = "shell_perf::steady_dispatch";
+const FIRST_WITHIN: &str = "shell_perf::first_dispatch";
 const STARTUP_WITHIN: &str = "shell_perf::startup_dispatch";
 const NAME_LIMIT: usize = 150;
 const KEY_ROW_LIMIT: usize = 170;
@@ -66,7 +67,9 @@ pub struct Distribution {
     pub values: BTreeMap<String, u64>,
     /// 起動（`Activate`）の分（測り手の `startup`）。古い測り手では `None`
     pub startup: Option<Box<Distribution>>,
-    /// 定常（`Activate` 以外。打鍵ごと）の分（測り手の `steady`）
+    /// 起動の直後の最初の 1 打の分（測り手の `first`）
+    pub first: Option<Box<Distribution>>,
+    /// 定常（最初の 1 打のあと。打鍵ごと）の分（測り手の `steady`）
     pub steady: Option<Box<Distribution>>,
 }
 
@@ -101,17 +104,29 @@ pub fn run(args: Args) -> Result<(), XtaskError> {
     let distribution = parse_distribution(&String::from_utf8_lossy(&output.stdout))?;
     let key_ranking = extract_key_ranking(&stderr);
     let dhat = read_dhat(&dhat_path)?;
-    let report = match (&args.within, &distribution.steady, &distribution.startup) {
-        (None, Some(steady), Some(startup)) => {
+    let report = match (
+        &args.within,
+        &distribution.steady,
+        &distribution.startup,
+        &distribution.first,
+    ) {
+        (None, Some(steady), Some(startup), Some(first)) => {
             let steady_sites = aggregate_sites(&dhat, STEADY_WITHIN)?;
             let startup_sites = aggregate_sites(&dhat, STARTUP_WITHIN)?;
+            let first_sites = aggregate_sites(&dhat, FIRST_WITHIN)?;
             render_split(
                 &[
                     (
-                        "定常（打鍵ごと。`Activate` 以外）",
+                        "定常（打鍵ごと。最初の 1 打のあと）",
                         steady,
                         &steady_sites,
                         STEADY_WITHIN,
+                    ),
+                    (
+                        "起動直後の最初の 1 打（`Activate` 以外の最初のイベント）",
+                        first,
+                        &first_sites,
+                        FIRST_WITHIN,
                     ),
                     (
                         "起動（`Activate`。`Shell::new` の直後と、入力先の切り替え）",
@@ -173,6 +188,7 @@ pub fn parse_distribution(stdout: &str) -> Result<Distribution, XtaskError> {
         dispatches: count("samples") + count("excluded_samples"),
         values: numbers(alloc),
         startup: group_distribution(&value["startup"]),
+        first: group_distribution(&value["first"]),
         steady: group_distribution(&value["steady"]),
     })
 }
@@ -191,6 +207,7 @@ fn group_distribution(group: &Value) -> Option<Box<Distribution>> {
         dispatches: group["dispatches"].as_u64()?,
         values: numbers(alloc),
         startup: None,
+        first: None,
         steady: None,
     }))
 }

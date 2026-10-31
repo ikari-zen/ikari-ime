@@ -166,6 +166,7 @@ fn report(options: &Options, measured: Measured) -> Result<(), String> {
         stub,
         allocs,
         startup,
+        first,
         steady,
     } = measured;
     if samples.is_empty() {
@@ -201,6 +202,7 @@ fn report(options: &Options, measured: Measured) -> Result<(), String> {
     // 起動と定常の内訳（足した指標。上の `p50_ns` などは従来の意味のまま）
     if options.metric == "p1" || options.metric == "alloc" {
         object["startup"] = group_summary(&startup, options.metric == "alloc");
+        object["first"] = group_summary(&first, options.metric == "alloc");
         object["steady"] = group_summary(&steady, options.metric == "alloc");
     }
     if options.metric == "alloc" {
@@ -277,7 +279,10 @@ impl Group {
 struct Measured {
     /// 起動（`Activate`）の分。P1 の指標（`samples` ほか）は従来どおり全部を含み、ここは別に足した指標
     startup: Group,
-    /// 定常（`Activate` 以外のイベント）の分
+    /// 起動の直後の最初の 1 打（`Activate` 以外の最初のイベント。エンジンの状態や設定の取り直しの結果が、ここの
+    /// `finish` で取り込まれてメニューなどが作り直される）の分
+    first: Group,
+    /// 定常（最初の 1 打のあとの、`Activate` 以外のイベント）の分
     steady: Group,
     samples: Vec<u64>,
     /// `samples` から替え玉のエンジンで使った時間を引いたもの（P1 のみ）
@@ -349,17 +354,29 @@ fn startup_dispatch(
     event: ShellEvent,
     text: &mut ScenarioText,
 ) -> Vec<ikari_shell_core::ShellAction> {
-    shell.dispatch(event, text)
+    // 末尾呼び出しにすると、呼び出しの列からこの関数の枠が消える。結果を `black_box` に通して避ける
+    std::hint::black_box(shell.dispatch(event, text))
 }
 
-/// 定常の `dispatch`（`Activate` 以外のイベント。打鍵ごと）。上と同じ理由でインライン化しない
+/// 起動の直後の最初の 1 打の `dispatch`。上と同じ理由でインライン化しない
+#[inline(never)]
+fn first_dispatch(
+    shell: &mut Shell,
+    event: ShellEvent,
+    text: &mut ScenarioText,
+) -> Vec<ikari_shell_core::ShellAction> {
+    std::hint::black_box(shell.dispatch(event, text))
+}
+
+/// 定常の `dispatch`（最初の 1 打のあとの、`Activate` 以外のイベント。打鍵ごと）。上と同じ理由でインライン化しない
 #[inline(never)]
 fn steady_dispatch(
     shell: &mut Shell,
     event: ShellEvent,
     text: &mut ScenarioText,
 ) -> Vec<ikari_shell_core::ShellAction> {
-    shell.dispatch(event, text)
+    // 末尾呼び出しにすると、呼び出しの列からこの関数の枠が消える。結果を `black_box` に通して避ける
+    std::hint::black_box(shell.dispatch(event, text))
 }
 
 /// 替え玉のエンジンの、同期の要求の数と、使った時間の合計
@@ -376,6 +393,7 @@ fn measure_keys(options: &Options) -> Result<Measured, String> {
     let mut allocs = Vec::new();
     let mut excluded = 0;
     let mut startup = Group::default();
+    let mut first = Group::default();
     let mut steady = Group::default();
     let mut any_action = false;
     let mut records: Vec<KeyRecord> = Vec::new();
@@ -414,6 +432,7 @@ fn measure_keys(options: &Options) -> Result<Measured, String> {
                     )
                 };
                 startup.push(first_activate.0, first_activate.1, first_activate.2);
+                let mut keys_seen = 0_usize;
                 for (step_index, step) in scenario.steps.iter().enumerate() {
                     if let Some(surrounding) = &step.surrounding {
                         text.surrounding = surrounding.clone();
@@ -432,8 +451,12 @@ fn measure_keys(options: &Options) -> Result<Measured, String> {
                         };
                         let heap_before = heap_totals();
                         let started = Instant::now();
+                        let is_first = !is_startup && keys_seen == 0;
+                        keys_seen += usize::from(!is_startup);
                         let actions = if is_startup {
                             startup_dispatch(&mut shell, event, &mut text)
+                        } else if is_first {
+                            first_dispatch(&mut shell, event, &mut text)
                         } else {
                             steady_dispatch(&mut shell, event, &mut text)
                         };
@@ -463,6 +486,8 @@ fn measure_keys(options: &Options) -> Result<Measured, String> {
                         let alloc = (heap_after.0 - heap_before.0, heap_after.1 - heap_before.1);
                         if is_startup {
                             startup.push(is_sync, elapsed, alloc);
+                        } else if is_first {
+                            first.push(is_sync, elapsed, alloc);
                         } else {
                             steady.push(is_sync, elapsed, alloc);
                         }
@@ -490,6 +515,7 @@ fn measure_keys(options: &Options) -> Result<Measured, String> {
         stub: !any_action,
         allocs,
         startup,
+        first,
         steady,
     })
 }
@@ -528,6 +554,7 @@ fn measure_startup(options: &Options) -> Result<Measured, String> {
         stub,
         allocs: Vec::new(),
         startup: Group::default(),
+        first: Group::default(),
         steady: Group::default(),
     })
 }
