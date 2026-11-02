@@ -19,7 +19,7 @@ use super::util::{
     check_schema, fnv1a64, fnv1a64_continue, has_cell_breaker, parse_error, parse_header,
     read_optional, write_atomic,
 };
-use super::{ContextFeatures, UserDataError};
+use super::{ContextFeatures, RecentChoices, RecentClock, UserDataError};
 use crate::candidate::{CandidateOrigin, Segment};
 use crate::converter::CommitEvent;
 use crate::dict::Grammar;
@@ -153,12 +153,19 @@ pub struct LearningStore {
     salt: u64,
     rows: RwLock<Rows>,
     grammar: OnceLock<Arc<dyn Grammar>>,
+    /// 同じ読みで直前に選んだ表記（保存しない。ADR 0045）
+    recent: RecentChoices,
 }
 
 impl LearningStore {
     /// ファイルがなければ空で作る（ソルトを生成する。ファイルは `save` で作られる）。
     /// ファイルが不正なら何も返さずエラー（既存のファイルは変更しない）。
     pub fn open(path: &Path) -> Result<Self, UserDataError> {
+        Self::open_with_recent_clock(path, RecentClock::System)
+    }
+
+    /// `open` と同じで、直前の選択の時計を差し替える（eval とテスト用）。
+    pub fn open_with_recent_clock(path: &Path, clock: RecentClock) -> Result<Self, UserDataError> {
         let (salt, rows) = match read_optional(path)? {
             Some(text) => parse(&text, path)?,
             None => (new_salt(), Rows::new()),
@@ -169,6 +176,7 @@ impl LearningStore {
             salt,
             rows: RwLock::new(rows),
             grammar: OnceLock::new(),
+            recent: RecentChoices::new(clock),
         })
     }
 
@@ -229,6 +237,7 @@ impl LearningStore {
             return;
         }
         if reading.chars().count() <= MAX_READING_CHARS {
+            self.recent.note(&reading, &surface_key);
             for f in &feats.features {
                 bump(
                     &mut rows,
@@ -338,6 +347,9 @@ impl LearningStore {
     }
 
     pub fn reset(&self, layer: LayerSel) {
+        if matches!(layer, LayerSel::All | LayerSel::Usage) {
+            self.recent.clear();
+        }
         let mut rows = self.write();
         match layer {
             LayerSel::All => rows.clear(),
@@ -373,6 +385,11 @@ impl LearningStore {
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// 同じ読みで直前に選んだ表記（ADR 0045）
+    pub fn recent(&self) -> &RecentChoices {
+        &self.recent
     }
 
     /// 読みが一致する行（加点の計算用）。
@@ -838,6 +855,25 @@ mod tests {
         let ev = commit(&long, vec![seg("亜", &long, true)], tech());
         store.record(&ev, None, 1);
         assert!(store.is_empty());
+        assert!(store.recent().latest(&long).is_none());
+    }
+
+    #[test]
+    fn record_notes_recent_choice_and_reset_clears_it() {
+        let (_d, store) = open_tmp();
+        store.record(
+            &commit("ひんし", vec![seg("品詞", "ひんし", true)], tech()),
+            None,
+            1,
+        );
+        assert_eq!(
+            store.recent().latest("ひんし").map(|(s, _)| s),
+            Some("品詞".into())
+        );
+        store.reset(LayerSel::Initial);
+        assert!(store.recent().latest("ひんし").is_some());
+        store.reset(LayerSel::Usage);
+        assert!(store.recent().latest("ひんし").is_none());
     }
 
     #[test]
