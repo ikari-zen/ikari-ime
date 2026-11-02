@@ -476,10 +476,8 @@ probe\t技術文書で\tひんし\t瀕死\tnot-top1
             assert_eq!(load_scenario(&format!("{head}{bad}")).unwrap_err().line, 2);
         }
         assert!(
-            load_scenario(&format!(
-                "step\tcontext\treading\tsurface\texpect\nwait\t\t\t1\tnot-top1\n"
-            ))
-            .is_err()
+            load_scenario("step\tcontext\treading\tsurface\texpect\nwait\t\t\t1\tnot-top1\n")
+                .is_err()
         );
     }
 
