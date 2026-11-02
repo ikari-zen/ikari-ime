@@ -37,16 +37,30 @@ impl RecentClock {
 
 /// 読み -> (表記のキー, 選んだ時刻 ms)
 pub struct RecentChoices {
-    clock: RecentClock,
+    clock: Mutex<RecentClock>,
     map: Mutex<HashMap<String, (String, u64)>>,
 }
 
 impl RecentChoices {
     pub fn new(clock: RecentClock) -> Self {
         Self {
-            clock,
+            clock: Mutex::new(clock),
             map: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// 時計を差し替える。すでに覚えている選択の時刻は前の時計のものなので、`clear` してから使う
+    /// （`LearningStore` を組み立てる stack を通すため、eval が開いたあとに手動の時計へ替える用）。
+    pub fn set_clock(&self, clock: RecentClock) {
+        *self.clock.lock().unwrap_or_else(|e| e.into_inner()) = clock;
+        self.lock().clear();
+    }
+
+    fn now_ms(&self) -> u64 {
+        self.clock
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .now_ms()
     }
 
     fn lock(&self) -> MutexGuard<'_, HashMap<String, (String, u64)>> {
@@ -55,7 +69,7 @@ impl RecentChoices {
 
     /// 読みの最後の選択を `surface` に置き換える。
     pub fn note(&self, reading: &str, surface: &str) {
-        let now = self.clock.now_ms();
+        let now = self.now_ms();
         let mut map = self.lock();
         if map.len() >= MAX_REMEMBERED_READINGS && !map.contains_key(reading) {
             let mut times: Vec<u64> = map.values().map(|(_, t)| *t).collect();
@@ -68,7 +82,7 @@ impl RecentChoices {
 
     /// 読みの最後の選択と、選んでからの経過ミリ秒
     pub fn latest(&self, reading: &str) -> Option<(String, u64)> {
-        let now = self.clock.now_ms();
+        let now = self.now_ms();
         self.lock()
             .get(reading)
             .map(|(s, t)| (s.clone(), now.saturating_sub(*t)))
@@ -103,6 +117,18 @@ mod tests {
         let (r, _) = manual();
         r.note("ひんしを", "品詞を");
         assert_eq!(r.latest("ひんし"), None);
+    }
+
+    #[test]
+    fn set_clock_switches_to_a_manual_clock_and_forgets() {
+        let r = RecentChoices::new(RecentClock::System);
+        r.note("ひんしを", "品詞を");
+        let ms = Arc::new(AtomicU64::new(10));
+        r.set_clock(RecentClock::Manual(ms.clone()));
+        assert_eq!(r.latest("ひんしを"), None);
+        r.note("ひんしを", "品詞を");
+        ms.store(4010, Ordering::Relaxed);
+        assert_eq!(r.latest("ひんしを"), Some(("品詞を".to_string(), 4000)));
     }
 
     #[test]

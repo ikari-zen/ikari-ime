@@ -42,8 +42,8 @@ fn run_scenario(scenario: &str) {
 fn run_scenario_with(scenario: &str, extra: &[&str]) {
     let (dict, model) = (env_path(DICT_ENV), env_path(MODEL_ENV));
     let file = workspace_root().join("eval/scenarios").join(scenario);
-    let out = Command::new(env!("CARGO_BIN_EXE_ikari-eval"))
-        .arg("--dict")
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_ikari-eval"));
+    cmd.arg("--dict")
         .arg(&dict)
         .args(["--ranker", "full", "--lm"])
         .arg(&model)
@@ -55,9 +55,12 @@ fn run_scenario_with(scenario: &str, extra: &[&str]) {
         ])
         .args(extra)
         .arg("--scenario")
-        .arg(&file)
-        .output()
-        .expect("run ikari-eval");
+        .arg(&file);
+    if let Some(config) = config {
+        cmd.arg("--ranker-config")
+            .arg(workspace_root().join("eval/scenarios").join(config));
+    }
+    let out = cmd.output().expect("run ikari-eval");
     let stdout = String::from_utf8_lossy(&out.stdout);
     eprintln!("{stdout}");
     assert_eq!(
@@ -110,4 +113,14 @@ fn b23_same_context_keeps_the_learned_surface_with_the_lm() {
 #[ignore = "requires the real dictionary and a zenz GGUF model (IKARI_DICT_DIR, IKARI_ZENZ_MODEL)"]
 fn c182_carryover_puts_the_history_into_the_left_context_with_the_lm() {
     run_scenario_with("c182-carryover.tsv", &["--carry-fill", "40"]);
+}
+
+#[test]
+#[ignore = "requires the real dictionary and a zenz GGUF model (IKARI_DICT_DIR, IKARI_ZENZ_MODEL)"]
+fn issue177_recent_choice_wins_within_the_window_with_the_lm() {
+    let conf = workspace_root().join("eval/scenarios/issue177-recent.conf");
+    run_scenario_with(
+        "issue177-recent.tsv",
+        &["--ranker-config", conf.to_str().unwrap()],
+    );
 }
