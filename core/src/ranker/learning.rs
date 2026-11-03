@@ -31,8 +31,8 @@ pub const CONFIG_KEY_PREFIX: &str = "learning.";
 /// back-off のときの `Unconditional` の重みの既定（ADR 0013 §9 Q2）
 const DEFAULT_BACKOFF_WEIGHT: f32 = 1.0;
 
-/// 役割が違う対抗と競うときの word の係数の既定。1.0 は弱めない（ADR 0044。値は掃引で決める）
-const DEFAULT_WORD_ROLE_MISMATCH_FACTOR: f32 = 1.0;
+/// 役割が違う対抗と競うときの word の係数の既定。1.0 は弱めない（ADR 0044 §16。掃引で決めた値）
+const DEFAULT_WORD_ROLE_MISMATCH_FACTOR: f32 = 0.25;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LearningConfig {
@@ -652,6 +652,8 @@ mod tests {
     fn cfg() -> LearningConfig {
         LearningConfig {
             today: Some(TODAY),
+            // 既存のテストは役割の違いを見ない動きを確かめる。既定の係数は別のテストで見る
+            word_role_mismatch_factor: 1.0,
             ..LearningConfig::default()
         }
     }
@@ -1168,7 +1170,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = store_with_work_commits(&f, &dir, 3);
         let ctx = work_context(&f);
-        assert_eq!(LearningConfig::default().word_role_mismatch_factor, 1.0);
+        assert_eq!(LearningConfig::default().word_role_mismatch_factor, 0.25);
         let base = learned_bonus(&store, &f, cfg(), &ctx);
         assert!(base > 0);
         assert_eq!(learned_bonus(&store, &f, mismatch_cfg(1.0), &ctx), base);

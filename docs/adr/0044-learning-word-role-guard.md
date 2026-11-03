@@ -1,6 +1,6 @@
 # ADR 0044: 学習の word の加点を、品詞で見て役割が違う相手と競うときは弱める（観察しよう → 観察使用）
 
-- 状態: 提案（2026-11-03 にユーザーの判断で書き直し。初版の R1 は却下）
+- 状態: 採用（2026-11-03 にユーザーが係数の既定を 0.25 に決定。書き直し版。初版の R1 は却下）
 - 日付: 2026-11-02（初版）、2026-11-03（改訂）
 - 対象: `core/src/pos.rs`（役割を比べる純関数を 1 つ足す）、`core/src/ranker/learning.rs`（word の加点の係数と設定の 1 項目）、`eval/scenarios/`（シナリオを 2 本足す）、`eval/tests/scenario_lm.rs`、`eval/scripts/snapshot.sh`。記録側（`core/src/user/learning.rs`）、`is_content_word`、学習の形式（`learning.tsv`）、Swift は変えない
 - 前提: main = 9773895。ADR 0002 §8（文脈付きの学習）、ADR 0013（記録のない文脈の back-off、上限を phrase と word に分ける）
@@ -136,7 +136,7 @@ LM あり（3000ms、文脈なし）では、学習が空でも いこう → �
   - `pub fn same_word_role(a: &str, b: &str) -> bool` を足す（品詞名 2 つ。§4）。非公開の補助（活用形の頭を返す関数）を持ってよい。単体テスト: しよう／使用 偽、行こう／以降 偽、書き／下記 偽、拾う／疲労 偽、会う／合う 真、直っ／治っ 真、帰る（終止形）／変える（連体形）真、一（数詞）／位置 真。
   - `is_content_word`、`segment_role` は変えない。
 - `core/src/ranker/learning.rs`
-  - `LearningConfig` に `pub word_role_mismatch_factor: f32` を足す。既定は掃引までは 1.0（今と同じ動き）。掃引で決めた値に替える PR で既定を替える。`from_kv` のキーは `word_role_mismatch_factor`。0.0〜1.0 の外は `RankerConfigError`。
+  - `LearningConfig` に `pub word_role_mismatch_factor: f32` を足す。既定は 0.25（§16。1.0 にすると今と同じ動き）。`from_kv` のキーは `word_role_mismatch_factor`。0.0〜1.0 の外は `RankerConfigError`。
   - `bonuses` の中で、候補ごとにセグメントの区間（入力の読みの上のバイトの位置。セグメントの読みを順に足す）を求め、区間ごとに「並びで最初の表記」と「それと違う最初の表記」の 2 つ（候補の番号、表記、`pos_id`）を 1 回の走査で持つ。Rewriter の候補は入れない（`variants` と同じ）。候補の数 × セグメントの数で済ませ、候補の組を総当たりしない（#161 の性能の作業を崩さない）。
   - 対抗は §2-2 のとおり。係数は非公開の純関数（例 `fn word_role_factor(own: Option<&str>, rival: Option<&str>, factor: f32) -> f32`。品詞名が両方あり `same_word_role` が偽なら `factor`、それ以外は 1.0）で決め、word の share に `word_factor` と一緒にかける。
   - 対抗の選び方に `score` を使わない。`rank` と `context_free_bonus` は同じスライスで続けて呼ばれ、後者のときは学習の加点が `score` に入っているので、`score` で選ぶと 2 回の結果がずれる。実装のとき、2 回の呼び出しの間でスライスが並べ替えられないことを確かめる（並べ替えられるなら、ADR に戻す）。
@@ -146,7 +146,7 @@ LM あり（3000ms、文脈なし）では、学習が空でも いこう → �
 - `eval/scenarios/issue2-shiyou.tsv` と `eval/scenarios/learning-role-homophones.tsv` を足し、`eval/tests/scenario_lm.rs` と `eval/scripts/snapshot.sh` のシナリオの一覧に載せる。
 
 ## 9. 受け入れ条件
-- `issue2-shiyou.tsv`: LM なしで、観察しよう と 検証しよう が（使用 の記録 3 回のあとも）1 位。行こう も 1 位。観察使用 を読み全体で選んだあとは 観察使用 が 1 位。LM あり（3000ms）では、どの probe も学習が空のときの 1 位から変わらない（§3.3。いこう は 以降 のまま）。
+- `issue2-shiyou.tsv`: LM なしで、観察しよう と 検証しよう が（使用 の記録 3 回のあとも）1 位。行こう も 1 位。観察使用 を読み全体で確定した直後に 観察使用 が 1 位になることは期待しない（2026-11-03 ユーザー決定。LM ありでは LM が 観察しよう を 1 位にする）。検証しよう に広がらないことは検査する。LM あり（3000ms）では、どの probe も学習が空のときの 1 位から変わらない（§3.3。いこう は 以降 のまま）。
 - `learning-role-homophones.tsv`: LM なし・あり（3000ms）とも全行が通る（下記／書き の学習が壊れない、役割が同じ組が今と同じ）。
 - 既存のシナリオ 8 本が、LM なし・LM あり（3000ms）とも落ちない。
 - 全評価セットで 1 位が悪化しない（`eval/scripts/snapshot.sh`）。
@@ -185,4 +185,20 @@ LM あり（3000ms、文脈なし）では、学習が空でも いこう → �
 ## 15. 実装メモ（2026-11-03）
 - 実装は §8 の契約どおり。係数 1.0 のときは対抗の表を作らず、今と同じ動き（snapshot の差分 0）。
 - `CompositeRanker::learning_prefers_first`（`composite.rs`）は、2 候補だけのスライスで `rank` を呼ぶ。このとき「並びで最初の対抗」は 2 候補の相手になり、全体の並びで選んだ対抗と食い違いうる。ADR の想定外の呼び出し。この ADR では変えず、掃引で問題が出たら見直す。
-- `learning-role-homophones.tsv` は `snapshot.sh` の一覧と `scenario_lm.rs` に入れていない（基準の snapshot との比較を崩さないため、LM つきのテストは GGUF のある環境で足す）。`issue2-shiyou.tsv` は既定では落ちる（`issue2-shiyou.conf` の係数で流す）ので、どちらにも入れない。
+- `learning-role-homophones.tsv` は `snapshot.sh` の一覧と `scenario_lm.rs` に入れていない（基準の snapshot との比較を崩さないため、LM つきのテストは GGUF のある環境で足す）。`issue2-shiyou.tsv` は LM ありでいこう→以降の 2 行が落ちる（§3.3）ので、LM つきのテストには入れない。
+
+## 16. 決定: 係数の既定は 0.25（2026-11-03 ユーザー決定）
+掃引（LM なし、`--ranker full`。学習は空から）:
+
+| 係数 | issue2-shiyou の失敗 | 使用 の記録 n=1/3/10/30 で 観察しよう が 1 位 | `learning-role-homophones` と既存 scenario 8 本 |
+|---|---|---|---|
+| 1.0 | 5 | NG/NG/NG/NG | 失敗 0 |
+| 0.5 | 4 | NG/NG/NG/NG | 失敗 0 |
+| 0.25 | 0 | OK/OK/OK/NG | 失敗 0 |
+| 0.1 | 0 | OK/OK/OK/OK | 失敗 0 |
+| 0 | 0 | OK/OK/OK/OK | 失敗 0 |
+
+- 0.25 は、受け入れ条件を満たす値のうち、いちばん 1.0 に近い（§6 の選び方）。word の学習をできるだけ残す。
+- LM あり（3000ms）は、係数によらず結果が同じ（`issue2-shiyou` の失敗 3 は、いこう→以降 の 2 行と、観察使用 の確定直後の probe。どれも LM の判断）。そのため係数の決定は LM なしの結果で決まる。
+- 観察使用 を読み全体で確定した直後の probe は期待にしない（§9）。`issue2-shiyou.tsv` から外した。いこう→以降 の 2 行は LM なしだけで検査する。
+- 使用 を 30 回以上確定する場合は 0.25 でも逆転する。0.1 なら残らない。必要になったら係数を下げる。

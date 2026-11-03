@@ -1,7 +1,7 @@
 # learning-role-homophones: 役割が違う正しい同音語の学習が、係数を下げても壊れない（ADR 0044 §7.2）。
 # 下記（名詞）と書き（動詞の連用形）。役割が同じ組（会う／合う）は今と同じに動く。
-# 既定でも、issue2-shiyou.conf の係数でも通ること。
-# 実行: ikari-eval --ranker full [--ranker-config eval/scenarios/issue2-shiyou.conf] --scenario eval/scenarios/learning-role-homophones.tsv
+# 既定の係数でも、1.0 でも通ること。
+# 実行: ikari-eval --ranker full --scenario eval/scenarios/learning-role-homophones.tsv
 step	context	reading	surface	expect
 commit		かきのとおり	下記のとおり
 probe		かきをかくにん	下記を確認	top1
