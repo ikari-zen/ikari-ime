@@ -406,7 +406,6 @@ probe\t技術文書で\tひんし\t瀕死\tnot-top1
     }
 
     #[test]
-    #[test]
     fn field_and_history_columns_are_optional() {
         let head = "step\tcontext\treading\tsurface\tfield\thistory\n";
         let steps = load_scenario(&format!(
