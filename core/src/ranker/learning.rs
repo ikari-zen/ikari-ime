@@ -17,7 +17,7 @@ use super::names;
 use super::{RankInput, Ranker, RankerConfigError};
 use crate::analysis::AnalyzedContext;
 use crate::candidate::{Candidate, CandidateOrigin};
-use crate::pos::is_content_word;
+use crate::pos::{is_content_word, same_word_role};
 use crate::user::features::UNCONDITIONAL_WEIGHT;
 use crate::user::{
     FeatureKind, Layer, LearningRecord, LearningStore, Unit, extract_named, rewriter_key,
@@ -31,6 +31,9 @@ pub const CONFIG_KEY_PREFIX: &str = "learning.";
 /// back-off のときの `Unconditional` の重みの既定（ADR 0013 §9 Q2）
 const DEFAULT_BACKOFF_WEIGHT: f32 = 1.0;
 
+/// 役割が違う対抗と競うときの word の係数の既定。1.0 は弱めない（ADR 0044 §16。掃引で決めた値）
+const DEFAULT_WORD_ROLE_MISMATCH_FACTOR: f32 = 0.25;
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct LearningConfig {
     /// `Σ_f w_f * share * base_bonus`
@@ -39,6 +42,10 @@ pub struct LearningConfig {
     pub initial_weight: f32,
     /// `word` 記録（セグメント単位）の一致の係数
     pub word_factor: f32,
+    /// word の加点を受けるセグメントが、同じ区間の「いちばん手前の対抗」（違う表記）と品詞1・活用形で
+    /// 役割が違うときに、word の share にかける係数（0.0〜1.0。1.0 で弱めない。ADR 0044）。
+    /// phrase の加点には効かない
+    pub word_role_mismatch_factor: f32,
     pub half_life_days: u32,
     /// 1候補あたり、phrase の加点と word の加点それぞれの上限（ADR 0013 F2）
     pub max_total: i32,
@@ -61,6 +68,7 @@ impl Default for LearningConfig {
             usage_weight: 1.0,
             initial_weight: 0.4,
             word_factor: 0.5,
+            word_role_mismatch_factor: DEFAULT_WORD_ROLE_MISMATCH_FACTOR,
             half_life_days: 90,
             max_total: 6000,
             unconditional_weight: UNCONDITIONAL_WEIGHT,
@@ -90,7 +98,7 @@ impl LearningConfig {
     pub const KEY_PREFIX: &'static str = CONFIG_KEY_PREFIX;
 
     /// `learning.<name>` のキーだけを見る（`base_bonus`、`usage_weight`、`initial_weight`、
-    /// `word_factor`、`half_life_days`、`max_total`、`prior_count`、`unconditional_weight`、`unconditional_backoff_weight`、`today`）。他の接頭辞のキーは無視する。
+    /// `word_factor`、`word_role_mismatch_factor`、`half_life_days`、`max_total`、`prior_count`、`unconditional_weight`、`unconditional_backoff_weight`、`today`）。他の接頭辞のキーは無視する。
     /// `learning.` の下の未知のキーや、読めない値はエラー。
     pub fn from_kv(kv: &BTreeMap<String, String>) -> Result<Self, RankerConfigError> {
         let mut cfg = Self::default();
@@ -103,6 +111,13 @@ impl LearningConfig {
                 "usage_weight" => cfg.usage_weight = parse_value(key, value)?,
                 "initial_weight" => cfg.initial_weight = parse_value(key, value)?,
                 "word_factor" => cfg.word_factor = parse_value(key, value)?,
+                "word_role_mismatch_factor" => {
+                    let factor: f32 = parse_value(key, value)?;
+                    if !(0.0..=1.0).contains(&factor) {
+                        return Err(config_error(key, "0.0〜1.0 の範囲で指定してください"));
+                    }
+                    cfg.word_role_mismatch_factor = factor;
+                }
                 "half_life_days" => cfg.half_life_days = parse_value(key, value)?,
                 "max_total" => cfg.max_total = parse_value(key, value)?,
                 "today" => cfg.today = Some(parse_value(key, value)?),
@@ -239,6 +254,76 @@ impl Share {
     }
 }
 
+/// 入力の読みの上の区間（バイトの位置。`start..end`）
+type Span = (usize, usize);
+
+/// 1 つの区間に現れるセグメントの、表記と品詞ID
+#[derive(Clone, Copy)]
+struct SpanSeg<'a> {
+    surface: &'a str,
+    pos_id: u16,
+}
+
+/// 1 つの区間について、候補の並びで最初の表記と、それと違う最初の表記（ADR 0044 §2-2）
+#[derive(Clone, Copy)]
+struct SpanRivals<'a> {
+    first: SpanSeg<'a>,
+    first_other: Option<SpanSeg<'a>>,
+}
+
+impl<'a> SpanRivals<'a> {
+    /// 並びの順に呼ぶ
+    fn observe(&mut self, seg: SpanSeg<'a>) {
+        if self.first_other.is_none() && seg.surface != self.first.surface {
+            self.first_other = Some(seg);
+        }
+    }
+
+    /// `surface` と違う、並びで最初の表記
+    fn rival_of(&self, surface: &str) -> Option<SpanSeg<'a>> {
+        if self.first.surface != surface {
+            Some(self.first)
+        } else {
+            self.first_other
+        }
+    }
+}
+
+/// 区間ごとの対抗の表。Rewriter の候補は入れない（`variants` と同じ）。候補の数 × セグメントの数で作る
+fn span_rivals(cands: &[Candidate]) -> HashMap<Span, SpanRivals<'_>> {
+    let mut table: HashMap<Span, SpanRivals<'_>> = HashMap::new();
+    for cand in cands {
+        if matches!(cand.origin, CandidateOrigin::Rewriter { .. }) {
+            continue;
+        }
+        let mut start = 0;
+        for seg in &cand.segments {
+            let end = start + seg.reading.len();
+            let sg = SpanSeg {
+                surface: &seg.surface,
+                pos_id: seg.pos_id,
+            };
+            table
+                .entry((start, end))
+                .and_modify(|r| r.observe(sg))
+                .or_insert(SpanRivals {
+                    first: sg,
+                    first_other: None,
+                });
+            start = end;
+        }
+    }
+    table
+}
+
+/// word の share にかける、役割の違いによる係数。品詞名が両方あり `same_word_role` が偽なら `factor`、それ以外は 1.0
+fn word_role_factor(own: Option<&str>, rival: Option<&str>, factor: f32) -> f32 {
+    match (own, rival) {
+        (Some(a), Some(b)) if !same_word_role(a, b) => factor,
+        _ => 1.0,
+    }
+}
+
 /// 候補ごとの加点（正の値）
 struct Bonuses {
     /// 全体の加点（`rank` が引く値）
@@ -319,6 +404,9 @@ impl LearningRanker {
             }
         }
 
+        // 役割が違う対抗と競うときの係数（1.0 のときは表を作らず、今と同じ動きにする）
+        let rivals = (self.cfg.word_role_mismatch_factor < 1.0).then(|| span_rivals(cands));
+
         let base = self.cfg.base_bonus as f32;
         let cap = i64::from(self.cfg.max_total.max(0));
         // share -> 加点（四捨五入して 0..=cap）
@@ -337,11 +425,12 @@ impl LearningRanker {
             );
             let mut word = Share::default();
             if !is_rewriter {
+                let mut seg_start = 0;
                 for seg in &cand.segments {
-                    let content = input
-                        .grammar
-                        .pos_name(seg.pos_id)
-                        .is_some_and(is_content_word);
+                    let span = (seg_start, seg_start + seg.reading.len());
+                    seg_start = span.1;
+                    let own_pos = input.grammar.pos_name(seg.pos_id);
+                    let content = own_pos.is_some_and(is_content_word);
                     let contested = variants.get(&seg.reading).is_some_and(|v| v.len() >= 2);
                     if !content || !contested {
                         continue;
@@ -354,6 +443,17 @@ impl LearningRanker {
                             let w = uncond_weight_of(&table);
                             (table, w)
                         });
+                    let role_factor = rivals
+                        .as_ref()
+                        .and_then(|r| r.get(&span))
+                        .and_then(|r| r.rival_of(&seg.surface))
+                        .map_or(1.0, |rival| {
+                            word_role_factor(
+                                own_pos,
+                                input.grammar.pos_name(rival.pos_id),
+                                self.cfg.word_role_mismatch_factor,
+                            )
+                        });
                     word.add(
                         table
                             .weighted_share(
@@ -363,7 +463,7 @@ impl LearningRanker {
                                 *uncond_weight,
                                 self.cfg.prior_count,
                             )
-                            .scaled(self.cfg.word_factor),
+                            .scaled(self.cfg.word_factor * role_factor),
                     );
                 }
             }
@@ -552,6 +652,8 @@ mod tests {
     fn cfg() -> LearningConfig {
         LearningConfig {
             today: Some(TODAY),
+            // 既存のテストは役割の違いを見ない動きを確かめる。既定の係数は別のテストで見る
+            word_role_mismatch_factor: 1.0,
             ..LearningConfig::default()
         }
     }
@@ -1053,5 +1155,137 @@ mod tests {
             LearningConfig::from_kv(&BTreeMap::new()).unwrap(),
             LearningConfig::default()
         );
+    }
+
+    fn mismatch_cfg(factor: f32) -> LearningConfig {
+        LearningConfig {
+            word_role_mismatch_factor: factor,
+            ..cfg()
+        }
+    }
+
+    #[test]
+    fn mismatch_factor_one_is_the_same_as_before() {
+        let f = fixture();
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_with_work_commits(&f, &dir, 3);
+        let ctx = work_context(&f);
+        assert_eq!(LearningConfig::default().word_role_mismatch_factor, 0.25);
+        let base = learned_bonus(&store, &f, cfg(), &ctx);
+        assert!(base > 0);
+        assert_eq!(learned_bonus(&store, &f, mismatch_cfg(1.0), &ctx), base);
+    }
+
+    #[test]
+    fn mismatch_factor_weakens_only_the_word_bonus_against_a_different_role() {
+        // 始めて（動詞）は、同じ区間のいちばん手前の対抗 初めて（副詞）と役割が違う
+        let f = fixture();
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_with_work_commits(&f, &dir, 3);
+        let ctx = work_context(&f);
+        let full = learned_bonus(&store, &f, cfg(), &ctx);
+        let half = learned_bonus(&store, &f, mismatch_cfg(0.5), &ctx);
+        let zero = learned_bonus(&store, &f, mismatch_cfg(0.0), &ctx);
+        let no_word = LearningConfig {
+            word_factor: 0.0,
+            ..cfg()
+        };
+        assert!(zero < half && half < full, "{zero} {half} {full}");
+        // 係数 0 は word の学習を切ったのと同じ（phrase の加点は残る）
+        assert_eq!(zero, learned_bonus(&store, &f, no_word, &ctx));
+        assert!(zero > 0);
+    }
+
+    #[test]
+    fn mismatch_factor_is_not_applied_against_the_same_role() {
+        // 初めて/始めて をどちらも動詞にすると、役割が同じなので弱めない
+        let f = fixture();
+        let dir = tempfile::tempdir().unwrap();
+        let store = open_store(&dir, &f);
+        let mut p = pool(&f);
+        p[0].segments[0].pos_id = f.verb;
+        for _ in 0..3 {
+            store.record(&commit(&p[1], work_context(&f)), None, TODAY);
+        }
+        let bonus = |cfg: LearningConfig| {
+            let ranker = LearningRanker::new(Arc::clone(&store), None, cfg);
+            let r = rank(&ranker, &f, &work_context(&f), false, p.clone());
+            3000 - score_of(&r, "始めて知った")
+        };
+        assert_eq!(bonus(mismatch_cfg(0.0)), bonus(cfg()));
+    }
+
+    #[test]
+    fn mismatch_factor_is_not_applied_without_a_rival_in_the_span() {
+        // 同じ区間に違う表記がなければ、対抗はない
+        let f = fixture();
+        let only = cand(
+            vec![seg("始", "はじ", f.noun), seg("知った", "しった", f.verb)],
+            0,
+        );
+        let rivals = span_rivals(std::slice::from_ref(&only));
+        assert!(rivals.values().all(|r| r.first_other.is_none()));
+        assert!(
+            rivals
+                .values()
+                .all(|r| r.rival_of(r.first.surface).is_none())
+        );
+    }
+
+    #[test]
+    fn rival_is_the_first_different_surface_in_slice_order() {
+        let f = fixture();
+        let noun = |s: &str| cand(vec![seg(s, "し", f.noun)], 0);
+        let verb = |s: &str| cand(vec![seg(s, "し", f.verb)], 0);
+        let cands = vec![noun("死"), verb("為"), noun("氏"), noun("死")];
+        let rivals = span_rivals(&cands);
+        let r = rivals[&(0, "し".len())];
+        // 死 の対抗は、最初の違う表記 為（動詞）。氏 と 為 の対抗は、いちばん手前の 死
+        assert_eq!(r.rival_of("死").unwrap().surface, "為");
+        assert_eq!(r.rival_of("氏").unwrap().surface, "死");
+        assert_eq!(r.rival_of("為").unwrap().surface, "死");
+        assert_eq!(r.rival_of("死").unwrap().pos_id, f.verb);
+    }
+
+    #[test]
+    fn rewriter_candidates_are_not_rivals() {
+        let f = fixture();
+        let mut rewriter = cand(vec![seg("1", "し", f.noun)], 0);
+        rewriter.origin = CandidateOrigin::Rewriter {
+            name: "x",
+            format: 0,
+        };
+        let cands = vec![rewriter, cand(vec![seg("死", "し", f.noun)], 0)];
+        let rivals = span_rivals(&cands);
+        let r = rivals[&(0, "し".len())];
+        assert_eq!(r.first.surface, "死");
+        assert!(r.first_other.is_none());
+    }
+
+    #[test]
+    fn role_factor_depends_on_the_pos_names() {
+        const NOUN: &str = "名詞,普通名詞,一般,*,*,*";
+        assert_eq!(word_role_factor(Some(WORK_VERB), Some(NOUN), 0.25), 0.25);
+        assert_eq!(word_role_factor(Some(NOUN), Some(NOUN), 0.25), 1.0);
+        assert_eq!(word_role_factor(Some(NOUN), None, 0.25), 1.0);
+        assert_eq!(word_role_factor(None, Some(NOUN), 0.25), 1.0);
+    }
+
+    #[test]
+    fn mismatch_factor_must_be_in_range() {
+        for (value, ok) in [
+            ("0", true),
+            ("0.5", true),
+            ("1.0", true),
+            ("1.5", false),
+            ("-0.1", false),
+        ] {
+            let mut kv = BTreeMap::new();
+            kv.insert(
+                "learning.word_role_mismatch_factor".to_string(),
+                value.to_string(),
+            );
+            assert_eq!(LearningConfig::from_kv(&kv).is_ok(), ok, "{value}");
+        }
     }
 }

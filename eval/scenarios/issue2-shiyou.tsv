@@ -1,0 +1,19 @@
+# issue2-shiyou: 名詞「使用」を選んだ記録が、動詞の意志形「しよう」と競り合いに持ち込まれない（#2、ADR 0044）。
+# 「ツールを使用」を確定しても、別の文の「観察しよう」「検証しよう」「いこう→行こう」は変わらない。
+# 「観察使用」を読み全体で確定した直後に「観察使用」が 1 位になることは期待しない（ユーザー決定）。別の読み（検証しよう）には広がらないことだけ検査する。
+# learning.word_role_mismatch_factor = 1.0（弱めない）で流すと、LM なしで 3、5、6、7、10 の probe が落ちる。
+# いこう→以降 は LM ありでは学習がなくても 1 位になる（LM の判断。ADR 0044 §3.3）ので、LM なしでだけ期待にする。
+# 実行: ikari-eval --ranker full --scenario eval/scenarios/issue2-shiyou.tsv   （LM あり版は 16、18 行目が落ちるのが想定）
+step	context	reading	surface	expect
+probe		かんさつしよう	観察しよう	top1
+commit		つーるをしよう	ツールを使用
+probe		かんさつしよう	観察しよう	top1
+commit		どうぐをしよう	道具を使用
+commit		ぶひんをしよう	部品を使用
+probe		かんさつしよう	観察しよう	top1
+probe		けんしょうしよう	検証しよう	top1
+probe		いこう	行こう	top1
+commit		これいこう	これ以降
+probe		いこう	行こう	top1
+commit		かんさつしよう	観察使用
+probe		けんしょうしよう	検証しよう	top1
