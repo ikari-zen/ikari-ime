@@ -5,6 +5,8 @@ use std::fmt;
 
 use ikari_dict_format::Fnv1a64;
 
+use crate::carry::{FieldMode, parse_field};
+
 /// `expected` に複数の正解を書くときの区切り（表記には使えない）
 pub const ALT_SEPARATOR: char = '|';
 /// 機械的な検証で「期待値が候補に出ない」と判定されたケースの印。既定では評価から除く
@@ -94,6 +96,10 @@ pub struct EvalCase {
     pub context: String,
     /// 右文脈（`right` 列。なければ空）
     pub right: String,
+    /// `field` 列（ADR 0046）。なければ None で、`context` をそのまま左文脈にする
+    pub field: Option<FieldMode>,
+    /// `history` 列（ADR 0046）。同じセッションの確定の表記の連結。なければ空
+    pub history: String,
     pub reading: String,
     /// 正解の表記。`|` で区切って別解を書ける（`alternatives()`）
     pub expected: String,
@@ -143,6 +149,8 @@ const COL_TAGS: &str = "tags";
 const COL_PROFILE: &str = "profile";
 const COL_CONTEXT: &str = "context";
 const COL_RIGHT: &str = "right";
+const COL_FIELD: &str = "field";
+const COL_HISTORY: &str = "history";
 const COL_READING: &str = "reading";
 const COL_EXPECTED: &str = "expected";
 const COL_NOTE: &str = "note";
@@ -227,6 +235,7 @@ pub fn load_cases(tsv: &str) -> Result<Vec<EvalCase>, EvalSetError> {
             return Err(err(line_no, format!("duplicate id `{id}`")));
         }
         validate_expected(get(COL_EXPECTED)).map_err(|m| err(line_no, m))?;
+        let field = parse_field(get(COL_FIELD)).map_err(|m| err(line_no, m))?;
         let split = if cols.contains_key(COL_SPLIT) {
             match get(COL_SPLIT).trim() {
                 "" => Some(split_of_id(id)),
@@ -247,6 +256,8 @@ pub fn load_cases(tsv: &str) -> Result<Vec<EvalCase>, EvalSetError> {
                 .map(str::to_owned),
             context: get(COL_CONTEXT).to_owned(),
             right: get(COL_RIGHT).to_owned(),
+            field,
+            history: get(COL_HISTORY).to_owned(),
             reading: get(COL_READING).to_owned(),
             expected: get(COL_EXPECTED).to_owned(),
             note: get(COL_NOTE).to_owned(),
@@ -335,6 +346,24 @@ a-01\t話題\t怒り, 学習\tit\t\tひんし\t瀕死\tメモ\tignored
         assert_eq!(c[0].expected, "品詞");
         assert_eq!(c[0].context, "c");
         assert_eq!(c[0].kind, "話題");
+    }
+
+    #[test]
+    fn field_and_history_columns_are_optional() {
+        let head = "id\tkind\tcontext\treading\texpected";
+        let without = load_cases(&format!("{head}\nx\tk\tc\tr\te\n")).unwrap();
+        assert_eq!((without[0].field, without[0].history.as_str()), (None, ""));
+        let tsv = format!(
+            "{head}\tfield\thistory\na\tk\t\tr\te\tavailable\t前の文\nb\tk\t\tr\te\tnone\t前の文\nc\tk\tc\tr\te\t\t\n"
+        );
+        let c = load_cases(&tsv).unwrap();
+        assert_eq!(c[0].field, Some(FieldMode::Available));
+        assert_eq!(c[0].history, "前の文");
+        assert_eq!(c[1].field, Some(FieldMode::None));
+        assert_eq!(c[2].field, None);
+        let e = load_cases(&format!("{head}\tfield\nx\tk\tc\tr\te\tmaybe\n")).unwrap_err();
+        assert_eq!(e.line, 2);
+        assert!(e.message.contains("field"), "{e}");
     }
 
     #[test]

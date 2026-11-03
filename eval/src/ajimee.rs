@@ -103,6 +103,8 @@ pub fn load_ajimee(text: &str) -> Result<Vec<EvalCase>, EvalSetError> {
             profile: None,
             context: context.to_owned(),
             right: String::new(),
+            field: None,
+            history: String::new(),
             reading: normalize_reading(input),
             expected,
             note: String::new(),
