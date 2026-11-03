@@ -3,6 +3,7 @@
 pub mod analysis;
 pub mod candidate;
 pub mod context;
+pub mod context_carry;
 pub mod converter;
 pub mod dict;
 pub mod emoji;
@@ -22,6 +23,9 @@ pub use analysis::{
 };
 pub use candidate::{Candidate, CandidateOrigin, Segment};
 pub use context::{Commit, Context};
+pub use context_carry::{
+    CarryJoint, CarryParams, ComposedLeft, FieldLeft, LeftOrigin, LeftSources, compose_left,
+};
 pub use converter::{
     AdverbNounRule, CommitEvent, CompoundWordRule, Conversion, ConvertError, ConvertOptions,
     Converter, ConverterBuilder, KatakanaLikeRule, LmBudget, NounSuffixRule, NounSuruRule,
