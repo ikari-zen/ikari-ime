@@ -44,7 +44,6 @@ use crate::panel::{AnchorSource, PanelSide};
 use crate::postal::PostalLookupRequest;
 use crate::settings::{
     SettingsChange, SettingsEntry, SettingsError, engine_settings_differ, preset_name,
-    shares_context,
 };
 use crate::shortcode::{ShortcodeEntry, ShortcodeTable, jis_ascii};
 use crate::types::{
@@ -102,6 +101,10 @@ pub const BACKGROUND_POLL_INTERVAL_MS: u32 = 20;
 /// キー割り当てでモードを頼んでから macOS の通知が来るまでの許容（今の `keySwitchWindow`）。
 pub const KEY_SWITCH_WINDOW: Duration = Duration::from_secs(1);
 
+/// Bundle ID とセッションの ID の対応を覚える数の上限（ADR 0046 E4）。動作に効かない上限なので計測しない。
+/// エンジンの `SESSION_LIMIT` より小さく、日常に開くアプリの数より大きい
+const SESSION_ID_MEMORY_MAX: usize = 64;
+
 /// いまの入力先（IMK のコントローラ 1 つ分）。
 struct Client {
     machine: InputStateMachine,
@@ -132,6 +135,8 @@ pub struct Shell {
     romaji: RomajiSource,
     client: Option<Client>,
     last_session_id: u64,
+    /// Bundle ID → セッションの ID（使うたびに末尾へ。`SESSION_ID_MEMORY_MAX` を超えたら古いものから忘れる。メモリだけ）
+    session_ids: Vec<(String, u64)>,
 
     input_mode: InputMode,
     english: EnglishMode,
@@ -188,6 +193,7 @@ impl Shell {
             romaji,
             client: None,
             last_session_id: 0,
+            session_ids: Vec::new(),
             input_mode: InputMode::Japanese,
             english: EnglishMode::new(),
             key_switch_requested_at: None,
@@ -362,6 +368,23 @@ impl Shell {
         self.last_session_id
     }
 
+    /// そのアプリのセッションの ID。覚えていれば同じ ID（エンジンの休止と再開で、30 分以内の履歴が続く。ADR 0046 A1）。
+    /// Bundle ID が取れない（空）ときは、どのアプリか分からないので使い回さず、いつも新しい ID
+    fn session_id_for(&mut self, bundle_id: &str) -> u64 {
+        if bundle_id.is_empty() {
+            return self.next_session_id();
+        }
+        let id = match self.session_ids.iter().position(|(b, _)| b == bundle_id) {
+            Some(index) => self.session_ids.remove(index).1,
+            None => self.next_session_id(),
+        };
+        self.session_ids.push((bundle_id.to_string(), id));
+        if self.session_ids.len() > SESSION_ID_MEMORY_MAX {
+            self.session_ids.remove(0);
+        }
+        id
+    }
+
     fn activate(&mut self, bundle_id: &str, secure: bool) -> Vec<ShellAction> {
         // 手で編集した settings.tsv に気づく（stat 1 回）。idle のときに反映する
         self.reload_settings();
@@ -383,15 +406,14 @@ impl Shell {
         Vec::new()
     }
 
-    /// 新しい入力先（IMK のコントローラを作るのと同じ）。セッションの ID を振り直す
+    /// 新しい入力先（IMK のコントローラを作るのと同じ）。セッションの ID は、同じアプリなら使い回す
     fn make_client(&mut self, bundle_id: &str) -> Client {
         self.refresh_keymap();
         let settings = self.settings.shared();
         let session = SessionInfo {
-            session_id: self.next_session_id(),
+            session_id: self.session_id_for(bundle_id),
             client_bundle_id: bundle_id.to_string(),
             secure: false,
-            share_context: shares_context(&settings, bundle_id),
         };
         let engine: Arc<dyn MachineEngine> = self.engine.clone();
         let mut machine = InputStateMachine::new(
@@ -636,10 +658,6 @@ impl Shell {
         let Some(client) = &mut self.client else {
             return;
         };
-        // 共有の可否は入力の途中でも変えてよい（idle になるまで待たない）
-        client
-            .machine
-            .set_share_context(shares_context(&settings, &client.bundle_id));
         let composer = (settings.input_method != client.machine.settings().input_method)
             .then(|| Composer::new(settings.input_method, romaji));
         if client.machine.reconfigure(settings, keymap, composer) {

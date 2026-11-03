@@ -1,17 +1,16 @@
-//! 文脈の読み取り（ADR 0015）: 休止と再開、履歴の文字数、最近の確定と借りる文脈、share_context、secure
+//! 文脈の読み取り（ADR 0015、0046）: 休止と再開、履歴の文字数、ほかのアプリから借りないこと、左文脈の組み立て、secure
 
 use super::*;
 
 use crate::context_limits::ContextLimits;
 
-fn begin_with(e: &Engine, session: u64, secure: bool, share: bool) {
+fn begin_with(e: &Engine, session: u64, secure: bool) {
     let r = send(
         e,
         envelope::Body::BeginSession(pb::BeginSession {
             session_id: session,
             client_bundle_id: "test".into(),
             secure,
-            share_context: share,
         }),
     );
     assert!(matches!(r, envelope::Body::Ack(_)), "{r:?}");
@@ -48,8 +47,8 @@ fn history_len(e: &Engine, session: u64) -> usize {
     lock_mutex(&e.inner.sessions)[&session].history.len()
 }
 
-/// 周辺テキストなしで変換し、LM が受けた (左文脈, 借りたか) を返す
-fn convert_context(e: &Engine, mock: &Arc<MockLm>, session: u64) -> (String, bool) {
+/// 周辺テキストなしで変換し、LM が受けた左文脈を返す
+fn convert_context(e: &Engine, mock: &Arc<MockLm>, session: u64) -> String {
     *mock.last_context.lock().unwrap() = None;
     convert(e, session, READING, 0);
     mock.last_context
@@ -59,14 +58,14 @@ fn convert_context(e: &Engine, mock: &Arc<MockLm>, session: u64) -> (String, boo
         .expect("the ranker saw a context")
 }
 
-/// 周辺テキストつきで変換し、LM が受けた (左文脈, 借りたか) を返す
+/// 周辺テキストつきで変換し、LM が受けた左文脈を返す
 fn convert_with_surrounding(
     e: &Engine,
     mock: &Arc<MockLm>,
     session: u64,
     left: &str,
     available: bool,
-) -> (String, bool) {
+) -> String {
     *mock.last_context.lock().unwrap() = None;
     send(
         e,
@@ -89,25 +88,17 @@ fn convert_with_surrounding(
         .expect("the ranker saw a context")
 }
 
-fn short_limits() -> ContextLimits {
-    ContextLimits {
-        borrow_window: Duration::from_millis(150),
-        recent_commits_ttl: Duration::from_millis(400),
-        ..ContextLimits::DEFAULT
-    }
-}
-
 #[test]
 fn begin_with_the_same_id_keeps_the_history() {
     let (e, _mock) = engine(0);
-    begin_with(&e, 1, false, false);
+    begin_with(&e, 1, false);
     commit_text(&e, 1, "今日は");
-    begin_with(&e, 1, false, false);
+    begin_with(&e, 1, false);
     assert_eq!(history_len(&e, 1), 1);
     // secure が変わったら切る
-    begin_with(&e, 1, true, false);
+    begin_with(&e, 1, true);
     assert_eq!(history_len(&e, 1), 0);
-    begin_with(&e, 1, false, false);
+    begin_with(&e, 1, false);
     commit_text(&e, 1, "晴れ");
     assert_eq!(history_len(&e, 1), 1);
 }
@@ -115,7 +106,7 @@ fn begin_with_the_same_id_keeps_the_history() {
 #[test]
 fn end_session_pauses_and_begin_resumes_with_the_history() {
     let (e, mock) = engine(0);
-    begin_with(&e, 1, false, false);
+    begin_with(&e, 1, false);
     commit_text(&e, 1, "今日は");
     end(&e, 1);
     {
@@ -132,9 +123,9 @@ fn end_session_pauses_and_begin_resumes_with_the_history() {
         error_code(&send(&e, commit_text_req(1, "x"))),
         ErrorCode::UnknownSession
     );
-    begin_with(&e, 1, false, false);
+    begin_with(&e, 1, false);
     assert!(lock_mutex(&e.inner.sessions)[&1].paused_at.is_none());
-    assert_eq!(convert_context(&e, &mock, 1), ("今日は".to_owned(), false));
+    assert_eq!(convert_context(&e, &mock, 1), "今日は");
 }
 
 #[test]
@@ -147,8 +138,8 @@ fn a_paused_session_is_dropped_after_the_ttl() {
             ..ContextLimits::DEFAULT
         },
     );
-    begin_with(&e, 1, false, false);
-    begin_with(&e, 2, false, false);
+    begin_with(&e, 1, false);
+    begin_with(&e, 2, false);
     commit_text(&e, 1, "今日は");
     end(&e, 1);
     // TTL の前は残る。動いている 2 は消えない
@@ -164,7 +155,7 @@ fn a_paused_session_is_dropped_after_the_ttl() {
 #[test]
 fn the_default_ttl_is_thirty_minutes() {
     let (e, _mock) = engine(0);
-    begin_with(&e, 1, false, false);
+    begin_with(&e, 1, false);
     end(&e, 1);
     e.inner
         .expire_context(Instant::now() + Duration::from_secs(29 * 60));
@@ -184,7 +175,7 @@ fn history_is_capped_by_characters_not_count() {
             ..ContextLimits::DEFAULT
         },
     );
-    begin_with(&e, 1, false, false);
+    begin_with(&e, 1, false);
     // 1 文字ずつ 40 回。件数の上限（32）では切れず、文字数（10）で切れる
     for _ in 0..40 {
         commit_text(&e, 1, "あ");
@@ -203,12 +194,12 @@ fn history_is_capped_by_characters_not_count() {
     }
     // 件数 32 を超えても、文字数の上限までは持つ
     set_limits(&e, ContextLimits::DEFAULT);
-    begin_with(&e, 2, false, false);
+    begin_with(&e, 2, false);
     for _ in 0..100 {
         commit_text(&e, 2, "あ");
     }
     assert_eq!(history_len(&e, 2), 100);
-    let (left, _) = convert_context(&e, &mock, 2);
+    let left = convert_context(&e, &mock, 2);
     assert_eq!(left.chars().count(), 100);
 }
 
@@ -222,175 +213,99 @@ fn a_single_long_commit_is_kept() {
             ..ContextLimits::DEFAULT
         },
     );
-    begin_with(&e, 1, false, false);
+    begin_with(&e, 1, false);
     commit_text(&e, 1, "あいうえお");
     assert_eq!(history_len(&e, 1), 1);
 }
 
 #[test]
-fn an_empty_field_borrows_the_other_apps_recent_commit() {
+fn another_apps_commit_never_enters_the_left_context() {
+    // ADR 0046 E5: ほかのアプリ（ほかのセッション）の確定は、空の欄の文脈にならない
     let (e, mock) = engine(0);
-    begin_with(&e, 1, false, true);
-    begin_with(&e, 2, false, true);
+    begin_with(&e, 1, false);
+    begin_with(&e, 2, false);
     commit_text(&e, 1, "明日のリリース");
-    assert_eq!(
-        convert_context(&e, &mock, 2),
-        ("明日のリリース".to_owned(), true)
-    );
-    // 自分の履歴があれば、それが左文脈で、借りたことにはならない
-    assert_eq!(
-        convert_context(&e, &mock, 1),
-        ("明日のリリース".to_owned(), false)
-    );
+    // 周辺テキストが取れない欄
+    assert_eq!(convert_context(&e, &mock, 2), "");
+    // 取れていて左が空の欄、空白だけの欄
+    assert_eq!(convert_with_surrounding(&e, &mock, 2, "", true), "");
+    assert_eq!(convert_with_surrounding(&e, &mock, 2, " ", true), " ");
+    // 自分の履歴は今までどおり
+    assert_eq!(convert_context(&e, &mock, 1), "明日のリリース");
+    // 休止したセッションの確定も貸さない
+    end(&e, 1);
+    assert_eq!(convert_context(&e, &mock, 2), "");
 }
 
 #[test]
-fn it_does_not_borrow_when_the_field_has_its_own_context() {
+fn coming_back_to_an_app_continues_its_history_within_the_pause_ttl() {
+    // ADR 0046 A1: shell-core が同じアプリに同じ ID を使い回す。アプリ A(1) → B(2) → A(1)
     let (e, mock) = engine(0);
-    begin_with(&e, 1, false, true);
-    begin_with(&e, 2, false, true);
-    commit_text(&e, 1, "別のアプリの文");
-    // 同じ入力欄の履歴がある
-    commit_text(&e, 2, "こちらの文");
-    assert_eq!(
-        convert_context(&e, &mock, 2),
-        ("こちらの文".to_owned(), false)
-    );
-    // 周辺テキストが取れている（空でも available なら文頭として扱い、借りない）
-    begin_with(&e, 3, false, true);
-    assert_eq!(
-        convert_with_surrounding(&e, &mock, 3, "", true),
-        (String::new(), false)
-    );
-    // 周辺テキストが取れない (available=false) なら借りる
-    begin_with(&e, 4, false, true);
-    let (left, borrowed) = convert_with_surrounding(&e, &mock, 4, "", false);
-    assert!(borrowed && left.contains("別のアプリの文"), "{left}");
-}
-
-#[test]
-fn borrowed_commits_are_joined_in_time_order() {
-    let (e, mock) = engine(0);
-    begin_with(&e, 1, false, true);
-    begin_with(&e, 2, false, true);
-    begin_with(&e, 3, false, true);
-    commit_text(&e, 1, "一つ目。");
-    commit_text(&e, 2, "二つ目。");
-    assert_eq!(
-        convert_context(&e, &mock, 3),
-        ("一つ目。二つ目。".to_owned(), true)
-    );
-}
-
-#[test]
-fn the_borrow_window_and_the_recent_ttl_expire() {
-    let (e, mock) = engine(0);
-    set_limits(&e, short_limits());
-    begin_with(&e, 1, false, true);
-    begin_with(&e, 2, false, true);
-    commit_text(&e, 1, "借りる文");
-    assert!(convert_context(&e, &mock, 2).1, "inside the window");
-    std::thread::sleep(Duration::from_millis(200));
-    assert_eq!(
-        convert_context(&e, &mock, 2),
-        (String::new(), false),
-        "outside the borrow window"
-    );
-    // 10 分（ここでは 400ms）を過ぎたら「最近の確定」からも消える
-    assert_eq!(lock_mutex(&e.inner.recent).len(), 1);
+    begin_with(&e, 1, false);
+    commit_text(&e, 1, "Aの文。");
+    end(&e, 1);
+    begin_with(&e, 2, false);
+    commit_text(&e, 2, "Bの文。");
+    end(&e, 2);
+    // 29 分後の見回りでは残り、戻ると A の履歴だけが続く（B の文は入らない）
     e.inner
-        .expire_context(Instant::now() + Duration::from_millis(500));
-    assert!(lock_mutex(&e.inner.recent).is_empty());
+        .expire_context(Instant::now() + Duration::from_secs(29 * 60));
+    begin_with(&e, 1, false);
+    assert_eq!(convert_context(&e, &mock, 1), "Aの文。");
+    commit_text(&e, 1, "続き");
+    assert_eq!(convert_context(&e, &mock, 1), "Aの文。続き");
 }
 
 #[test]
-fn recent_commits_are_capped_by_characters() {
-    let (e, _mock) = engine(0);
-    set_limits(
-        &e,
-        ContextLimits {
-            recent_commits_max_chars: 6,
-            ..ContextLimits::DEFAULT
-        },
-    );
-    begin_with(&e, 1, false, true);
-    for s in ["あああ", "いいい", "ううう"] {
-        commit_text(&e, 1, s);
-    }
-    let recent = lock_mutex(&e.inner.recent);
-    let all: Vec<&str> = recent.iter().map(|r| r.surface.as_str()).collect();
-    assert_eq!(all, ["いいい", "ううう"]);
-}
-
-#[test]
-fn share_context_false_neither_lends_nor_borrows() {
+fn coming_back_after_the_pause_ttl_starts_without_context() {
     let (e, mock) = engine(0);
-    begin_with(&e, 1, false, false); // 除外されたアプリ
-    begin_with(&e, 2, false, true);
-    begin_with(&e, 3, false, true);
-    commit_text(&e, 1, "秘密の文");
-    commit_text(&e, 3, "共有の文");
-    assert!(
-        lock_mutex(&e.inner.recent)
-            .iter()
-            .all(|r| r.session_id != 1),
-        "not recorded"
-    );
-    // 2 は共有の文だけを借りる
-    assert_eq!(convert_context(&e, &mock, 2), ("共有の文".to_owned(), true));
-    // 除外のセッションは借りない（自分の履歴だけ）
-    begin_with(&e, 4, false, false);
-    assert_eq!(convert_context(&e, &mock, 4), (String::new(), false));
+    begin_with(&e, 1, false);
+    commit_text(&e, 1, "Aの文。");
+    end(&e, 1);
+    begin_with(&e, 2, false);
+    e.inner
+        .expire_context(Instant::now() + Duration::from_secs(31 * 60));
+    assert!(!lock_mutex(&e.inner.sessions).contains_key(&1));
+    begin_with(&e, 1, false);
+    assert_eq!(convert_context(&e, &mock, 1), "");
+}
+
+#[test]
+fn carry_fill_adds_the_same_sessions_history_to_a_short_left() {
+    // ADR 0046 E1・E2: 左が履歴の接尾辞なら、足りないぶんを履歴から足す。既定（fill = 0）では足さない
+    let (e, mock) = engine(0);
+    begin_with(&e, 1, false);
+    commit_text(&e, 1, "品詞の話をした");
+    commit_text(&e, 1, "次は");
+    assert_eq!(convert_with_surrounding(&e, &mock, 1, "次は", true), "次は");
+    let mut limits = ContextLimits::DEFAULT;
+    limits.carry.fill_chars = 40;
+    limits.carry.joint = ikari_core::CarryJoint::Period;
+    set_limits(&e, limits);
     assert_eq!(
-        convert_context(&e, &mock, 1),
-        ("秘密の文".to_owned(), false)
+        convert_with_surrounding(&e, &mock, 1, "次は", true),
+        "品詞の話をした。次は"
     );
+    // 空になった入力欄（送信のあと）。履歴のあとに区切りが入る
+    assert_eq!(
+        convert_with_surrounding(&e, &mock, 1, "", true),
+        "品詞の話をした次は。"
+    );
+    // 左が履歴の接尾辞でなければ足さない
+    assert_eq!(convert_with_surrounding(&e, &mock, 1, "別の", true), "別の");
 }
 
 #[test]
-fn secure_commits_go_nowhere_and_secure_sessions_do_not_borrow() {
+fn secure_commits_go_nowhere() {
     let (e, mock) = engine(0);
-    begin_with(&e, 1, true, true);
-    begin_with(&e, 2, false, true);
-    begin_with(&e, 3, false, true);
+    begin_with(&e, 1, true);
+    begin_with(&e, 2, false);
     commit_text(&e, 1, "パスワード");
-    commit_text(&e, 3, "ふつうの文");
-    assert!(
-        lock_mutex(&e.inner.recent)
-            .iter()
-            .all(|r| r.session_id != 1)
-    );
+    commit_text(&e, 2, "ふつうの文");
     assert_eq!(history_len(&e, 1), 0);
-    assert_eq!(
-        convert_context(&e, &mock, 2),
-        ("ふつうの文".to_owned(), true)
-    );
-    // secure の変換は何も借りない
+    // secure の変換は何も入れない
     *mock.last_context.lock().unwrap() = None;
     convert(&e, 1, READING, 0);
     let seen = mock.last_context.lock().unwrap().clone();
-    assert!(seen.is_none_or(|(left, borrowed)| left.is_empty() && !borrowed));
-}
-
-#[test]
-fn a_commit_from_a_paused_session_is_still_lent() {
-    let (e, mock) = engine(0);
-    begin_with(&e, 1, false, true);
-    begin_with(&e, 2, false, true);
-    commit_text(&e, 1, "移る前の文");
-    end(&e, 1);
-    assert_eq!(
-        convert_context(&e, &mock, 2),
-        ("移る前の文".to_owned(), true)
-    );
-}
-
-#[test]
-fn the_share_flag_follows_the_latest_begin() {
-    let (e, mock) = engine(0);
-    begin_with(&e, 1, false, true);
-    begin_with(&e, 2, false, true);
-    commit_text(&e, 1, "文");
-    begin_with(&e, 2, false, false);
-    assert_eq!(convert_context(&e, &mock, 2), (String::new(), false));
+    assert!(seen.is_none_or(|left| left.is_empty()));
 }

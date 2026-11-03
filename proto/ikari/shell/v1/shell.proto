@@ -255,6 +255,9 @@ message PanelPlacement { Rect frame = 1; PanelSide side = 2; }
 // ---------------------------------------------------------------- 設定（ikari_settings_validate / rewrite。ADR 0041 §2.3）
 
 message SettingsSnapshot {
+  // 10 は context_shared_exclude（ADR 0046 で廃止）。番号と名前は再利用しない
+  reserved 10;
+  reserved "context_shared_exclude";
   InputMethodKind input_method = 1;
   KeymapPreset keymap_preset = 2;
   map<string, string> keymap_overrides = 3;
@@ -264,7 +267,6 @@ message SettingsSnapshot {
   uint32 engine_idle_unload_secs = 7;
   uint32 engine_lm_deadline_ms = 8;
   uint32 engine_convert_wait_ms = 9;
-  repeated string context_shared_exclude = 10;
   bool emoji_shortcode = 11;
   repeated string emoji_shortcode_exclude = 12;
   bool emoji_small_letters = 13;

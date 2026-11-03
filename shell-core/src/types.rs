@@ -557,8 +557,6 @@ pub struct SettingsSnapshot {
     pub engine_lm_deadline_ms: u32,
     /// `engine.convert_wait_ms`
     pub engine_convert_wait_ms: u32,
-    /// `context.shared_exclude`（順を保つ）
-    pub context_shared_exclude: Vec<String>,
     /// `emoji.shortcode`
     pub emoji_shortcode: bool,
     /// `emoji.shortcode_exclude`

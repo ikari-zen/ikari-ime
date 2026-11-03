@@ -239,7 +239,6 @@ impl Harness {
                 session_id: SESSION_ID,
                 client_bundle_id: "com.apple.TextEdit".into(),
                 secure,
-                share_context: false,
             },
             Arc::new(TickClock(Mutex::new(0))),
         );
@@ -613,18 +612,6 @@ fn activate_if_needed_begins_once_until_deactivate() {
         })
         .collect();
     assert_eq!(kinds, ["begin", "end", "begin"]);
-}
-
-#[test]
-fn share_context_changes_resend_the_session_only_when_it_changes() {
-    let mut h = Harness::new();
-    h.machine.set_share_context(false);
-    assert!(h.engine.calls().is_empty());
-    h.machine.set_share_context(true);
-    assert!(matches!(
-        h.engine.calls().as_slice(),
-        [Call::BeginSession(session)] if session.share_context && session.session_id == SESSION_ID
-    ));
 }
 
 // ---------------------------------------------------------------- 設定の反映（ReconfigureTests）

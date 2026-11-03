@@ -74,9 +74,6 @@ fn apply_line(
     }
 
     match key {
-        KEY_CONTEXT_SHARED_EXCLUDE => ok(parse_bundle_id_list(value)
-            .map(|list| settings.context_shared_exclude = list)
-            .is_some()),
         KEY_EMOJI_SHORTCODE_EXCLUDE => ok(parse_bundle_id_list(value)
             .map(|list| settings.emoji_shortcode_exclude = list)
             .is_some()),
@@ -198,7 +195,6 @@ pub fn is_known_key(key: &str) -> bool {
         | KEY_ENGINE_IDLE_UNLOAD_SECS
         | KEY_ENGINE_LM_DEADLINE_MS
         | KEY_ENGINE_CONVERT_WAIT_MS
-        | KEY_CONTEXT_SHARED_EXCLUDE
         | KEY_EMOJI_SHORTCODE
         | KEY_EMOJI_SHORTCODE_EXCLUDE
         | KEY_EMOJI_SMALL_LETTERS
@@ -221,16 +217,6 @@ pub fn is_acceptable(key: &str, value: &str) -> bool {
         return false;
     }
     parse_tsv(&format!("{key}\t{value}")).issues.is_empty()
-}
-
-/// そのアプリで、ほかのアプリと文脈を貸し借りしてよいか。Bundle ID が取れない（空）ときは貸し借りしない
-/// （どのアプリか分からないので、除外かどうかを確かめられない）
-pub fn shares_context(settings: &SettingsSnapshot, bundle_id: &str) -> bool {
-    !bundle_id.is_empty()
-        && !settings
-            .context_shared_exclude
-            .iter()
-            .any(|id| id == bundle_id)
 }
 
 /// `engine.*` と、エンジンが起動時に読む `postal.japanese`、`postal.te_prefix`、`unicode.notation`、
@@ -287,10 +273,6 @@ pub fn effective_entries(settings: &SettingsSnapshot) -> Vec<(String, String)> {
             (
                 KEY_ENGINE_CONVERT_WAIT_MS,
                 settings.engine_convert_wait_ms.to_string(),
-            ),
-            (
-                KEY_CONTEXT_SHARED_EXCLUDE,
-                join(&settings.context_shared_exclude),
             ),
             (
                 KEY_EMOJI_SHORTCODE,
@@ -533,7 +515,6 @@ mod tests {
         shell_only.postal_english = true;
         shell_only.emoji_shortcode = true;
         shell_only.candidate_hide_when_confident = false;
-        shell_only.context_shared_exclude.clear();
         assert!(!engine_settings_differ(&base, &shell_only));
     }
 
@@ -580,10 +561,6 @@ mod tests {
             "engine.idle_unload_secs=300".into(),
             "engine.lm_deadline_ms=300".into(),
             "engine.convert_wait_ms=30".into(),
-            format!(
-                "context.shared_exclude={}",
-                DEFAULT_CONTEXT_SHARED_EXCLUDE.join(",")
-            ),
             "emoji.shortcode=off".into(),
             format!(
                 "emoji.shortcode_exclude={}",
@@ -675,77 +652,18 @@ mod tests {
         assert!(!is_acceptable("paging.wrap\n", "true"));
     }
 
-    // ---- SharedExcludeSettingsTests
+    // ---- 廃止した `context.shared_exclude`（ADR 0046）
 
     #[test]
-    fn default_shared_exclude_covers_password_managers_and_terminals() {
-        let settings = default_snapshot();
-        for id in DEFAULT_CONTEXT_SHARED_EXCLUDE {
-            assert!(!shares_context(&settings, id), "{id}");
-        }
-        assert!(shares_context(&settings, "com.apple.TextEdit"));
-    }
-
-    #[test]
-    fn empty_bundle_id_does_not_share() {
-        assert!(!shares_context(&default_snapshot(), ""));
-    }
-
-    #[test]
-    fn parses_the_list_and_keeps_order() {
-        let result = parse("context.shared_exclude\tcom.a.b, com.c.d ,com.a.b,,com.e-f_g\n");
-        assert!(result.issues.is_empty());
-        assert_eq!(
-            result.snapshot.context_shared_exclude,
-            vec!["com.a.b", "com.c.d", "com.e-f_g"]
-        );
-        assert!(!shares_context(&result.snapshot, "com.c.d"));
-        // 既定の一覧は置き換わる
-        assert!(shares_context(&result.snapshot, "com.apple.Terminal"));
-    }
-
-    #[test]
-    fn empty_value_means_no_exclusion() {
-        let result = parse("context.shared_exclude\t\n");
-        assert!(result.issues.is_empty());
-        assert!(result.snapshot.context_shared_exclude.is_empty());
-    }
-
-    #[test]
-    fn invalid_characters_warn_and_keep_the_default() {
-        let result = parse("context.shared_exclude\tcom.a b;rm\n");
+    fn a_leftover_shared_exclude_line_is_an_unknown_key_warning() {
+        // 読み込みは止まらず、ほかの行は効く。警告は行番号とキー名と種類だけ（値は含めない）
+        let result = parse("context.shared_exclude\tcom.a.b\npaging.size\t5\n");
+        assert_eq!(result.snapshot.page_size, 5);
         assert_eq!(result.issues.len(), 1);
-        assert_eq!(
-            result.snapshot.context_shared_exclude,
-            default_snapshot().context_shared_exclude
-        );
-    }
-
-    #[test]
-    fn empty_list_round_trips() {
-        let mut settings = default_snapshot();
-        settings.context_shared_exclude = vec![];
-        let tsv = effective_entries(&settings)
-            .iter()
-            .map(|(k, v)| format!("{k}\t{v}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        assert!(parse(&tsv).snapshot.context_shared_exclude.is_empty());
-    }
-
-    #[test]
-    fn shared_exclude_acceptability() {
-        assert!(is_known_key("context.shared_exclude"));
-        assert!(is_acceptable("context.shared_exclude", "com.a.b,com.c.d"));
-        assert!(is_acceptable("context.shared_exclude", ""));
-        assert!(!is_acceptable("context.shared_exclude", "com.a b"));
-    }
-
-    #[test]
-    fn exclude_change_does_not_restart_the_engine() {
-        let mut changed = default_snapshot();
-        changed.context_shared_exclude.clear();
-        assert!(!engine_settings_differ(&default_snapshot(), &changed));
+        assert_eq!(result.issues[0].line, 1);
+        assert_eq!(result.issues[0].key, "context.shared_exclude");
+        assert_eq!(result.issues[0].kind, SettingsIssueKind::UnknownKey);
+        assert!(!is_known_key("context.shared_exclude"));
     }
 
     // ---- 郵便番号、Unicode、曜日、候補の隠し方、絵文字

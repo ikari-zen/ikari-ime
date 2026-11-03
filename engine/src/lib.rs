@@ -65,7 +65,7 @@ use crate::convert::candidate_kind;
 use crate::data::{DataWatch, SaveState, load_emoji_reply};
 use crate::log::EngineLog;
 use crate::segments::{LookJob, LookaheadQueue, RealSeam, SegEntry, SegmentSeam, layout_reply};
-use crate::session::{RecentCommit, Session};
+use crate::session::Session;
 
 pub use crate::lock::{EngineLock, LockError};
 pub use crate::settings::{SETTINGS_FILE_NAME, Settings};
@@ -273,7 +273,6 @@ impl Engine {
             watch,
             emoji: RwLock::new(Arc::new(emoji)),
             sessions: Mutex::new(HashMap::new()),
-            recent: Mutex::new(Vec::new()),
             limits: RwLock::new(ContextLimits::DEFAULT),
             conversions: Mutex::new(ConversionTable::default()),
             cache: Mutex::new(PrefetchCache::default()),
@@ -394,8 +393,6 @@ struct Inner {
     /// 絵文字のショートコードの表（読み込み済みの返事。`emoji.tsv` の更新で入れ替える）
     emoji: RwLock<Arc<pb::EmojiTableReply>>,
     sessions: Mutex<HashMap<u64, Session>>,
-    /// 全アプリの確定を時刻順に持つ（ADR 0015 D5。メモリだけ）
-    recent: Mutex<Vec<RecentCommit>>,
     /// 文脈の量と時間（本番は既定値。テストだけが短くする）
     limits: RwLock<ContextLimits>,
     conversions: Mutex<ConversionTable>,

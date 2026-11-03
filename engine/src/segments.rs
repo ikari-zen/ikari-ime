@@ -580,7 +580,7 @@ impl crate::Inner {
         }
         history.reverse();
         let stack = self.stack();
-        let ctx = Self::build_context(&stack, false, Vec::new(), r.context.as_ref());
+        let ctx = self.context_for(&stack, false, Vec::new(), r.context.as_ref());
         let before = self.lm_stats();
         let seg = self
             .seam(&stack)

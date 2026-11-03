@@ -17,7 +17,7 @@
       "rust_only": "殻の判断（IkariInputController・AppContext。Swift は IkariIME にありテストから呼べない）",
       "steps": [
         {"event": {"type": "deactivate"}, "expect": [{"type": "hide_candidates"}], "engine": [{"type": "end_session"}]},
-        {"event": {"type": "activate", "bundle_id": "com.apple.TextEdit"}, "expect": [], "engine": [{"type": "begin_session", "client_bundle_id": "com.apple.TextEdit", "secure": false, "share_context": true}, {"type": "hello", "shell_version": "scenario", "timeout_ms": 2000}, {"type": "relay", "timeout_ms": 3000}]},
+        {"event": {"type": "activate", "bundle_id": "com.apple.TextEdit"}, "expect": [], "engine": [{"type": "begin_session", "client_bundle_id": "com.apple.TextEdit", "secure": false}, {"type": "hello", "shell_version": "scenario", "timeout_ms": 2000}, {"type": "relay", "timeout_ms": 3000}]},
         {"type_text": "a"}
       ]
     },
@@ -26,7 +26,7 @@
       "from": "IkariInputController.swift init (nextSessionID)",
       "rust_only": "殻の判断（IkariInputController・AppContext。Swift は IkariIME にありテストから呼べない）",
       "steps": [
-        {"event": {"type": "activate", "bundle_id": "com.apple.Safari"}, "expect": [], "engine": [{"type": "begin_session", "client_bundle_id": "com.apple.Safari", "secure": false, "share_context": true}, {"type": "hello", "shell_version": "scenario", "timeout_ms": 2000}, {"type": "relay", "timeout_ms": 3000}]},
+        {"event": {"type": "activate", "bundle_id": "com.apple.Safari"}, "expect": [], "engine": [{"type": "begin_session", "client_bundle_id": "com.apple.Safari", "secure": false}, {"type": "hello", "shell_version": "scenario", "timeout_ms": 2000}, {"type": "relay", "timeout_ms": 3000}]},
         {"type_text": "a"}
       ]
     },
@@ -60,7 +60,7 @@
       "setup": {"client": {"secure": true}},
       "steps": [
         {"host": {"type": "input_mode_changed", "mode_id": "com.apple.inputmethod.Roman"}, "expect": [{"type": "hide_candidates"}], "engine": []},
-        {"press": "a", "expect": [{"type": "pass_through"}], "engine": [{"type": "begin_session", "client_bundle_id": "com.apple.TextEdit", "secure": true, "share_context": true}]}
+        {"press": "a", "expect": [{"type": "pass_through"}], "engine": [{"type": "begin_session", "client_bundle_id": "com.apple.TextEdit", "secure": true}]}
       ]
     },
     {

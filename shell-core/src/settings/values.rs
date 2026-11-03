@@ -44,7 +44,6 @@ pub struct SettingsValues {
     pub idle_unload_secs: u32,
     pub lm_deadline_ms: u32,
     pub convert_wait_ms: u32,
-    pub context_shared_exclude: Vec<String>,
     pub emoji_shortcode: bool,
     pub emoji_shortcode_exclude: Vec<String>,
     pub emoji_small_letters: bool,
@@ -69,7 +68,6 @@ impl Default for SettingsValues {
             idle_unload_secs: d.engine_idle_unload_secs,
             lm_deadline_ms: d.engine_lm_deadline_ms,
             convert_wait_ms: d.engine_convert_wait_ms,
-            context_shared_exclude: d.context_shared_exclude,
             emoji_shortcode: d.emoji_shortcode,
             emoji_shortcode_exclude: d.emoji_shortcode_exclude,
             emoji_small_letters: d.emoji_small_letters,
@@ -144,9 +142,6 @@ impl SettingsValues {
         }
         if let Some(n) = ranged(KEY_ENGINE_CONVERT_WAIT_MS, &CONVERT_WAIT_RANGE) {
             values.convert_wait_ms = n;
-        }
-        if let Some(list) = get(KEY_CONTEXT_SHARED_EXCLUDE).and_then(parse_bundle_id_list) {
-            values.context_shared_exclude = list;
         }
         values.emoji_shortcode = toggle(KEY_EMOJI_SHORTCODE, values.emoji_shortcode);
         if let Some(list) = get(KEY_EMOJI_SHORTCODE_EXCLUDE).and_then(parse_bundle_id_list) {
@@ -335,9 +330,6 @@ pub enum SettingsIntent {
     EmojiSmallLetters(bool),
     EmojiShortcode(bool),
     /// 入力欄の文字列（空白は削る。使えない文字があれば `InvalidBundleId`）
-    AddSharedExclude(String),
-    RemoveSharedExclude(String),
-    ResetSharedExclude,
     AddEmojiShortcodeExclude(String),
     RemoveEmojiShortcodeExclude(String),
     ResetEmojiShortcodeExclude,
@@ -536,19 +528,6 @@ impl SettingsValues {
                 switch_changed(self.emoji_small_letters, *on, KEY_EMOJI_SMALL_LETTERS)
             }
             I::EmojiShortcode(on) => switch_changed(self.emoji_shortcode, *on, KEY_EMOJI_SHORTCODE),
-            I::AddSharedExclude(raw) => add_to_list(
-                &self.context_shared_exclude,
-                raw,
-                KEY_CONTEXT_SHARED_EXCLUDE,
-            ),
-            I::RemoveSharedExclude(id) => {
-                remove_from_list(&self.context_shared_exclude, id, KEY_CONTEXT_SHARED_EXCLUDE)
-            }
-            I::ResetSharedExclude => reset_list(
-                &self.context_shared_exclude,
-                &DEFAULT_CONTEXT_SHARED_EXCLUDE,
-                KEY_CONTEXT_SHARED_EXCLUDE,
-            ),
             I::AddEmojiShortcodeExclude(raw) => add_to_list(
                 &self.emoji_shortcode_exclude,
                 raw,
@@ -662,7 +641,7 @@ mod tests {
         snapshot.page_size = 7;
         snapshot.engine_lm = false;
         snapshot.engine_idle_unload_secs = 60;
-        snapshot.context_shared_exclude = vec!["com.a.b".into()];
+        snapshot.emoji_shortcode_exclude = vec!["com.a.b".into()];
         snapshot
             .keymap_overrides
             .insert("convert.hiragana".into(), "none".into());
@@ -677,7 +656,7 @@ mod tests {
         assert_eq!(values.page_size, 7);
         assert!(!values.lm_enabled);
         assert_eq!(values.idle_unload_secs, 60);
-        assert_eq!(values.context_shared_exclude, vec!["com.a.b"]);
+        assert_eq!(values.emoji_shortcode_exclude, vec!["com.a.b"]);
         assert_eq!(
             values.keymap_bindings.get("convert.hiragana"),
             Some(&KeymapBinding::None)
@@ -699,7 +678,7 @@ mod tests {
             ("engine.lm", "maybe"),
             ("keymap.reconvert", "ctrl+ctrl+r"),
             ("keymap.unknown", "ctrl+r"),
-            ("context.shared_exclude", "a b"),
+            ("emoji.shortcode_exclude", "a b"),
         ]);
         assert_eq!(values, SettingsValues::default());
         let edge = SettingsValues::from_entries([
@@ -804,63 +783,7 @@ mod tests {
     }
 
     #[test]
-    fn shared_exclude_add_remove_reset() {
-        let v = SettingsValues::default();
-        let (key, value) = set_of(plan(
-            &v,
-            SettingsIntent::AddSharedExclude("  com.x.y \n".into()),
-        ));
-        assert_eq!(key, "context.shared_exclude");
-        assert_eq!(
-            value,
-            format!("{},com.x.y", DEFAULT_CONTEXT_SHARED_EXCLUDE.join(","))
-        );
-        // 空は無視、重複は足さない
-        assert_eq!(
-            plan(&v, SettingsIntent::AddSharedExclude("  ".into())),
-            Ok(None)
-        );
-        assert_eq!(
-            plan(
-                &v,
-                SettingsIntent::AddSharedExclude("com.apple.Terminal".into())
-            ),
-            Ok(None)
-        );
-        // 使えない文字、複数は断る
-        for bad in ["com.a b", "a/b", "a.b,c.d"] {
-            assert_eq!(
-                plan(&v, SettingsIntent::AddSharedExclude(bad.into())),
-                Err(PlanError::InvalidBundleId),
-                "{bad}"
-            );
-        }
-        // 全部消すと空の値
-        let one = SettingsValues {
-            context_shared_exclude: vec!["com.x.y".into()],
-            ..Default::default()
-        };
-        assert_eq!(
-            set_of(plan(
-                &one,
-                SettingsIntent::RemoveSharedExclude("com.x.y".into())
-            )),
-            pair("context.shared_exclude", "")
-        );
-        assert_eq!(
-            plan(&one, SettingsIntent::RemoveSharedExclude("com.none".into())),
-            Ok(None)
-        );
-        // 既定に戻す: 既定なら何もしない。違えば行を消す
-        assert_eq!(plan(&v, SettingsIntent::ResetSharedExclude), Ok(None));
-        assert_eq!(
-            reset_of(plan(&one, SettingsIntent::ResetSharedExclude)),
-            "context.shared_exclude"
-        );
-    }
-
-    #[test]
-    fn emoji_shortcode_exclude_behaves_like_the_shared_list() {
+    fn emoji_shortcode_exclude_add_remove_reset() {
         let v = SettingsValues::default();
         let (key, value) = set_of(plan(
             &v,

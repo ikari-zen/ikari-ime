@@ -187,7 +187,8 @@ fn history_is_the_left_context_when_the_surrounding_text_is_unavailable() {
         right: String::new(),
         available: false,
     };
-    let ctx = Inner::build_context(&stack, false, history.clone(), Some(&unavailable));
+    let carry = crate::context_limits::ContextLimits::DEFAULT.carry;
+    let ctx = Inner::build_context(&stack, false, history.clone(), Some(&unavailable), &carry);
     assert_eq!(ctx.left_text, "今日は晴れ");
     assert_eq!(ctx.history.len(), 2);
     let available = pb::SurroundingText {
@@ -195,12 +196,12 @@ fn history_is_the_left_context_when_the_surrounding_text_is_unavailable() {
         right: "後ろ".into(),
         available: true,
     };
-    let ctx = Inner::build_context(&stack, false, history.clone(), Some(&available));
+    let ctx = Inner::build_context(&stack, false, history.clone(), Some(&available), &carry);
     assert_eq!(
         (ctx.left_text.as_str(), ctx.right_text.as_str()),
         ("本文", "後ろ")
     );
-    let ctx = Inner::build_context(&stack, true, history, Some(&available));
+    let ctx = Inner::build_context(&stack, true, history, Some(&available), &carry);
     assert!(ctx.secure && ctx.left_text.is_empty() && ctx.history.is_empty());
 }
 

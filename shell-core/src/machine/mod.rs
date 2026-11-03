@@ -116,8 +116,6 @@ pub struct SessionInfo {
     pub session_id: u64,
     pub client_bundle_id: String,
     pub secure: bool,
-    /// ほかのアプリと「最近の確定」を貸し借りしてよいか（ADR 0015 D6）
-    pub share_context: bool,
 }
 
 impl SessionInfo {
@@ -126,7 +124,6 @@ impl SessionInfo {
             session_id: self.session_id,
             client_bundle_id: self.client_bundle_id.clone(),
             secure: self.secure,
-            share_context: self.share_context,
         }
     }
 }
@@ -309,15 +306,6 @@ impl InputStateMachine {
             self.cached_context = None;
             self.episode = None;
         }
-        self.begin_session();
-    }
-
-    /// 「文脈を共有しないアプリ」の設定が変わったとき（ADR 0015 D6）。変わったときだけエンジンへ知らせる。
-    pub fn set_share_context(&mut self, share: bool) {
-        if share == self.session.share_context {
-            return;
-        }
-        self.session.share_context = share;
         self.begin_session();
     }
 

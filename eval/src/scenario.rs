@@ -1,8 +1,7 @@
 //! `--scenario <tsv>`: 学習のシナリオ（ADR 0002 §15.1）。
 //!
 //! 列は `step`（`commit` / `probe`）、`context`、`reading`、`surface`。省略可能な列 `expect`
-//! （`top1`（既定）/ `not-top1`）は probe の期待を表す。もう1つの省略可能な列 `borrowed`
-//! （`true` / `false`。既定 false）は、`context` をほかのアプリから借りた左文脈として渡す（ADR 0015）。
+//! （`top1`（既定）/ `not-top1`）は probe の期待を表す。
 //! 一時的なユーザーディレクトリで、`commit` を順に実行して学習させ、`probe` の順位を調べる。
 //! 学習の実体（LearningStore と LearningRanker）は Converter の側にあり、
 //! ここでは [`ScenarioHost`] を通して呼ぶ（モックでテストできる）。
@@ -22,9 +21,6 @@ const COL_CONTEXT: &str = "context";
 const COL_READING: &str = "reading";
 const COL_SURFACE: &str = "surface";
 const COL_EXPECT: &str = "expect";
-const COL_BORROWED: &str = "borrowed";
-const BORROWED_TRUE: &str = "true";
-const BORROWED_FALSE: &str = "false";
 const STEP_COMMIT: &str = "commit";
 const STEP_PROBE: &str = "probe";
 const EXPECT_TOP1: &str = "top1";
@@ -54,9 +50,6 @@ pub struct ScenarioStep {
     pub reading: String,
     pub surface: String,
     pub expect: Expect,
-    /// `context` をほかの入力欄から借りたものとして渡す（`Context::left_borrowed`。ADR 0015）。
-    /// 省略可能な列 `borrowed`（`true` / `false`、既定 false）
-    pub borrowed: bool,
 }
 
 fn err(line: usize, message: impl Into<String>) -> EvalSetError {
@@ -132,18 +125,6 @@ pub fn load_scenario(tsv: &str) -> Result<Vec<ScenarioStep>, EvalSetError> {
                 ));
             }
         };
-        let borrowed = match get(COL_BORROWED).trim() {
-            "" | BORROWED_FALSE => false,
-            BORROWED_TRUE => true,
-            other => {
-                return Err(err(
-                    line_no,
-                    format!(
-                        "borrowed must be `{BORROWED_TRUE}` or `{BORROWED_FALSE}`, got `{other}`"
-                    ),
-                ));
-            }
-        };
         if kind == StepKind::Commit && expect != Expect::Top1 {
             return Err(err(line_no, "`expect` applies to probe steps only"));
         }
@@ -154,7 +135,6 @@ pub fn load_scenario(tsv: &str) -> Result<Vec<ScenarioStep>, EvalSetError> {
             reading: get(COL_READING).to_owned(),
             surface: get(COL_SURFACE).to_owned(),
             expect,
-            borrowed,
         });
     }
     if header.is_none() {
@@ -301,9 +281,7 @@ impl<F: FnMut(CommitEvent)> ConverterHost<'_, F> {
         step: &ScenarioStep,
         max_rank: usize,
     ) -> (ikari_core::Conversion, Option<usize>, Option<String>) {
-        let ctx = Context::new()
-            .with_left_text(step.context.as_str())
-            .with_left_borrowed(step.borrowed);
+        let ctx = Context::new().with_left_text(step.context.as_str());
         let deadline = self.lm_deadline.map(|d| Instant::now() + d);
         let mut conversion = match deadline {
             Some(d) => self.converter.convert_until(&step.reading, &ctx, Some(d)),
@@ -403,20 +381,6 @@ probe\t技術文書で\tひんし\t瀕死\tnot-top1
         let steps = load_scenario("step\tcontext\treading\tsurface\nprobe\t\tあ\t亜\n").unwrap();
         assert_eq!(steps[0].expect, Expect::Top1);
         assert_eq!(steps[0].context, "");
-    }
-
-    #[test]
-    fn borrowed_column_is_optional_and_defaults_to_false() {
-        let head = "step\tcontext\treading\tsurface\tborrowed\n";
-        let steps = load_scenario(&format!(
-            "{head}commit\tc\tr\ts\ttrue\nprobe\tc\tr\ts\t\nprobe\tc\tr\ts\tfalse\n"
-        ))
-        .unwrap();
-        let flags: Vec<bool> = steps.iter().map(|s| s.borrowed).collect();
-        assert_eq!(flags, [true, false, false]);
-        let without = load_scenario("step\tcontext\treading\tsurface\nprobe\tc\tr\ts\n").unwrap();
-        assert!(!without[0].borrowed);
-        assert!(load_scenario(&format!("{head}probe\tc\tr\ts\tyes\n")).is_err());
     }
 
     #[test]

@@ -15,7 +15,6 @@ pub const KEY_ENGINE_LM: &str = "engine.lm";
 pub const KEY_ENGINE_IDLE_UNLOAD_SECS: &str = "engine.idle_unload_secs";
 pub const KEY_ENGINE_LM_DEADLINE_MS: &str = "engine.lm_deadline_ms";
 pub const KEY_ENGINE_CONVERT_WAIT_MS: &str = "engine.convert_wait_ms";
-pub const KEY_CONTEXT_SHARED_EXCLUDE: &str = "context.shared_exclude";
 pub const KEY_EMOJI_SHORTCODE: &str = "emoji.shortcode";
 pub const KEY_EMOJI_SHORTCODE_EXCLUDE: &str = "emoji.shortcode_exclude";
 pub const KEY_EMOJI_SMALL_LETTERS: &str = "emoji.small_letters";
@@ -33,7 +32,7 @@ pub const VALUE_TRUE: &str = "true";
 pub const VALUE_FALSE: &str = "false";
 /// `keymap.<操作>` で割り当てを外すときの値
 pub const VALUE_NONE: &str = "none";
-/// `context.shared_exclude` などの値の区切り
+/// `emoji.shortcode_exclude` などの値の区切り
 pub const LIST_SEPARATOR: char = ',';
 
 // ---- 既定値と範囲
@@ -57,18 +56,6 @@ pub const DEFAULT_UNICODE_NOTATION: bool = false;
 pub const DEFAULT_DATE_WEEKDAY_DATES: bool = false;
 /// 2026-10-28 ユーザー決定（#69）
 pub const DEFAULT_CANDIDATE_HIDE_WHEN_CONFIDENT: bool = true;
-
-/// `context.shared_exclude` の既定（ADR 0015 §3.5 Q6）。パスワード管理: 1Password 8、Bitwarden デスクトップ、
-/// キーチェーンアクセス。ターミナル: Terminal、iTerm2、WezTerm、Ghostty
-pub const DEFAULT_CONTEXT_SHARED_EXCLUDE: [&str; 7] = [
-    "com.1password.1password",
-    "com.bitwarden.desktop",
-    "com.apple.keychainaccess",
-    "com.apple.Terminal",
-    "com.googlecode.iterm2",
-    "com.github.wez.wezterm",
-    "com.mitchellh.ghostty",
-];
 
 /// `emoji.shortcode_exclude` の既定（ADR 0027 §8.1 Q17）。ターミナル: Terminal、iTerm2、WezTerm、Ghostty
 pub const DEFAULT_EMOJI_SHORTCODE_EXCLUDE: [&str; 4] = [
@@ -124,7 +111,6 @@ pub fn default_snapshot() -> SettingsSnapshot {
         engine_idle_unload_secs: DEFAULT_ENGINE_IDLE_UNLOAD_SECS,
         engine_lm_deadline_ms: DEFAULT_ENGINE_LM_DEADLINE_MS,
         engine_convert_wait_ms: DEFAULT_ENGINE_CONVERT_WAIT_MS,
-        context_shared_exclude: strings(&DEFAULT_CONTEXT_SHARED_EXCLUDE),
         emoji_shortcode: DEFAULT_EMOJI_SHORTCODE,
         emoji_shortcode_exclude: strings(&DEFAULT_EMOJI_SHORTCODE_EXCLUDE),
         emoji_small_letters: DEFAULT_EMOJI_SMALL_LETTERS,

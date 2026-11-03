@@ -91,6 +91,9 @@ message KeymapIntent {
 
 // 画面の操作 1 つ（SettingsIntent）
 message Intent {
+  // 17〜19 は add/remove/reset_shared_exclude（ADR 0046 で廃止）。番号と名前は再利用しない
+  reserved 17, 18, 19;
+  reserved "add_shared_exclude", "remove_shared_exclude", "reset_shared_exclude";
   oneof kind {
     ikari.shell.v1.InputMethodKind input_method = 1;
     ikari.shell.v1.KeymapPreset keymap_preset = 2;
@@ -108,9 +111,6 @@ message Intent {
     bool date_weekday_dates = 14;
     bool emoji_small_letters = 15;
     bool emoji_shortcode = 16;
-    string add_shared_exclude = 17;
-    string remove_shared_exclude = 18;
-    ikari.shell.v1.Empty reset_shared_exclude = 19;
     string add_emoji_shortcode_exclude = 20;
     string remove_emoji_shortcode_exclude = 21;
     ikari.shell.v1.Empty reset_emoji_shortcode_exclude = 22;
