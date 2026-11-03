@@ -17,6 +17,38 @@ pub fn is_content_word(pos_name: &str) -> bool {
     CONTENT_POS1.contains(&pos1) && !NON_CONTENT_POS2.contains(&pos2)
 }
 
+/// 活用形（品詞名の 6 列目）の見出し語の部分を取る位置
+const CONJUGATION_FORM_FIELD: usize = 5;
+/// 活用形の `-` の前の頭と、詳細の区切り（`連用形-一般` の `-`）
+const CONJUGATION_DETAIL_SEPARATOR: char = '-';
+const TERMINAL_FORM: &str = "終止形";
+const ATTRIBUTIVE_FORM: &str = "連体形";
+/// 終止形と連体形を 1 つにまとめた値
+const TERMINAL_OR_ATTRIBUTIVE: &str = "終止・連体形";
+
+/// 活用形の頭（`連用形-一般` -> `連用形`）。終止形と連体形は同じ値にする。活用しない語は `*`
+fn conjugation_form_head(pos_name: &str) -> &str {
+    let form = pos_name
+        .split(POS_FIELD_SEPARATOR)
+        .nth(CONJUGATION_FORM_FIELD)
+        .unwrap_or("*");
+    let head = form
+        .split(CONJUGATION_DETAIL_SEPARATOR)
+        .next()
+        .unwrap_or("*");
+    if head == TERMINAL_FORM || head == ATTRIBUTIVE_FORM {
+        TERMINAL_OR_ATTRIBUTIVE
+    } else {
+        head
+    }
+}
+
+/// 学習の word の加点で「同じ役割の語」とみなすか（ADR 0044 §4）。品詞1 と活用形の頭が両方同じなら真。
+/// 品詞2 以降と活用型は見ない（Sudachi は普通の「行く」「合う」を 非自立可能 にしているため）。
+pub fn same_word_role(a: &str, b: &str) -> bool {
+    pos1(a) == pos1(b) && conjugation_form_head(a) == conjugation_form_head(b)
+}
+
 /// 語が文節の中でどう振る舞うか（ADR 0006 §2.2 の表）
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SegmentRole {
@@ -160,6 +192,57 @@ mod tests {
         // 品詞2 がなければ非自立可能でも数詞でもない
         assert!(is_content_word("名詞"));
         assert!(!is_content_word("名詞のようなもの,一般"));
+    }
+
+    #[test]
+    fn word_role_compares_pos1_and_conjugation_head() {
+        let noun = "名詞,普通名詞,サ変可能,*,*,*";
+        let volitional = "動詞,非自立可能,*,*,サ行変格,意志推量形";
+        assert!(!same_word_role(volitional, noun));
+        // 品詞2 が違っても、品詞1 と活用形が同じなら同じ役割
+        assert!(same_word_role(
+            "名詞,普通名詞,一般,*,*,*",
+            "名詞,固有名詞,地名,一般,*,*"
+        ));
+        assert!(same_word_role(
+            "動詞,非自立可能,*,*,五段-ワ行,終止形-一般",
+            "動詞,一般,*,*,五段-ワ行,終止形-一般"
+        ));
+        // 連用形の詳細は無視する
+        assert!(same_word_role(
+            "動詞,一般,*,*,五段-ラ行,連用形-促音便",
+            "動詞,一般,*,*,五段-ラ行,連用形-一般"
+        ));
+        // 書き（連用形）と下記（名詞）、書き（連用形）と書く（終止形）は違う
+        assert!(!same_word_role(
+            "動詞,一般,*,*,五段-カ行,連用形-一般",
+            "名詞,普通名詞,一般,*,*,*"
+        ));
+        assert!(!same_word_role(
+            "動詞,一般,*,*,五段-カ行,連用形-一般",
+            "動詞,一般,*,*,五段-カ行,終止形-一般"
+        ));
+    }
+
+    #[test]
+    fn word_role_treats_terminal_and_attributive_alike() {
+        assert!(same_word_role(
+            "動詞,一般,*,*,五段-ラ行,終止形-一般",
+            "動詞,一般,*,*,下一段-ア行,連体形-一般"
+        ));
+        assert!(!same_word_role(
+            "動詞,一般,*,*,五段-ラ行,終止形-一般",
+            "動詞,一般,*,*,五段-ラ行,未然形-一般"
+        ));
+    }
+
+    #[test]
+    fn word_role_with_missing_fields() {
+        assert!(same_word_role("名詞", "名詞,普通名詞,一般,*,*,*"));
+        assert!(!same_word_role(
+            "副詞,*,*,*,*,*",
+            "名詞,普通名詞,一般,*,*,*"
+        ));
     }
 
     #[test]
