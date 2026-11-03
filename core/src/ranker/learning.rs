@@ -15,7 +15,6 @@ use std::sync::Arc;
 
 use super::names;
 use super::{RankInput, Ranker, RankerConfigError};
-use crate::analysis::AnalyzedContext;
 use crate::candidate::{Candidate, CandidateOrigin};
 use crate::pos::{is_content_word, same_word_role};
 use crate::user::features::UNCONDITIONAL_WEIGHT;
@@ -341,16 +340,8 @@ impl LearningRanker {
         if input.context.secure || cands.is_empty() || self.store.is_empty() {
             return out;
         }
-        // 借りた左文脈（ほかのアプリの文）は、学習の文脈の特徴量にしない（ADR 0015 Q7）。
-        // 記録のほうも同じく「文脈なし」で残すので、引き当てが食い違わない。
-        let no_context = AnalyzedContext::default();
-        let analysis = if input.context.left_borrowed {
-            &no_context
-        } else {
-            input.analysis
-        };
         let feats = extract_named(
-            analysis,
+            input.analysis,
             self.store.grammar(),
             self.vectors.as_deref(),
             self.store.salt(),
@@ -721,76 +712,9 @@ mod tests {
         );
     }
 
-    fn rank_with(
-        ranker: &LearningRanker,
-        f: &Fixture,
-        analysis: &AnalyzedContext,
-        borrowed: bool,
-    ) -> Vec<Candidate> {
-        let ctx = Context::new().with_left_borrowed(borrowed);
-        let input = RankInput {
-            reading: READING,
-            context: &ctx,
-            grammar: &*f.grammar,
-            analysis,
-            dict: &f.dict,
-            deadline: None,
-        };
-        let mut cands = pool(f);
-        ranker.rank(&input, &mut cands);
-        cands.sort_by_key(|c| c.score);
-        cands
-    }
-
-    #[test]
-    fn borrowed_left_context_is_ranked_as_no_context() {
-        // ADR 0015 Q7: 借りた文脈は、引き当てで「文脈なし」（左文脈が空のときと同じ）になる
-        let f = fixture();
-        let dir = tempfile::tempdir().unwrap();
-        let store = store_with_work_commits(&f, &dir, 3);
-        let ranker = LearningRanker::new(Arc::clone(&store), None, cfg());
-        let empty = rank_with(&ranker, &f, &AnalyzedContext::default(), false);
-        let scores = |r: &[Candidate]| -> Vec<(String, i32)> {
-            r.iter().map(|c| (c.surface.clone(), c.score)).collect()
-        };
-        // 記録と同じ文脈（作業を）でも、借りたものなら空の文脈と同じ点
-        let borrowed_same = rank_with(&ranker, &f, &work_context(&f), true);
-        assert_eq!(scores(&borrowed_same), scores(&empty));
-        let borrowed_other = rank_with(&ranker, &f, &story_context(&f), true);
-        assert_eq!(scores(&borrowed_other), scores(&empty));
-        // 借りていなければ、文脈の効きは今までどおり（同じ文脈のほうが加点が大きい）
-        let own = rank_with(&ranker, &f, &work_context(&f), false);
-        assert_eq!(
-            scores(&own),
-            scores(&rank(&ranker, &f, &work_context(&f), false, pool(&f)))
-        );
-        assert!(score_of(&own, "始めて知った") < score_of(&empty, "始めて知った"));
-    }
-
-    #[test]
-    fn borrowed_context_gets_the_backoff_weight() {
-        // 文脈なしの記録がなければ back-off の重み（ADR 0013）。借りた文脈でも同じ
-        let f = fixture();
-        let dir = tempfile::tempdir().unwrap();
-        let store = store_with_work_commits(&f, &dir, 1);
-        let ranker = LearningRanker::new(Arc::clone(&store), None, cfg());
-        let strong = LearningRanker::new(
-            store,
-            None,
-            LearningConfig {
-                unconditional_weight: 1.0,
-                unconditional_backoff_weight: 1.0,
-                ..cfg()
-            },
-        );
-        let a = rank_with(&ranker, &f, &work_context(&f), true);
-        let b = rank_with(&strong, &f, &work_context(&f), true);
-        assert_eq!(score_of(&a, "始めて知った"), score_of(&b, "始めて知った"));
-    }
-
     #[test]
     fn recording_without_context_leaves_only_unconditional_rows() {
-        // 借りた文脈の確定は、Converter が空の解析で CommitEvent を作る。その行は Unconditional（hash 0）だけ
+        // 空の解析の CommitEvent の行は Unconditional（hash 0）だけ
         let f = fixture();
         let dir = tempfile::tempdir().unwrap();
         let store = open_store(&dir, &f);

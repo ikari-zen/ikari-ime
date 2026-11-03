@@ -115,18 +115,8 @@ impl Conversion {
         Some(CommitEvent {
             reading: self.lattice.key().to_owned(),
             candidate,
-            analysis: self.learning_analysis(),
+            analysis: Arc::clone(&self.analysis),
         })
-    }
-
-    /// 学習の記録に渡す左文脈の解析。借りた左文脈（`left_borrowed`）は「文脈なし」として空にする
-    /// （ADR 0015 Q7。`LearningRanker` の引き当てと揃える）。
-    pub(super) fn learning_analysis(&self) -> Arc<AnalyzedContext> {
-        if self.ctx.left_borrowed {
-            Arc::new(AnalyzedContext::default())
-        } else {
-            Arc::clone(&self.analysis)
-        }
     }
 
     /// §4.6-7: 辞書の候補を pool_size 件、ひらがなとカタカナの候補を加えて rank し、並べ替えて確定する。

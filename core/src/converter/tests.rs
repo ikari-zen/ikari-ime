@@ -1105,24 +1105,6 @@ fn commit_returns_the_event_for_the_chosen_candidate() {
 }
 
 #[test]
-fn commit_event_of_a_borrowed_left_context_has_no_context() {
-    let g = grammar();
-    let mut d = TestDict::new(g.grammar_id());
-    d.add("あ", "亜", ID_NOUN, ID_NOUN, 1000, 0);
-    let c = builder_for(g, d)
-        .analyzer(FixedAnalyzer::new(ID_PARTICLE, 2))
-        .build()
-        .unwrap();
-    let ctx = Context::new()
-        .with_left_text("春に")
-        .with_left_borrowed(true);
-    let mut conv = c.convert("ア", &ctx);
-    conv.page(0);
-    let event = conv.commit(0).unwrap();
-    assert!(event.analysis.tokens.is_empty());
-}
-
-#[test]
 fn commit_on_empty_conversion_is_none() {
     let c = henkan_converter(cost_ranker(), ConvertOptions::default());
     let conv = c.convert("", &Context::new());

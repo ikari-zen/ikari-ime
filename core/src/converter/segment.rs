@@ -468,7 +468,7 @@ impl Segmented {
                 events.push(CommitEvent {
                     reading: reading.to_owned(),
                     candidate: chosen[0].clone(),
-                    analysis: self.whole.learning_analysis(),
+                    analysis: Arc::clone(&self.whole.analysis),
                 });
             }
             return events;
@@ -486,7 +486,7 @@ impl Segmented {
             events.push(CommitEvent {
                 reading: reading.to_owned(),
                 candidate,
-                analysis: self.whole.learning_analysis(),
+                analysis: Arc::clone(&self.whole.analysis),
             });
         }
         // 変えた文節。左文脈は、確定する左の文節の語
@@ -495,11 +495,7 @@ impl Segmented {
             let changed = matches!(choice, SegmentChoice::Candidate(index) if *index != 0);
             let span_reading = &self.layout.spans[seg].reading;
             if changed && !is_literal(candidate) && !span_reading.is_empty() {
-                let analysis = if self.whole.ctx.left_borrowed {
-                    self.whole.learning_analysis()
-                } else {
-                    self.whole.left_context(&left_words).1
-                };
+                let analysis = self.whole.left_context(&left_words).1;
                 events.push(CommitEvent {
                     reading: span_reading.clone(),
                     candidate: candidate.clone(),
