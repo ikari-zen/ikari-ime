@@ -2,10 +2,10 @@
 
 - 状態: 採用（2026-11-03 にユーザーが §12 の Q1〜Q3 を決定。A3 は不採用）。値（`carry_fill_chars`、区切り）は掃引のあとに確認する
 - 日付: 2026-11-03
-- 対象: 新しい `core/src/context_carry.rs`（左文脈を組み立てる純関数と型）、`engine/src/session.rs`（`context_for`、`build_context_borrowing`）、`engine/src/context_limits.rs`（値を 2 つ足す）、`shell-core/src/controller/mod.rs`（アプリごとのセッションの ID を使い回す）、`eval/src/set.rs`・`eval/src/scenario.rs`・`eval/src/args.rs`（列と引数）、`engine/src/settings.rs` と `shell-core/src/settings/`（設定の項目 `context.borrow_window_secs`）、`docs/phase2-contract.md` §3（キーの一覧）、設定アプリ（Swift。表示だけ）、`eval/scripts/`（派生セットを作るスクリプト）、`eval/sets/`、`eval/scenarios/`。proto、LM（`lm/`）、学習の形式は変えない
+- 対象: 新しい `core/src/context_carry.rs`（左文脈を組み立てる純関数と型）、`engine/src/session.rs`（`context_for`、`build_context_borrowing`）、`engine/src/context_limits.rs`（値を 2 つ足す）、`shell-core/src/controller/mod.rs`（アプリごとのセッションの ID を使い回す）、`eval/src/set.rs`・`eval/src/scenario.rs`・`eval/src/args.rs`（列と引数）、`eval/scripts/`（派生セットを作るスクリプト）、`eval/sets/`、`eval/scenarios/`。proto、Swift（設定アプリを含む）、`settings.tsv` の項目、LM（`lm/`）、学習の形式、借りる窓（`BORROW_WINDOW`、2 分）と保持時間（10 分）は変えない
 - 前提: main = dda8fe3。ADR 0015（D1 休止と再開、D5 アプリをまたぐ「最近の確定」と X5、D6 除外、D7 LM の窓 40、D8・Q7 借りた文脈で学習しない）、ADR 0002 §0.4（zenz のプロンプト）
 - タスク: #182（ユーザー決定 2026-11-03: 実機のログは確かめずに進める）
-- 判断の置き場所: Rust の core（組み立ての純関数。eval からも同じ関数を呼ぶため）、engine（どの材料を渡すか、借りる窓の値の解釈と丸め）、shell-core（セッションの ID、設定の値の検証）。Swift は設定アプリの UI（選択肢を出して書くだけ）。UI であることが Swift に置く理由で、判断は持たない
+- 判断の置き場所: Rust の core（組み立ての純関数。eval からも同じ関数を呼ぶため）、engine（どの材料を渡すか）、shell-core（セッションの ID）。OS の API も UI も関わらない。Swift は触らない
 
 ---
 
@@ -44,7 +44,7 @@
 | E2 | **重なりの除去は「左の全体が履歴の末尾と一致するときだけ」**。左が履歴の末尾（接尾辞）なら、履歴のうち左より前の部分を足す。一致しないとき（確定後の編集、アプリの整形、左が古い、カーソルを動かした、入力欄にもとから文がある）は足さない（安全側） |
 | E3 | **つなぎ目**: 足した履歴と、入力欄の左（または読み）のあいだに、**境目だと分かっているときだけ**区切りを入れる。区切りの種類（なし／「。」／改行）は掃引で決める。足した履歴の最後が句読点・閉じ括弧・改行・空白なら何も入れない。同じ入力欄の履歴をそのまま左にする今の経路（取れない入力欄）には入れない（境目かどうか分からない） |
 | E4 | **アプリを行き来しても、同じアプリの履歴を保つ**。shell-core が Bundle ID ごとにセッションの ID を覚えて使い回す（最大 64 アプリ。古いものから忘れる）。engine の D1（休止と再開、30 分）がアプリの行き来でも効くようになる |
-| E5 | **ほかのアプリの文は、今までどおり「入力欄に何もないとき」だけ借りる（X5 を保つ）**。「何もない」に、`available` で左が空（空白だけを含む）を加える。入力欄の左に文字があるときに、その前へほかのアプリの文を足すこと（X1 の形）はしない。借りる窓の既定は **5 分**（ユーザー決定 2026-11-03）。設定 `context.borrow_window_secs` で変えられる（§5.3） |
+| E5 | **ほかのアプリの文は、今までどおり「入力欄に何もないとき」だけ借りる（X5 を保つ）**。「何もない」に、`available` で左が空（空白だけを含む）を加える。入力欄の左に文字があるときに、その前へほかのアプリの文を足すこと（X1 の形）はしない。借りる窓 `BORROW_WINDOW`（2 分）と保持時間（10 分）は**変えない**（ユーザー決定 2026-11-03。§12 Q1） |
 | E6 | **除外とプライバシーの決定は変えない**（ユーザー決定 2026-11-03。A1・A2 を入れるときの条件）。文脈は端末の中（engine のメモリと手元の LM）だけで使い、外へ送らない。`share_context = false` と secure のセッションは、貸さない・借りない（D6）。借りた文脈は学習の文脈に入れない（Q7）。同じセッションの履歴から足したものは、今の「取れない入力欄の履歴」と同じく自分の文脈として扱う（`left_borrowed = false`） |
 | E7 | **組み立ては core の純関数 1 つにする**（`compose_left`）。engine と eval が同じ関数を呼ぶ。eval のセットと scenario に `field`・`history`・`recent` の列を足す |
 | E8 | 契約の PR では `carry_fill_chars = 0`（今と同じ動き）を既定にし、掃引の PR で既定を替えてユーザーに確認する |
@@ -150,34 +150,23 @@ joint(X) = X の最後の文字が { 。 ． . ！ ？ ! ? 、 ， 」 』 ） )
 | **A1（採用）: 同じアプリの ID を使い回す** | shell-core が Bundle ID → セッションの ID を覚える（最大 64。古いものから忘れる）。engine の休止と再開（30 分）がそのまま効く | proto も engine の寿命の決定も変えない。「同じアプリの直前の文」は、ほかのアプリの文より関係が深い | アプリの中で別の入力欄に移っても、同じ履歴が続く（今もアプリを替えなければ同じ）。E2 の一致で、左に文字のある欄には足さない |
 | **A2（採用）: X5 の「何もない」に、`available` で左が空を加える** | Electron 系などで、空の入力欄が `available` を返しても借りる。**「欄が空なら借りる」（X5）の取りこぼしを直すだけで、新しい種類の共有ではない**（空の欄は、取れない欄と同じく文脈が何もない） | 「ブラウザで調べて、空のエディタに書く」で効く | ほかのアプリの文が LM に入る場面が増える（§6） |
 | A3（不採用）: 左が足りないときに、ほかのアプリの文も前に足す | F1 の材料に、同じセッションの履歴のあと、ほかのアプリの文を足す | 「調べながら、もう文がある文書に書く」でも効く | **不採用**（ユーザー決定 2026-11-03）。ほかのアプリの文は、今の文書と文脈が同じだという保証がない。形は X1（本当の文脈の前に、ほかのアプリの文）で、測定で害が大きい。害を測ることもしない |
-| **A4（採用）: 窓を延ばし、設定で変えられるようにする** | 既定を今の 2 分から **5 分（300 秒）** に伸ばす。`context.borrow_window_secs` で 0〜600 秒 | 調べものが数分かかっても届く。借りたくない人は 0 で止められる | オフラインの評価では時間の効きを測れない（実機のログも見ないと決まっている）。既定はユーザーが決めた（2026-11-03）。無関係な文が流れ込む害が出たら、既定を縮める |
+| A4（不採用）: 窓を延ばす（設定で変えられるようにする） | 既定を 2 分から 5 分などに伸ばし、`settings.tsv` の項目で変えられるようにする | 調べものが数分かかっても届く | **不採用**（ユーザー決定 2026-11-03）。窓はほかのアプリの借用だけに効き、オフラインの評価でも実機のログでも測れない。測って縮め直す手段がないなら、広げる根拠が弱い。2 分のまま変えない |
 | A5: アプリの種類で混ぜる相手を選ぶ（X4） | ブラウザ → エディタは混ぜる、など | 害を絞れる | ADR 0015 と同じく、表を保守する根拠がない。採らない |
 
 ### 5.2 別のアプリの話題が流れ込む害の抑え方
 
 1. 入力欄に文字がある、または同じアプリの履歴があるときは、ほかのアプリの文を使わない（X5 を保つ。同じアプリが先）。
-2. 借りるのは直近の借りる窓（既定 5 分。設定で 0〜10 分。§5.3）以内だけ。「最近の確定」の保持（10 分）を超えない。
+2. 借りるのは直近 `BORROW_WINDOW`（2 分。今のまま）以内だけ。
 3. 除外するアプリ（パスワード管理、ターミナル。設定で足せる）と secure は、貸さない・借りない（D6）。
 4. 借りた文脈は学習の文脈に入れない（Q7 を保つ）。一度の流れ込みが、学習の記録として残らない。
 5. 借りた文の後には、E3 の区切りを入れる（別の文書の境目）。
-
-### 5.3 設定 `context.borrow_window_secs`（ユーザー決定 2026-11-03: 既定 5 分、設定で変えられる）
-
-- **書式**: `settings.tsv` の `キー<TAB>値`（今の流儀）。キーは `context.borrow_window_secs`（`context.shared_exclude` と同じ `context.` の並び。時間は `engine.idle_unload_secs` と同じく秒の整数）。
-- **既定**: 300（5 分）。**範囲**: 0〜600。0 は「ほかのアプリの文を借りない」（A2 も含めて借りない。同じアプリの履歴（E1、A1）は効く）。
-- **保持時間との関係**: 借りる窓 ≦ 「最近の確定」の保持時間（`RECENT_COMMITS_TTL`、10 分。ADR 0015 Q4 のユーザー決定）。範囲の上限 600 秒は保持時間と同じにしてあるので、設定でこの関係が崩れることはない。保持時間は設定にしない（借りる以外に使い道がなく、上限を決めれば足りる）。保持時間を借りる窓に合わせて短くする（使わない文を長く持たない）案もあるが、Q4 の決定を変えることになるので、ここでは変えない。保持時間を変えるときは、範囲の上限も同じ値に替える（`context_limits.rs` のテストで `borrow_window ≤ recent_commits_ttl` を確かめ続ける）。
-- **解釈と検証は Rust**:
-  - engine（`engine/src/settings.rs`）が起動時に読み、範囲外は丸め、数でない値は無視して既定にする（`engine.lm_deadline_ms` と同じ扱い）。`ContextLimits.borrow_window` に入れる。
-  - shell-core（`shell-core/src/settings/`）: `defaults.rs` にキーと既定と範囲、`parse.rs` の `is_known_key`・`is_acceptable`（設定アプリが書く前の検証）、`values.rs`（今効いている値）、`engine_settings_differ` に足す。値が変わったら、今の流儀どおりエンジンを起こし直す（`Shutdown{SETTINGS_CHANGED}`）。起こし直すと、メモリの履歴と「最近の確定」は消える（変更の直後に文脈が一度切れるだけで、害はない）。
-- **設定画面**（Swift。UI だけ）: 「文脈」のところ（除外するアプリの一覧の近く）に、選択肢で出す。「借りない／1 分／2 分／5 分（既定）／10 分」。書くのは秒の値。選択肢以外の値（手で書いた 90 など）が入っていたら、そのまま「その他（90 秒）」と見せる。説明の文に「入力欄が空のとき、ほかのアプリで直前に確定した文を、変換の手がかりにする。文は端末の中だけで使い、外へ送らない。除外したアプリとパスワードの欄は使わない」と書く。
-- engine の `BORROW_WINDOW` の定数は、設定がないときの既定（300 秒）にする。
 
 ## 6. プライバシー
 
 - 変わること（1）: **ほかのアプリの文が LM のプロンプトに入る場面が増える**。今は「周辺テキストが取れない・履歴なし」だけだったのが、「取れるが左が空」の入力欄にも広がる（A2）。プロンプトは手元の LM にだけ渡り、外には出ない（NFR-17）。画面に出るのは候補だけで、借りた文字そのものは出ない。
 - 変わること（2）: **アプリに戻ったとき、そのアプリで 30 分以内に書いた文が文脈に残る**（A1）。今も、アプリを替えなければ 30 分残っている。替えたら切れていたのが、切れなくなる。メモリだけで、保存しない（D8）。
 - 変わること（3）: shell-core が、Bundle ID と ID の対応を最大 64 件、メモリに持つ。保存しない。engine には今どおり Bundle ID を渡さない（ログの `app=` は今と同じ）。
-- 変わること（4）: 借りる窓が 2 分から 5 分に延び、利用者が 0〜10 分で選べる（§5.3）。
+- 変わらないこと: 借りる窓（2 分）と保持時間（10 分）。借りる時間の長さは今と同じ。
 - **変えないこと**（ユーザー決定 2026-11-03。A1・A2 を入れる条件）:
   - **文脈は端末の中だけで使い、外へ送らない**。使うのは engine のメモリと手元の LM だけ（NFR-17）。ネットワークに出す経路を足さない。
   - **除外するアプリ（`share_context = false`）と secure の扱いは変えない**。貸さない・借りない（D6）。
@@ -223,7 +212,7 @@ joint(X) = X の最後の文字が { 。 ． . ！ ？ ! ? 、 ， 」 』 ） )
   3. そのうえで、C1・C2・carry-chat の直った数 − C3 の崩れた数 が最大の組を推奨にする。C3 の崩れが C1・C2 の得を上回る `fill` は採らない。
   4. LM ありと LM なしで推奨が分かれたら、LM ありを優先（ikari の普段の構成）し、LM なしの差を併記する。
 - 時間: F1 ではプロンプトが 40 文字を超えないので、LM の応答時間は変わらない見込み。perf の比較（`cargo xtask perf`）を 1 回だけ流して確かめる。
-- 測れないもの: `BORROW_WINDOW` と、A1 の効く頻度（時間とアプリの行き来）。実機のログは見ないと決まっているので、借りる窓はユーザーが決めた（§12 Q1）。
+- 測れないもの: A1 の効く頻度（時間とアプリの行き来）。`BORROW_WINDOW` は今のまま変えないので測らない（§12 Q1）。
 
 ## 8. 契約（変更する関数、型、定数、ファイル）
 
@@ -245,21 +234,18 @@ pub fn compose_left(src: &LeftSources<'_>, p: &CarryParams, max_chars: usize) ->
 
   - `max_chars` は engine の `MAX_CONTEXT_CHARS`（2000）。`LeftOrigin` はテストと、将来のログの出どころの数え方（ADR 0015 §3.7）のため。今回はログに足さない。
 - **engine**
-  - `context_limits.rs`: `CARRY_FILL_CHARS: usize = 0`（契約。掃引で替える）、`CARRY_JOINT: CarryJoint = CarryJoint::None`（同）。`ContextLimits` に `carry: CarryParams` を足す。`BORROW_WINDOW` は 300 秒（5 分）に替える。`ContextLimits::from_settings`（仮の名前）で、設定の `context.borrow_window_secs` を 0〜600 に丸めて入れる。テスト `defaults_follow_adr_0015` を、この ADR の値に合わせて改める。
-  - `settings.rs`: `context.borrow_window_secs` を読む（§5.3）。
+  - `context_limits.rs`: `CARRY_FILL_CHARS: usize = 0`（契約。掃引で替える）、`CARRY_JOINT: CarryJoint = CarryJoint::None`（同）。`ContextLimits` に `carry: CarryParams` を足す。`BORROW_WINDOW` と `RECENT_COMMITS_TTL` は変えない。`fill` と区切りは**利用者の設定ではない**（`settings.tsv` に足さない）。engine の定数で、eval では `--carry-fill`・`--carry-joint` で替えて掃引する。
   - `session.rs`: `build_context_borrowing` の分かれ方を `compose_left` に置き換える（secure の早期の戻りと `right_text` は今のまま）。`context_for` の借りる条件を「secure でない・履歴が空・入力欄が空（取れない、または左が空白だけ）」にする。`borrowed_left` は今のまま（窓と除外の判定）。
-- **shell-core**（設定）: §5.3 の 4 か所。
-- **設定アプリ**（Swift）: §5.3 の選択肢と説明の文。値の検証は shell-core の `is_acceptable` に任せる。
+- **設定画面（Swift）に足すもの: なし**。
 - **shell-core**（`controller/mod.rs`）: `session_ids: Vec<(String, u64)>`（Bundle ID → ID。最大 64。使うたびに末尾へ）を持ち、`make_client` はそこから ID を引き、なければ `next_session_id`。値は 64（engine の `SESSION_LIMIT` より小さく、日常に開くアプリの数より大きい。動作に効かない上限なので計測しない）。
 - **eval**: §7.1 の列と引数。`make_carry_sets.py`、`carry-chat.tsv`、`c182-carryover.tsv`、`eval/tests/scenario_lm.rs` に scenario を足す、`snapshot.sh` に派生セットを足す。
-- 変えないもの: proto（`BeginSession` も `SurroundingText` もそのまま）、Swift の入口（IMK の殻）、`lm/`（`context_chars = 40`）、学習の形式、`Context` の型（`left_text`、`left_borrowed`、`history` のまま）。
+- 変えないもの: proto（`BeginSession` も `SurroundingText` もそのまま）、Swift（入口も設定アプリも）、`settings.tsv` の項目、`lm/`（`context_chars = 40`）、学習の形式、`Context` の型（`left_text`、`left_borrowed`、`history` のまま）。
 
 ## 9. 実装の進め方
 
 1. 契約の PR（1 つ）: core の型と `compose_left`（§3.3 の単体テストつき）、engine の置き換え（既定 `fill = 0` なので今と同じ動き。ただし E5 の借りる条件の広がりと区切りは `fill` に依らないので、`CARRY_JOINT = None` で今の文字列と同じになることをテストで確かめる）、eval の列と引数。
-2. レーンを並行に（worktree）: (a) shell-core の ID の使い回し（E4）、(b) eval の派生セットのスクリプトと carry-chat の下書き、scenario。
+2. レーンを並行に（worktree。§13 の境界）: (A) engine と shell-core、(B) eval。
 3. 掃引の PR: §7.2 を流し、報告を `eval/reports/` に置き、既定の値を替える。ユーザーに表で確認してからマージする。
-4. 借りる窓の設定（§5.3）: engine と shell-core の設定、設定アプリの UI。掃引とは独立なので、契約の PR のあとに別のレーン（Rust）と、設定アプリ（Swift）の PR に分ける。
 
 ## 10. 関係する ADR
 
@@ -276,7 +262,29 @@ pub fn compose_left(src: &LeftSources<'_>, p: &CarryParams, max_chars: usize) ->
 
 ## 12. ユーザーの決定（2026-11-03）
 
-- **Q1. 借りる窓**: 既定は **5 分（300 秒）**。今の 2 分から伸びる。害が出たら縮める。設定 `context.borrow_window_secs`（0〜600 秒、0 で借りない）で変えられるようにする（§5.3）。借りる窓 ≦ 保持時間（10 分）を範囲の上限で守る。
+- **Q1. 借りる窓**: **変えない**。`BORROW_WINDOW` は 2 分のまま、保持時間も 10 分のまま。窓の設定（`settings.tsv` の項目、設定画面）も作らない。理由: 窓はほかのアプリの借用だけに効き、測って縮め直す手段がないなら、広げる根拠が弱い（A4 は不採用）。
 - **Q2. 共有の広げ方**: **両方入れる**。(a) 左が空の `available` の入力欄でも借りる（A2。X5 の取りこぼしを直すだけで、新しい種類の共有ではない）、(b) アプリに戻ったら、そのアプリの 30 分以内の履歴を続ける（A1）。条件として、文脈は端末の中だけで使い外へ送らないこと、除外するアプリと secure の扱いを変えないことを守る（§6）。
 - **Q3. 書きかけの文書に、ほかのアプリの文を前に足す案（A3）**: **不採用**（いらない）。ほかのアプリの文は、今の文書と文脈が同じだという保証がない。害を測る派生セット（旧 C6）も作らない。ほかのアプリの文を使うのは、入力欄が空のとき（X5 と A2）だけ。
 - 値（`carry_fill_chars`、区切りの種類）は、掃引のあとに表で聞く（§7.2）。
+
+## 13. 実装の分け方（契約コミット → 並行レーン 2 つ）
+
+1 つの統合ブランチ（`feat/context-carryover`。Closes #182）に、契約コミットと 2 つのレーンをまとめて 1 つの PR にする。掃引と既定の値の変更は、そのあとの別の PR（§9 の 3）。
+
+**契約コミット**（統合ブランチに先に入れる。レーンはこれを変えない）
+- `core/src/context_carry.rs`（新規）: §8 の型と `compose_left` を**実装まで**入れ、§3.3 の境界例を単体テストにする。純関数で小さく、両方のレーンが同じ振る舞いに依存するので、スタブにしない。
+- `core/src/lib.rs`: モジュールの公開だけ。
+- `engine/src/context_limits.rs`: `CARRY_FILL_CHARS = 0`、`CARRY_JOINT = CarryJoint::None`、`ContextLimits.carry`。既定は今と同じ動き。
+
+**レーン A（engine と shell-core。Rust）**
+- 持つファイル: `engine/src/session.rs`、`engine/src/tests.rs` とその下のセッションのテスト、`shell-core/src/controller/mod.rs`、`shell-core/src/controller/tests.rs`。
+- 内容: `build_context_borrowing` を `compose_left` に置き換える。`context_for` の借りる条件に「`available` で左が空白だけ」を足す（A2）。Bundle ID ごとの ID の使い回し（A1。最大 64）。テストは §7.1 の engine と shell-core の分（`share_context = false`・secure で借りない、A2 の条件、A → B → A で ID が戻る、65 個目で最も古い対応を忘れる、`fill = 0` で今と同じ文字列になる）。
+- 触らない: `core/`、`eval/`、Swift、proto。
+
+**レーン B（eval）**
+- 持つファイル: `eval/src/set.rs`、`eval/src/scenario.rs`、`eval/src/args.rs`、それらを呼ぶ `eval/src/main.rs`・`eval/src/run.rs` の配線、`eval/scripts/make_carry_sets.py`（新規）、`eval/sets/carry-*.tsv`（派生 C1〜C5 と手書きの carry-chat。carry-chat は Claude の下書きで、ユーザーの確認待ちと冒頭に書く）、`eval/scenarios/c182-carryover.tsv`、`eval/tests/scenario_lm.rs`、`eval/scripts/snapshot.sh`。
+- 内容: §7.1 の列（`field`・`history`・`recent`）と引数（`--carry-fill`・`--carry-joint`）。列がないセットとシナリオは今と同じに動くことをテストで確かめる。
+- 触らない: `core/`、`engine/`、`shell-core/`。
+
+**統合（リード）**: 2 つのレーンを統合ブランチにまとめ、フルの `scripts/check.sh`、`eval/scripts/snapshot.sh`（`fill = 0` で全セットが変わらないこと）、`c182-carryover.tsv` を LM あり・なしで流す（`fill = 40` を引数で与えて期待を確かめる）。ADR 0015 の D5 の行に「0046 で改めた」と足すのもここで行う。レーンの間に共有のファイルはないので、まとめるときに衝突は出ない見込み。
+
