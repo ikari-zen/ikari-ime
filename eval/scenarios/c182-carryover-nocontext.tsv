@@ -1,0 +1,6 @@
+# c182-carryover の行 4（ADR 0046 §7.1）: available で左が空、history も空（アプリを替えた直後。借用の廃止で変わる動きの記録）。
+# 期待は付けられない（1 位がどちらでも「記録」）ので、表の「1位」の列だけを読む。probe の合否（OK / NG）は意味を持たない。snapshot には入れない。
+# 実行: ikari-eval --ranker full --carry-fill 40 --scenario eval/scenarios/c182-carryover-nocontext.tsv
+step	context	reading	surface	field	history	expect
+probe		ひんしを	品詞を	available		top1
+probe		ひんしを	瀕死を	available		top1

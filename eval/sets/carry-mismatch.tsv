@@ -1,0 +1,1269 @@
+# C4 carry-mismatch: homophones-ext.tsv の派生（eval/scripts/make_carry_sets.py。ADR 0046 §7.1）。context は元のまま、history を別のケースの文にする（context で終わらない。不変条件: homophones-ext と 1 件も違わない）
+# 手で直さない。元のセットを替えたら作り直す。
+id	kind	tags	profile	context	reading	expected	note	split	source	field	history
+ext-hinshi-1-01	話題	llm		辞書の	ひんし	品詞	ひんしの同音異義語（3字の文脈）	dev	llm-v1	available	この関数の戻り値について、ドキュメントを確認した。公開されている。
+ext-hinshi-1-02	話題	llm		この単語の	ひんし	品詞	ひんしの同音異義語（5字の文脈）	dev	llm-v1	available	このバンドは、ボーカルとギターとドラムの三人で。
+ext-hinshi-1-03	話題	llm		英語の授業で、単語の	ひんし	品詞	ひんしの同音異義語（10字の文脈）	test	llm-v1	available	新人とは思えない落ち着きぶりに、先輩たちは。
+ext-hinshi-1-04	話題	llm		ユーザー辞書に単語を登録するときは	ひんし	品詞	ひんしの同音異義語（17字の文脈）	dev	llm-v1	available	挫折を乗り越える力は、才能よりも本人の。
+ext-hinshi-1-05	話題	llm		日本語の文法で、名詞や動詞のような	ひんし	品詞	ひんしの同音異義語（17字の文脈）	dev	llm-v1	available	ボランティアの人たちが、元受刑者の。
+ext-hinshi-1-06	話題	llm		形態素解析の結果には単語ごとの	ひんし	品詞	ひんしの同音異義語（15字の文脈）	dev	llm-v1	available	計算問題の途中式まで書かれている。
+ext-hinshi-1-07	話題	llm		国語の試験問題を解いていると、名詞、動詞、形容詞といった	ひんし	品詞	ひんしの同音異義語（28字の文脈）	dev	llm-v1	available	抗議文を出したが、まだ先方から。
+ext-hinshi-1-08	話題	llm		辞書登録の画面で、表記と読みと	ひんし	品詞	ひんしの同音異義語（15字の文脈）	dev	llm-v1	available	戦争が終わり、収容所の人々が。
+ext-hinshi-1-09	話題	llm		変換候補の中に正しい語が出なかったので、辞書の登録画面を開いた。読みと表記のほかに	ひんし	品詞	ひんしの同音異義語（41字の文脈）	test	llm-v1	available	目標を達成して大きな成果を。
+ext-hinshi-1-10	話題	llm		文章を単語に分けて、それぞれの	ひんし	品詞	ひんしの同音異義語（15字の文脈）	dev	llm-v1	available	条件を変えない群を置いて。
+ext-hinshi-2-01	話題	llm		もう	ひんし	瀕死	ひんしの同音異義語（2字の文脈）	dev	llm-v1	available	現在サーバーの移行作業を。
+ext-hinshi-2-02	話題	llm		ボスが	ひんし	瀕死	ひんしの同音異義語（3字の文脈）	test	llm-v1	available	症状を詳しく説明して、。
+ext-hinshi-2-03	話題	llm		戦闘で	ひんし	瀕死	ひんしの同音異義語（3字の文脈）	dev	llm-v1	available	ログの保存期間を再検討。
+ext-hinshi-2-04	話題	llm		敵の攻撃を受けて兵士は	ひんし	瀕死	ひんしの同音異義語（11字の文脈）	dev	llm-v1	available	私は健康のために節制を。
+ext-hinshi-2-05	話題	llm		毒を受けて主人公は	ひんし	瀕死	ひんしの同音異義語（9字の文脈）	dev	llm-v1	available	取引先に支払い状況を。
+ext-hinshi-2-06	話題	llm		交通事故で、運ばれてきた男性は	ひんし	瀕死	ひんしの同音異義語（15字の文脈）	dev	llm-v1	available	買い物のリストを作成。
+ext-hinshi-2-07	話題	llm		長引く不況で、地方の中小企業は	ひんし	瀕死	ひんしの同音異義語（15字の文脈）	test	llm-v1	available	議論が白熱して激しく。
+ext-hinshi-2-08	話題	llm		回復薬を使い切ってしまい、仲間はみな	ひんし	瀕死	ひんしの同音異義語（18字の文脈）	test	llm-v1	available	審判は誰に対しても。
+ext-hinshi-2-09	話題	llm		崖から落ちた猟師は全身に大怪我を負い、	ひんし	瀕死	ひんしの同音異義語（19字の文脈）	dev	llm-v1	available	彼女を説得するのは。
+ext-hinshi-2-10	話題	llm		ボスのHPがほとんど残っていない。もう	ひんし	瀕死	ひんしの同音異義語（19字の文脈）	dev	llm-v1	available	資料をまとめて共有。
+ext-kousei-1-01	話題	llm		システムの	こうせい	構成	こうせいの同音異義語（5字の文脈）	dev	llm-v1	available	洗濯物を畳んで収納。
+ext-kousei-1-02	話題	llm		文章の	こうせい	構成	こうせいの同音異義語（3字の文脈）	dev	llm-v1	available	道が渋滞で動けなく。
+ext-kousei-1-03	話題	llm		チームの	こうせい	構成	こうせいの同音異義語（4字の文脈）	test	llm-v1	available	ZIPファイルを。
+ext-kousei-1-04	話題	llm		このプログラムは三つのモジュールで	こうせい	構成	こうせいの同音異義語（17字の文脈）	dev	llm-v1	available	宇宙航空研究開発。
+ext-kousei-1-05	話題	llm		委員会のメンバー	こうせい	構成	こうせいの同音異義語（8字の文脈）	dev	llm-v1	available	桜の木が植わった。
+ext-kousei-1-06	話題	llm		小説の全体の	こうせい	構成	こうせいの同音異義語（6字の文脈）	dev	llm-v1	available	エラーログを確認。
+ext-kousei-1-07	話題	llm		報告書の章立てを見直して、全体の	こうせい	構成	こうせいの同音異義語（16字の文脈）	dev	llm-v1	available	部屋の整理整頓を。
+ext-kousei-1-08	話題	llm		画面のレイアウトを変えるときは、部品の	こうせい	構成	こうせいの同音異義語（19字の文脈）	dev	llm-v1	available	メニューはコース。
+ext-kousei-1-09	話題	llm		資料を作る前に、まず発表の流れを考えた。スライドの	こうせい	構成	こうせいの同音異義語（25字の文脈）	test	llm-v1	available	私は週末に釣りを。
+ext-kousei-1-10	話題	llm		このバンドは、ボーカルとギターとドラムの三人で	こうせい	構成	こうせいの同音異義語（23字の文脈）	dev	llm-v1	available	もともと歴史に。
+ext-kousei-2-01	話題	llm		原稿の誤字を	こうせい	校正	こうせいの同音異義語（6字の文脈）	dev	llm-v1	available	駅伝は長距離の。
+ext-kousei-2-02	話題	llm		ゲラの	こうせい	校正	こうせいの同音異義語（3字の文脈）	dev	llm-v1	available	業務の効率化を。
+ext-kousei-2-03	話題	llm,ambiguous		記事の	こうせい	校正	こうせいの同音異義語（3字の文脈）	test	llm-v1	available	チケットを購入。
+ext-kousei-2-04	話題	llm		出版社で、著者の原稿を	こうせい	校正	こうせいの同音異義語（11字の文脈）	dev	llm-v1	available	お土産はお菓子。
+ext-kousei-2-05	話題	llm		印刷に回す前に、誤植がないか	こうせい	校正	こうせいの同音異義語（14字の文脈）	dev	llm-v1	available	弟は今ゲームを。
+ext-kousei-2-06	話題	llm		新聞記者が書いた記事を、別の担当者が	こうせい	校正	こうせいの同音異義語（18字の文脈）	test	llm-v1	available	毎日続けられる。
+ext-kousei-2-07	話題	llm		本の発売日が近づき、編集部は最後の	こうせい	校正	こうせいの同音異義語（17字の文脈）	dev	llm-v1	available	見事な腕前に。
+ext-kousei-2-08	話題	llm		誤字や脱字がないか確かめるために、全文の	こうせい	校正	こうせいの同音異義語（20字の文脈）	dev	llm-v1	available	果物が出回る。
+ext-kousei-2-09	話題	llm		論文を提出する前に、友人に頼んで文章の	こうせい	校正	こうせいの同音異義語（19字の文脈）	test	llm-v1	available	新しい価値を。
+ext-kousei-2-10	話題	llm		初稿が上がってきた。赤ペンを片手に、さっそく	こうせい	校正	こうせいの同音異義語（22字の文脈）	test	llm-v1	available	測定の結果は。
+ext-kousei-3-01	話題	llm		非行少年の	こうせい	更生	こうせいの同音異義語（5字の文脈）	dev	llm-v1	available	事業の拡大を。
+ext-kousei-3-02	話題	llm		受刑者の	こうせい	更生	こうせいの同音異義語（4字の文脈）	dev	llm-v1	available	週末に掃除を。
+ext-kousei-3-03	話題	llm		罪を償い、	こうせい	更生	こうせいの同音異義語（5字の文脈）	test	llm-v1	available	背景の色は白。
+ext-kousei-3-04	話題	llm		刑務所を出たあとの	こうせい	更生	こうせいの同音異義語（9字の文脈）	test	llm-v1	available	彼は社会人に。
+ext-kousei-3-05	話題	llm		少年院では、入所者の	こうせい	更生	こうせいの同音異義語（10字の文脈）	dev	llm-v1	available	いかなる場合。
+ext-kousei-3-06	話題	llm		彼は周囲の支えのおかげで、立派に	こうせい	更生	こうせいの同音異義語（16字の文脈）	dev	llm-v1	available	エンジンに。
+ext-kousei-3-07	話題	llm		ボランティアの人たちが、元受刑者の	こうせい	更生	こうせいの同音異義語（17字の文脈）	dev	llm-v1	available	自主映画の。
+ext-kousei-3-08	話題	llm		家庭裁判所は、少年の健全な	こうせい	更生	こうせいの同音異義語（13字の文脈）	dev	llm-v1	available	古くからの。
+ext-kousei-3-09	話題	llm		犯罪を繰り返さないように、保護司が付き添って社会での	こうせい	更生	こうせいの同音異義語（26字の文脈）	test	llm-v1	available	倒れた人を。
+ext-kousei-3-10	話題	llm		裁判官は被告に猶予を与えた。本人にも、真剣に	こうせい	更生	こうせいの同音異義語（22字の文脈）	dev	llm-v1	available	予定どおり。
+ext-kousei-4-01	話題	llm		裁判は	こうせい	公正	こうせいの同音異義語（3字の文脈）	dev	llm-v1	available	走る時間を。
+ext-kousei-4-02	話題	llm		どちらにも偏らない	こうせい	公正	こうせいの同音異義語（9字の文脈）	dev	llm-v1	available	先に昼食を。
+ext-kousei-4-03	話題	llm		審査は	こうせい	公正	こうせいの同音異義語（3字の文脈）	dev	llm-v1	available	処理が速く。
+ext-kousei-4-04	話題	llm		取引は	こうせい	公正	こうせいの同音異義語（3字の文脈）	dev	llm-v1	available	彼女の経歴。
+ext-kousei-4-05	話題	llm		試験の採点は	こうせい	公正	こうせいの同音異義語（6字の文脈）	dev	llm-v1	available	顧客満足の。
+ext-kousei-4-06	話題	llm		審判は誰に対しても	こうせい	公正	こうせいの同音異義語（9字の文脈）	dev	llm-v1	available	読みやすい。
+ext-kousei-4-07	話題	llm		選挙を管理する委員会は、中立で	こうせい	公正	こうせいの同音異義語（15字の文脈）	dev	llm-v1	available	社会的な。
+ext-kousei-4-08	話題	llm		競争のルールを守り、	こうせい	公正	こうせいの同音異義語（10字の文脈）	dev	llm-v1	available	モデルの。
+ext-kousei-4-09	話題	llm		誰もが納得できるように、評価の基準は	こうせい	公正	こうせいの同音異義語（18字の文脈）	dev	llm-v1	available	あくまで。
+ext-kousei-4-10	話題	llm		不正があってはいけない。入試の判定はあくまで	こうせい	公正	こうせいの同音異義語（22字の文脈）	dev	llm-v1	available	怪我人を。
+ext-kaitou-1-01	話題	llm		質問への	かいとう	回答	かいとうの同音異義語（4字の文脈）	test	llm-v1	available	芸術家の。
+ext-kaitou-1-02	話題	llm		アンケートの	かいとう	回答	かいとうの同音異義語（6字の文脈）	dev	llm-v1	available	名目上の。
+ext-kaitou-1-03	話題	llm		問い合わせに対する	かいとう	回答	かいとうの同音異義語（9字の文脈）	dev	llm-v1	available	環境問題。
+ext-kaitou-1-04	話題	llm		お客様からのご質問に、担当者が	かいとう	回答	かいとうの同音異義語（15字の文脈）	test	llm-v1	available	節約する。
+ext-kaitou-1-05	話題	llm		メールで届いた要望に、会社として	かいとう	回答	かいとうの同音異義語（16字の文脈）	dev	llm-v1	available	落ちない。
+ext-kaitou-1-06	話題	llm		申込書のこの欄には、希望の日程を	かいとう	回答	かいとうの同音異義語（16字の文脈）	dev	llm-v1	available	取引は。
+ext-kaitou-1-07	話題	llm		抗議文を出したが、まだ先方から	かいとう	回答	かいとうの同音異義語（15字の文脈）	dev	llm-v1	available	大きな。
+ext-kaitou-1-08	話題	llm		市民からの意見に対して、市長が文書で	かいとう	回答	かいとうの同音異義語（18字の文脈）	dev	llm-v1	available	検査の。
+ext-kaitou-1-09	話題	llm		不明な点があれば、サポートセンターまでご連絡ください。折り返し	かいとう	回答	かいとうの同音異義語（31字の文脈）	dev	llm-v1	available	寒冷な。
+ext-kaitou-1-10	話題	llm		社内アンケートを実施した。締め切りまでに全員が	かいとう	回答	かいとうの同音異義語（23字の文脈）	dev	llm-v1	available	与党の。
+ext-kaitou-2-01	話題	llm		テストの	かいとう	解答|回答	かいとうの同音異義語（4字の文脈）	dev	llm-v1	available	選挙で。
+ext-kaitou-2-02	話題	llm		数学の問題の	かいとう	解答	かいとうの同音異義語（6字の文脈）	dev	llm-v1	available	犯人を。
+ext-kaitou-2-03	話題	llm		試験の	かいとう	解答	かいとうの同音異義語（3字の文脈）	test	llm-v1	available	文化を。
+ext-kaitou-2-04	話題	llm		答案用紙に	かいとう	解答	かいとうの同音異義語（5字の文脈）	dev	llm-v1	available	列車の。
+ext-kaitou-2-05	話題	llm		宿題の問題集の巻末に、	かいとう	解答	かいとうの同音異義語（11字の文脈）	dev	llm-v1	available	製造の。
+ext-kaitou-2-06	話題	llm		試験が終わってから、模範	かいとう	解答	かいとうの同音異義語（12字の文脈）	dev	llm-v1	available	障害物。
+ext-kaitou-2-07	話題	llm		計算問題の途中式まで書かれている	かいとう	解答	かいとうの同音異義語（16字の文脈）	dev	llm-v1	available	実現は。
+ext-kaitou-2-08	話題	llm		参考書の後ろのページに、詳しい	かいとう	解答	かいとうの同音異義語（15字の文脈）	test	llm-v1	available	身元を。
+ext-kaitou-2-09	話題	llm		難しい問題だったが、先生が黒板に丁寧な	かいとう	解答	かいとうの同音異義語（19字の文脈）	dev	llm-v1	available	存在を。
+ext-kaitou-2-10	話題	llm		入試の過去問を解いた。採点するために、まず	かいとう	解答	かいとうの同音異義語（21字の文脈）	dev	llm-v1	available	若者の。
+ext-kaitou-3-01	話題	llm		冷凍した肉を	かいとう	解凍	かいとうの同音異義語（6字の文脈）	dev	llm-v1	available	四月の。
+ext-kaitou-3-02	話題	llm		圧縮したファイルを	かいとう	解凍	かいとうの同音異義語（9字の文脈）	dev	llm-v1	available	条件を。
+ext-kaitou-3-03	話題	llm		冷凍食品を電子レンジで	かいとう	解凍	かいとうの同音異義語（11字の文脈）	dev	llm-v1	available	距離を。
+ext-kaitou-3-04	話題	llm		ZIPファイルを	かいとう	解凍	かいとうの同音異義語（8字の文脈）	test	llm-v1	available	分量を。
+ext-kaitou-3-05	話題	llm		買ってきた魚を冷蔵庫で自然に	かいとう	解凍	かいとうの同音異義語（14字の文脈）	dev	llm-v1	available	医学を。
+ext-kaitou-3-06	話題	llm		ダウンロードしたデータを展開するために、アーカイブを	かいとう	解凍	かいとうの同音異義語（26字の文脈）	dev	llm-v1	available	見る人。
+ext-kaitou-3-07	話題	llm		冷凍のご飯を食べる前に、電子レンジで	かいとう	解凍	かいとうの同音異義語（18字の文脈）	dev	llm-v1	available	彼の話。
+ext-kaitou-3-08	話題	llm		刺身用のマグロは、食べる直前にゆっくりと	かいとう	解凍	かいとうの同音異義語（20字の文脈）	dev	llm-v1	available	千円。
+ext-kaitou-3-09	話題	llm		夕飯の準備に取りかかる。冷凍庫から出した鶏肉を	かいとう	解凍	かいとうの同音異義語（23字の文脈）	test	llm-v1	available	福祉。
+ext-kaitou-3-10	話題	llm		圧縮されたログが大量にある。調べる前にまず	かいとう	解凍	かいとうの同音異義語（21字の文脈）	dev	llm-v1	available	百円。
+ext-shiyou-1-01	話題	llm,ambiguous		外部APIの	しよう	仕様	しようの同音異義語（6字の文脈）	dev	llm-v1	available	教育。
+ext-shiyou-1-02	話題	llm,ambiguous		製品の	しよう	仕様	しようの同音異義語（3字の文脈）	dev	llm-v1	available	自己。
+ext-shiyou-1-03	話題	llm,ambiguous		ソフトウェアの	しよう	仕様	しようの同音異義語（7字の文脈）	test	llm-v1	available	労使。
+ext-shiyou-1-04	話題	llm		要求を満たしていないので、設計の	しよう	仕様	しようの同音異義語（16字の文脈）	dev	llm-v1	available	天気。
+ext-shiyou-1-05	話題	llm		客先の要望で、画面の	しよう	仕様	しようの同音異義語（10字の文脈）	dev	llm-v1	available	季節。
+ext-shiyou-1-06	話題	llm		ドキュメントに書かれたとおり、これは	しよう	仕様	しようの同音異義語（18字の文脈）	test	llm-v1	available	一例。
+ext-shiyou-1-07	話題	llm		バグではなく、もともとの	しよう	仕様	しようの同音異義語（12字の文脈）	dev	llm-v1	available	統計。
+ext-shiyou-1-08	話題	llm		開発チームは、機能の追加に合わせて	しよう	仕様	しようの同音異義語（17字の文脈）	dev	llm-v1	available	来。
+ext-shiyou-1-09	話題	llm		この関数の戻り値について、ドキュメントを確認した。公開されている	しよう	仕様	しようの同音異義語（32字の文脈）	test	llm-v1	available	資料を作る前に、まず発表の流れを考えた。スライドの。
+ext-shiyou-1-10	話題	llm		納品物が契約と違う。あらかじめ合意した	しよう	仕様	しようの同音異義語（19字の文脈）	test	llm-v1	available	不正があってはいけない。入試の判定はあくまで。
+ext-shiyou-2-01	話題	llm		機械の	しよう	使用	しようの同音異義語（3字の文脈）	dev	llm-v1	available	ボスのHPがほとんど残っていない。もう。
+ext-shiyou-2-02	話題	llm		無断で	しよう	使用	しようの同音異義語（3字の文脈）	dev	llm-v1	available	来月から値上げをする。ただし、学生は。
+ext-shiyou-2-03	話題	llm		禁止されている	しよう	使用	しようの同音異義語（7字の文脈）	test	llm-v1	available	データベースのインデックスを再構築。
+ext-shiyou-2-04	話題	llm		公共施設の	しよう	使用	しようの同音異義語（5字の文脈）	dev	llm-v1	available	文章を単語に分けて、それぞれの。
+ext-shiyou-2-05	話題	llm		この部屋は会議のために	しよう	使用	しようの同音異義語（11字の文脈）	dev	llm-v1	available	アプリの有料版を、期間限定で。
+ext-shiyou-2-06	話題	llm		薬の	しよう	使用	しようの同音異義語（2字の文脈）	dev	llm-v1	available	この図形は、中心を軸にして。
+ext-shiyou-2-07	話題	llm		使い方を誤らないように、取扱説明書をよく読んでから	しよう	使用	しようの同音異義語（25字の文脈）	dev	llm-v1	available	バグではなく、もともとの。
+ext-shiyou-2-08	話題	llm		この製品は、屋外では	しよう	使用	しようの同音異義語（10字の文脈）	dev	llm-v1	available	サーバーが落ちて使えなく。
+ext-shiyou-2-09	話題	llm		火気厳禁です。作業中は、指定された保護具を必ず	しよう	使用	しようの同音異義語（23字の文脈）	test	llm-v1	available	新入社員は、三か月間は。
+ext-shiyou-2-10	話題	llm		ライセンスの条項に違反しないよう、商用での	しよう	使用	しようの同音異義語（21字の文脈）	dev	llm-v1	available	気分の悪くなった乗客を。
+ext-shiyou-3-01	話題	llm,ambiguous		新製品を	しよう	試用	しようの同音異義語（4字の文脈）	dev	llm-v1	available	子供たちは公園で遊びを。
+ext-shiyou-3-02	話題	llm,ambiguous		無料で	しよう	試用	しようの同音異義語（3字の文脈）	test	llm-v1	available	子どもの礼儀正しさに。
+ext-shiyou-3-03	話題	llm,ambiguous		ソフトを	しよう	試用	しようの同音異義語（4字の文脈）	dev	llm-v1	available	レシピを見ながら料理。
+ext-shiyou-3-04	話題	llm		新入社員は、三か月間は	しよう	試用	しようの同音異義語（11字の文脈）	dev	llm-v1	available	髪型はショートカット。
+ext-shiyou-3-05	話題	llm		購入前に、まず一か月だけ	しよう	試用	しようの同音異義語（12字の文脈）	dev	llm-v1	available	社長は取引先と会食を。
+ext-shiyou-3-06	話題	llm		アプリの有料版を、期間限定で	しよう	試用	しようの同音異義語（14字の文脈）	dev	llm-v1	available	キャッシュカードの。
+ext-shiyou-3-07	話題	llm		正式に採用する前に、現場の担当者が	しよう	試用	しようの同音異義語（17字の文脈）	test	llm-v1	available	ご飯は炊き込みご飯。
+ext-shiyou-3-08	話題	llm		新しい機材を導入する前に、部署で	しよう	試用	しようの同音異義語（16字の文脈）	test	llm-v1	available	テストケースを追加。
+ext-shiyou-3-09	話題	llm		契約する前に、体験版を	しよう	試用	しようの同音異義語（11字の文脈）	dev	llm-v1	available	運動会の日程は十月。
+ext-shiyou-3-10	話題	llm		気に入るか分からないので、しばらく	しよう	試用	しようの同音異義語（17字の文脈）	test	llm-v1	available	祖父は趣味の盆栽を。
+ext-ishi-1-01	話題	llm		本人の	いし	意思	いしの同音異義語（3字の文脈）	dev	llm-v1	available	彼女は美術に深い。
+ext-ishi-1-02	話題	llm,ambiguous		患者の	いし	意思	いしの同音異義語（3字の文脈）	dev	llm-v1	available	犯人は人質を全員。
+ext-ishi-1-03	話題	llm		自分の	いし	意思	いしの同音異義語（3字の文脈）	dev	llm-v1	available	締め切りを金曜日。
+ext-ishi-1-04	話題	llm		契約は当事者の	いし	意思	いしの同音異義語（7字の文脈）	dev	llm-v1	available	負荷テストを実施。
+ext-ishi-1-05	話題	llm		手術を受けるかどうかは、患者自身の	いし	意思	いしの同音異義語（17字の文脈）	dev	llm-v1	available	引っ越しの準備を。
+ext-ishi-1-06	話題	llm		彼は周囲に流されず、はっきりと	いし	意思	いしの同音異義語（15字の文脈）	dev	llm-v1	available	サービスが無料に。
+ext-ishi-1-07	話題	llm		会議では、各自が自分の考えを述べて	いし	意思	いしの同音異義語（17字の文脈）	test	llm-v1	available	ソフトウェアの。
+ext-ishi-1-08	話題	llm		法律では、本人の自由な	いし	意思	いしの同音異義語（11字の文脈）	dev	llm-v1	available	子どもは自由に。
+ext-ishi-1-09	話題	llm		相手に気持ちが伝わらない。言葉にしないと、こちらの	いし	意思	いしの同音異義語（25字の文脈）	test	llm-v1	available	食後に歯を磨く。
+ext-ishi-1-10	話題	llm		最後に決めるのはあなたです。あなたの	いし	意思	いしの同音異義語（18字の文脈）	dev	llm-v1	available	夏休みの宿題を。
+ext-ishi-2-01	話題	llm,ambiguous		固い	いし	意志	いしの同音異義語（2字の文脈）	dev	llm-v1	available	カバンの色は黒。
+ext-ishi-2-02	話題	llm		強い	いし	意志	いしの同音異義語（2字の文脈）	dev	llm-v1	available	その店は有名に。
+ext-ishi-2-03	話題	llm		鉄の	いし	意志	いしの同音異義語（2字の文脈）	dev	llm-v1	available	コストを下げる。
+ext-ishi-2-04	話題	llm		最後までやり遂げるという	いし	意志	いしの同音異義語（12字の文脈）	dev	llm-v1	available	外部APIの。
+ext-ishi-2-05	話題	llm		どんな困難にも負けない	いし	意志|意思	いしの同音異義語（11字の文脈）	test	llm-v1	available	政府は新しい。
+ext-ishi-2-06	話題	llm		彼は強い信念と	いし	意志	いしの同音異義語（7字の文脈）	dev	llm-v1	available	彼の気持ちを。
+ext-ishi-2-07	話題	llm		挫折を乗り越える力は、才能よりも本人の	いし	意志	いしの同音異義語（19字の文脈）	dev	llm-v1	available	夜通し病人を。
+ext-ishi-2-08	話題	llm		自分を変えたいなら、まず必要なのは	いし	意志	いしの同音異義語（17字の文脈）	dev	llm-v1	available	子ども向けの。
+ext-ishi-2-09	話題	llm		毎日ジョギングを続けている。続けるための努力と	いし	意志|意思	いしの同音異義語（23字の文脈）	dev	llm-v1	available	修行して徳を。
+ext-ishi-2-10	話題	llm		優勝への執念は人一倍強い。何としても勝つという	いし	意志	いしの同音異義語（23字の文脈）	dev	llm-v1	available	発表の練習を。
+ext-ishi-3-01	話題	llm		病院で	いし	医師	いしの同音異義語（3字の文脈）	dev	llm-v1	available	予定が変更に。
+ext-ishi-3-02	話題	llm		専門の	いし	医師	いしの同音異義語（3字の文脈）	dev	llm-v1	available	将来に備える。
+ext-ishi-3-03	話題	llm		担当の	いし	医師	いしの同音異義語（3字の文脈）	dev	llm-v1	available	またとない。
+ext-ishi-3-04	話題	llm		診察をしてくれた	いし	医師	いしの同音異義語（8字の文脈）	dev	llm-v1	available	エンジンの。
+ext-ishi-3-05	話題	llm		症状を詳しく説明して、	いし	医師	いしの同音異義語（11字の文脈）	dev	llm-v1	available	神が世界を。
+ext-ishi-3-06	話題	llm		彼は長年、地域医療に携わる	いし	医師	いしの同音異義語（13字の文脈）	test	llm-v1	available	そのように。
+ext-ishi-3-07	話題	llm		国家試験に合格して、晴れて	いし	医師	いしの同音異義語（13字の文脈）	dev	llm-v1	available	彼の発言を。
+ext-ishi-3-08	話題	llm		手術の前に、執刀する	いし	医師	いしの同音異義語（10字の文脈）	dev	llm-v1	available	領土を巡る。
+ext-ishi-3-09	話題	llm		体調が悪化したので、かかりつけの	いし	医師	いしの同音異義語（16字の文脈）	dev	llm-v1	available	来週の会議。
+ext-ishi-3-10	話題	llm		祖父は定年後も診療を続けている。町の人から頼りにされる	いし	医師	いしの同音異義語（27字の文脈）	test	llm-v1	available	余白は広め。
+ext-ishi-4-01	話題	llm		道ばたの	いし	石	いしの同音異義語（4字の文脈）	dev	llm-v1	available	新しい制度。
+ext-ishi-4-02	話題	llm		河原の	いし	石	いしの同音異義語（3字の文脈）	test	llm-v1	available	彼女に会う。
+ext-ishi-4-03	話題	llm		大きな	いし	石	いしの同音異義語（3字の文脈）	dev	llm-v1	available	教育の現場。
+ext-ishi-4-04	話題	llm		庭に置く	いし	石	いしの同音異義語（4字の文脈）	dev	llm-v1	available	成長する。
+ext-ishi-4-05	話題	llm		子どもたちが川に向かって	いし	石	いしの同音異義語（12字の文脈）	dev	llm-v1	available	木工品の。
+ext-ishi-4-06	話題	llm		山道で足元の	いし	石	いしの同音異義語（6字の文脈）	dev	llm-v1	available	財布から。
+ext-ishi-4-07	話題	llm		硬い	いし	石	いしの同音異義語（2字の文脈）	test	llm-v1	available	手土産を。
+ext-ishi-4-08	話題	llm		転がってきたものにつまずいた。よく見ると、苔むした	いし	石	いしの同音異義語（25字の文脈）	dev	llm-v1	available	小学校の。
+ext-ishi-4-09	話題	llm		坂道を登っていると、靴の中に小さな	いし	石	いしの同音異義語（17字の文脈）	dev	llm-v1	available	取引先と。
+ext-kikai-1-01	話題	llm		良い	きかい	機会	きかいの同音異義語（2字の文脈）	dev	llm-v1	available	王が国を。
+ext-kikai-1-02	話題	llm		貴重な	きかい	機会	きかいの同音異義語（3字の文脈）	dev	llm-v1	available	この問題。
+ext-kikai-1-03	話題	llm		またとない	きかい	機会	きかいの同音異義語（5字の文脈）	dev	llm-v1	available	現代社会。
+ext-kikai-1-04	話題	llm		留学の	きかい	機会	きかいの同音異義語（3字の文脈）	dev	llm-v1	available	文章の。
+ext-kikai-1-05	話題	llm		成長する	きかい	機会	きかいの同音異義語（4字の文脈）	test	llm-v1	available	自分の。
+ext-kikai-1-06	話題	llm		この大会は、新人が実力を見せる	きかい	機会	きかいの同音異義語（15字の文脈）	dev	llm-v1	available	気象が。
+ext-kikai-1-07	話題	llm		次に会える	きかい	機会	きかいの同音異義語（5字の文脈）	dev	llm-v1	available	損害を。
+ext-kikai-1-08	話題	llm		海外で働く	きかい	機会	きかいの同音異義語（5字の文脈）	dev	llm-v1	available	新聞に。
+ext-kikai-1-09	話題	llm		失敗を恐れず挑戦しよう。若いうちは、いろいろな経験を積む	きかい	機会	きかいの同音異義語（28字の文脈）	dev	llm-v1	available	動画の。
+ext-kikai-1-10	話題	llm		せっかく声をかけてもらったのだから、この	きかい	機会	きかいの同音異義語（20字の文脈）	dev	llm-v1	available	幸福を。
+ext-kikai-2-01	話題	llm		工場の	きかい	機械	きかいの同音異義語（3字の文脈）	test	llm-v1	available	学問を。
+ext-kikai-2-02	話題	llm		精密	きかい	機械	きかいの同音異義語（2字の文脈）	dev	llm-v1	available	工事が。
+ext-kikai-2-03	話題	llm		古い	きかい	機械	きかいの同音異義語（2字の文脈）	dev	llm-v1	available	母親は。
+ext-kikai-2-04	話題	llm		最新の	きかい	機械	きかいの同音異義語（3字の文脈）	test	llm-v1	available	高校の。
+ext-kikai-2-05	話題	llm		この部品を作るための	きかい	機械	きかいの同音異義語（10字の文脈）	dev	llm-v1	available	資料を。
+ext-kikai-2-06	話題	llm		自動で動く	きかい	機械	きかいの同音異義語（5字の文脈）	dev	llm-v1	available	病人を。
+ext-kikai-2-07	話題	llm		人間の代わりに作業をこなす	きかい	機械	きかいの同音異義語（13字の文脈）	dev	llm-v1	available	情報を。
+ext-kikai-2-08	話題	llm		繊維を織るための	きかい	機械	きかいの同音異義語（8字の文脈）	dev	llm-v1	available	ついに。
+ext-kikai-2-09	話題	llm		油が切れたのか、異音がする。工場に導入した	きかい	機械	きかいの同音異義語（21字の文脈）	dev	llm-v1	available	電車で。
+ext-kikai-2-10	話題	llm		大量に生産するには、手作業よりも	きかい	機械	きかいの同音異義語（16字の文脈）	dev	llm-v1	available	新聞の。
+ext-ijou-1-01	話題	llm		三十歳	いじょう	以上	いじょうの同音異義語（3字の文脈）	dev	llm-v1	available	身長は。
+ext-ijou-1-02	話題	llm		千円	いじょう	以上	いじょうの同音異義語（2字の文脈）	dev	llm-v1	available	重さを。
+ext-ijou-1-03	話題	llm		予想	いじょう	以上	いじょうの同音異義語（2字の文脈）	dev	llm-v1	available	混乱を。
+ext-ijou-1-04	話題	llm		二人	いじょう	以上	いじょうの同音異義語（2字の文脈）	dev	llm-v1	available	健康の。
+ext-ijou-1-05	話題	llm		期待	いじょう	以上	いじょうの同音異義語（2字の文脈）	dev	llm-v1	available	未来の。
+ext-ijou-1-06	話題	llm		約束した	いじょう	以上	いじょうの同音異義語（4字の文脈）	dev	llm-v1	available	鉄の。
+ext-ijou-1-07	話題	llm		これ	いじょう	以上	いじょうの同音異義語（2字の文脈）	dev	llm-v1	available	安全。
+ext-ijou-1-08	話題	llm		条件を満たす人は、二十歳	いじょう	以上	いじょうの同音異義語（12字の文脈）	dev	llm-v1	available	薬の。
+ext-ijou-1-09	話題	llm		遅刻は三回	いじょう	以上	いじょうの同音異義語（5字の文脈）	dev	llm-v1	available	地域。
+ext-ijou-1-10	話題	llm		報告は	いじょう	以上	いじょうの同音異義語（3字の文脈）	dev	llm-v1	available	到底。
+ext-ijou-2-01	話題	llm		エンジンに	いじょう	異常	いじょうの同音異義語（5字の文脈）	dev	llm-v1	available	転勤。
+ext-ijou-2-02	話題	llm		体温に	いじょう	異常	いじょうの同音異義語（3字の文脈）	dev	llm-v1	available	芸を。
+ext-ijou-2-03	話題	llm		検査の結果、特に	いじょう	異常	いじょうの同音異義語（8字の文脈）	dev	llm-v1	available	立場。
+ext-ijou-2-04	話題	llm		機械の動きが	いじょう	異常	いじょうの同音異義語（6字の文脈）	dev	llm-v1	available	性格。
+ext-ijou-2-05	話題	llm		気象が	いじょう	異常	いじょうの同音異義語（3字の文脈）	test	llm-v1	available	学校。
+ext-ijou-2-06	話題	llm		センサーが	いじょう	異常	いじょうの同音異義語（5字の文脈）	dev	llm-v1	available	全。
+ext-ijou-2-07	話題	llm		ログに	いじょう	異常	いじょうの同音異義語（3字の文脈）	dev	llm-v1	available	国語の試験問題を解いていると、名詞、動詞、形容詞といった。
+ext-ijou-2-08	話題	llm		システムの動作に	いじょう	異常	いじょうの同音異義語（8字の文脈）	test	llm-v1	available	火気厳禁です。作業中は、指定された保護具を必ず。
+ext-ijou-2-09	話題	llm		健康診断で数値に	いじょう	異常	いじょうの同音異義語（8字の文脈）	dev	llm-v1	available	刺身用のマグロは、食べる直前にゆっくりと。
+ext-ijou-2-10	話題	llm		夜中に変な音がした。確認すると、冷蔵庫に	いじょう	異常	いじょうの同音異義語（20字の文脈）	dev	llm-v1	available	誰もが納得できるように、評価の基準は。
+ext-kanshin-1-01	話題	llm		政治への	かんしん	関心	かんしんの同音異義語（4字の文脈）	dev	llm-v1	available	気に入るか分からないので、しばらく。
+ext-kanshin-1-02	話題	llm		子どもの	かんしん	関心	かんしんの同音異義語（4字の文脈）	dev	llm-v1	available	体調が悪化したので、かかりつけの。
+ext-kanshin-1-03	話題	llm		社会的な	かんしん	関心	かんしんの同音異義語（4字の文脈）	dev	llm-v1	available	この大会は、新人が実力を見せる。
+ext-kanshin-1-04	話題	llm		新しい技術に	かんしん	関心	かんしんの同音異義語（6字の文脈）	dev	llm-v1	available	彼は長年、地域医療に携わる。
+ext-kanshin-1-05	話題	llm		環境問題に対する	かんしん	関心	かんしんの同音異義語（8字の文脈）	dev	llm-v1	available	ネットワークの設定を再確認。
+ext-kanshin-1-06	話題	llm		若者の選挙への	かんしん	関心	かんしんの同音異義語（7字の文脈）	dev	llm-v1	available	壊れたら無料で直すという。
+ext-kanshin-1-07	話題	llm		もともと歴史に	かんしん	関心	かんしんの同音異義語（7字の文脈）	dev	llm-v1	available	会社が新しい制度の導入を。
+ext-kanshin-1-08	話題	llm		世間の	かんしん	関心	かんしんの同音異義語（3字の文脈）	dev	llm-v1	available	職人が一つ一つ手作業で。
+ext-kanshin-1-09	話題	llm		そのニュースは、国内外から多くの	かんしん	関心	かんしんの同音異義語（16字の文脈）	dev	llm-v1	available	文字コードはUTF-8。
+ext-kanshin-1-10	話題	llm		彼女は美術に深い	かんしん	関心	かんしんの同音異義語（8字の文脈）	dev	llm-v1	available	競争のルールを守り、。
+ext-kanshin-2-01	話題	llm		彼の努力には	かんしん	感心	かんしんの同音異義語（6字の文脈）	dev	llm-v1	available	ユーザー辞書の仕様を。
+ext-kanshin-2-02	話題	llm		その手際のよさに	かんしん	感心	かんしんの同音異義語（8字の文脈）	test	llm-v1	available	ファイル名は日付入り。
+ext-kanshin-2-03	話題	llm		子どもの礼儀正しさに	かんしん	感心	かんしんの同音異義語（10字の文脈）	dev	llm-v1	available	彼女は看護師の仕事を。
+ext-kanshin-2-04	話題	llm		素晴らしい演奏に	かんしん	感心	かんしんの同音異義語（8字の文脈）	dev	llm-v1	available	明るい色と暗い色の。
+ext-kanshin-2-05	話題	llm		見事な腕前に	かんしん	感心	かんしんの同音異義語（6字の文脈）	dev	llm-v1	available	ストップウォッチで。
+ext-kanshin-2-06	話題	llm		みんなが彼の話に	かんしん	感心|関心	かんしんの同音異義語（8字の文脈）	dev	llm-v1	available	通信の暗号化を導入。
+ext-kanshin-2-07	話題	llm		あまりの手際のよさに、思わず	かんしん	感心	かんしんの同音異義語（14字の文脈）	test	llm-v1	available	コーヒーはブラック。
+ext-kanshin-2-08	話題	llm		新人とは思えない落ち着きぶりに、先輩たちは	かんしん	感心	かんしんの同音異義語（21字の文脈）	test	llm-v1	available	彼は図書館で勉強を。
+ext-kanshin-2-09	話題	llm		その発想は誰も思いつかなかった。聞いていた全員が	かんしん	感心	かんしんの同音異義語（24字の文脈）	dev	llm-v1	available	繊維を織るための。
+ext-kanshin-2-10	話題	llm		年齢のわりにしっかりしている。話しぶりにも	かんしん	感心	かんしんの同音異義語（21字の文脈）	dev	llm-v1	available	言葉の成り立ちを。
+ext-taishou-1-01	話題	llm		調査の	たいしょう	対象	たいしょうの同音異義語（3字の文脈）	dev	llm-v1	available	期限までに料金を。
+ext-taishou-1-02	話題	llm		支援の	たいしょう	対象	たいしょうの同音異義語（3字の文脈）	test	llm-v1	available	問い合わせに対応。
+ext-taishou-1-03	話題	llm		小学生を	たいしょう	対象	たいしょうの同音異義語（4字の文脈）	dev	llm-v1	available	契約の内容を確認。
+ext-taishou-1-04	話題	llm		検査の	たいしょう	対象	たいしょうの同音異義語（3字の文脈）	dev	llm-v1	available	週末の予定は映画。
+ext-taishou-1-05	話題	llm		この制度は六十五歳以上の人が	たいしょう	対象	たいしょうの同音異義語（14字の文脈）	test	llm-v1	available	セキュリティ対策。
+ext-taishou-1-06	話題	llm		アンケートは二十代の女性を	たいしょう	対象	たいしょうの同音異義語（13字の文脈）	dev	llm-v1	available	彼の人柄は私が。
+ext-taishou-1-07	話題	llm		割引の	たいしょう	対象	たいしょうの同音異義語（3字の文脈）	dev	llm-v1	available	司会が出演者を。
+ext-taishou-1-08	話題	llm		研究の	たいしょう	対象	たいしょうの同音異義語（3字の文脈）	dev	llm-v1	available	みんなで一緒に。
+ext-taishou-1-09	話題	llm		来月から値上げをする。ただし、学生は	たいしょう	対象	たいしょうの同音異義語（18字の文脈）	dev	llm-v1	available	年賀状の準備を。
+ext-taishou-2-01	話題	llm,ambiguous		二つの案を	たいしょう	対照	たいしょうの同音異義語（5字の文脈）	dev	llm-v1	available	式の服装は礼服。
+ext-taishou-2-02	話題	llm		原文と訳文を	たいしょう	対照	たいしょうの同音異義語（6字の文脈）	dev	llm-v1	available	彼は毎日日記を。
+ext-taishou-2-03	話題	llm		実験群と	たいしょう	対照	たいしょうの同音異義語（4字の文脈）	test	llm-v1	available	原稿の誤字を。
+ext-taishou-2-04	話題	llm		明るい色と暗い色の	たいしょう	対照	たいしょうの同音異義語（9字の文脈）	dev	llm-v1	available	蝶の羽は左右。
+ext-taishou-2-05	話題	llm,ambiguous		結果を比較して	たいしょう	対照	たいしょうの同音異義語（7字の文脈）	dev	llm-v1	available	電子レンジで。
+ext-taishou-2-06	話題	llm,ambiguous		新旧のデータを	たいしょう	対照	たいしょうの同音異義語（7字の文脈）	test	llm-v1	available	司会が議事を。
+ext-taishou-2-07	話題	llm		前年の数値と	たいしょう	対照	たいしょうの同音異義語（6字の文脈）	dev	llm-v1	available	子どもたちが。
+ext-taishou-2-08	話題	llm		この絵は、赤と青の鮮やかな	たいしょう	対照	たいしょうの同音異義語（13字の文脈）	dev	llm-v1	available	タイミングを。
+ext-taishou-2-09	話題	llm		二人の性格は実に	たいしょう	対照	たいしょうの同音異義語（8字の文脈）	test	llm-v1	available	タスクを分割。
+ext-taishou-2-10	話題	llm		条件を変えない群を置いて	たいしょう	対照	たいしょうの同音異義語（12字の文脈）	dev	llm-v1	available	宿は温泉つき。
+ext-taishou-3-01	話題	llm		左右	たいしょう	対称	たいしょうの同音異義語（2字の文脈）	dev	llm-v1	available	家賃の値上げ。
+ext-taishou-3-02	話題	llm		点	たいしょう	対称	たいしょうの同音異義語（1字の文脈）	dev	llm-v1	available	システムの。
+ext-taishou-3-03	話題	llm		線	たいしょう	対称	たいしょうの同音異義語（1字の文脈）	dev	llm-v1	available	この商品は。
+ext-taishou-3-04	話題	llm		この図形は、中心を軸にして	たいしょう	対称	たいしょうの同音異義語（13字の文脈）	dev	llm-v1	available	検査機器は。
+ext-taishou-3-05	話題	llm		蝶の羽は左右	たいしょう	対称	たいしょうの同音異義語（6字の文脈）	test	llm-v1	available	地場産業の。
+ext-taishou-3-06	話題	llm		完全に	たいしょう	対称	たいしょうの同音異義語（3字の文脈）	dev	llm-v1	available	契約内容を。
+ext-taishou-3-07	話題	llm		円は、どの方向から見ても	たいしょう	対称	たいしょうの同音異義語（12字の文脈）	dev	llm-v1	available	営業部への。
+ext-taishou-3-08	話題	llm		建物の正面は、美しく左右	たいしょう	対称	たいしょうの同音異義語（12字の文脈）	dev	llm-v1	available	戦乱の世を。
+ext-taishou-3-09	話題	llm		雪の結晶は六角形で、きれいな	たいしょう	対称	たいしょうの同音異義語（14字の文脈）	dev	llm-v1	available	旅行は国内。
+ext-taishou-3-10	話題	llm		数学の授業で、図形の	たいしょう	対称	たいしょうの同音異義語（10字の文脈）	dev	llm-v1	available	空が明るく。
+ext-hoshou-1-01	話題	llm		品質を	ほしょう	保証	ほしょうの同音異義語（3字の文脈）	dev	llm-v1	available	契約の更新。
+ext-hoshou-1-02	話題	llm		三年間の	ほしょう	保証	ほしょうの同音異義語（4字の文脈）	test	llm-v1	available	実験の一環。
+ext-hoshou-1-03	話題	llm		連帯	ほしょう	保証	ほしょうの同音異義語（2字の文脈）	dev	llm-v1	available	質問への。
+ext-hoshou-1-04	話題	llm		この商品は	ほしょう	保証	ほしょうの同音異義語（5字の文脈）	dev	llm-v1	available	障害者の。
+ext-hoshou-1-05	話題	llm		製品の	ほしょう	保証	ほしょうの同音異義語（3字の文脈）	dev	llm-v1	available	政治家の。
+ext-hoshou-1-06	話題	llm		身元を	ほしょう	保証	ほしょうの同音異義語（3字の文脈）	dev	llm-v1	available	企業間の。
+ext-hoshou-1-07	話題	llm		彼の人柄は私が	ほしょう	保証	ほしょうの同音異義語（7字の文脈）	dev	llm-v1	available	兄弟でも。
+ext-hoshou-1-08	話題	llm		家電を買うとき、メーカーの	ほしょう	保証	ほしょうの同音異義語（13字の文脈）	dev	llm-v1	available	経理課に。
+ext-hoshou-1-09	話題	llm		借金の連帯	ほしょう	保証	ほしょうの同音異義語（5字の文脈）	test	llm-v1	available	秒単位で。
+ext-hoshou-1-10	話題	llm		壊れたら無料で直すという	ほしょう	保証	ほしょうの同音異義語（12字の文脈）	dev	llm-v1	available	毎朝散歩。
+ext-hoshou-2-01	話題	llm		社会	ほしょう	保障	ほしょうの同音異義語（2字の文脈）	test	llm-v1	available	仮の措置。
+ext-hoshou-2-02	話題	llm		安全	ほしょう	保障	ほしょうの同音異義語（2字の文脈）	dev	llm-v1	available	迷わない。
+ext-hoshou-2-03	話題	llm		老後の生活の	ほしょう	保障	ほしょうの同音異義語（6字の文脈）	dev	llm-v1	available	機械の。
+ext-hoshou-2-04	話題	llm		国民の権利を	ほしょう	保障	ほしょうの同音異義語（6字の文脈）	test	llm-v1	available	工場の。
+ext-hoshou-2-05	話題	llm		最低限の生活を	ほしょう	保障	ほしょうの同音異義語（7字の文脈）	dev	llm-v1	available	完全に。
+ext-hoshou-2-06	話題	llm		障害者の	ほしょう	保障	ほしょうの同音異義語（4字の文脈）	dev	llm-v1	available	組織の。
+ext-hoshou-2-07	話題	llm		国家が国民の生活を	ほしょう	保障	ほしょうの同音異義語（9字の文脈）	dev	llm-v1	available	部品の。
+ext-hoshou-2-08	話題	llm		憲法は基本的人権を	ほしょう	保障	ほしょうの同音異義語（9字の文脈）	dev	llm-v1	available	監督に。
+ext-hoshou-2-09	話題	llm		年金制度は、老後の暮らしを	ほしょう	保障	ほしょうの同音異義語（13字の文脈）	dev	llm-v1	available	議会で。
+ext-hoshou-2-10	話題	llm		安全を	ほしょう	保障|保証	ほしょうの同音異義語（3字の文脈）	dev	llm-v1	available	広告の。
+ext-hoshou-3-01	話題	llm		損害を	ほしょう	補償	ほしょうの同音異義語（3字の文脈）	dev	llm-v1	available	産業の。
+ext-hoshou-3-02	話題	llm		事故の	ほしょう	補償	ほしょうの同音異義語（3字の文脈）	dev	llm-v1	available	計算の。
+ext-hoshou-3-03	話題	llm		被害者への	ほしょう	補償	ほしょうの同音異義語（5字の文脈）	dev	llm-v1	available	夕食の。
+ext-hoshou-3-04	話題	llm		労災の	ほしょう	補償	ほしょうの同音異義語（3字の文脈）	dev	llm-v1	available	奴隷を。
+ext-hoshou-3-05	話題	llm		洪水で壊れた家屋の	ほしょう	補償	ほしょうの同音異義語（9字の文脈）	dev	llm-v1	available	優しい。
+ext-hoshou-3-06	話題	llm,ambiguous		会社が従業員に	ほしょう	補償	ほしょうの同音異義語（7字の文脈）	dev	llm-v1	available	生産の。
+ext-hoshou-3-07	話題	llm		遅延に対する	ほしょう	補償	ほしょうの同音異義語（6字の文脈）	dev	llm-v1	available	独自の。
+ext-hoshou-3-08	話題	llm		農作物の被害に対する	ほしょう	補償	ほしょうの同音異義語（10字の文脈）	dev	llm-v1	available	毎朝の。
+ext-hoshou-3-09	話題	llm		工事で近隣に与えた騒音の	ほしょう	補償	ほしょうの同音異義語（12字の文脈）	dev	llm-v1	available	遺跡の。
+ext-hoshou-3-10	話題	llm		損失の	ほしょう	補償	ほしょうの同音異義語（3字の文脈）	dev	llm-v1	available	身長を。
+ext-kikou-1-01	話題	llm		温暖な	きこう	気候	きこうの同音異義語（3字の文脈）	dev	llm-v1	available	年貢を。
+ext-kikou-1-02	話題	llm		寒冷な	きこう	気候	きこうの同音異義語（3字の文脈）	test	llm-v1	available	勝利を。
+ext-kikou-1-03	話題	llm		地中海	きこう	気候	きこうの同音異義語（3字の文脈）	dev	llm-v1	available	家族の。
+ext-kikou-1-04	話題	llm		この地域の	きこう	気候	きこうの同音異義語（5字の文脈）	dev	llm-v1	available	データ。
+ext-kikou-1-05	話題	llm		地球規模の	きこう	気候	きこうの同音異義語（5字の文脈）	dev	llm-v1	available	期待。
+ext-kikou-1-06	話題	llm		高原の涼しい	きこう	気候	きこうの同音異義語（6字の文脈）	dev	llm-v1	available	社長。
+ext-kikou-1-07	話題	llm		北海道の	きこう	気候	きこうの同音異義語（4字の文脈）	test	llm-v1	available	癌が。
+ext-kikou-1-08	話題	llm		ブドウの栽培には、その土地の	きこう	気候	きこうの同音異義語（14字の文脈）	dev	llm-v1	available	自由。
+ext-kikou-1-09	話題	llm		近年の	きこう	気候	きこうの同音異義語（3字の文脈）	dev	llm-v1	available	家が。
+ext-kikou-2-01	話題	llm		国際	きこう	機構	きこうの同音異義語（2字の文脈）	test	llm-v1	available	歴史。
+ext-kikou-2-02	話題	llm		行政	きこう	機構	きこうの同音異義語（2字の文脈）	dev	llm-v1	available	状況。
+ext-kikou-2-03	話題	llm		組織の	きこう	機構	きこうの同音異義語（3字の文脈）	dev	llm-v1	available	設定。
+ext-kikou-2-04	話題	llm		時計の	きこう	機構	きこうの同音異義語（3字の文脈）	dev	llm-v1	available	個人。
+ext-kikou-2-05	話題	llm		エンジンの	きこう	機構	きこうの同音異義語（5字の文脈）	dev	llm-v1	available	新聞。
+ext-kikou-2-06	話題	llm		複雑な	きこう	機構	きこうの同音異義語（3字の文脈）	dev	llm-v1	available	国。
+ext-kikou-2-07	話題	llm		この装置の	きこう	機構	きこうの同音異義語（5字の文脈）	dev	llm-v1	available	転がってきたものにつまずいた。よく見ると、苔むした。
+ext-kikou-2-08	話題	llm		国連の	きこう	機構	きこうの同音異義語（3字の文脈）	dev	llm-v1	available	ライセンスの条項に違反しないよう、商用での。
+ext-kikou-2-09	話題	llm		宇宙航空研究開発	きこう	機構	きこうの同音異義語（8字の文脈）	dev	llm-v1	available	難しい問題だったが、先生が黒板に丁寧な。
+ext-kikou-2-10	話題	llm		政府は新しい	きこう	機構	きこうの同音異義語（6字の文脈）	dev	llm-v1	available	このプログラムは三つのモジュールで。
+ext-kikou-3-01	話題	llm		雑誌に	きこう	寄稿	きこうの同音異義語（3字の文脈）	dev	llm-v1	available	メールで届いた要望に、会社として。
+ext-kikou-3-02	話題	llm		新聞に	きこう	寄稿	きこうの同音異義語（3字の文脈）	test	llm-v1	available	選挙を管理する委員会は、中立で。
+ext-kikou-3-03	話題	llm		専門家が	きこう	寄稿	きこうの同音異義語（4字の文脈）	dev	llm-v1	available	雪の結晶は六角形で、きれいな。
+ext-kikou-3-04	話題	llm		論文を	きこう	寄稿	きこうの同音異義語（3字の文脈）	dev	llm-v1	available	この問題を解くには、条件を。
+ext-kikou-3-05	話題	llm		会報に	きこう	寄稿	きこうの同音異義語（3字の文脈）	dev	llm-v1	available	子どもたちが川に向かって。
+ext-kikou-3-06	話題	llm		記念号に	きこう	寄稿	きこうの同音異義語（4字の文脈）	dev	llm-v1	available	サイズはいちばん小さいの。
+ext-kikou-3-07	話題	llm		著名な作家が	きこう	寄稿	きこうの同音異義語（6字の文脈）	dev	llm-v1	available	法律では、本人の自由な。
+ext-kikou-3-08	話題	llm		大学の教授が	きこう	寄稿	きこうの同音異義語（6字の文脈）	dev	llm-v1	available	障害の再発防止策を検討。
+ext-kikou-3-09	話題	llm		編集部から依頼を受けて	きこう	寄稿	きこうの同音異義語（11字の文脈）	test	llm-v1	available	妻は友人と電話で相談を。
+ext-kikou-3-10	話題	llm		彼女はその新聞に毎月エッセイを	きこう	寄稿	きこうの同音異義語（15字の文脈）	dev	llm-v1	available	どんな結末になるのか。
+ext-seisaku-1-01	話題	llm		政府の	せいさく	政策	せいさくの同音異義語（3字の文脈）	dev	llm-v1	available	障害対応の手順を共有。
+ext-seisaku-1-02	話題	llm		経済	せいさく	政策	せいさくの同音異義語（2字の文脈）	dev	llm-v1	available	先生への贈り物は花束。
+ext-seisaku-1-03	話題	llm,ambiguous		新しい	せいさく	政策	せいさくの同音異義語（3字の文脈）	test	llm-v1	available	刑務所を出たあとの。
+ext-seisaku-1-04	話題	llm		少子化対策の	せいさく	政策	せいさくの同音異義語（6字の文脈）	test	llm-v1	available	神話では神が宇宙を。
+ext-seisaku-1-05	話題	llm		与党の	せいさく	政策	せいさくの同音異義語（3字の文脈）	dev	llm-v1	available	新機能の仕様を検討。
+ext-seisaku-1-06	話題	llm		首相は新たな	せいさく	政策	せいさくの同音異義語（6字の文脈）	dev	llm-v1	available	脆弱性の修正を優先。
+ext-seisaku-1-07	話題	llm		外交	せいさく	政策	せいさくの同音異義語（2字の文脈）	dev	llm-v1	available	お祝いの品は商品券。
+ext-seisaku-1-08	話題	llm		選挙の公約に掲げた	せいさく	政策	せいさくの同音異義語（9字の文脈）	dev	llm-v1	available	個人情報の取り扱い。
+ext-seisaku-1-09	話題	llm		福祉	せいさく	政策	せいさくの同音異義語（2字の文脈）	test	llm-v1	available	みんなが彼の話に。
+ext-seisaku-1-10	話題	llm		景気を回復させるための	せいさく	政策	せいさくの同音異義語（11字の文脈）	test	llm-v1	available	反対せず、提案を。
+ext-seisaku-2-01	話題	llm		映画の	せいさく	製作	せいさくの同音異義語（3字の文脈）	dev	llm-v1	available	彼は立派な医者に。
+ext-seisaku-2-02	話題	llm		家具の	せいさく	製作	せいさくの同音異義語（3字の文脈）	dev	llm-v1	available	健康のために運動。
+ext-seisaku-2-03	話題	llm		部品の	せいさく	製作	せいさくの同音異義語（3字の文脈）	dev	llm-v1	available	待ち合わせは駅前。
+ext-seisaku-2-04	話題	llm		木工品の	せいさく	製作	せいさくの同音異義語（4字の文脈）	dev	llm-v1	available	朝晩の気温が低く。
+ext-seisaku-2-05	話題	llm		工場で	せいさく	製作	せいさくの同音異義語（3字の文脈）	dev	llm-v1	available	彼は強い信念と。
+ext-seisaku-2-06	話題	llm		ドラマの	せいさく	製作|制作	せいさくの同音異義語（4字の文脈）	dev	llm-v1	available	アットホームな。
+ext-seisaku-2-07	話題	llm		ロケットの	せいさく	製作	せいさくの同音異義語（5字の文脈）	test	llm-v1	available	史料に基づいて。
+ext-seisaku-2-08	話題	llm		鉄道模型の	せいさく	製作	せいさくの同音異義語（5字の文脈）	dev	llm-v1	available	朝のうちに準備。
+ext-seisaku-2-09	話題	llm		職人が一つ一つ手作業で	せいさく	製作	せいさくの同音異義語（11字の文脈）	dev	llm-v1	available	アイコンは丸型。
+ext-seisaku-2-10	話題	llm		アニメの	せいさく	製作|制作	せいさくの同音異義語（4字の文脈）	dev	llm-v1	available	画面が見やすく。
+ext-seisaku-3-01	話題	llm		番組の	せいさく	制作	せいさくの同音異義語（3字の文脈）	dev	llm-v1	available	誰にでも分かる。
+ext-seisaku-3-02	話題	llm		ゲームの	せいさく	制作	せいさくの同音異義語（4字の文脈）	dev	llm-v1	available	新しい技術に。
+ext-seisaku-3-03	話題	llm		デザインを	せいさく	制作	せいさくの同音異義語（5字の文脈）	dev	llm-v1	available	少子化対策の。
+ext-seisaku-3-04	話題	llm		ウェブサイトの	せいさく	制作	せいさくの同音異義語（7字の文脈）	dev	llm-v1	available	物語の続きを。
+ext-seisaku-3-05	話題	llm		自主映画の	せいさく	制作|製作	せいさくの同音異義語（5字の文脈）	dev	llm-v1	available	警察に前科の。
+ext-seisaku-3-06	話題	llm		音楽の	せいさく	制作	せいさくの同音異義語（3字の文脈）	dev	llm-v1	available	コスト削減を。
+ext-seisaku-3-07	話題	llm		ポスターの	せいさく	制作	せいさくの同音異義語（5字の文脈）	test	llm-v1	available	新製品の仕様。
+ext-seisaku-3-08	話題	llm		広告の	せいさく	制作	せいさくの同音異義語（3字の文脈）	dev	llm-v1	available	古い本を処分。
+ext-seisaku-3-09	話題	llm		学園祭の展示物の	せいさく	制作	せいさくの同音異義語（8字の文脈）	test	llm-v1	available	設定が簡単に。
+ext-seisaku-3-10	話題	llm		動画の	せいさく	制作	せいさくの同音異義語（3字の文脈）	dev	llm-v1	available	データを守る。
+ext-jiki-1-01	話題	llm		桜の	じき	時期	じきの同音異義語（2字の文脈）	dev	llm-v1	available	自動で動く。
+ext-jiki-1-02	話題	llm		忙しい	じき	時期	じきの同音異義語（3字の文脈）	dev	llm-v1	available	鉄道模型の。
+ext-jiki-1-03	話題	llm		この	じき	時期	じきの同音異義語（2字の文脈）	test	llm-v1	available	子どもには。
+ext-jiki-1-04	話題	llm		入学の	じき	時期	じきの同音異義語（3字の文脈）	dev	llm-v1	available	百メートル。
+ext-jiki-1-05	話題	llm		受験の	じき	時期	じきの同音異義語（3字の文脈）	dev	llm-v1	available	休み時間に。
+ext-jiki-1-06	話題	llm		果物が出回る	じき	時期	じきの同音異義語（6字の文脈）	test	llm-v1	available	メジャーで。
+ext-jiki-1-07	話題	llm		来月は決算の	じき	時期	じきの同音異義語（6字の文脈）	dev	llm-v1	available	経費を精算。
+ext-jiki-1-08	話題	llm		適切な	じき	時期	じきの同音異義語（3字の文脈）	dev	llm-v1	available	体調が良く。
+ext-jiki-1-09	話題	llm		雨が多い	じき	時期	じきの同音異義語（4字の文脈）	dev	llm-v1	available	遅延の原因。
+ext-jiki-1-10	話題	llm		ちょうどよい	じき	時期	じきの同音異義語（6字の文脈）	dev	llm-v1	available	品質を保つ。
+ext-jiki-2-01	話題	llm,ambiguous		社長	じき	次期	じきの同音異義語（2字の文脈）	dev	llm-v1	available	よく見える。
+ext-jiki-2-02	話題	llm,ambiguous		会長	じき	次期	じきの同音異義語（2字の文脈）	test	llm-v1	available	政治への。
+ext-jiki-2-03	話題	llm		日本代表の	じき	次期	じきの同音異義語（5字の文脈）	dev	llm-v1	available	ゲームの。
+ext-jiki-2-04	話題	llm		選挙で	じき	次期	じきの同音異義語（3字の文脈）	dev	llm-v1	available	仏教への。
+ext-jiki-2-05	話題	llm		OSの	じき	次期	じきの同音異義語（3字の文脈）	dev	llm-v1	available	仕事から。
+ext-jiki-2-06	話題	llm		モデルの	じき	次期	じきの同音異義語（4字の文脈）	dev	llm-v1	available	夕暮れの。
+ext-jiki-2-07	話題	llm,ambiguous		首相の	じき	次期	じきの同音異義語（3字の文脈）	test	llm-v1	available	専門家が。
+ext-jiki-2-08	話題	llm,ambiguous		監督に	じき	次期	じきの同音異義語（3字の文脈）	dev	llm-v1	available	ケースに。
+ext-jiki-3-01	話題	llm		地球の	じき	磁気	じきの同音異義語（3字の文脈）	dev	llm-v1	available	合格する。
+ext-jiki-3-02	話題	llm		カードの	じき	磁気	じきの同音異義語（4字の文脈）	test	llm-v1	available	先生の話。
+ext-jiki-3-03	話題	llm		強い	じき	磁気	じきの同音異義語（2字の文脈）	dev	llm-v1	available	裁判は。
+ext-jiki-3-04	話題	llm		磁石の	じき	磁気	じきの同音異義語（3字の文脈）	dev	llm-v1	available	担当の。
+ext-jiki-3-05	話題	llm		検査機器は	じき	磁気	じきの同音異義語（5字の文脈）	dev	llm-v1	available	調査の。
+ext-jiki-3-06	話題	llm		ハードディスクは	じき	磁気	じきの同音異義語（8字の文脈）	dev	llm-v1	available	損失の。
+ext-jiki-3-07	話題	llm		キャッシュカードの	じき	磁気	じきの同音異義語（9字の文脈）	test	llm-v1	available	政府の。
+ext-jiki-3-08	話題	llm		テープに	じき	磁気	じきの同音異義語（4字の文脈）	dev	llm-v1	available	受験の。
+ext-jiki-3-09	話題	llm		電子レンジで	じき	磁気	じきの同音異義語（6字の文脈）	dev	llm-v1	available	責任を。
+ext-tsuikyuu-1-01	話題	llm		利益を	ついきゅう	追求	ついきゅうの同音異義語（3字の文脈）	dev	llm-v1	available	とても。
+ext-tsuikyuu-1-02	話題	llm		理想を	ついきゅう	追求	ついきゅうの同音異義語（3字の文脈）	test	llm-v1	available	会議が。
+ext-tsuikyuu-1-03	話題	llm		幸福を	ついきゅう	追求	ついきゅうの同音異義語（3字の文脈）	dev	llm-v1	available	平和な。
+ext-tsuikyuu-1-04	話題	llm		美を	ついきゅう	追求	ついきゅうの同音異義語（2字の文脈）	dev	llm-v1	available	リレー。
+ext-tsuikyuu-1-05	話題	llm		真実を	ついきゅう	追求	ついきゅうの同音異義語（3字の文脈）	dev	llm-v1	available	理解は。
+ext-tsuikyuu-1-06	話題	llm		自分の夢を	ついきゅう	追求	ついきゅうの同音異義語（5字の文脈）	dev	llm-v1	available	在庫を。
+ext-tsuikyuu-1-07	話題	llm		企業は利潤を	ついきゅう	追求	ついきゅうの同音異義語（6字の文脈）	dev	llm-v1	available	意見を。
+ext-tsuikyuu-1-08	話題	llm		快楽を	ついきゅう	追求	ついきゅうの同音異義語（3字の文脈）	dev	llm-v1	available	彼女の。
+ext-tsuikyuu-1-09	話題	llm		効率ばかりを	ついきゅう	追求	ついきゅうの同音異義語（6字の文脈）	test	llm-v1	available	会場へ。
+ext-tsuikyuu-1-10	話題	llm		芸術家は理想の美を	ついきゅう	追求	ついきゅうの同音異義語（9字の文脈）	dev	llm-v1	available	賃金の。
+ext-tsuikyuu-2-01	話題	llm		責任を	ついきゅう	追及	ついきゅうの同音異義語（3字の文脈）	dev	llm-v1	available	自殺を。
+ext-tsuikyuu-2-02	話題	llm		不正を	ついきゅう	追及	ついきゅうの同音異義語（3字の文脈）	dev	llm-v1	available	砂糖を。
+ext-tsuikyuu-2-03	話題	llm		犯人を	ついきゅう	追及	ついきゅうの同音異義語（3字の文脈）	test	llm-v1	available	学業を。
+ext-tsuikyuu-2-04	話題	llm		疑惑を	ついきゅう	追及	ついきゅうの同音異義語（3字の文脈）	dev	llm-v1	available	考え方。
+ext-tsuikyuu-2-05	話題	llm		政治家の	ついきゅう	追及	ついきゅうの同音異義語（4字の文脈）	dev	llm-v1	available	地球上。
+ext-tsuikyuu-2-06	話題	llm		野党は大臣の	ついきゅう	追及	ついきゅうの同音異義語（6字の文脈）	dev	llm-v1	available	精密。
+ext-tsuikyuu-2-07	話題	llm		記者が	ついきゅう	追及	ついきゅうの同音異義語（3字の文脈）	dev	llm-v1	available	経済。
+ext-tsuikyuu-2-08	話題	llm		議会で	ついきゅう	追及	ついきゅうの同音異義語（3字の文脈）	test	llm-v1	available	断熱。
+ext-tsuikyuu-2-09	話題	llm		失言の	ついきゅう	追及	ついきゅうの同音異義語（3字の文脈）	dev	llm-v1	available	博士。
+ext-tsuikyuu-3-01	話題	llm		真理を	ついきゅう	追究|追求	ついきゅうの同音異義語（3字の文脈）	test	llm-v1	available	自己。
+ext-tsuikyuu-3-02	話題	llm		原因を	ついきゅう	追究|追求	ついきゅうの同音異義語（3字の文脈）	dev	llm-v1	available	生活。
+ext-tsuikyuu-3-03	話題	llm		本質を	ついきゅう	追究|追求	ついきゅうの同音異義語（3字の文脈）	dev	llm-v1	available	場合。
+ext-tsuikyuu-3-04	話題	llm		学問を	ついきゅう	追究|追求	ついきゅうの同音異義語（3字の文脈）	dev	llm-v1	available	目的。
+ext-tsuikyuu-3-05	話題	llm		科学の	ついきゅう	追究|追求	ついきゅうの同音異義語（3字の文脈）	dev	llm-v1	available	代表。
+ext-tsuikyuu-3-06	話題	llm		事件の真相を	ついきゅう	追究|追及	ついきゅうの同音異義語（6字の文脈）	test	llm-v1	available	報道。
+ext-tsuikyuu-3-07	話題	llm		研究者は自然現象の	ついきゅう	追究|追求	ついきゅうの同音異義語（9字の文脈）	dev	llm-v1	available	一。
+ext-tsuikyuu-3-08	話題	llm		疑問を徹底的に	ついきゅう	追究|追求	ついきゅうの同音異義語（7字の文脈）	dev	llm-v1	available	犯罪を繰り返さないように、保護司が付き添って社会での。
+ext-tsuikyuu-3-09	話題	llm		言葉の成り立ちを	ついきゅう	追究|追求	ついきゅうの同音異義語（8字の文脈）	dev	llm-v1	available	初稿が上がってきた。赤ペンを片手に、さっそく。
+ext-tsuikyuu-3-10	話題	llm		宇宙の謎を	ついきゅう	追究|追求	ついきゅうの同音異義語（5字の文脈）	dev	llm-v1	available	数学で背理法を使うには、まず結論の否定を。
+ext-souzou-1-01	話題	llm,ambiguous		未来を	そうぞう	想像	そうぞうの同音異義語（3字の文脈）	test	llm-v1	available	ドキュメントに書かれたとおり、これは。
+ext-souzou-1-02	話題	llm		彼の気持ちを	そうぞう	想像	そうぞうの同音異義語（6字の文脈）	dev	llm-v1	available	自分を変えたいなら、まず必要なのは。
+ext-souzou-1-03	話題	llm		とても	そうぞう	想像	そうぞうの同音異義語（3字の文脈）	dev	llm-v1	available	形態素解析の結果には単語ごとの。
+ext-souzou-1-04	話題	llm,ambiguous		子どもは自由に	そうぞう	想像	そうぞうの同音異義語（7字の文脈）	test	llm-v1	available	印刷に回す前に、誤植がないか。
+ext-souzou-1-05	話題	llm,ambiguous		絵本の世界を	そうぞう	想像	そうぞうの同音異義語（6字の文脈）	dev	llm-v1	available	アンケートは二十代の女性を。
+ext-souzou-1-06	話題	llm		果てしなく	そうぞう	想像	そうぞうの同音異義語（5字の文脈）	dev	llm-v1	available	夜になって冷え込みが厳しく。
+ext-souzou-1-07	話題	llm		言葉だけでは	そうぞう	想像	そうぞうの同音異義語（6字の文脈）	dev	llm-v1	available	コードをリファクタリング。
+ext-souzou-1-08	話題	llm		物語の続きを	そうぞう	想像	そうぞうの同音異義語（6字の文脈）	dev	llm-v1	available	宿題の問題集の巻末に、。
+ext-souzou-1-09	話題	llm		どんな結末になるのか	そうぞう	想像	そうぞうの同音異義語（10字の文脈）	dev	llm-v1	available	図書館の閲覧室を自由に。
+ext-souzou-1-10	話題	llm		結果は容易に	そうぞう	想像	そうぞうの同音異義語（6字の文脈）	dev	llm-v1	available	彼は見違えるほど元気に。
+ext-souzou-2-01	話題	llm		新しい価値を	そうぞう	創造	そうぞうの同音異義語（6字の文脈）	dev	llm-v1	available	手術の前に、執刀する。
+ext-souzou-2-02	話題	llm		芸術の	そうぞう	創造	そうぞうの同音異義語（3字の文脈）	dev	llm-v1	available	コードレビューを依頼。
+ext-souzou-2-03	話題	llm		天地	そうぞう	創造	そうぞうの同音異義語（2字の文脈）	dev	llm-v1	available	バージョン番号は三桁。
+ext-souzou-2-04	話題	llm		無から有を	そうぞう	創造	そうぞうの同音異義語（5字の文脈）	dev	llm-v1	available	技術部は障害の調査を。
+ext-souzou-2-05	話題	llm		文化を	そうぞう	創造	そうぞうの同音異義語（3字の文脈）	test	llm-v1	available	洪水で壊れた家屋の。
+ext-souzou-2-06	話題	llm		神が世界を	そうぞう	創造	そうぞうの同音異義語（5字の文脈）	dev	llm-v1	available	仕様書を読んで実装。
+ext-souzou-2-07	話題	llm		人間の	そうぞう	創造|想像	そうぞうの同音異義語（3字の文脈）	dev	llm-v1	available	荷物をまとめて出発。
+ext-souzou-2-08	話題	llm		イノベーションとは新しいものを	そうぞう	創造	そうぞうの同音異義語（15字の文脈）	dev	llm-v1	available	部屋の壁は薄い水色。
+ext-souzou-2-09	話題	llm		神話では神が宇宙を	そうぞう	創造	そうぞうの同音異義語（9字の文脈）	dev	llm-v1	available	先生は教室で説明を。
+ext-kouka-1-01	話題	llm		薬の	こうか	効果	こうかの同音異義語（2字の文脈）	dev	llm-v1	available	健康診断で数値に。
+ext-kouka-1-02	話題	llm		宣伝	こうか	効果	こうかの同音異義語（2字の文脈）	test	llm-v1	available	長年の苦しみから。
+ext-kouka-1-03	話題	llm		期待した	こうか	効果	こうかの同音異義語（4字の文脈）	dev	llm-v1	available	サーバーを再起動。
+ext-kouka-1-04	話題	llm		この方法は	こうか	効果	こうかの同音異義語（5字の文脈）	dev	llm-v1	available	パスワードを変更。
+ext-kouka-1-05	話題	llm		音響	こうか	効果	こうかの同音異義語（2字の文脈）	dev	llm-v1	available	ゴミの分別を徹底。
+ext-kouka-1-06	話題	llm		運動の	こうか	効果	こうかの同音異義語（3字の文脈）	dev	llm-v1	available	梅雨が明けて暑く。
+ext-kouka-1-07	話題	llm		副作用と	こうか	効果	こうかの同音異義語（4字の文脈）	test	llm-v1	available	ソフトウェア開発。
+ext-kouka-1-08	話題	llm		広告の	こうか	効果	こうかの同音異義語（3字の文脈）	dev	llm-v1	available	ウェブサイトの。
+ext-kouka-1-09	話題	llm		断熱	こうか	効果	こうかの同音異義語（2字の文脈）	dev	llm-v1	available	プロジェクトが。
+ext-kouka-1-10	話題	llm		高い	こうか	効果	こうかの同音異義語（2字の文脈）	test	llm-v1	available	依存関係を更新。
+ext-kouka-2-01	話題	llm		とても	こうか	高価	こうかの同音異義語（3字の文脈）	dev	llm-v1	available	ここで一旦中断。
+ext-kouka-2-02	話題	llm,ambiguous		非常に	こうか	高価	こうかの同音異義語（3字の文脈）	dev	llm-v1	available	ようやく大人に。
+ext-kouka-2-03	話題	llm		この指輪は	こうか	高価	こうかの同音異義語（5字の文脈）	dev	llm-v1	available	目標を達成する。
+ext-kouka-2-04	話題	llm		宝石は	こうか	高価	こうかの同音異義語（3字の文脈）	dev	llm-v1	available	数学の問題の。
+ext-kouka-2-05	話題	llm		骨董品は	こうか	高価	こうかの同音異義語（4字の文脈）	test	llm-v1	available	遅延に対する。
+ext-kouka-2-06	話題	llm		ブランド品は	こうか	高価	こうかの同音異義語（6字の文脈）	dev	llm-v1	available	野党は大臣の。
+ext-kouka-2-07	話題	llm		あまりに	こうか	高価	こうかの同音異義語（4字の文脈）	dev	llm-v1	available	酔った友人を。
+ext-kouka-2-08	話題	llm		子どもには	こうか	高価	こうかの同音異義語（5字の文脈）	dev	llm-v1	available	スタンドから。
+ext-kouka-3-01	話題	llm		百円	こうか	硬貨	こうかの同音異義語（2字の文脈）	dev	llm-v1	available	荷物の重量を。
+ext-kouka-3-02	話題	llm		五百円	こうか	硬貨	こうかの同音異義語（3字の文脈）	dev	llm-v1	available	出張の手配を。
+ext-kouka-3-03	話題	llm		古い	こうか	硬貨	こうかの同音異義語（2字の文脈）	test	llm-v1	available	通知はメール。
+ext-kouka-3-04	話題	llm		自動販売機に	こうか	硬貨	こうかの同音異義語（6字の文脈）	dev	llm-v1	available	来年度の予算。
+ext-kouka-3-05	話題	llm		財布から	こうか	硬貨	こうかの同音異義語（4字の文脈）	dev	llm-v1	available	答案用紙に。
+ext-kouka-3-06	話題	llm		記念	こうか	硬貨	こうかの同音異義語（2字の文脈）	test	llm-v1	available	この地域の。
+ext-kouka-3-07	話題	llm		コインロッカーに	こうか	硬貨	こうかの同音異義語（8字の文脈）	dev	llm-v1	available	果てしなく。
+ext-kouka-3-08	話題	llm		募金箱に	こうか	硬貨	こうかの同音異義語（4字の文脈）	dev	llm-v1	available	問題を解く。
+ext-kouka-3-09	話題	llm		ポケットの	こうか	硬貨	こうかの同音異義語（5字の文脈）	dev	llm-v1	available	天気予報は。
+ext-kouka-3-10	話題	llm		賽銭箱に	こうか	硬貨	こうかの同音異義語（4字の文脈）	dev	llm-v1	available	夏休みは四。
+ext-shinkou-1-01	話題	llm		工事が	しんこう	進行	しんこうの同音異義語（3字の文脈）	test	llm-v1	available	会議は午後。
+ext-shinkou-1-02	話題	llm		病気の	しんこう	進行	しんこうの同音異義語（3字の文脈）	dev	llm-v1	available	挨拶は短め。
+ext-shinkou-1-03	話題	llm		議事の	しんこう	進行	しんこうの同音異義語（3字の文脈）	dev	llm-v1	available	日本の歴史。
+ext-shinkou-1-04	話題	llm		会議が	しんこう	進行	しんこうの同音異義語（3字の文脈）	test	llm-v1	available	環境を守る。
+ext-shinkou-1-05	話題	llm		計画は予定どおり	しんこう	進行	しんこうの同音異義語（8字の文脈）	dev	llm-v1	available	過去の歴史。
+ext-shinkou-1-06	話題	llm		司会が議事を	しんこう	進行	しんこうの同音異義語（6字の文脈）	dev	llm-v1	available	ソフトを。
+ext-shinkou-1-07	話題	llm		癌が	しんこう	進行	しんこうの同音異義語（2字の文脈）	dev	llm-v1	available	専門家が。
+ext-shinkou-1-08	話題	llm		作業は順調に	しんこう	進行	しんこうの同音異義語（6字の文脈）	dev	llm-v1	available	骨董品は。
+ext-shinkou-1-09	話題	llm		物語の	しんこう	進行	しんこうの同音異義語（3字の文脈）	dev	llm-v1	available	運動会の。
+ext-shinkou-1-10	話題	llm		列車の	しんこう	進行	しんこうの同音異義語（3字の文脈）	dev	llm-v1	available	子どもの。
+ext-shinkou-2-01	話題	llm		宗教の	しんこう	信仰	しんこうの同音異義語（3字の文脈）	test	llm-v1	available	旅行は一。
+ext-shinkou-2-02	話題	llm		彼の	しんこう	信仰	しんこうの同音異義語（2字の文脈）	dev	llm-v1	available	授業料を。
+ext-shinkou-2-03	話題	llm		深い	しんこう	信仰	しんこうの同音異義語（2字の文脈）	dev	llm-v1	available	席は窓際。
+ext-shinkou-2-04	話題	llm		神への	しんこう	信仰	しんこうの同音異義語（3字の文脈）	test	llm-v1	available	最終手段。
+ext-shinkou-2-05	話題	llm		古くからの	しんこう	信仰	しんこうの同音異義語（5字の文脈）	dev	llm-v1	available	ボスが。
+ext-shinkou-2-06	話題	llm		民間	しんこう	信仰	しんこうの同音異義語（2字の文脈）	dev	llm-v1	available	本人の。
+ext-shinkou-2-07	話題	llm		山岳	しんこう	信仰	しんこうの同音異義語（2字の文脈）	dev	llm-v1	available	報告は。
+ext-shinkou-2-08	話題	llm		仏教への	しんこう	信仰	しんこうの同音異義語（4字の文脈）	dev	llm-v1	available	身元を。
+ext-shinkou-2-09	話題	llm		祖先を敬う	しんこう	信仰	しんこうの同音異義語（5字の文脈）	dev	llm-v1	available	国連の。
+ext-shinkou-3-01	話題	llm		地域	しんこう	振興	しんこうの同音異義語（2字の文脈）	test	llm-v1	available	音楽の。
+ext-shinkou-3-02	話題	llm		産業の	しんこう	振興	しんこうの同音異義語（3字の文脈）	dev	llm-v1	available	利益を。
+ext-shinkou-3-03	話題	llm		観光の	しんこう	振興	しんこうの同音異義語（3字の文脈）	dev	llm-v1	available	原因を。
+ext-shinkou-3-04	話題	llm		科学技術の	しんこう	振興	しんこうの同音異義語（5字の文脈）	dev	llm-v1	available	宝石は。
+ext-shinkou-3-05	話題	llm		地場産業の	しんこう	振興	しんこうの同音異義語（5字の文脈）	dev	llm-v1	available	円満な。
+ext-shinkou-3-06	話題	llm		スポーツの	しんこう	振興|進行	しんこうの同音異義語（5字の文脈）	dev	llm-v1	available	それを。
+ext-shinkou-3-07	話題	llm		町の	しんこう	振興	しんこうの同音異義語（2字の文脈）	dev	llm-v1	available	弁当を。
+ext-shinkou-3-08	話題	llm		農村の	しんこう	振興	しんこうの同音異義語（3字の文脈）	dev	llm-v1	available	屋上を。
+ext-shinkou-3-09	話題	llm		県は中小企業の	しんこう	振興	しんこうの同音異義語（7字の文脈）	dev	llm-v1	available	計算が。
+ext-katei-1-01	話題	llm		円満な	かてい	家庭	かていの同音異義語（3字の文脈）	test	llm-v1	available	ビルが。
+ext-katei-1-02	話題	llm		幸せな	かてい	家庭	かていの同音異義語（3字の文脈）	dev	llm-v1	available	思わず。
+ext-katei-1-03	話題	llm		共働きの	かてい	家庭	かていの同音異義語（4字の文脈）	dev	llm-v1	available	ここ数。
+ext-katei-1-04	話題	llm		子どもの教育は	かてい	家庭	かていの同音異義語（7字の文脈）	test	llm-v1	available	人口は。
+ext-katei-1-05	話題	llm		母親は	かてい	家庭	かていの同音異義語（3字の文脈）	dev	llm-v1	available	歩幅を。
+ext-katei-1-06	話題	llm		仕事と	かてい	家庭	かていの同音異義語（3字の文脈）	dev	llm-v1	available	領地を。
+ext-katei-1-07	話題	llm		裕福な	かてい	家庭	かていの同音異義語（3字の文脈）	dev	llm-v1	available	手中に。
+ext-katei-1-08	話題	llm		アットホームな	かてい	家庭	かていの同音異義語（7字の文脈）	dev	llm-v1	available	自分の。
+ext-katei-1-09	話題	llm		平和な	かてい	家庭	かていの同音異義語（3字の文脈）	dev	llm-v1	available	固い。
+ext-katei-2-01	話題	llm		成長の	かてい	過程	かていの同音異義語（3字の文脈）	test	llm-v1	available	連帯。
+ext-katei-2-02	話題	llm		製造の	かてい	過程	かていの同音異義語（3字の文脈）	dev	llm-v1	available	美を。
+ext-katei-2-03	話題	llm		結果よりも	かてい	過程	かていの同音異義語（5字の文脈）	dev	llm-v1	available	民間。
+ext-katei-2-04	話題	llm		歴史の	かてい	過程	かていの同音異義語（3字の文脈）	dev	llm-v1	available	傘を。
+ext-katei-2-05	話題	llm		発展の	かてい	過程	かていの同音異義語（3字の文脈）	dev	llm-v1	available	駒を。
+ext-katei-2-06	話題	llm		問題を解く	かてい	過程	かていの同音異義語（5字の文脈）	dev	llm-v1	available	村を。
+ext-katei-2-07	話題	llm,ambiguous		計算の	かてい	過程	かていの同音異義語（3字の文脈）	dev	llm-v1	available	年齢。
+ext-katei-2-08	話題	llm		進化の	かてい	過程	かていの同音異義語（3字の文脈）	dev	llm-v1	available	職業。
+ext-katei-2-09	話題	llm		完成までの	かてい	過程	かていの同音異義語（5字の文脈）	dev	llm-v1	available	会議。
+ext-katei-2-10	話題	llm		物事の	かてい	過程	かていの同音異義語（3字の文脈）	dev	llm-v1	available	馬。
+ext-katei-3-01	話題	llm		それを	かてい	仮定	かていの同音異義語（3字の文脈）	dev	llm-v1	available	この関数の戻り値について、ドキュメントを確認した。公開されている。
+ext-katei-3-02	話題	llm		あくまで	かてい	仮定	かていの同音異義語（4字の文脈）	test	llm-v1	available	社内アンケートを実施した。締め切りまでに全員が。
+ext-katei-3-03	話題	llm		まず	かてい	仮定	かていの同音異義語（2字の文脈）	dev	llm-v1	available	年齢のわりにしっかりしている。話しぶりにも。
+ext-katei-3-04	話題	llm		この問題を解くには、条件を	かてい	仮定	かていの同音異義語（13字の文脈）	dev	llm-v1	available	回復薬を使い切ってしまい、仲間はみな。
+ext-katei-3-05	話題	llm		仮に雨が降るものと	かてい	仮定	かていの同音異義語（9字の文脈）	dev	llm-v1	available	開発チームは、機能の追加に合わせて。
+ext-katei-3-06	話題	llm		数学で背理法を使うには、まず結論の否定を	かてい	仮定	かていの同音異義語（20字の文脈）	dev	llm-v1	available	要求を満たしていないので、設計の。
+ext-katei-3-07	話題	llm		こうなるものと	かてい	仮定	かていの同音異義語（7字の文脈）	dev	llm-v1	available	参考書の後ろのページに、詳しい。
+ext-katei-3-08	話題	llm		そのように	かてい	仮定	かていの同音異義語（5字の文脈）	dev	llm-v1	available	ライブラリのバージョンを固定。
+ext-katei-3-09	話題	llm		不確かな	かてい	仮定	かていの同音異義語（4字の文脈）	test	llm-v1	available	データベースの移行は来週に。
+ext-katei-4-01	話題	llm		大学の	かてい	課程	かていの同音異義語（3字の文脈）	dev	llm-v1	available	円は、どの方向から見ても。
+ext-katei-4-02	話題	llm		博士	かてい	課程	かていの同音異義語（2字の文脈）	test	llm-v1	available	営業部は新規顧客の開拓を。
+ext-katei-4-03	話題	llm		修士	かてい	課程	かていの同音異義語（2字の文脈）	dev	llm-v1	available	編集部から依頼を受けて。
+ext-katei-4-04	話題	llm		教育	かてい	課程	かていの同音異義語（2字の文脈）	dev	llm-v1	available	今度の連休にキャンプを。
+ext-katei-4-05	話題	llm		義務教育の	かてい	課程	かていの同音異義語（5字の文脈）	dev	llm-v1	available	英語の授業で、単語の。
+ext-katei-4-06	話題	llm		高校の	かてい	課程	かていの同音異義語（3字の文脈）	dev	llm-v1	available	外部APIとの連携を。
+ext-katei-4-07	話題	llm		三年間の	かてい	課程	かていの同音異義語（4字の文脈）	test	llm-v1	available	写真をアルバムに整理。
+ext-katei-4-08	話題	llm		通信教育の	かてい	課程	かていの同音異義語（5字の文脈）	test	llm-v1	available	バグが減って安定的に。
+ext-katei-4-09	話題	llm		専門	かてい	課程	かていの同音異義語（2字の文脈）	dev	llm-v1	available	問い合わせに対する。
+ext-kyousou-1-01	話題	llm		激しい	きょうそう	競争	きょうそうの同音異義語（3字の文脈）	dev	llm-v1	available	ひどく酔った同僚を。
+ext-kyousou-1-02	話題	llm		企業間の	きょうそう	競争	きょうそうの同音異義語（4字の文脈）	dev	llm-v1	available	来月の旅行の計画を。
+ext-kyousou-1-03	話題	llm		市場での	きょうそう	競争	きょうそうの同音異義語（4字の文脈）	test	llm-v1	available	温泉でゆっくり休養。
+ext-kyousou-1-04	話題	llm		生存	きょうそう	競争	きょうそうの同音異義語（2字の文脈）	dev	llm-v1	available	この街は住みやすく。
+ext-kyousou-1-05	話題	llm		自由	きょうそう	競争	きょうそうの同音異義語（2字の文脈）	dev	llm-v1	available	ZIPファイルを。
+ext-kyousou-1-06	話題	llm		入試の	きょうそう	競争	きょうそうの同音異義語（3字の文脈）	dev	llm-v1	available	学園祭の展示物の。
+ext-kyousou-1-07	話題	llm		他社との	きょうそう	競争	きょうそうの同音異義語（4字の文脈）	dev	llm-v1	available	荷物を別の部屋に。
+ext-kyousou-1-08	話題	llm		価格	きょうそう	競争	きょうそうの同音異義語（2字の文脈）	dev	llm-v1	available	古いデータを削除。
+ext-kyousou-1-09	話題	llm		動物は食べ物を巡って	きょうそう	競争	きょうそうの同音異義語（10字の文脈）	test	llm-v1	available	週末は家族で外出。
+ext-kyousou-1-10	話題	llm		受験	きょうそう	競争	きょうそうの同音異義語（2字の文脈）	dev	llm-v1	available	デザートはプリン。
+ext-kyousou-2-01	話題	llm		百メートル	きょうそう	競走	きょうそうの同音異義語（5字の文脈）	dev	llm-v1	available	今、資料の作成を。
+ext-kyousou-2-02	話題	llm		馬	きょうそう	競走	きょうそうの同音異義語（1字の文脈）	dev	llm-v1	available	結果を比較して。
+ext-kyousou-2-03	話題	llm		リレー	きょうそう	競走	きょうそうの同音異義語（3字の文脈）	test	llm-v1	available	体育館を一般に。
+ext-kyousou-2-04	話題	llm,ambiguous		自動車	きょうそう	競走	きょうそうの同音異義語（3字の文脈）	test	llm-v1	available	神社に初穂料を。
+ext-kyousou-2-05	話題	llm		運動会の	きょうそう	競走	きょうそうの同音異義語（4字の文脈）	dev	llm-v1	available	見積もりを依頼。
+ext-kyousou-2-06	話題	llm		障害物	きょうそう	競走	きょうそうの同音異義語（3字の文脈）	dev	llm-v1	available	リンクの色は青。
+ext-kyousou-2-07	話題	llm		駅伝は長距離の	きょうそう	競走	きょうそうの同音異義語（7字の文脈）	dev	llm-v1	available	犬が外で散歩を。
+ext-kyousou-2-08	話題	llm		ボート	きょうそう	競走	きょうそうの同音異義語（3字の文脈）	dev	llm-v1	available	きちんと伝わる。
+ext-kyousou-2-09	話題	llm		ヨット	きょうそう	競走	きょうそうの同音異義語（3字の文脈）	test	llm-v1	available	原文と訳文を。
+ext-youi-1-01	話題	llm		夕食の	ようい	用意	よういの同音異義語（3字の文脈）	dev	llm-v1	available	来月は決算の。
+ext-youi-1-02	話題	llm		お茶を	ようい	用意	よういの同音異義語（3字の文脈）	test	llm-v1	available	ブランド品は。
+ext-youi-1-03	話題	llm		準備と	ようい	用意	よういの同音異義語（3字の文脈）	dev	llm-v1	available	相手の考えを。
+ext-youi-1-04	話題	llm		傘を	ようい	用意	よういの同音異義語（2字の文脈）	dev	llm-v1	available	会社の再建を。
+ext-youi-1-05	話題	llm		弁当を	ようい	用意	よういの同音異義語（3字の文脈）	dev	llm-v1	available	宿題を早めに。
+ext-youi-1-06	話題	llm		着替えを	ようい	用意	よういの同音異義語（4字の文脈）	dev	llm-v1	available	出発は朝一番。
+ext-youi-1-07	話題	llm		万全の	ようい	用意	よういの同音異義語（3字の文脈）	test	llm-v1	available	担当者の変更。
+ext-youi-1-08	話題	llm		資料を	ようい	用意	よういの同音異義語（3字の文脈）	dev	llm-v1	available	安全に使える。
+ext-youi-1-09	話題	llm		手土産を	ようい	用意	よういの同音異義語（4字の文脈）	test	llm-v1	available	センサーが。
+ext-youi-1-10	話題	llm		前もって	ようい	用意	よういの同音異義語（4字の文脈）	dev	llm-v1	available	ポスターの。
+ext-youi-2-01	話題	llm		決して	ようい	容易	よういの同音異義語（3字の文脈）	dev	llm-v1	available	祖先を敬う。
+ext-youi-2-02	話題	llm		比較的	ようい	容易	よういの同音異義語（3字の文脈）	test	llm-v1	available	面白い本を。
+ext-youi-2-03	話題	llm		理解は	ようい	容易	よういの同音異義語（3字の文脈）	dev	llm-v1	available	渋滞のため。
+ext-youi-2-04	話題	llm		簡単で	ようい	容易	よういの同音異義語（3字の文脈）	dev	llm-v1	available	米の重さを。
+ext-youi-2-05	話題	llm		そう	ようい	容易	よういの同音異義語（2字の文脈）	dev	llm-v1	available	近所を散策。
+ext-youi-2-06	話題	llm		実現は	ようい	容易	よういの同音異義語（3字の文脈）	dev	llm-v1	available	動作が重く。
+ext-youi-2-07	話題	llm		彼女を説得するのは	ようい	容易	よういの同音異義語（9字の文脈）	test	llm-v1	available	試験の日程。
+ext-youi-2-08	話題	llm		使い方は	ようい	容易	よういの同音異義語（4字の文脈）	dev	llm-v1	available	エンジニア。
+ext-youi-2-09	話題	llm		到底	ようい	容易	よういの同音異義語（2字の文脈）	dev	llm-v1	available	チームの。
+ext-youi-2-10	話題	llm		解決は	ようい	容易	よういの同音異義語（3字の文脈）	test	llm-v1	available	小学生を。
+ext-kaihou-1-01	話題	llm		人質を	かいほう	解放	かいほうの同音異義語（3字の文脈）	dev	llm-v1	available	カードの。
+ext-kaihou-1-02	話題	llm		奴隷を	かいほう	解放	かいほうの同音異義語（3字の文脈）	dev	llm-v1	available	不確かな。
+ext-kaihou-1-03	話題	llm		捕虜の	かいほう	解放	かいほうの同音異義語（3字の文脈）	dev	llm-v1	available	取引先を。
+ext-kaihou-1-04	話題	llm		長年の苦しみから	かいほう	解放	かいほうの同音異義語（8字の文脈）	dev	llm-v1	available	子どもの。
+ext-kaihou-1-05	話題	llm		校庭を地域住民に	かいほう	開放	かいほうの同音異義語（8字の文脈）	dev	llm-v1	available	合理化を。
+ext-kaihou-1-06	話題	llm		労働者を過酷な労働から	かいほう	解放	かいほうの同音異義語（11字の文脈）	test	llm-v1	available	合格する。
+ext-kaihou-1-07	話題	llm		犯人は人質を全員	かいほう	解放	かいほうの同音異義語（8字の文脈）	dev	llm-v1	available	その理由。
+ext-kaihou-1-08	話題	llm		戦争が終わり、収容所の人々が	かいほう	解放	かいほうの同音異義語（14字の文脈）	test	llm-v1	available	遅れない。
+ext-kaihou-1-09	話題	llm		仕事から	かいほう	解放	かいほうの同音異義語（4字の文脈）	dev	llm-v1	available	試験の。
+ext-kaihou-1-10	話題	llm		長い拘束の末にようやく	かいほう	解放	かいほうの同音異義語（11字の文脈）	test	llm-v1	available	貴重な。
+ext-kaihou-2-01	話題	llm		窓を	かいほう	開放	かいほうの同音異義語（2字の文脈）	dev	llm-v1	available	割引の。
+ext-kaihou-2-02	話題	llm		校門を	かいほう	開放	かいほうの同音異義語（3字の文脈）	dev	llm-v1	available	地中海。
+ext-kaihou-2-03	話題	llm		体育館を一般に	かいほう	開放	かいほうの同音異義語（7字の文脈）	test	llm-v1	available	映画の。
+ext-kaihou-2-04	話題	llm		夏は戸を	かいほう	開放	かいほうの同音異義語（4字の文脈）	dev	llm-v1	available	OSの。
+ext-kaihou-2-05	話題	llm		施設を市民に	かいほう	開放	かいほうの同音異義語（6字の文脈）	dev	llm-v1	available	疑惑を。
+ext-kaihou-2-06	話題	llm		屋上を	かいほう	開放	かいほうの同音異義語（3字の文脈）	test	llm-v1	available	人間の。
+ext-kaihou-2-07	話題	llm		ドアを	かいほう	開放	かいほうの同音異義語（3字の文脈）	dev	llm-v1	available	宗教の。
+ext-kaihou-2-08	話題	llm		庭を一般に	かいほう	開放	かいほうの同音異義語（5字の文脈）	test	llm-v1	available	歴史の。
+ext-kaihou-2-09	話題	llm		扉を	かいほう	開放	かいほうの同音異義語（2字の文脈）	dev	llm-v1	available	ボート。
+ext-kaihou-2-10	話題	llm		図書館の閲覧室を自由に	かいほう	開放	かいほうの同音異義語（11字の文脈）	dev	llm-v1	available	解決は。
+ext-kaihou-3-01	話題	llm		倒れた人を	かいほう	介抱	かいほうの同音異義語（5字の文脈）	dev	llm-v1	available	銀行に。
+ext-kaihou-3-02	話題	llm		酔った友人を	かいほう	介抱	かいほうの同音異義語（6字の文脈）	dev	llm-v1	available	製造の。
+ext-kaihou-3-03	話題	llm		病人を	かいほう	介抱	かいほうの同音異義語（3字の文脈）	test	llm-v1	available	繊細な。
+ext-kaihou-3-04	話題	llm		怪我人を	かいほう	介抱	かいほうの同音異義語（4字の文脈）	dev	llm-v1	available	部署の。
+ext-kaihou-3-05	話題	llm,ambiguous		傷ついた鳥を	かいほう	介抱	かいほうの同音異義語（6字の文脈）	dev	llm-v1	available	示談の。
+ext-kaihou-3-06	話題	llm		祖母を看病し、	かいほう	介抱	かいほうの同音異義語（7字の文脈）	test	llm-v1	available	体温を。
+ext-kaihou-3-07	話題	llm		道端で倒れていた老人を	かいほう	介抱	かいほうの同音異義語（11字の文脈）	dev	llm-v1	available	税金を。
+ext-kaihou-3-08	話題	llm		気分の悪くなった乗客を	かいほう	介抱	かいほうの同音異義語（11字の文脈）	dev	llm-v1	available	剣術を。
+ext-kaihou-3-09	話題	llm		ひどく酔った同僚を	かいほう	介抱	かいほうの同音異義語（9字の文脈）	test	llm-v1	available	時間帯。
+ext-kaihou-3-10	話題	llm		夜通し病人を	かいほう	介抱	かいほうの同音異義語（6字の文脈）	dev	llm-v1	available	専門家。
+ext-shoukai-1-01	話題	llm		友人を	しょうかい	紹介	しょうかいの同音異義語（3字の文脈）	dev	llm-v1	available	予想。
+ext-shoukai-1-02	話題	llm		自己	しょうかい	紹介	しょうかいの同音異義語（2字の文脈）	dev	llm-v1	available	桜の。
+ext-shoukai-1-03	話題	llm		商品の	しょうかい	紹介	しょうかいの同音異義語（3字の文脈）	test	llm-v1	available	古い。
+ext-shoukai-1-04	話題	llm		新しい同僚を	しょうかい	紹介	しょうかいの同音異義語（6字の文脈）	dev	llm-v1	available	専門。
+ext-shoukai-1-05	話題	llm		取引先を	しょうかい	紹介	しょうかいの同音異義語（4字の文脈）	dev	llm-v1	available	広い。
+ext-shoukai-1-06	話題	llm		著者が自分の本を	しょうかい	紹介	しょうかいの同音異義語（8字の文脈）	test	llm-v1	available	外交。
+ext-shoukai-1-07	話題	llm		彼女に彼氏を	しょうかい	紹介	しょうかいの同音異義語（6字の文脈）	dev	llm-v1	available	時代。
+ext-shoukai-1-08	話題	llm		面白い本を	しょうかい	紹介	しょうかいの同音異義語（5字の文脈）	dev	llm-v1	available	言語。
+ext-shoukai-1-09	話題	llm		司会が出演者を	しょうかい	紹介	しょうかいの同音異義語（7字の文脈）	test	llm-v1	available	例外。
+ext-shoukai-1-10	話題	llm		観光地を	しょうかい	紹介	しょうかいの同音異義語（4字の文脈）	dev	llm-v1	available	資料。
+ext-shoukai-2-01	話題	llm		在庫を	しょうかい	照会	しょうかいの同音異義語（3字の文脈）	dev	llm-v1	available	先。
+ext-shoukai-2-02	話題	llm		残高の	しょうかい	照会	しょうかいの同音異義語（3字の文脈）	dev	llm-v1	available	使い方を誤らないように、取扱説明書をよく読んでから。
+ext-shoukai-2-03	話題	llm		身元を	しょうかい	照会	しょうかいの同音異義語（3字の文脈）	dev	llm-v1	available	入試の過去問を解いた。採点するために、まず。
+ext-shoukai-2-04	話題	llm,ambiguous		他の部署に	しょうかい	照会	しょうかいの同音異義語（5字の文脈）	dev	llm-v1	available	画面のレイアウトを変えるときは、部品の。
+ext-shoukai-2-05	話題	llm		銀行に	しょうかい	照会	しょうかいの同音異義語（3字の文脈）	test	llm-v1	available	ユーザー辞書に単語を登録するときは。
+ext-shoukai-2-06	話題	llm		警察に前科の	しょうかい	照会	しょうかいの同音異義語（6字の文脈）	dev	llm-v1	available	報告書の章立てを見直して、全体の。
+ext-shoukai-2-07	話題	llm		取引先に支払い状況を	しょうかい	照会	しょうかいの同音異義語（10字の文脈）	dev	llm-v1	available	交通事故で、運ばれてきた男性は。
+ext-shoukai-2-08	話題	llm		役所に住民票の	しょうかい	照会	しょうかいの同音異義語（7字の文脈）	dev	llm-v1	available	あまりの手際のよさに、思わず。
+ext-shoukai-2-09	話題	llm,ambiguous		問い合わせて	しょうかい	照会	しょうかいの同音異義語（6字の文脈）	dev	llm-v1	available	家電を買うとき、メーカーの。
+ext-shoukai-2-10	話題	llm		契約内容を	しょうかい	照会	しょうかいの同音異義語（5字の文脈）	dev	llm-v1	available	購入前に、まず一か月だけ。
+ext-seikaku-1-01	話題	llm		明るい	せいかく	性格	せいかくの同音異義語（3字の文脈）	dev	llm-v1	available	チームで新しい機能を開発。
+ext-seikaku-1-02	話題	llm		優しい	せいかく	性格	せいかくの同音異義語（3字の文脈）	dev	llm-v1	available	新入社員は、三か月間は。
+ext-seikaku-1-03	話題	llm		彼の	せいかく	性格	せいかくの同音異義語（2字の文脈）	dev	llm-v1	available	舞台に立つと、会場から。
+ext-seikaku-1-04	話題	llm		兄弟でも	せいかく	性格	せいかくの同音異義語（4字の文脈）	dev	llm-v1	available	チームは新製品の開発を。
+ext-seikaku-1-05	話題	llm		穏やかな	せいかく	性格	せいかくの同音異義語（4字の文脈）	dev	llm-v1	available	数学の授業で、図形の。
+ext-seikaku-1-06	話題	llm		几帳面な	せいかく	性格	せいかくの同音異義語（4字の文脈）	test	llm-v1	available	ビルドの手順を自動化。
+ext-seikaku-1-07	話題	llm		人見知りな	せいかく	性格	せいかくの同音異義語（5字の文脈）	dev	llm-v1	available	今回の旅の目的は温泉。
+ext-seikaku-1-08	話題	llm		二人はまるで違う	せいかく	性格	せいかくの同音異義語（8字の文脈）	test	llm-v1	available	彼女はピアノの練習を。
+ext-seikaku-1-09	話題	llm		子どもの	せいかく	性格	せいかくの同音異義語（4字の文脈）	dev	llm-v1	available	芸術家は理想の美を。
+ext-seikaku-1-10	話題	llm		短気な	せいかく	性格	せいかくの同音異義語（3字の文脈）	test	llm-v1	available	デザインは赤を基調。
+ext-seikaku-2-01	話題	llm		時計は	せいかく	正確	せいかくの同音異義語（3字の文脈）	dev	llm-v1	available	アクセス権限を確認。
+ext-seikaku-2-02	話題	llm		計算が	せいかく	正確	せいかくの同音異義語（3字の文脈）	dev	llm-v1	available	店の定休日は水曜日。
+ext-seikaku-2-03	話題	llm		正しく	せいかく	正確	せいかくの同音異義語（3字の文脈）	test	llm-v1	available	皆で協力して作業を。
+ext-seikaku-2-04	話題	llm		情報を	せいかく	正確	せいかくの同音異義語（3字の文脈）	dev	llm-v1	available	その手際のよさに。
+ext-seikaku-2-05	話題	llm		数値を	せいかく	正確	せいかくの同音異義語（3字の文脈）	dev	llm-v1	available	著者が自分の本を。
+ext-seikaku-2-06	話題	llm		彼の記憶は	せいかく	正確	せいかくの同音異義語（5字の文脈）	test	llm-v1	available	雨が止んで涼しく。
+ext-seikaku-2-07	話題	llm		天気予報は	せいかく	正確	せいかくの同音異義語（5字の文脈）	dev	llm-v1	available	納期について交渉。
+ext-seikaku-2-08	話題	llm		非常に	せいかく	正確	せいかくの同音異義語（3字の文脈）	test	llm-v1	available	全員で記念撮影を。
+ext-seikaku-2-09	話題	llm		測定の結果は	せいかく	正確	せいかくの同音異義語（6字の文脈）	dev	llm-v1	available	昔より使いやすく。
+ext-seikaku-2-10	話題	llm		できるだけ	せいかく	正確	せいかくの同音異義語（5字の文脈）	dev	llm-v1	available	禁止されている。
+ext-koutei-1-01	話題	llm		意見を	こうてい	肯定	こうていの同音異義語（3字の文脈）	dev	llm-v1	available	県は中小企業の。
+ext-koutei-1-02	話題	llm		全面的に	こうてい	肯定	こうていの同音異義語（4字の文脈）	test	llm-v1	available	締め切りまで一。
+ext-koutei-1-03	話題	llm		彼の発言を	こうてい	肯定	こうていの同音異義語（5字の文脈）	dev	llm-v1	available	お互いに連絡を。
+ext-koutei-1-04	話題	llm		自己	こうてい	肯定	こうていの同音異義語（2字の文脈）	dev	llm-v1	available	設定は既定の値。
+ext-koutei-1-05	話題	llm		事実を	こうてい	肯定	こうていの同音異義語（3字の文脈）	dev	llm-v1	available	雪が降って寒く。
+ext-koutei-1-06	話題	llm		質問に対して首を縦に振って	こうてい	肯定	こうていの同音異義語（13字の文脈）	dev	llm-v1	available	健康を維持する。
+ext-koutei-1-07	話題	llm		存在を	こうてい	肯定	こうていの同音異義語（3字の文脈）	test	llm-v1	available	山道で足元の。
+ext-koutei-1-08	話題	llm		反対せず、提案を	こうてい	肯定	こうていの同音異義語（8字の文脈）	test	llm-v1	available	著名な作家が。
+ext-koutei-1-09	話題	llm		相手の考えを	こうてい	肯定	こうていの同音異義語（6字の文脈）	dev	llm-v1	available	絵本の世界を。
+ext-koutei-2-01	話題	llm		製造の	こうてい	工程	こうていの同音異義語（3字の文脈）	dev	llm-v1	available	新しい同僚を。
+ext-koutei-2-02	話題	llm		作業の	こうてい	工程	こうていの同音異義語（3字の文脈）	dev	llm-v1	available	ファッション。
+ext-koutei-2-03	話題	llm		生産の	こうてい	工程	こうていの同音異義語（3字の文脈）	test	llm-v1	available	専門の課程を。
+ext-koutei-2-04	話題	llm		各	こうてい	工程	こうていの同音異義語（1字の文脈）	dev	llm-v1	available	会議室を予約。
+ext-koutei-2-05	話題	llm		全	こうてい	工程	こうていの同音異義語（1字の文脈）	dev	llm-v1	available	会議は中止に。
+ext-koutei-2-06	話題	llm		塗装の	こうてい	工程	こうていの同音異義語（3字の文脈）	test	llm-v1	available	効率を上げる。
+ext-koutei-2-07	話題	llm		組み立ての	こうてい	工程	こうていの同音異義語（5字の文脈）	dev	llm-v1	available	次に会える。
+ext-koutei-2-08	話題	llm		この製品は多くの	こうてい	工程	こうていの同音異義語（8字の文脈）	dev	llm-v1	available	この装置の。
+ext-koutei-2-09	話題	llm		品質管理は各	こうてい	工程	こうていの同音異義語（6字の文脈）	test	llm-v1	available	この方法は。
+ext-koutei-2-10	話題	llm		納期に合わせて	こうてい	工程	こうていの同音異義語（7字の文脈）	dev	llm-v1	available	義務教育の。
+ext-koutei-3-01	話題	llm		小学校の	こうてい	校庭	こうていの同音異義語（4字の文脈）	dev	llm-v1	available	組み立ての。
+ext-koutei-3-02	話題	llm		広い	こうてい	校庭	こうていの同音異義語（2字の文脈）	dev	llm-v1	available	発表された。
+ext-koutei-3-03	話題	llm		放課後の	こうてい	校庭	こうていの同音異義語（4字の文脈）	dev	llm-v1	available	進捗を報告。
+ext-koutei-3-04	話題	llm		雨上がりの	こうてい	校庭	こうていの同音異義語（5字の文脈）	dev	llm-v1	available	お茶は緑茶。
+ext-koutei-3-05	話題	llm		運動会の	こうてい	校庭	こうていの同音異義語（4字の文脈）	dev	llm-v1	available	計画の変更。
+ext-koutei-3-06	話題	llm		朝礼で	こうてい	校庭	こうていの同音異義語（3字の文脈）	dev	llm-v1	available	資格を取る。
+ext-koutei-3-07	話題	llm		子どもたちが	こうてい	校庭	こうていの同音異義語（6字の文脈）	test	llm-v1	available	警察の発表。
+ext-koutei-3-08	話題	llm		夕暮れの	こうてい	校庭	こうていの同音異義語（4字の文脈）	dev	llm-v1	available	成長する。
+ext-koutei-3-09	話題	llm		桜の木が植わった	こうてい	校庭	こうていの同音異義語（8字の文脈）	test	llm-v1	available	ドラマの。
+ext-koutei-3-10	話題	llm		休み時間に	こうてい	校庭	こうていの同音異義語（5字の文脈）	dev	llm-v1	available	募金箱に。
+ext-kansei-1-01	話題	llm		ビルが	かんせい	完成	かんせいの同音異義語（3字の文脈）	dev	llm-v1	available	前もって。
+ext-kansei-1-02	話題	llm		作品を	かんせい	完成	かんせいの同音異義語（3字の文脈）	dev	llm-v1	available	放課後の。
+ext-kansei-1-03	話題	llm		ついに	かんせい	完成	かんせいの同音異義語（3字の文脈）	test	llm-v1	available	粘り強く。
+ext-kansei-1-04	話題	llm		新しい橋が	かんせい	完成	かんせいの同音異義語（5字の文脈）	test	llm-v1	available	カメラに。
+ext-kansei-1-05	話題	llm		模型が	かんせい	完成	かんせいの同音異義語（3字の文脈）	dev	llm-v1	available	彼の意見。
+ext-kansei-1-06	話題	llm		プロジェクトが	かんせい	完成	かんせいの同音異義語（7字の文脈）	dev	llm-v1	available	国際大会。
+ext-kansei-1-07	話題	llm		絵が	かんせい	完成	かんせいの同音異義語（2字の文脈）	dev	llm-v1	available	ゲラの。
+ext-kansei-1-08	話題	llm		家が	かんせい	完成	かんせいの同音異義語（2字の文脈）	dev	llm-v1	available	病院で。
+ext-kansei-1-09	話題	llm		ようやく	かんせい	完成	かんせいの同音異義語（4字の文脈）	dev	llm-v1	available	ログに。
+ext-kansei-1-10	話題	llm		予定どおり	かんせい	完成	かんせいの同音異義語（5字の文脈）	dev	llm-v1	available	事故の。
+ext-kansei-2-01	話題	llm		豊かな	かんせい	感性	かんせいの同音異義語（3字の文脈）	dev	llm-v1	available	論文を。
+ext-kansei-2-02	話題	llm		鋭い	かんせい	感性	かんせいの同音異義語（2字の文脈）	dev	llm-v1	available	忙しい。
+ext-kansei-2-03	話題	llm		芸術家の	かんせい	感性	かんせいの同音異義語（4字の文脈）	dev	llm-v1	available	真実を。
+ext-kansei-2-04	話題	llm		彼女の	かんせい	感性	かんせいの同音異義語（3字の文脈）	dev	llm-v1	available	科学の。
+ext-kansei-2-05	話題	llm		独特の	かんせい	感性	かんせいの同音異義語（3字の文脈）	dev	llm-v1	available	病気の。
+ext-kansei-2-06	話題	llm		若者の	かんせい	感性	かんせいの同音異義語（3字の文脈）	dev	llm-v1	available	仕事と。
+ext-kansei-2-07	話題	llm		子どもの	かんせい	感性	かんせいの同音異義語（4字の文脈）	dev	llm-v1	available	激しい。
+ext-kansei-2-08	話題	llm		繊細な	かんせい	感性	かんせいの同音異義語（3字の文脈）	dev	llm-v1	available	決して。
+ext-kansei-2-09	話題	llm		音楽の	かんせい	感性|完成	かんせいの同音異義語（3字の文脈）	dev	llm-v1	available	友人を。
+ext-kansei-2-10	話題	llm		独自の	かんせい	感性	かんせいの同音異義語（3字の文脈）	dev	llm-v1	available	数値を。
+ext-kansei-3-01	話題	llm		観客の	かんせい	歓声	かんせいの同音異義語（3字の文脈）	dev	llm-v1	available	模型が。
+ext-kansei-3-02	話題	llm		大きな	かんせい	歓声	かんせいの同音異義語（3字の文脈）	dev	llm-v1	available	バスで。
+ext-kansei-3-03	話題	llm		思わず	かんせい	歓声	かんせいの同音異義語（3字の文脈）	dev	llm-v1	available	人気の。
+ext-kansei-3-04	話題	llm		スタジアムに	かんせい	歓声	かんせいの同音異義語（6字の文脈）	dev	llm-v1	available	会社の。
+ext-kansei-3-05	話題	llm		ゴールが決まると、	かんせい	歓声	かんせいの同音異義語（9字の文脈）	dev	llm-v1	available	体重を。
+ext-kansei-3-06	話題	llm,ambiguous		子どもたちの	かんせい	歓声	かんせいの同音異義語（6字の文脈）	dev	llm-v1	available	怒りを。
+ext-kansei-3-07	話題	llm		スタンドから	かんせい	歓声	かんせいの同音異義語（6字の文脈）	dev	llm-v1	available	将来の。
+ext-kansei-3-08	話題	llm		舞台に立つと、会場から	かんせい	歓声	かんせいの同音異義語（11字の文脈）	dev	llm-v1	available	友人の。
+ext-kansei-3-09	話題	llm		勝利の	かんせい	歓声	かんせいの同音異義語（3字の文脈）	dev	llm-v1	available	硬い。
+ext-kansei-3-10	話題	llm		花火が上がり、	かんせい	歓声	かんせいの同音異義語（7字の文脈）	dev	llm-v1	available	国際。
+ext-idou-1-01	話題	llm		電車で	いどう	移動	いどうの同音異義語（3字の文脈）	test	llm-v1	available	宣伝。
+ext-idou-1-02	話題	llm		バスで	いどう	移動	いどうの同音異義語（3字の文脈）	dev	llm-v1	available	町の。
+ext-idou-1-03	話題	llm		車で	いどう	移動	いどうの同音異義語（2字の文脈）	dev	llm-v1	available	窓を。
+ext-idou-1-04	話題	llm		遠くへ	いどう	移動	いどうの同音異義語（3字の文脈）	test	llm-v1	available	良い。
+ext-idou-1-05	話題	llm		会場へ	いどう	移動	いどうの同音異義語（3字の文脈）	dev	llm-v1	available	箱に。
+ext-idou-1-06	話題	llm		荷物を別の部屋に	いどう	移動	いどうの同音異義語（8字の文脈）	dev	llm-v1	available	条件。
+ext-idou-1-07	話題	llm		駒を	いどう	移動	いどうの同音異義語（2字の文脈）	dev	llm-v1	available	好み。
+ext-idou-1-08	話題	llm		渋滞のため	いどう	移動	いどうの同音異義語（5字の文脈）	dev	llm-v1	available	試験。
+ext-idou-1-09	話題	llm		次の場所へ	いどう	移動	いどうの同音異義語（5字の文脈）	dev	llm-v1	available	二。
+ext-idou-1-10	話題	llm		資料を	いどう	移動	いどうの同音異義語（3字の文脈）	dev	llm-v1	available	失敗を恐れず挑戦しよう。若いうちは、いろいろな経験を積む。
+ext-idou-2-01	話題	llm		人事	いどう	異動	いどうの同音異義語（2字の文脈）	dev	llm-v1	available	毎日ジョギングを続けている。続けるための努力と。
+ext-idou-2-02	話題	llm		転勤	いどう	異動	いどうの同音異義語（2字の文脈）	dev	llm-v1	available	せっかく声をかけてもらったのだから、この。
+ext-idou-2-03	話題	llm,ambiguous		四月の	いどう	異動	いどうの同音異義語（3字の文脈）	dev	llm-v1	available	市民からの意見に対して、市長が文書で。
+ext-idou-2-04	話題	llm		部署の	いどう	異動	いどうの同音異義語（3字の文脈）	dev	llm-v1	available	手術を受けるかどうかは、患者自身の。
+ext-idou-2-05	話題	llm		春の人事	いどう	異動	いどうの同音異義語（4字の文脈）	test	llm-v1	available	大量に生産するには、手作業よりも。
+ext-idou-2-06	話題	llm		営業部への	いどう	異動	いどうの同音異義語（5字の文脈）	dev	llm-v1	available	彼女はその新聞に毎月エッセイを。
+ext-idou-2-07	話題	llm		辞令が出て	いどう	異動	いどうの同音異義語（5字の文脈）	dev	llm-v1	available	国家試験に合格して、晴れて。
+ext-idou-2-08	話題	llm,ambiguous		本社へ	いどう	異動	いどうの同音異義語（3字の文脈）	dev	llm-v1	available	続きは明日にして今日は終了。
+ext-idou-2-09	話題	llm		経理課に	いどう	異動	いどうの同音異義語（4字の文脈）	dev	llm-v1	available	工事で近隣に与えた騒音の。
+ext-idou-2-10	話題	llm		来月付で	いどう	異動	いどうの同音異義語（4字の文脈）	dev	llm-v1	available	敵の攻撃を受けて兵士は。
+ext-shuukan-1-01	話題	llm		早起きの	しゅうかん	習慣	しゅうかんの同音異義語（4字の文脈）	dev	llm-v1	available	労働者を過酷な労働から。
+ext-shuukan-1-02	話題	llm		良い	しゅうかん	習慣	しゅうかんの同音異義語（2字の文脈）	dev	llm-v1	available	試合の会場は市民体育館。
+ext-shuukan-1-03	話題	llm		悪い	しゅうかん	習慣	しゅうかんの同音異義語（2字の文脈）	test	llm-v1	available	客先の要望で、画面の。
+ext-shuukan-1-04	話題	llm		毎朝の	しゅうかん	習慣	しゅうかんの同音異義語（3字の文脈）	dev	llm-v1	available	弟は大学で化学を研究。
+ext-shuukan-1-05	話題	llm		生活	しゅうかん	習慣	しゅうかんの同音異義語（2字の文脈）	dev	llm-v1	available	ドレスコードは普段着。
+ext-shuukan-1-06	話題	llm		食後に歯を磨く	しゅうかん	習慣	しゅうかんの同音異義語（7字の文脈）	test	llm-v1	available	兄は貿易の会社を経営。
+ext-shuukan-1-07	話題	llm		読書の	しゅうかん	習慣	しゅうかんの同音異義語（3字の文脈）	dev	llm-v1	available	国家が国民の生活を。
+ext-shuukan-1-08	話題	llm		朝のジョギングを	しゅうかん	習慣	しゅうかんの同音異義語（8字の文脈）	dev	llm-v1	available	ゴールまでの時間を。
+ext-shuukan-1-09	話題	llm		古くからの	しゅうかん	習慣	しゅうかんの同音異義語（5字の文脈）	test	llm-v1	available	ドキュメントを翻訳。
+ext-shuukan-1-10	話題	llm		日本の	しゅうかん	習慣	しゅうかんの同音異義語（3字の文脈）	dev	llm-v1	available	区切り文字はカンマ。
+ext-shuukan-2-01	話題	llm		二	しゅうかん	週間	しゅうかんの同音異義語（1字の文脈）	dev	llm-v1	available	父は庭で野菜を栽培。
+ext-shuukan-2-02	話題	llm		三	しゅうかん	週間	しゅうかんの同音異義語（1字の文脈）	test	llm-v1	available	検査の結果、特に。
+ext-shuukan-2-03	話題	llm		一	しゅうかん	週間	しゅうかんの同音異義語（1字の文脈）	dev	llm-v1	available	コインロッカーに。
+ext-shuukan-2-04	話題	llm		ここ数	しゅうかん	週間	しゅうかんの同音異義語（3字の文脈）	dev	llm-v1	available	今日はここまでに。
+ext-shuukan-2-05	話題	llm		今	しゅうかん	週間	しゅうかんの同音異義語（1字の文脈）	dev	llm-v1	available	会議の日程を調整。
+ext-shuukan-2-06	話題	llm		来	しゅうかん	週間	しゅうかんの同音異義語（1字の文脈）	dev	llm-v1	available	資料の誤字を訂正。
+ext-shuukan-2-07	話題	llm		先	しゅうかん	週間	しゅうかんの同音異義語（1字の文脈）	dev	llm-v1	available	チームの名前は錨。
+ext-shuukan-2-08	話題	llm		締め切りまで一	しゅうかん	週間	しゅうかんの同音異義語（7字の文脈）	dev	llm-v1	available	導入にかかる費用。
+ext-shuukan-2-09	話題	llm		夏休みは四	しゅうかん	週間	しゅうかんの同音異義語（5字の文脈）	test	llm-v1	available	最低限の生活を。
+ext-shuukan-2-10	話題	llm		旅行は一	しゅうかん	週間	しゅうかんの同音異義語（4字の文脈）	dev	llm-v1	available	役所に住民票の。
+ext-shuukan-3-01	話題	llm		少年マンガの	しゅうかん	週刊	しゅうかんの同音異義語（6字の文脈）	dev	llm-v1	available	これから勉強を。
+ext-shuukan-3-02	話題	llm		雑誌は	しゅうかん	週刊	しゅうかんの同音異義語（3字の文脈）	dev	llm-v1	available	カーテンを洗濯。
+ext-shuukan-3-03	話題	llm		毎週発売される	しゅうかん	週刊	しゅうかんの同音異義語（7字の文脈）	dev	llm-v1	available	集合時間は八時。
+ext-shuukan-3-04	話題	llm		新聞の	しゅうかん	週刊	しゅうかんの同音異義語（3字の文脈）	dev	llm-v1	available	仕様変更の影響。
+ext-shuukan-3-05	話題	llm		子ども向けの	しゅうかん	週刊	しゅうかんの同音異義語（6字の文脈）	dev	llm-v1	available	試験の採点は。
+ext-shuukan-3-06	話題	llm		ファッション	しゅうかん	週間	しゅうかんの同音異義語（6字の文脈）	test	llm-v1	available	老後の生活の。
+ext-shuukan-3-07	話題	llm,ambiguous		人気の	しゅうかん	週刊	しゅうかんの同音異義語（3字の文脈）	dev	llm-v1	available	企業は利潤を。
+ext-shuukan-3-08	話題	llm,ambiguous		経済	しゅうかん	週刊	しゅうかんの同音異義語（2字の文脈）	test	llm-v1	available	作業は順調に。
+ext-shuukan-3-09	話題	llm		駅の売店で	しゅうかん	週刊	しゅうかんの同音異義語（5字の文脈）	dev	llm-v1	available	スタジアムに。
+ext-shuukan-3-10	話題	llm		出版社が	しゅうかん	週刊	しゅうかんの同音異義語（4字の文脈）	test	llm-v1	available	料理の分量を。
+ext-koushou-1-01	話題	llm		値段の	こうしょう	交渉	こうしょうの同音異義語（3字の文脈）	dev	llm-v1	available	旅行の予約を。
+ext-koushou-1-02	話題	llm		賃金の	こうしょう	交渉	こうしょうの同音異義語（3字の文脈）	dev	llm-v1	available	ランチは和食。
+ext-koushou-1-03	話題	llm		労使	こうしょう	交渉	こうしょうの同音異義語（2字の文脈）	dev	llm-v1	available	退職の手続き。
+ext-koushou-1-04	話題	llm		相手と	こうしょう	交渉	こうしょうの同音異義語（3字の文脈）	dev	llm-v1	available	非行少年の。
+ext-koushou-1-05	話題	llm		取引先と	こうしょう	交渉	こうしょうの同音異義語（4字の文脈）	dev	llm-v1	available	借金の連帯。
+ext-koushou-1-06	話題	llm		条件を	こうしょう	交渉	こうしょうの同音異義語（3字の文脈）	dev	llm-v1	available	自分の夢を。
+ext-koushou-1-07	話題	llm		粘り強く	こうしょう	交渉	こうしょうの同音異義語（4字の文脈）	dev	llm-v1	available	スポーツの。
+ext-koushou-1-08	話題	llm		示談の	こうしょう	交渉	こうしょうの同音異義語（3字の文脈）	dev	llm-v1	available	人見知りな。
+ext-koushou-1-09	話題	llm		領土を巡る	こうしょう	交渉	こうしょうの同音異義語（5字の文脈）	dev	llm-v1	available	辞令が出て。
+ext-koushou-1-10	話題	llm		外交	こうしょう	交渉	こうしょうの同音異義語（2字の文脈）	dev	llm-v1	available	礼儀作法を。
+ext-koushou-2-01	話題	llm		時代	こうしょう	考証	こうしょうの同音異義語（2字の文脈）	test	llm-v1	available	予約は二名。
+ext-koushou-2-02	話題	llm		歴史	こうしょう	考証	こうしょうの同音異義語（2字の文脈）	dev	llm-v1	available	毎日散歩を。
+ext-koushou-2-03	話題	llm		古文書の	こうしょう	考証	こうしょうの同音異義語（4字の文脈）	dev	llm-v1	available	宿題の範囲。
+ext-koushou-2-04	話題	llm		史料に基づいて	こうしょう	考証	こうしょうの同音異義語（7字の文脈）	dev	llm-v1	available	最初の一歩。
+ext-koushou-2-05	話題	llm		風俗の	こうしょう	考証	こうしょうの同音異義語（3字の文脈）	dev	llm-v1	available	テストの。
+ext-koushou-2-06	話題	llm		ドラマの時代	こうしょう	考証	こうしょうの同音異義語（6字の文脈）	dev	llm-v1	available	障害者の。
+ext-koushou-2-07	話題	llm		遺跡の	こうしょう	考証	こうしょうの同音異義語（3字の文脈）	dev	llm-v1	available	期待した。
+ext-koushou-2-08	話題	llm		資料の	こうしょう	考証	こうしょうの同音異義語（3字の文脈）	dev	llm-v1	available	市場での。
+ext-koushou-2-09	話題	llm,ambiguous		専門家が	こうしょう	考証	こうしょうの同音異義語（4字の文脈）	dev	llm-v1	available	穏やかな。
+ext-koushou-2-10	話題	llm		衣装の	こうしょう	考証	こうしょうの同音異義語（3字の文脈）	dev	llm-v1	available	来月付で。
+ext-koushou-3-01	話題	llm		発表された	こうしょう	公称	こうしょうの同音異義語（5字の文脈）	dev	llm-v1	available	小麦粉を。
+ext-koushou-3-02	話題	llm		人口は	こうしょう	公称	こうしょうの同音異義語（3字の文脈）	dev	llm-v1	available	夜は読書。
+ext-koushou-3-03	話題	llm,ambiguous		実際の売上は、	こうしょう	公称	こうしょうの同音異義語（7字の文脈）	dev	llm-v1	available	お礼の印。
+ext-koushou-3-04	話題	llm,ambiguous		定員は	こうしょう	公称	こうしょうの同音異義語（3字の文脈）	dev	llm-v1	available	壊れない。
+ext-koushou-3-05	話題	llm		発行部数は	こうしょう	公称	こうしょうの同音異義語（5字の文脈）	test	llm-v1	available	無断で。
+ext-koushou-3-06	話題	llm		身長は	こうしょう	公称	こうしょうの同音異義語（3字の文脈）	dev	llm-v1	available	最新の。
+ext-koushou-3-07	話題	llm,ambiguous		最大	こうしょう	公称	こうしょうの同音異義語（2字の文脈）	dev	llm-v1	available	品質を。
+ext-koushou-3-08	話題	llm,ambiguous		会社の	こうしょう	公称	こうしょうの同音異義語（3字の文脈）	test	llm-v1	available	時計の。
+ext-koushou-3-09	話題	llm,ambiguous		表向きの	こうしょう	公称	こうしょうの同音異義語（4字の文脈）	dev	llm-v1	available	工場で。
+ext-koushou-3-10	話題	llm,ambiguous		名目上の	こうしょう	公称	こうしょうの同音異義語（4字の文脈）	dev	llm-v1	available	地球の。
+ext-hakaru-1-01	話題	llm		便宜を	はかる	図る	はかるの同音異義語（3字の文脈）	dev	llm-v1	available	失言の。
+ext-hakaru-1-02	話題	llm		合理化を	はかる	図る	はかるの同音異義語（4字の文脈）	dev	llm-v1	available	とても。
+ext-hakaru-1-03	話題	llm		自殺を	はかる	図る	はかるの同音異義語（3字の文脈）	dev	llm-v1	available	観光の。
+ext-hakaru-1-04	話題	llm		再建を	はかる	図る	はかるの同音異義語（3字の文脈）	dev	llm-v1	available	進化の。
+ext-hakaru-1-05	話題	llm		コスト削減を	はかる	図る	はかるの同音異義語（6字の文脈）	test	llm-v1	available	お茶を。
+ext-hakaru-1-06	話題	llm		相手の便宜を	はかる	図る	はかるの同音異義語（6字の文脈）	dev	llm-v1	available	捕虜の。
+ext-hakaru-1-07	話題	llm		事業の拡大を	はかる	図る	はかるの同音異義語（6字の文脈）	dev	llm-v1	available	短気な。
+ext-hakaru-1-08	話題	llm		会社の再建を	はかる	図る	はかるの同音異義語（6字の文脈）	dev	llm-v1	available	塗装の。
+ext-hakaru-1-09	話題	llm		業務の効率化を	はかる	図る	はかるの同音異義語（7字の文脈）	dev	llm-v1	available	観客の。
+ext-hakaru-1-10	話題	llm		関係の改善を	はかる	図る	はかるの同音異義語（6字の文脈）	dev	llm-v1	available	読書の。
+ext-hakaru-2-01	話題	llm		距離を	はかる	測る	はかるの同音異義語（3字の文脈）	dev	llm-v1	available	資料の。
+ext-hakaru-2-02	話題	llm		体温を	はかる	測る	はかるの同音異義語（3字の文脈）	test	llm-v1	available	時間を。
+ext-hakaru-2-03	話題	llm		長さを	はかる	測る	はかるの同音異義語（3字の文脈）	dev	llm-v1	available	品物を。
+ext-hakaru-2-04	話題	llm		身長を	はかる	測る	はかるの同音異義語（3字の文脈）	dev	llm-v1	available	写真に。
+ext-hakaru-2-05	話題	llm		深さを	はかる	測る	はかるの同音異義語（3字の文脈）	dev	llm-v1	available	平和の。
+ext-hakaru-2-06	話題	llm		血圧を	はかる	測る	はかるの同音異義語（3字の文脈）	dev	llm-v1	available	もう。
+ext-hakaru-2-07	話題	llm		メジャーで	はかる	測る	はかるの同音異義語（5字の文脈）	test	llm-v1	available	これ。
+ext-hakaru-2-08	話題	llm		温度計で	はかる	測る|計る	はかるの同音異義語（4字の文脈）	test	llm-v1	available	会長。
+ext-hakaru-2-09	話題	llm		山の高さを	はかる	測る	はかるの同音異義語（5字の文脈）	dev	llm-v1	available	彼の。
+ext-hakaru-2-10	話題	llm		歩幅を	はかる	測る	はかるの同音異義語（3字の文脈）	test	llm-v1	available	価格。
+ext-hakaru-3-01	話題	llm		時間を	はかる	計る	はかるの同音異義語（3字の文脈）	dev	llm-v1	available	鋭い。
+ext-hakaru-3-02	話題	llm		タイミングを	はかる	計る	はかるの同音異義語（6字の文脈）	dev	llm-v1	available	最大。
+ext-hakaru-3-03	話題	llm		重さを	はかる	計る	はかるの同音異義語（3字の文脈）	dev	llm-v1	available	気分。
+ext-hakaru-3-04	話題	llm		ストップウォッチで	はかる	計る	はかるの同音異義語（9字の文脈）	test	llm-v1	available	経験。
+ext-hakaru-3-05	話題	llm		秒単位で	はかる	計る	はかるの同音異義語（4字の文脈）	dev	llm-v1	available	教師。
+ext-hakaru-3-06	話題	llm		ゴールまでの時間を	はかる	計る	はかるの同音異義語（9字の文脈）	dev	llm-v1	available	点。
+ext-hakaru-3-07	話題	llm		料理の分量を	はかる	計る	はかるの同音異義語（6字の文脈）	dev	llm-v1	available	噂。
+ext-hakaru-3-08	話題	llm		計量カップで	はかる	計る	はかるの同音異義語（6字の文脈）	dev	llm-v1	available	その発想は誰も思いつかなかった。聞いていた全員が。
+ext-hakaru-3-09	話題	llm		走る時間を	はかる	計る	はかるの同音異義語（5字の文脈）	dev	llm-v1	available	油が切れたのか、異音がする。工場に導入した。
+ext-hakaru-4-01	話題	llm		体重を	はかる	量る	はかるの同音異義語（3字の文脈）	dev	llm-v1	available	納品物が契約と違う。あらかじめ合意した。
+ext-hakaru-4-02	話題	llm		米の重さを	はかる	量る	はかるの同音異義語（5字の文脈）	test	llm-v1	available	本の発売日が近づき、編集部は最後の。
+ext-hakaru-4-03	話題	llm		小麦粉を	はかる	量る	はかるの同音異義語（4字の文脈）	dev	llm-v1	available	申込書のこの欄には、希望の日程を。
+ext-hakaru-4-04	話題	llm		はかりで	はかる	量る	はかるの同音異義語（4字の文脈）	dev	llm-v1	available	お客様からのご質問に、担当者が。
+ext-hakaru-4-05	話題	llm		荷物の重量を	はかる	量る	はかるの同音異義語（6字の文脈）	dev	llm-v1	available	ブドウの栽培には、その土地の。
+ext-hakaru-4-06	話題	llm		目方を	はかる	量る	はかるの同音異義語（3字の文脈）	dev	llm-v1	available	質問に対して首を縦に振って。
+ext-hakaru-4-07	話題	llm		砂糖を	はかる	量る	はかるの同音異義語（3字の文脈）	test	llm-v1	available	条件を満たす人は、二十歳。
+ext-hakaru-4-08	話題	llm		容積を	はかる	量る	はかるの同音異義語（3字の文脈）	dev	llm-v1	available	ここ数年で彼女は人気者に。
+ext-hakaru-4-09	話題	llm		キッチンスケールで	はかる	量る	はかるの同音異義語（9字の文脈）	test	llm-v1	available	どんな困難にも負けない。
+ext-hakaru-4-10	話題	llm		分量を	はかる	量る	はかるの同音異義語（3字の文脈）	dev	llm-v1	available	ログインの仕組みを改善。
+ext-osameru-1-01	話題	llm		税金を	おさめる	納める	おさめるの同音異義語（3字の文脈）	dev	llm-v1	available	近所の人が道路の清掃を。
+ext-osameru-1-02	話題	llm		会費を	おさめる	納める	おさめるの同音異義語（3字の文脈）	dev	llm-v1	available	動物は食べ物を巡って。
+ext-osameru-1-03	話題	llm		年貢を	おさめる	納める	おさめるの同音異義語（3字の文脈）	dev	llm-v1	available	サーバーの台数を削減。
+ext-osameru-1-04	話題	llm		品物を	おさめる	納める	おさめるの同音異義語（3字の文脈）	test	llm-v1	available	発表の順番はくじ引き。
+ext-osameru-1-05	話題	llm		代金を	おさめる	納める	おさめるの同音異義語（3字の文脈）	dev	llm-v1	available	どちらにも偏らない。
+ext-osameru-1-06	話題	llm		期限までに料金を	おさめる	納める	おさめるの同音異義語（8字の文脈）	dev	llm-v1	available	仮に雨が降るものと。
+ext-osameru-1-07	話題	llm		神社に初穂料を	おさめる	納める	おさめるの同音異義語（7字の文脈）	dev	llm-v1	available	バックアップを作成。
+ext-osameru-1-08	話題	llm		注文の品を	おさめる	納める	おさめるの同音異義語（5字の文脈）	dev	llm-v1	available	冷蔵庫の中身を整理。
+ext-osameru-1-09	話題	llm		授業料を	おさめる	納める	おさめるの同音異義語（4字の文脈）	test	llm-v1	available	試験が近づき不安に。
+ext-osameru-1-10	話題	llm		保険料を	おさめる	納める	おさめるの同音異義語（4字の文脈）	dev	llm-v1	available	サービスの利用規約。
+ext-osameru-2-01	話題	llm		国を	おさめる	治める	おさめるの同音異義語（2字の文脈）	dev	llm-v1	available	二人の性格は実に。
+ext-osameru-2-02	話題	llm		領地を	おさめる	治める	おさめるの同音異義語（3字の文脈）	test	llm-v1	available	この製品は多くの。
+ext-osameru-2-03	話題	llm		天下を	おさめる	治める	おさめるの同音異義語（3字の文脈）	dev	llm-v1	available	毎朝ジョギングを。
+ext-osameru-2-04	話題	llm		村を	おさめる	治める	おさめるの同音異義語（2字の文脈）	dev	llm-v1	available	語学の勉強を毎日。
+ext-osameru-2-05	話題	llm		民を	おさめる	治める	おさめるの同音異義語（2字の文脈）	dev	llm-v1	available	ログの出力は詳細。
+ext-osameru-2-06	話題	llm		王が国を	おさめる	治める	おさめるの同音異義語（4字の文脈）	dev	llm-v1	available	母は台所で料理を。
+ext-osameru-2-07	話題	llm		混乱を	おさめる	治める|収める	おさめるの同音異義語（3字の文脈）	dev	llm-v1	available	若者の選挙への。
+ext-osameru-2-08	話題	llm		賢い君主が国を	おさめる	治める	おさめるの同音異義語（7字の文脈）	dev	llm-v1	available	こうなるものと。
+ext-osameru-2-09	話題	llm		戦乱の世を	おさめる	治める	おさめるの同音異義語（5字の文脈）	test	llm-v1	available	実際の売上は、。
+ext-osameru-2-10	話題	llm		怒りを	おさめる	治める|収める	おさめるの同音異義語（3字の文脈）	dev	llm-v1	available	ブランチを整理。
+ext-osameru-3-01	話題	llm		学問を	おさめる	修める	おさめるの同音異義語（3字の文脈）	dev	llm-v1	available	プランは年払い。
+ext-osameru-3-02	話題	llm		学業を	おさめる	修める	おさめるの同音異義語（3字の文脈）	dev	llm-v1	available	祖母は九十歳に。
+ext-osameru-3-03	話題	llm		武芸を	おさめる	修める	おさめるの同音異義語（3字の文脈）	test	llm-v1	available	風邪をひかない。
+ext-osameru-3-04	話題	llm		医学を	おさめる	修める	おさめるの同音異義語（3字の文脈）	test	llm-v1	available	彼の努力には。
+ext-osameru-3-05	話題	llm		芸を	おさめる	修める	おさめるの同音異義語（2字の文脈）	dev	llm-v1	available	首相は新たな。
+ext-osameru-3-06	話題	llm		礼儀作法を	おさめる	修める	おさめるの同音異義語（5字の文脈）	dev	llm-v1	available	結果は容易に。
+ext-osameru-3-07	話題	llm		剣術を	おさめる	修める	おさめるの同音異義語（3字の文脈）	dev	llm-v1	available	問い合わせて。
+ext-osameru-3-08	話題	llm		大学で法学を	おさめる	修める	おさめるの同音異義語（6字の文脈）	dev	llm-v1	available	相手の便宜を。
+ext-osameru-3-09	話題	llm		修行して徳を	おさめる	修める	おさめるの同音異義語（6字の文脈）	dev	llm-v1	available	手順書を作成。
+ext-osameru-3-10	話題	llm		専門の課程を	おさめる	修める	おさめるの同音異義語（6字の文脈）	dev	llm-v1	available	そろそろ休憩。
+ext-osameru-4-01	話題	llm		成功を	おさめる	収める	おさめるの同音異義語（3字の文脈）	dev	llm-v1	available	仕事が忙しく。
+ext-osameru-4-02	話題	llm		勝利を	おさめる	収める	おさめるの同音異義語（3字の文脈）	test	llm-v1	available	夢をかなえる。
+ext-osameru-4-03	話題	llm		写真に	おさめる	収める	おさめるの同音異義語（3字の文脈）	dev	llm-v1	available	遅刻は三回。
+ext-osameru-4-04	話題	llm		カメラに	おさめる	収める	おさめるの同音異義語（4字の文脈）	dev	llm-v1	available	デザインを。
+ext-osameru-4-05	話題	llm		箱に	おさめる	収める	おさめるの同音異義語（2字の文脈）	test	llm-v1	available	ポケットの。
+ext-osameru-4-06	話題	llm		好成績を	おさめる	収める	おさめるの同音異義語（4字の文脈）	dev	llm-v1	available	庭を一般に。
+ext-osameru-4-07	話題	llm		財布に	おさめる	収める	おさめるの同音異義語（3字の文脈）	dev	llm-v1	available	新しい橋が。
+ext-osameru-4-08	話題	llm		ケースに	おさめる	収める	おさめるの同音異義語（4字の文脈）	dev	llm-v1	available	山の高さを。
+ext-osameru-4-09	話題	llm		手中に	おさめる	収める	おさめるの同音異義語（3字の文脈）	dev	llm-v1	available	原稿を推敲。
+ext-osameru-4-10	話題	llm		目標を達成して大きな成果を	おさめる	収める	おさめるの同音異義語（13字の文脈）	test	llm-v1	available	天気が悪く。
+ext-neg-01	否定	llm	it	今日はここまでに	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	今後の方針。
+ext-neg-02	否定	llm	it	みんなで一緒に	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	障害を防ぐ。
+ext-neg-03	否定	llm	it	これから勉強を	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	失敗しない。
+ext-neg-04	否定	llm	it	外部APIとの連携を	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	子どもの。
+ext-neg-05	否定	llm	it	まずはテストを書くことに	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	test	llm-v1	available	雨が多い。
+ext-neg-06	否定	llm	it	設計書をレビュー	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	共働きの。
+ext-neg-07	否定	llm	it	データベースの移行は来週に	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	夏は戸を。
+ext-neg-08	否定	llm	it	コードをリファクタリング	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	ようやく。
+ext-neg-09	否定	llm	it	ログを確認	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	表向きの。
+ext-neg-10	否定	llm	it	サーバーを再起動	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	test	llm-v1	available	彼の過去。
+ext-neg-11	否定	llm	it	仕様書を読んで実装	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	成功する。
+ext-neg-12	否定	llm	it	会議の議事録を共有	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	忘れない。
+ext-neg-13	否定	llm	it	ご飯は炊き込みご飯	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	審査は。
+ext-neg-14	否定	llm	it	会議は午後	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	河原の。
+ext-neg-15	否定	llm	it	デザインは赤を基調	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	支援の。
+ext-neg-16	否定	llm	it	テーマをシンプル	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	温暖な。
+ext-neg-17	否定	llm	it	名前を「ikari」	にする	にする	文法優先。プロファイルや話題で覆らないこと	test	llm-v1	available	新しい。
+ext-neg-18	否定	llm	it	締め切りを金曜日	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	適切な。
+ext-neg-19	否定	llm	it	目標は月に五冊読むこと	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	不正を。
+ext-neg-20	否定	llm	it	夕食はカレー	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	芸術の。
+ext-gram-01	文法	llm	it	雨が止んで涼しく	なった	なった	文法優先。プロファイルや話題で覆らないこと	test	llm-v1	available	物語の。
+ext-gram-02	文法	llm	it	やっと春に	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	成長の。
+ext-gram-03	文法	llm	it	ドキュメントが読みやすく	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	自動車。
+ext-gram-04	文法	llm	it	システムが高速に	なった	なった	文法優先。プロファイルや話題で覆らないこと	test	llm-v1	available	簡単で。
+ext-gram-05	文法	llm	it	サーバーが落ちて使えなく	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	残高の。
+ext-gram-06	文法	llm	it	彼は立派な医者に	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	事実を。
+ext-gram-07	文法	llm	it	彼は今、勉強を	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	独特の。
+ext-gram-08	文法	llm	it	ユーザー辞書の仕様を	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	資料を。
+ext-gram-09	文法	llm	it	チームで新しい機能を開発	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	相手と。
+ext-gram-10	文法	llm	it	毎朝ジョギングを	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	再建を。
+ext-gram-11	文法	llm	it	弟は大学で化学を研究	している	している	文法優先。プロファイルや話題で覆らないこと	test	llm-v1	available	容積を。
+ext-gram-12	文法	llm	it	この件	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	武芸を。
+ext-gram-13	文法	llm	it	来週の会議	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	担当者。
+ext-gram-14	文法	llm	it	新製品の仕様	について	について	文法優先。プロファイルや話題で覆らないこと	test	llm-v1	available	災害時。
+ext-gram-15	文法	llm	it	彼の過去	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	古い。
+ext-gram-16	文法	llm	it	環境問題	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	外交。
+ext-gram-17	文法	llm	it	天候	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	高い。
+ext-gram-18	文法	llm	it	場合	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	修士。
+ext-gram-19	文法	llm	it	人	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	彼の。
+ext-gram-20	文法	llm	it	地域	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	経済。
+ext-gram-21	文法	llm	it	健康の	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	地域。
+ext-gram-22	文法	llm	it	合格する	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	test	llm-v1	available	地方。
+ext-gram-23	文法	llm	it	みんなの	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	友人。
+ext-gram-24	文法	llm	it	将来の	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v1	available	調査。
+ext-neg-21	否定	llm	it	エラーログを確認	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	今。
+ext-neg-22	否定	llm	it	設定ファイルを整理	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	ダウンロードしたデータを展開するために、アーカイブを。
+ext-neg-23	否定	llm	it	古いデータを削除	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	裁判官は被告に猶予を与えた。本人にも、真剣に。
+ext-neg-24	否定	llm	it	新機能の仕様を検討	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	崖から落ちた猟師は全身に大怪我を負い、。
+ext-neg-25	否定	llm	it	バックアップを作成	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	最後に決めるのはあなたです。あなたの。
+ext-neg-26	否定	llm	it	依存関係を更新	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	坂道を登っていると、靴の中に小さな。
+ext-neg-27	否定	llm	it	手順書を作成	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	辞書登録の画面で、表記と読みと。
+ext-neg-28	否定	llm	it	進捗を報告	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	買ってきた魚を冷蔵庫で自然に。
+ext-neg-29	否定	llm	it	テスト環境を構築	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	この絵は、赤と青の鮮やかな。
+ext-neg-30	否定	llm	it	クラウドへ移行	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	試験が終わってから、模範。
+ext-neg-31	否定	llm	it	画面のデザインを修正	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	ドキュメントが読みやすく。
+ext-neg-32	否定	llm	it	問い合わせに対応	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	冷凍食品を電子レンジで。
+ext-neg-33	否定	llm	it	会議の日程を調整	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	道端で倒れていた老人を。
+ext-neg-34	否定	llm	it	資料をまとめて共有	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	姉は海外の大学で研究を。
+ext-neg-35	否定	llm	it	週末に掃除を	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	この部品を作るための。
+ext-neg-36	否定	llm	it	来月の旅行の計画を	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	今日の昼食はラーメン。
+ext-neg-37	否定	llm	it	夏休みの宿題を	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	ケーキはチョコレート。
+ext-neg-38	否定	llm	it	宿題を早めに	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	私たちは来月の準備を。
+ext-neg-39	否定	llm	it	もう少し先に相談	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	選挙の公約に掲げた。
+ext-neg-40	否定	llm	it	みんなで協力	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	ご飯は炊き込みご飯。
+ext-neg-41	否定	llm	it	お互いに連絡を	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	会議は来週の月曜日。
+ext-neg-42	否定	llm	it	明日までに提出	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	この猫の名前はミケ。
+ext-neg-43	否定	llm	it	朝のうちに準備	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	いまコードの修正を。
+ext-neg-44	否定	llm	it	不具合の原因を調査	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	環境問題に対する。
+ext-neg-45	否定	llm	it	パスワードを変更	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	校庭を地域住民に。
+ext-neg-46	否定	llm	it	ライブラリのバージョンを固定	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	テーマをシンプル。
+ext-neg-47	否定	llm	it	ブランチを整理	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	待ち合わせは駅前。
+ext-neg-48	否定	llm	it	コードレビューを依頼	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	待ち合わせは駅前。
+ext-neg-49	否定	llm	it	メモリ消費を測定	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	彼はついに部長に。
+ext-neg-50	否定	llm	it	通信の暗号化を導入	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	みんなが楽しめる。
+ext-neg-51	否定	llm	it	ドキュメントを翻訳	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	疑問を徹底的に。
+ext-neg-52	否定	llm	it	議事録をまとめて承認	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	花火が上がり、。
+ext-neg-53	否定	llm	it	プロジェクトの目標を再確認	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	晩ご飯はパスタ。
+ext-neg-54	否定	llm	it	負荷テストを実施	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	晩ご飯はパスタ。
+ext-neg-55	否定	llm	it	障害の再発防止策を検討	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	部屋がきれいに。
+ext-neg-56	否定	llm	it	タスクを分割	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	遅れを取り戻す。
+ext-neg-57	否定	llm	it	担当者を決めて分担	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	冷凍した肉を。
+ext-neg-58	否定	llm	it	納期について交渉	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	高原の涼しい。
+ext-neg-59	否定	llm	it	レシピを見ながら料理	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	事件の真相を。
+ext-neg-60	否定	llm	it	今夜は早めに就寝	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	傷ついた鳥を。
+ext-neg-61	否定	llm	it	健康のために運動	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	少年マンガの。
+ext-neg-62	否定	llm	it	毎朝散歩	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	大学で法学を。
+ext-neg-63	否定	llm	it	夜は読書	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	背景の色は白。
+ext-neg-64	否定	llm	it	語学の勉強を毎日	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	駅前が便利に。
+ext-neg-65	否定	llm	it	部屋の整理整頓を	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	その日の体調。
+ext-neg-66	否定	llm	it	週末は家族で外出	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	公共施設の。
+ext-neg-67	否定	llm	it	友人に連絡	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	地球規模の。
+ext-neg-68	否定	llm	it	旅行の予約を	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	無から有を。
+ext-neg-69	否定	llm	it	チケットを購入	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	完成までの。
+ext-neg-70	否定	llm	it	荷物をまとめて出発	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	できるだけ。
+ext-neg-71	否定	llm	it	ネットワークの設定を再確認	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	駅の売店で。
+ext-neg-72	否定	llm	it	ログインの仕組みを改善	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	やっと春に。
+ext-neg-73	否定	llm	it	データベースのインデックスを再構築	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	朝食はパン。
+ext-neg-74	否定	llm	it	キャッシュを無効化	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	来週の旅行。
+ext-neg-75	否定	llm	it	ビルドの手順を自動化	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	病気を治す。
+ext-neg-76	否定	llm	it	仕様変更の影響範囲を調査	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	医療の現場。
+ext-neg-77	否定	llm	it	リリースノートを作成	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	道ばたの。
+ext-neg-78	否定	llm	it	障害対応の手順を共有	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	記念号に。
+ext-neg-79	否定	llm	it	テストケースを追加	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	あまりに。
+ext-neg-80	否定	llm	it	監視の閾値を調整	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	着替えを。
+ext-neg-81	否定	llm	it	アクセス権限を確認	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	全面的に。
+ext-neg-82	否定	llm	it	証明書の期限を点検	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	出版社が。
+ext-neg-83	否定	llm	it	脆弱性の修正を優先	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	保険料を。
+ext-neg-84	否定	llm	it	ログの保存期間を再検討	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	足が速く。
+ext-neg-85	否定	llm	it	サーバーの台数を削減	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	この分野。
+ext-neg-86	否定	llm	it	請求書を作成	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	戦闘で。
+ext-neg-87	否定	llm	it	見積もりを依頼	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	患者の。
+ext-neg-88	否定	llm	it	契約の内容を確認	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	体温に。
+ext-neg-89	否定	llm	it	経費を精算	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	安全を。
+ext-neg-90	否定	llm	it	出張の手配を	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	雑誌に。
+ext-neg-91	否定	llm	it	資料の誤字を訂正	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	広告の。
+ext-neg-92	否定	llm	it	原稿を推敲	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	理想を。
+ext-neg-93	否定	llm	it	企画書を提出	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	本質を。
+ext-neg-94	否定	llm	it	発表の練習を	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	五百円。
+ext-neg-95	否定	llm	it	会議室を予約	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	幸せな。
+ext-neg-96	否定	llm	it	冷蔵庫の中身を整理	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	大学の。
+ext-neg-97	否定	llm	it	洗濯物を畳んで収納	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	万全の。
+ext-neg-98	否定	llm	it	庭の草むしりを	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	ドアを。
+ext-neg-99	否定	llm	it	靴を磨いて手入れ	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	正しく。
+ext-neg-100	否定	llm	it	買い物のリストを作成	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	作品を。
+ext-neg-101	否定	llm	it	自転車を修理	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	勝利の。
+ext-neg-102	否定	llm	it	古い本を処分	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	雑誌は。
+ext-neg-103	否定	llm	it	写真をアルバムに整理	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	定員は。
+ext-neg-104	否定	llm	it	年賀状の準備を	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	時間を。
+ext-neg-105	否定	llm	it	大掃除を	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	天下を。
+ext-neg-106	否定	llm	it	ゴミの分別を徹底	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	この件。
+ext-neg-107	否定	llm	it	玄関の電球を交換	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	社会の。
+ext-neg-108	否定	llm	it	カーテンを洗濯	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	強い。
+ext-neg-109	否定	llm	it	押し入れを整理	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	社会。
+ext-neg-110	否定	llm	it	引っ越しの準備を	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	天地。
+ext-neg-111	否定	llm	it	先に昼食を	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	山岳。
+ext-neg-112	否定	llm	it	そろそろ休憩	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	そう。
+ext-neg-113	否定	llm	it	ここで一旦中断	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	人事。
+ext-neg-114	否定	llm	it	続きは明日にして今日は終了	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	民を。
+ext-neg-115	否定	llm	it	全員で記念撮影を	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	相手。
+ext-neg-116	否定	llm	it	今度の連休にキャンプを	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	文化。
+ext-neg-117	否定	llm	it	海でシュノーケリングを	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	日本。
+ext-neg-118	否定	llm	it	山で日の出を撮影	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	各。
+ext-neg-119	否定	llm	it	近所を散策	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	不明な点があれば、サポートセンターまでご連絡ください。折り返し。
+ext-neg-120	否定	llm	it	温泉でゆっくり休養	しよう	しよう	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	夕飯の準備に取りかかる。冷凍庫から出した鶏肉を。
+ext-neg-121	否定	llm	it	今日の昼食はラーメン	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	誤字や脱字がないか確かめるために、全文の。
+ext-neg-122	否定	llm	it	会議は来週の月曜日	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	新聞記者が書いた記事を、別の担当者が。
+ext-neg-123	否定	llm	it	背景の色は白	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	正式に採用する前に、現場の担当者が。
+ext-neg-124	否定	llm	it	ボタンの大きさは少し大きめ	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	新しい機材を導入する前に、部署で。
+ext-neg-125	否定	llm	it	ファイル名は日付入り	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	彼は周囲に流されず、はっきりと。
+ext-neg-126	否定	llm	it	返事は明日	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	家庭裁判所は、少年の健全な。
+ext-neg-127	否定	llm	it	旅行は国内	にする	にする	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	プロジェクトの目標を再確認。
+ext-neg-128	否定	llm	it	晩ご飯はパスタ	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	建物の正面は、美しく左右。
+ext-neg-129	否定	llm	it	カバンの色は黒	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	彼女は大学で心理学を専攻。
+ext-neg-130	否定	llm	it	席は窓際	にする	にする	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	景気を回復させるための。
+ext-neg-131	否定	llm	it	出発は朝一番	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	海でシュノーケリングを。
+ext-neg-132	否定	llm	it	コーヒーはブラック	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	少年院では、入所者の。
+ext-neg-133	否定	llm	it	待ち合わせは駅前	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	ユーザー辞書の仕様を。
+ext-neg-134	否定	llm	it	予約は二名	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	議論が白熱して激しく。
+ext-neg-135	否定	llm	it	ログの出力は詳細	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	妹は来年から高校生に。
+ext-neg-136	否定	llm	it	設定は既定の値	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	圧縮したファイルを。
+ext-neg-137	否定	llm	it	価格は千円	にする	にする	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	ゴールが決まると、。
+ext-neg-138	否定	llm	it	字体は明朝体	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	不具合の原因を調査。
+ext-neg-139	否定	llm	it	宿は温泉つき	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	試験が近づき不安に。
+ext-neg-140	否定	llm	it	プレゼントは本	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	頭が痛くて眠れなく。
+ext-neg-141	否定	llm	it	アイコンは丸型	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	診察をしてくれた。
+ext-neg-142	否定	llm	it	サイズはいちばん小さいの	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	ハードディスクは。
+ext-neg-143	否定	llm	it	プランは年払い	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	朝のジョギングを。
+ext-neg-144	否定	llm	it	メニューはコース	にする	にする	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	テスト環境を構築。
+ext-neg-145	否定	llm	it	ドレスコードは普段着	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	監視の閾値を調整。
+ext-neg-146	否定	llm	it	ランチは和食	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	最近は物価が高く。
+ext-neg-147	否定	llm	it	お土産はお菓子	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	彼は熱心に練習を。
+ext-neg-148	否定	llm	it	挨拶は短め	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	新旧のデータを。
+ext-neg-149	否定	llm	it	デザートはプリン	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	祖母を看病し、。
+ext-neg-150	否定	llm	it	朝食はパン	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	賢い君主が国を。
+ext-neg-151	否定	llm	it	見出しは太字	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	庭の草むしりを。
+ext-neg-152	否定	llm	it	リンクの色は青	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	日が落ちて暗く。
+ext-neg-153	否定	llm	it	余白は広め	にする	にする	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	彼は音楽を勉強。
+ext-neg-154	否定	llm	it	並び順は新しい順	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	小説の全体の。
+ext-neg-155	否定	llm	it	通知はメール	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	前年の数値と。
+ext-neg-156	否定	llm	it	引数の名前は短い名前	にする	にする	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	ちょうどよい。
+ext-neg-157	否定	llm	it	区切り文字はカンマ	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	自動販売機に。
+ext-neg-158	否定	llm	it	文字コードはUTF-8	にする	にする	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	品質管理は各。
+ext-neg-159	否定	llm	it	ブランチ名は機能名	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	関係の改善を。
+ext-neg-160	否定	llm	it	バージョン番号は三桁	にする	にする	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	みんなで協力。
+ext-neg-161	否定	llm	it	週末の予定は映画	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	駅前が便利に。
+ext-neg-162	否定	llm	it	ケーキはチョコレート	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	環境への影響。
+ext-neg-163	否定	llm	it	お茶は緑茶	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	この単語の。
+ext-neg-164	否定	llm	it	髪型はショートカット	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	二つの案を。
+ext-neg-165	否定	llm	it	部屋の壁は薄い水色	にする	にする	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	日本代表の。
+ext-neg-166	否定	llm	it	今回の旅の目的は温泉	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	科学技術の。
+ext-neg-167	否定	llm	it	次の会議の議題は予算	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	他の部署に。
+ext-neg-168	否定	llm	it	合言葉は山と川	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	次の場所へ。
+ext-neg-169	否定	llm	it	チームの名前は錨	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	注文の品を。
+ext-neg-170	否定	llm	it	この猫の名前はミケ	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	話が複雑に。
+ext-neg-171	否定	llm	it	運動会の日程は十月	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	町が静かに。
+ext-neg-172	否定	llm	it	試合の会場は市民体育館	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	商品の返品。
+ext-neg-173	否定	llm	it	式の服装は礼服	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	会社の方針。
+ext-neg-174	否定	llm	it	店の定休日は水曜日	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	受刑者の。
+ext-neg-175	否定	llm	it	集合時間は八時	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	実験群と。
+ext-neg-176	否定	llm	it	料理の味付けは薄め	にする	にする	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	テープに。
+ext-neg-177	否定	llm	it	先生への贈り物は花束	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	三年間の。
+ext-neg-178	否定	llm	it	お祝いの品は商品券	にする	にする	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	観光地を。
+ext-neg-179	否定	llm	it	発表の順番はくじ引き	にする	にする	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	春の人事。
+ext-neg-180	否定	llm	it	今年の目標は毎日の運動	にする	にする	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	温度計で。
+ext-gram-25	文法	llm	it	最近は物価が高く	なった	なった	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	みんなの。
+ext-gram-26	文法	llm	it	梅雨が明けて暑く	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	必須条件。
+ext-gram-27	文法	llm	it	日が落ちて暗く	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	間に合う。
+ext-gram-28	文法	llm	it	試験が近づき不安に	なった	なった	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	製品の。
+ext-gram-29	文法	llm	it	ようやく大人に	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	留学の。
+ext-gram-30	文法	llm	it	彼はついに部長に	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	研究の。
+ext-gram-31	文法	llm	it	駅前が便利に	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	近年の。
+ext-gram-32	文法	llm	it	部屋がきれいに	なった	なった	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	家具の。
+ext-gram-33	文法	llm	it	話が複雑に	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	首相の。
+ext-gram-34	文法	llm	it	道が渋滞で動けなく	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	記者が。
+ext-gram-35	文法	llm	it	その店は有名に	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	運動の。
+ext-gram-36	文法	llm	it	ここ数年で彼女は人気者に	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	神への。
+ext-gram-37	文法	llm	it	この街は住みやすく	なった	なった	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	発展の。
+ext-gram-38	文法	llm	it	頭が痛くて眠れなく	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	ヨット。
+ext-gram-39	文法	llm	it	体調が良く	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	人質を。
+ext-gram-40	文法	llm	it	天気が悪く	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	明るい。
+ext-gram-41	文法	llm	it	足が速く	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	作業の。
+ext-gram-42	文法	llm	it	予定が変更に	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	音楽の。
+ext-gram-43	文法	llm	it	会議は中止に	なった	なった	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	本社へ。
+ext-gram-44	文法	llm	it	議論が白熱して激しく	なった	なった	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	風俗の。
+ext-gram-45	文法	llm	it	計画が現実に	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	長さを。
+ext-gram-46	文法	llm	it	雪が降って寒く	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	会費を。
+ext-gram-47	文法	llm	it	通信が不安定に	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	成功を。
+ext-gram-48	文法	llm	it	サービスが無料に	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	使い方。
+ext-gram-49	文法	llm	it	画面が見やすく	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	目撃者。
+ext-gram-50	文法	llm	it	処理が速く	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	二人。
+ext-gram-51	文法	llm	it	設定が簡単に	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	この。
+ext-gram-52	文法	llm	it	動作が重く	なった	なった	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	記念。
+ext-gram-53	文法	llm	it	バグが減って安定的に	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	生存。
+ext-gram-54	文法	llm	it	昔より使いやすく	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	絵が。
+ext-gram-55	文法	llm	it	父は定年で自由に	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	時代。
+ext-gram-56	文法	llm	it	妹は来年から高校生に	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	方法。
+ext-gram-57	文法	llm	it	彼は見違えるほど元気に	なった	なった	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	規模。
+ext-gram-58	文法	llm	it	町が静かに	なった	なった	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	趣味。
+ext-gram-59	文法	llm	it	空が明るく	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	研究。
+ext-gram-60	文法	llm	it	夜になって冷え込みが厳しく	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	人。
+ext-gram-61	文法	llm	it	仕事が忙しく	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	相手に気持ちが伝わらない。言葉にしないと、こちらの。
+ext-gram-62	文法	llm	it	朝晩の気温が低く	なった	なった	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	圧縮されたログが大量にある。調べる前にまず。
+ext-gram-63	文法	llm	it	祖母は九十歳に	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	論文を提出する前に、友人に頼んで文章の。
+ext-gram-64	文法	llm	it	彼は社会人に	なった	なった	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	日本語の文法で、名詞や動詞のような。
+ext-gram-65	文法	llm	it	毎日散歩を	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	彼は周囲の支えのおかげで、立派に。
+ext-gram-66	文法	llm	it	彼は図書館で勉強を	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	長引く不況で、地方の中小企業は。
+ext-gram-67	文法	llm	it	弟は今ゲームを	している	している	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	この制度は六十五歳以上の人が。
+ext-gram-68	文法	llm	it	母は台所で料理を	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	年金制度は、老後の暮らしを。
+ext-gram-69	文法	llm	it	私は週末に釣りを	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	最後までやり遂げるという。
+ext-gram-70	文法	llm	it	彼女は看護師の仕事を	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	仕様変更の影響範囲を調査。
+ext-gram-71	文法	llm	it	兄は貿易の会社を経営	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	契約する前に、体験版を。
+ext-gram-72	文法	llm	it	父は庭で野菜を栽培	している	している	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	目標は月に五冊読むこと。
+ext-gram-73	文法	llm	it	姉は海外の大学で研究を	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	英語の授業で、単語の。
+ext-gram-74	文法	llm	it	子供たちは公園で遊びを	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	農作物の被害に対する。
+ext-gram-75	文法	llm	it	チームは新製品の開発を	している	している	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	リリースノートを作成。
+ext-gram-76	文法	llm	it	担当者は顧客との交渉を	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	次の会議の議題は予算。
+ext-gram-77	文法	llm	it	僕は毎朝ランニングを	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	毒を受けて主人公は。
+ext-gram-78	文法	llm	it	彼女は部屋の掃除を	している	している	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	研究者は自然現象の。
+ext-gram-79	文法	llm	it	先生は教室で説明を	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	設定ファイルを整理。
+ext-gram-80	文法	llm	it	今、資料の作成を	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	証明書の期限を点検。
+ext-gram-81	文法	llm	it	いまコードの修正を	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	料理の味付けは薄め。
+ext-gram-82	文法	llm	it	現在サーバーの移行作業を	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	プロジェクトの詳細。
+ext-gram-83	文法	llm	it	技術部は障害の調査を	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	素晴らしい演奏に。
+ext-gram-84	文法	llm	it	営業部は新規顧客の開拓を	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	二人はまるで違う。
+ext-gram-85	文法	llm	it	彼は熱心に練習を	している	している	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	システムが高速に。
+ext-gram-86	文法	llm	it	私たちは来月の準備を	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	今夜は早めに就寝。
+ext-gram-87	文法	llm	it	社長は取引先と会食を	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	山で日の出を撮影。
+ext-gram-88	文法	llm	it	祖父は趣味の盆栽を	している	している	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	父は定年で自由に。
+ext-gram-89	文法	llm	it	犬が外で散歩を	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	契約は当事者の。
+ext-gram-90	文法	llm	it	彼女は大学で心理学を専攻	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	子どもの教育は。
+ext-gram-91	文法	llm	it	彼は音楽を勉強	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	毎週発売される。
+ext-gram-92	文法	llm	it	私は読書を	している	している	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	明日までに提出。
+ext-gram-93	文法	llm	it	妻は友人と電話で相談を	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	プレゼントは本。
+ext-gram-94	文法	llm	it	皆で協力して作業を	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	通信が不安定に。
+ext-gram-95	文法	llm	it	近所の人が道路の清掃を	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	再発を防止する。
+ext-gram-96	文法	llm	it	会社が新しい制度の導入を	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	機械の動きが。
+ext-gram-97	文法	llm	it	彼は毎日日記を	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	大学の教授が。
+ext-gram-98	文法	llm	it	彼女はピアノの練習を	している	している	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	言葉だけでは。
+ext-gram-99	文法	llm	it	私は健康のために節制を	している	している	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	彼女に彼氏を。
+ext-gram-100	文法	llm	it	この問題	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	ドラマの時代。
+ext-gram-101	文法	llm	it	彼の意見	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	夕食はカレー。
+ext-gram-102	文法	llm	it	日本の歴史	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	自転車を修理。
+ext-gram-103	文法	llm	it	来週の旅行	について	について	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	計画が現実に。
+ext-gram-104	文法	llm	it	新しい制度	について	について	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	試験に受かる。
+ext-gram-105	文法	llm	it	料金体系	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	海外で働く。
+ext-gram-106	文法	llm	it	その件	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	ロケットの。
+ext-gram-107	文法	llm	it	計画の変更	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	この指輪は。
+ext-gram-108	文法	llm	it	日本の文化	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	通信教育の。
+ext-gram-109	文法	llm	it	プロジェクトの詳細	について	について	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	雨上がりの。
+ext-gram-110	文法	llm	it	担当者の変更	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	発行部数は。
+ext-gram-111	文法	llm	it	遅延の原因	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	友人に連絡。
+ext-gram-112	文法	llm	it	セキュリティ対策	について	について	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	話が複雑に。
+ext-gram-113	文法	llm	it	導入にかかる費用	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	安全を守る。
+ext-gram-114	文法	llm	it	今後の方針	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	安全確認の。
+ext-gram-115	文法	llm	it	個人情報の取り扱い	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	取扱説明書。
+ext-gram-116	文法	llm	it	サービスの利用規約	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	約束した。
+ext-gram-117	文法	llm	it	環境への影響	について	について	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	アニメの。
+ext-gram-118	文法	llm	it	彼女の経歴	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	賽銭箱に。
+ext-gram-119	文法	llm	it	試験の日程	について	について	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	使い方は。
+ext-gram-120	文法	llm	it	商品の返品	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	運動会の。
+ext-gram-121	文法	llm	it	家賃の値上げ	について	について	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	古文書の。
+ext-gram-122	文法	llm	it	退職の手続き	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	好成績を。
+ext-gram-123	文法	llm	it	作業の進め方	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	合格する。
+ext-gram-124	文法	llm	it	データの保存方法	について	について	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	天気予報。
+ext-gram-125	文法	llm	it	来年度の予算	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	記事の。
+ext-gram-126	文法	llm	it	仕様変更の影響	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	専門の。
+ext-gram-127	文法	llm	it	障害の再発防止	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	世間の。
+ext-gram-128	文法	llm	it	契約の更新	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	労災の。
+ext-gram-129	文法	llm	it	宿題の範囲	について	について	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	会報に。
+ext-gram-130	文法	llm	it	天気	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	入学の。
+ext-gram-131	文法	llm	it	国	によって	によって	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	快楽を。
+ext-gram-132	文法	llm	it	時代	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	未来を。
+ext-gram-133	文法	llm	it	方法	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	議事の。
+ext-gram-134	文法	llm	it	状況	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	裕福な。
+ext-gram-135	文法	llm	it	気分	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	入試の。
+ext-gram-136	文法	llm	it	結果	によって	によって	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	比較的。
+ext-gram-137	文法	llm	it	年齢	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	商品の。
+ext-gram-138	文法	llm	it	相手	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	非常に。
+ext-gram-139	文法	llm	it	考え方	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	豊かな。
+ext-gram-140	文法	llm	it	立場	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	遠くへ。
+ext-gram-141	文法	llm	it	条件	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	値段の。
+ext-gram-142	文法	llm	it	担当者	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	便宜を。
+ext-gram-143	文法	llm	it	環境	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	目方を。
+ext-gram-144	文法	llm	it	目的	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	学問を。
+ext-gram-145	文法	llm	it	地方	によって	によって	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	その件。
+ext-gram-146	文法	llm	it	見る人	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	責任者。
+ext-gram-147	文法	llm	it	季節	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	良い。
+ext-gram-148	文法	llm	it	時間帯	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	行政。
+ext-gram-149	文法	llm	it	言語	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	音響。
+ext-gram-150	文法	llm	it	規模	によって	によって	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	まず。
+ext-gram-151	文法	llm	it	設定	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	扉を。
+ext-gram-152	文法	llm	it	使い方	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	悪い。
+ext-gram-153	文法	llm	it	経験	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	勝つ。
+ext-gram-154	文法	llm	it	その日の体調	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	勝つ。
+ext-gram-155	文法	llm	it	宗教	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	勝つ。
+ext-gram-156	文法	llm	it	職業	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	実務。
+ext-gram-157	文法	llm	it	文化	によって	によって	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	三。
+ext-gram-158	文法	llm	it	性格	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	祖父は定年後も診療を続けている。町の人から頼りにされる。
+ext-gram-159	文法	llm	it	好み	によって	によって	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	優勝への執念は人一倍強い。何としても勝つという。
+ext-gram-160	文法	llm	it	合格する	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	夜中に変な音がした。確認すると、冷蔵庫に。
+ext-gram-161	文法	llm	it	家族の	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	冷凍のご飯を食べる前に、電子レンジで。
+ext-gram-162	文法	llm	it	将来に備える	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	会議では、各自が自分の考えを述べて。
+ext-gram-163	文法	llm	it	安全を守る	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	そのニュースは、国内外から多くの。
+ext-gram-164	文法	llm	it	効率を上げる	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	イノベーションとは新しいものを。
+ext-gram-165	文法	llm	it	成功する	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	人間の代わりに作業をこなす。
+ext-gram-166	文法	llm	it	環境を守る	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	ボタンの大きさは少し大きめ。
+ext-gram-167	文法	llm	it	病気を治す	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	まずはテストを書くことに。
+ext-gram-168	文法	llm	it	目標を達成する	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	出版社で、著者の原稿を。
+ext-gram-169	文法	llm	it	彼女に会う	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	長い拘束の末にようやく。
+ext-gram-170	文法	llm	it	遅れを取り戻す	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	今年の目標は毎日の運動。
+ext-gram-171	文法	llm	it	節約する	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	この製品は、屋外では。
+ext-gram-172	文法	llm	it	試験に受かる	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	画面のデザインを修正。
+ext-gram-173	文法	llm	it	資格を取る	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	引数の名前は短い名前。
+ext-gram-174	文法	llm	it	平和の	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	僕は毎朝ランニングを。
+ext-gram-175	文法	llm	it	子供の	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	憲法は基本的人権を。
+ext-gram-176	文法	llm	it	自分の	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	キッチンスケールで。
+ext-gram-177	文法	llm	it	安全確認の	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	担当者を決めて分担。
+ext-gram-178	文法	llm	it	品質を保つ	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	ブランチ名は機能名。
+ext-gram-179	文法	llm	it	障害を防ぐ	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	彼女は部屋の掃除を。
+ext-gram-180	文法	llm	it	コストを下げる	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	システムの動作に。
+ext-gram-181	文法	llm	it	データを守る	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	計画は予定どおり。
+ext-gram-182	文法	llm	it	顧客満足の	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	設計書をレビュー。
+ext-gram-183	文法	llm	it	勝つ	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	もう少し先に相談。
+ext-gram-184	文法	llm	it	健康を維持する	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	靴を磨いて手入れ。
+ext-gram-185	文法	llm	it	夢をかなえる	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	最近は物価が高く。
+ext-gram-186	文法	llm	it	社会の	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	データの保存方法。
+ext-gram-187	文法	llm	it	未来の	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	会社が従業員に。
+ext-gram-188	文法	llm	it	友人の	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	納期に合わせて。
+ext-gram-189	文法	llm	it	再発を防止する	ために	ために|為に	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	彼は今、勉強を。
+ext-gram-190	文法	llm	it	代表	として	として	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	押し入れを整理。
+ext-gram-191	文法	llm	it	エンジニア	として	として	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	日が落ちて暗く。
+ext-gram-192	文法	llm	it	友人	として	として	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	障害の再発防止。
+ext-gram-193	文法	llm	it	一例	として	として	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	アンケートの。
+ext-gram-194	文法	llm	it	例外	として	として	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	国民の権利を。
+ext-gram-195	文法	llm	it	会社の方針	として	として	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	効率ばかりを。
+ext-gram-196	文法	llm	it	趣味	として	として	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	施設を市民に。
+ext-gram-197	文法	llm	it	個人	として	として	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	子どもたちの。
+ext-gram-198	文法	llm	it	教師	として	として	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	計量カップで。
+ext-gram-199	文法	llm	it	参考	として	として	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	請求書を作成。
+ext-gram-200	文法	llm	it	その理由	として	として	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	見出しは太字。
+ext-gram-201	文法	llm	it	必須条件	として	として	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	作業の進め方。
+ext-gram-202	文法	llm	it	仮の措置	として	として	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	罪を償い、。
+ext-gram-203	文法	llm	it	責任者	として	として	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	被害者への。
+ext-gram-204	文法	llm	it	実験の一環	として	として	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	宇宙の謎を。
+ext-gram-205	文法	llm	it	お礼の印	として	として	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	結果よりも。
+ext-gram-206	文法	llm	it	最初の一歩	として	として	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	彼の記憶は。
+ext-gram-207	文法	llm	it	第一候補	として	として	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	古くからの。
+ext-gram-208	文法	llm	it	最終手段	として	として	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	ログを確認。
+ext-gram-209	文法	llm	it	唯一の例外	として	として	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	価格は千円。
+ext-gram-210	文法	llm	it	会議	において	において|に於いて	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	私は読書を。
+ext-gram-211	文法	llm	it	日本	において	において|に於いて	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	安全を守る。
+ext-gram-212	文法	llm	it	この分野	において	において|に於いて	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	唯一の例外。
+ext-gram-213	文法	llm	it	現代社会	において	において|に於いて	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	新製品を。
+ext-gram-214	文法	llm	it	過去の歴史	において	において|に於いて	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	北海道の。
+ext-gram-215	文法	llm	it	学校	において	において|に於いて	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	副作用と。
+ext-gram-216	文法	llm	it	試験	において	において|に於いて	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	他社との。
+ext-gram-217	文法	llm	it	実務	において	において|に於いて	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	几帳面な。
+ext-gram-218	文法	llm	it	地球上	において	において|に於いて	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	早起きの。
+ext-gram-219	文法	llm	it	いかなる場合	において	において|に於いて	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	はかりで。
+ext-gram-220	文法	llm	it	ソフトウェア開発	において	において|に於いて	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	大掃除を。
+ext-gram-221	文法	llm	it	災害時	において	において|に於いて	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	第一候補。
+ext-gram-222	文法	llm	it	国際大会	において	において|に於いて	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	辞書の。
+ext-gram-223	文法	llm	it	医療の現場	において	において|に於いて	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	無料で。
+ext-gram-224	文法	llm	it	教育の現場	において	において|に於いて	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	三十歳。
+ext-gram-225	文法	llm	it	天気予報	によると	によると	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	製品の。
+ext-gram-226	文法	llm	it	報道	によると	によると	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	複雑な。
+ext-gram-227	文法	llm	it	彼の話	によると	によると	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	番組の。
+ext-gram-228	文法	llm	it	調査	によると	によると	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	磁石の。
+ext-gram-229	文法	llm	it	統計	によると	によると	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	真理を。
+ext-gram-230	文法	llm	it	専門家	によると	によると	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	非常に。
+ext-gram-231	文法	llm	it	目撃者	によると	によると	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	農村の。
+ext-gram-232	文法	llm	it	資料	によると	によると	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	物事の。
+ext-gram-233	文法	llm	it	噂	によると	によると	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	準備と。
+ext-gram-234	文法	llm	it	研究	によると	によると	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	校門を。
+ext-gram-235	文法	llm	it	新聞	によると	によると	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	時計は。
+ext-gram-236	文法	llm	it	先生の話	によると	によると	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	朝礼で。
+ext-gram-237	文法	llm	it	データ	によると	によると	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	大きな。
+ext-gram-238	文法	llm	it	警察の発表	によると	によると	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	日本の。
+ext-gram-239	文法	llm	it	取扱説明書	によると	によると	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	衣装の。
+ext-gram-240	文法	llm	it	忘れない	ように	ように	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	血圧を。
+ext-gram-241	文法	llm	it	誰にでも分かる	ように	ように	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	代金を。
+ext-gram-242	文法	llm	it	落ちない	ように	ように	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	財布に。
+ext-gram-243	文法	llm	it	風邪をひかない	ように	ように	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	子供の。
+ext-gram-244	文法	llm	it	遅れない	ように	ように	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	薬の。
+ext-gram-245	文法	llm	it	みんなが楽しめる	ように	ように	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	左右。
+ext-gram-246	文法	llm	it	間に合う	ように	ように	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	強い。
+ext-gram-247	文法	llm	it	よく見える	ように	ように	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	深い。
+ext-gram-248	文法	llm	it	失敗しない	ように	ように	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	受験。
+ext-gram-249	文法	llm	it	毎日続けられる	ように	ように	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	車で。
+ext-gram-250	文法	llm	it	迷わない	ように	ように	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	国を。
+ext-gram-251	文法	llm	it	壊れない	ように	ように	文法優先。プロファイルや話題で覆らないこと	test	llm-v2	available	結果。
+ext-gram-252	文法	llm	it	読みやすい	ように	ように	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	宗教。
+ext-gram-253	文法	llm	it	安全に使える	ように	ように	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	参考。
+ext-gram-254	文法	llm	it	きちんと伝わる	ように	ように	文法優先。プロファイルや話題で覆らないこと	dev	llm-v2	available	線。

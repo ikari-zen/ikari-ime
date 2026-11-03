@@ -1,0 +1,11 @@
+# c182-carryover（ADR 0046 §7.1。#182）: 入力欄の左が足りないとき、同じアプリの確定履歴で補う。
+# 左文脈は field・history の列から compose_left で作る（--carry-fill 0 なら足さない）。
+# 実行: ikari-eval --ranker full --carry-fill 40 --scenario eval/scenarios/c182-carryover.tsv
+#   LM あり: --lm <zenz-v3.2-small gguf> --lm-deadline-ms 3000 --lm-budget-ms 3000（--features lm-metal）
+# 行 1・3 は、--carry-fill 0 だと履歴が足されないので、LM ありでは 品詞を が 1 位にならない見込み（LM なしは文脈なしでも 品詞を が 1 位なので、LM なしは通るだけで差が出ない）。
+# 行 2 の field=none は今の経路（履歴をそのまま左にする）なので、fill に関わらず同じ（回帰）。
+# 文脈なし（history も空）の結果の記録は c182-carryover-nocontext.tsv（期待を付けない。snapshot に入れない）。
+step	context	reading	surface	field	history	expect
+probe		ひんしを	品詞を	available	名詞や動詞など、品詞の話をした	top1
+probe		ひんしを	品詞を	none	名詞や動詞など、品詞の話をした	top1
+probe	次は	ひんしを	品詞を	available	名詞や動詞など、品詞の話をした。次は	top1

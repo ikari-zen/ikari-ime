@@ -253,6 +253,7 @@ fn run_eval(args: RunArgs) -> Result<ExitCode, Box<dyn Error>> {
         resolver: use_profiles.then_some(&resolver as ikari_eval::ProfileResolver<'_>),
         forced_profile: forced,
         lm_deadline: args.lm_deadline_ms.map(std::time::Duration::from_millis),
+        carry: Some(args.carry_params()),
     };
     let results = run_with(&setup.converter, &filtered.cases, &cfg, &opts);
     let summary = summarize(&results);
@@ -342,6 +343,7 @@ fn run_scenario_mode(
     let mut host = ConverterHost {
         converter: &setup.converter,
         lm_deadline: args.lm_deadline_ms.map(std::time::Duration::from_millis),
+        carry: Some(args.carry_params()),
         on_commit: move |ev| {
             if let Some(store) = &store {
                 store.record(&ev, vectors.as_deref(), today);

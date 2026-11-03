@@ -3,6 +3,8 @@
 //! 列は `step`（`commit` / `probe`）、`context`、`reading`、`surface`。省略可能な列 `expect`
 //! （`top1`（既定）/ `not-top1`）は probe の期待を表す。
 //! 一時的なユーザーディレクトリで、`commit` を順に実行して学習させ、`probe` の順位を調べる。
+//! 省略可能な列 `field`（`none` / `available`）と `history` は、左文脈を `compose_left` で作る（ADR 0046。
+//! [`crate::carry`]）。`field` がなければ `context` をそのまま左文脈にする。
 //! 学習の実体（LearningStore と LearningRanker）は Converter の側にあり、
 //! ここでは [`ScenarioHost`] を通して呼ぶ（モックでテストできる）。
 
@@ -10,8 +12,9 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::time::{Duration, Instant};
 
-use ikari_core::{CommitEvent, Context, Converter};
+use ikari_core::{CarryParams, CommitEvent, Context, Converter};
 
+use crate::carry::{FieldMode, left_text, parse_field};
 use crate::run::find_rank_until;
 use crate::{EvalSetError, cell};
 
@@ -20,6 +23,8 @@ const COL_STEP: &str = "step";
 const COL_CONTEXT: &str = "context";
 const COL_READING: &str = "reading";
 const COL_SURFACE: &str = "surface";
+const COL_FIELD: &str = "field";
+const COL_HISTORY: &str = "history";
 const COL_EXPECT: &str = "expect";
 const STEP_COMMIT: &str = "commit";
 const STEP_PROBE: &str = "probe";
@@ -49,6 +54,10 @@ pub struct ScenarioStep {
     pub context: String,
     pub reading: String,
     pub surface: String,
+    /// `field` 列（ADR 0046）。なければ None で、`context` をそのまま左文脈にする
+    pub field: Option<FieldMode>,
+    /// `history` 列（ADR 0046）。同じセッションの確定の表記の連結
+    pub history: String,
     pub expect: Expect,
 }
 
@@ -115,6 +124,7 @@ pub fn load_scenario(tsv: &str) -> Result<Vec<ScenarioStep>, EvalSetError> {
                 return Err(err(line_no, format!("empty required value `{req}`")));
             }
         }
+        let field = parse_field(get(COL_FIELD)).map_err(|m| err(line_no, m))?;
         let expect = match get(COL_EXPECT).trim() {
             "" | EXPECT_TOP1 => Expect::Top1,
             EXPECT_NOT_TOP1 => Expect::NotTop1,
@@ -134,6 +144,8 @@ pub fn load_scenario(tsv: &str) -> Result<Vec<ScenarioStep>, EvalSetError> {
             context: get(COL_CONTEXT).to_owned(),
             reading: get(COL_READING).to_owned(),
             surface: get(COL_SURFACE).to_owned(),
+            field,
+            history: get(COL_HISTORY).to_owned(),
             expect,
         });
     }
@@ -272,6 +284,9 @@ pub struct ConverterHost<'a, F: FnMut(CommitEvent)> {
     /// 変換1回あたりの LM の締め切り（`--lm-deadline-ms`）。`None` なら Converter の既定の予算。
     /// 既定の予算だと LM が間に合うかどうかで結果が揺れるので、LM ありの評価では固定する
     pub lm_deadline: Option<Duration>,
+    /// `field` 列のあるステップの左文脈の組み立て（`--carry-fill`・`--carry-joint`。ADR 0046）。
+    /// `None` なら足さない
+    pub carry: Option<CarryParams>,
 }
 
 impl<F: FnMut(CommitEvent)> ConverterHost<'_, F> {
@@ -283,6 +298,13 @@ impl<F: FnMut(CommitEvent)> ConverterHost<'_, F> {
     ) -> (ikari_core::Conversion, Option<usize>, Option<String>) {
         let ctx = Context::new().with_left_text(step.context.as_str());
         let deadline = self.lm_deadline.map(|d| Instant::now() + d);
+        // `field` 列があれば compose_left で左文脈を作り直す（なければ context のまま。ADR 0046）
+        let ctx = ctx.with_left_text(left_text(
+            &step.context,
+            step.field,
+            &step.history,
+            self.carry,
+        ));
         let mut conversion = match deadline {
             Some(d) => self.converter.convert_until(&step.reading, &ctx, Some(d)),
             None => self.converter.convert(&step.reading, &ctx),
@@ -381,6 +403,23 @@ probe\t技術文書で\tひんし\t瀕死\tnot-top1
         let steps = load_scenario("step\tcontext\treading\tsurface\nprobe\t\tあ\t亜\n").unwrap();
         assert_eq!(steps[0].expect, Expect::Top1);
         assert_eq!(steps[0].context, "");
+    }
+
+    #[test]
+    #[test]
+    fn field_and_history_columns_are_optional() {
+        let head = "step\tcontext\treading\tsurface\tfield\thistory\n";
+        let steps = load_scenario(&format!(
+            "{head}probe\t\tr\ts\tavailable\t前の文\nprobe\t\tr\ts\tnone\t前の文\nprobe\tc\tr\ts\t\t\n"
+        ))
+        .unwrap();
+        assert_eq!(steps[0].field, Some(FieldMode::Available));
+        assert_eq!(steps[0].history, "前の文");
+        assert_eq!(steps[1].field, Some(FieldMode::None));
+        assert_eq!(steps[2].field, None);
+        let without = load_scenario("step\tcontext\treading\tsurface\nprobe\tc\tr\ts\n").unwrap();
+        assert_eq!((without[0].field, without[0].history.as_str()), (None, ""));
+        assert!(load_scenario(&format!("{head}probe\tc\tr\ts\tmaybe\t\n")).is_err());
     }
 
     #[test]
