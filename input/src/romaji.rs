@@ -70,6 +70,7 @@ impl std::error::Error for TableError {}
 /// TSV を読み、入力 -> 規則の表にする。列数の不正、空の入力、入力の重複はエラー（行番号付き、1始まり）。
 fn parse_rules(tsv: &str) -> Result<BTreeMap<String, Rule>, TableError> {
     let mut rules = BTreeMap::new();
+    let mut lines = BTreeMap::new();
     for (idx, raw) in tsv.lines().enumerate() {
         let line_no = idx + 1;
         let line = raw.trim_end_matches('\r');
@@ -106,10 +107,39 @@ fn parse_rules(tsv: &str) -> Result<BTreeMap<String, Rule>, TableError> {
             }
             Entry::Vacant(v) => {
                 v.insert(rule);
+                lines.insert(input.to_string(), line_no);
             }
         }
     }
+    reject_pending_cycles(&rules, &lines)?;
     Ok(rules)
+}
+
+/// `next_pending` をたどって自分のキーに戻る規則（直接・間接）を、行番号つきで弾く。
+/// 残すと `push` が規則3の処理し直しで終わらなくなる。
+fn reject_pending_cycles(
+    rules: &BTreeMap<String, Rule>,
+    lines: &BTreeMap<String, usize>,
+) -> Result<(), TableError> {
+    for (start, rule) in rules {
+        let mut next = rule.next_pending.as_str();
+        // 規則の数を超えてたどっても戻らなければ、start を含まない循環の入口にすぎない
+        for _ in 0..=rules.len() {
+            if next == start {
+                return Err(TableError {
+                    line: lines[start],
+                    message: format!(
+                        "next_pending of {start:?} leads back to itself (infinite loop)"
+                    ),
+                });
+            }
+            match rules.get(next) {
+                Some(r) => next = r.next_pending.as_str(),
+                None => break,
+            }
+        }
+    }
+    Ok(())
 }
 
 impl RomajiTable {
@@ -451,6 +481,27 @@ mod tests {
     fn parse_error_empty_input() {
         let err = RomajiTable::parse("\tか\n").unwrap_err();
         assert_eq!(err.line, 1);
+    }
+
+    #[test]
+    fn parse_error_direct_next_pending_loop() {
+        let err = RomajiTable::parse("ka\tか\nx\tえ\tx\n").unwrap_err();
+        assert_eq!(err.line, 2);
+        assert!(err.to_string().contains("infinite loop"));
+    }
+
+    #[test]
+    fn parse_error_indirect_next_pending_loop() {
+        let err = RomajiTable::parse("a\tあ\tb\nb\tい\tc\nc\tう\tb\n").unwrap_err();
+        assert!(err.line == 2 || err.line == 3);
+        // ループに入るだけで戻らない規則は通る
+        assert!(RomajiTable::parse("a\tあ\tb\nb\tい\tc\nc\tう\n").is_ok());
+    }
+
+    #[test]
+    fn builtin_table_has_no_pending_loop() {
+        // builtin() は parse を通らない場合に panic しうるので、同じ検査を通ることを確かめる
+        let _ = RomajiTable::builtin();
     }
 
     #[test]

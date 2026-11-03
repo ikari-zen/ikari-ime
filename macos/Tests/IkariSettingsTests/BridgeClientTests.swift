@@ -6,6 +6,15 @@ import Testing
 
 @testable import IkariSettings
 
+/// 本物の shell-core（XCFramework）にリンクしているか。スタブ（FFI なし）のときは設定の検証が本物と違う（#165）
+private let linksShellFFI: Bool = {
+    #if IKARI_HAS_SHELL_FFI
+        true
+    #else
+        false
+    #endif
+}()
+
 @Suite struct BridgeClientTests {
     @Test func handshakeReturnsTheShellVersion() async throws {
         let harness = try await Harness.make()
@@ -19,7 +28,8 @@ import Testing
         }
     }
 
-    @Test func getsAndUpdatesSettings() async throws {
+    @Test(.enabled(if: linksShellFFI, "スタブ（XCFramework なし）では設定の挙動が本物と違うので飛ばす（#165）"))
+    func getsAndUpdatesSettings() async throws {
         let harness = try await Harness.make()
         defer { harness.close() }
         let initial = try await harness.client.getSettings()
