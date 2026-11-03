@@ -21,7 +21,7 @@
   - レーンへの共通プロンプトは、本文を貼る。`$(cat …)` などのシェルの展開は、エージェントに渡る文字列では展開されない。
   - Bash のコマンド文字列に、マージ用の `gh` コマンドの文（`gh pr merge …`）を書かない。メモや文書を書き込むコマンドの中でも同じで、フック（`guard-pr-merge.sh`）が読んで止める。言い換える。
   - PR の確認は、先頭コミットで**フルの** `scripts/check.sh` を流す。`--docs-only` は記録されず、マージのフックを通らない。
-  - `macos/Frameworks` の XCFramework は `check` が鮮度を検査する（#154）。古いと失敗するので、`macos/scripts/build.sh --signing team --release` で作り直す。
+  - `macos/Frameworks` の XCFramework は `check` が鮮度を検査する（#154）。無い・古いと失敗するので（新しい worktree では最初に）、`macos/scripts/build.sh --signing team --release` で作る。
   - `swift build --product` を並べると、最後の 1 つしかビルドされない。1 つずつ指定する（#152）。
   - レーンの PR は main の先頭より古いことがある。確認の前に main を取り込み（`gh pr update-branch`）、意味のずれを直してから流す。
 - 不明点や要件の曖昧さがあれば、進める前にユーザーに確認する。数値や方針を勝手に決めない。

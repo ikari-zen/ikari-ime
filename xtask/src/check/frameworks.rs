@@ -9,12 +9,13 @@
 //! - XCFramework の中のヘッダが、Rust 側のヘッダ（`shell-ffi/include/*.h` など）と内容が違う
 //! - XCFramework の中の staticlib（`.a`）より、その crate と依存する crate（workspace の中のもの）のソースのほうが新しい
 //!
-//! XCFramework がなければ検査しない（`Package.swift` が FFI なしのスタブの形にして swift test を通す）。
+//! XCFramework がなければ、swift test の前に作り方を案内して失敗する（#165。スタブのまま通すと、スタブの設定の検証が
+//! Rust の本物とずれて別のテストが落ち、原因が分かりにくい）。Swift を触らない作業は `--docs-only` か `--no-swift`。
 
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use crate::data::run::{Failure, capture, cargo, log, warn};
+use crate::data::run::{Failure, capture, cargo, log};
 
 const FRAMEWORKS_DIR: &str = "macos/Frameworks";
 const BUILD_SCRIPT: &str = "macos/scripts/build.sh --signing team --release";
@@ -46,7 +47,7 @@ const SPECS: [Spec; 2] = [
     },
 ];
 
-/// どの XCFramework も新しい（またはない）なら Ok。古いものがあれば、作り直しの手順つきで失敗する。
+/// どの XCFramework も有って新しければ Ok。無い・古いものがあれば、作り直しの手順つきで失敗する。
 pub fn verify(root: &Path) -> Result<(), Failure> {
     log("XCFramework の鮮度（macos/Frameworks）");
     let mut metadata: Option<Vec<Package>> = None;
@@ -56,10 +57,7 @@ pub fn verify(root: &Path) -> Result<(), Failure> {
             .join(FRAMEWORKS_DIR)
             .join(format!("{}.{XCFRAMEWORK_EXT}", spec.name));
         if !framework.is_dir() {
-            warn(&format!(
-                "{} がありません。FFI なしのスタブで swift test します（FFI まで確かめるなら {BUILD_SCRIPT}）",
-                framework.display()
-            ));
+            stale.push(format!("{}.{XCFRAMEWORK_EXT}: ありません", spec.name));
             continue;
         }
         if metadata.is_none() {
@@ -79,7 +77,7 @@ pub fn verify(root: &Path) -> Result<(), Failure> {
         return Ok(());
     }
     Err(Failure::new(format!(
-        "macos/Frameworks の XCFramework が古いので swift test を止めます（古いまま通ると検査が環境によって変わる。#148）\n  {}\n作り直してから、もう一度流してください: {BUILD_SCRIPT}",
+        "macos/Frameworks の XCFramework が無い・古いので swift test を止めます（そのまま通すと検査が環境によって変わる。#148、#165）\n  {}\n作ってから、もう一度流してください: {BUILD_SCRIPT}",
         stale.join("\n  ")
     )))
 }
@@ -301,6 +299,14 @@ mod tests {
             std::fs::create_dir_all(self.header().parent().unwrap()).unwrap();
             stale_reason(&self.framework(), &self.header(), &[self.source()]).unwrap()
         }
+    }
+
+    #[test]
+    fn missing_xcframework_fails_with_build_instruction() {
+        let root = tempfile::tempdir().unwrap();
+        let err = verify(root.path()).unwrap_err().to_string();
+        assert!(err.contains("ありません"), "{err}");
+        assert!(err.contains(BUILD_SCRIPT), "{err}");
     }
 
     #[test]
