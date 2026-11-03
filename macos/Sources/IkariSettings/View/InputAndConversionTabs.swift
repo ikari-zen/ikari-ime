@@ -67,8 +67,7 @@ private struct KeymapRowView: View {
     }
 }
 
-/// アプリの一覧の欄（Bundle ID の一覧を、追加・削除・既定に戻す）。「文脈を共有しないアプリ」と
-/// 「ショートコードを使わないアプリ」が使う
+/// アプリの一覧の欄（Bundle ID の一覧を、追加・削除・既定に戻す）。「ショートコードを使わないアプリ」が使う
 private struct AppListSection: View {
     let title: String
     let note: String
@@ -83,7 +82,7 @@ private struct AppListSection: View {
     var body: some View {
         Section(title) {
             Text(note).font(.caption).foregroundStyle(.secondary)
-            ForEach(SharedExcludeApps.rows(for: bundleIDs)) { row in
+            ForEach(ExcludedApps.rows(for: bundleIDs)) { row in
                 LabeledContent {
                     Button("削除") { Task { await remove(row.bundleID) } }
                 } label: {
@@ -116,24 +115,6 @@ private struct AppListSection: View {
         let text = newID
         newID = ""
         Task { await add(text) }
-    }
-}
-
-/// 文脈を貸し借りしないアプリ（ADR 0015 D6）。ここに挙げたアプリでは、ほかのアプリの文を文脈に使わず、
-/// そのアプリでの確定もほかのアプリの文脈にしない。次にそのアプリへ切り替えたときから効く
-private struct SharedExcludeSection: View {
-    let model: SettingsModel
-
-    var body: some View {
-        AppListSection(
-            title: "文脈を共有しないアプリ",
-            note: "パスワード管理やターミナルなど。ここに挙げたアプリでは、ほかのアプリの文を文脈に使わず、入力した文もほかのアプリに渡しません。",
-            bundleIDs: model.values.contextSharedExclude,
-            defaultIDs: SettingsValues.defaults.contextSharedExclude,
-            add: model.addSharedExclude(_:),
-            addApp: model.addSharedExclude(appAt:),
-            remove: model.removeSharedExclude(_:),
-            reset: model.resetSharedExclude)
     }
 }
 
@@ -281,7 +262,6 @@ struct ConversionTab: View {
                 )
                 .font(.caption).foregroundStyle(.secondary)
             }
-            SharedExcludeSection(model: model)
             EmojiShortcodeSection(model: model)
             PostalSection(model: model)
             UnicodeSection(model: model)

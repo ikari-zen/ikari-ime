@@ -1576,11 +1576,6 @@ public nonisolated struct Ikari_Shell_V1_SettingsSnapshot: @unchecked Sendable {
     set {_uniqueStorage()._engineConvertWaitMs = newValue}
   }
 
-  public var contextSharedExclude: [String] {
-    get {_storage._contextSharedExclude}
-    set {_uniqueStorage()._contextSharedExclude = newValue}
-  }
-
   public var emojiShortcode: Bool {
     get {_storage._emojiShortcode}
     set {_uniqueStorage()._emojiShortcode = newValue}
@@ -3722,7 +3717,7 @@ nonisolated extension Ikari_Shell_V1_PanelPlacement: SwiftProtobuf.Message, Swif
 
 nonisolated extension Ikari_Shell_V1_SettingsSnapshot: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SettingsSnapshot"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}input_method\0\u{3}keymap_preset\0\u{3}keymap_overrides\0\u{3}paging_wrap\0\u{3}page_size\0\u{3}engine_lm\0\u{3}engine_idle_unload_secs\0\u{3}engine_lm_deadline_ms\0\u{3}engine_convert_wait_ms\0\u{3}context_shared_exclude\0\u{3}emoji_shortcode\0\u{3}emoji_shortcode_exclude\0\u{3}emoji_small_letters\0\u{3}postal_japanese\0\u{3}postal_english\0\u{3}postal_te_prefix\0\u{3}unicode_notation\0\u{3}date_weekday_dates\0\u{3}candidate_hide_when_confident\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}input_method\0\u{3}keymap_preset\0\u{3}keymap_overrides\0\u{3}paging_wrap\0\u{3}page_size\0\u{3}engine_lm\0\u{3}engine_idle_unload_secs\0\u{3}engine_lm_deadline_ms\0\u{3}engine_convert_wait_ms\0\u{4}\u{2}emoji_shortcode\0\u{3}emoji_shortcode_exclude\0\u{3}emoji_small_letters\0\u{3}postal_japanese\0\u{3}postal_english\0\u{3}postal_te_prefix\0\u{3}unicode_notation\0\u{3}date_weekday_dates\0\u{3}candidate_hide_when_confident\0\u{b}context_shared_exclude\0\u{c}\u{a}\u{1}")
 
   fileprivate class _StorageClass {
     var _inputMethod: Ikari_Shell_V1_InputMethodKind = .unspecified
@@ -3734,7 +3729,6 @@ nonisolated extension Ikari_Shell_V1_SettingsSnapshot: SwiftProtobuf.Message, Sw
     var _engineIdleUnloadSecs: UInt32 = 0
     var _engineLmDeadlineMs: UInt32 = 0
     var _engineConvertWaitMs: UInt32 = 0
-    var _contextSharedExclude: [String] = []
     var _emojiShortcode: Bool = false
     var _emojiShortcodeExclude: [String] = []
     var _emojiSmallLetters: Bool = false
@@ -3763,7 +3757,6 @@ nonisolated extension Ikari_Shell_V1_SettingsSnapshot: SwiftProtobuf.Message, Sw
       _engineIdleUnloadSecs = source._engineIdleUnloadSecs
       _engineLmDeadlineMs = source._engineLmDeadlineMs
       _engineConvertWaitMs = source._engineConvertWaitMs
-      _contextSharedExclude = source._contextSharedExclude
       _emojiShortcode = source._emojiShortcode
       _emojiShortcodeExclude = source._emojiShortcodeExclude
       _emojiSmallLetters = source._emojiSmallLetters
@@ -3800,7 +3793,6 @@ nonisolated extension Ikari_Shell_V1_SettingsSnapshot: SwiftProtobuf.Message, Sw
         case 7: try { try decoder.decodeSingularUInt32Field(value: &_storage._engineIdleUnloadSecs) }()
         case 8: try { try decoder.decodeSingularUInt32Field(value: &_storage._engineLmDeadlineMs) }()
         case 9: try { try decoder.decodeSingularUInt32Field(value: &_storage._engineConvertWaitMs) }()
-        case 10: try { try decoder.decodeRepeatedStringField(value: &_storage._contextSharedExclude) }()
         case 11: try { try decoder.decodeSingularBoolField(value: &_storage._emojiShortcode) }()
         case 12: try { try decoder.decodeRepeatedStringField(value: &_storage._emojiShortcodeExclude) }()
         case 13: try { try decoder.decodeSingularBoolField(value: &_storage._emojiSmallLetters) }()
@@ -3844,9 +3836,6 @@ nonisolated extension Ikari_Shell_V1_SettingsSnapshot: SwiftProtobuf.Message, Sw
       }
       if _storage._engineConvertWaitMs != 0 {
         try visitor.visitSingularUInt32Field(value: _storage._engineConvertWaitMs, fieldNumber: 9)
-      }
-      if !_storage._contextSharedExclude.isEmpty {
-        try visitor.visitRepeatedStringField(value: _storage._contextSharedExclude, fieldNumber: 10)
       }
       if _storage._emojiShortcode != false {
         try visitor.visitSingularBoolField(value: _storage._emojiShortcode, fieldNumber: 11)
@@ -3893,7 +3882,6 @@ nonisolated extension Ikari_Shell_V1_SettingsSnapshot: SwiftProtobuf.Message, Sw
         if _storage._engineIdleUnloadSecs != rhs_storage._engineIdleUnloadSecs {return false}
         if _storage._engineLmDeadlineMs != rhs_storage._engineLmDeadlineMs {return false}
         if _storage._engineConvertWaitMs != rhs_storage._engineConvertWaitMs {return false}
-        if _storage._contextSharedExclude != rhs_storage._contextSharedExclude {return false}
         if _storage._emojiShortcode != rhs_storage._emojiShortcode {return false}
         if _storage._emojiShortcodeExclude != rhs_storage._emojiShortcodeExclude {return false}
         if _storage._emojiSmallLetters != rhs_storage._emojiSmallLetters {return false}

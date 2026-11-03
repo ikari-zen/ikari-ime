@@ -290,7 +290,6 @@ public final class XPCEngineClient: @unchecked Sendable {
         msg.sessionID = session.sessionID
         msg.clientBundleID = session.clientBundleID
         msg.secure = session.secure
-        msg.shareContext = session.shareContext
         return msg
     }
 

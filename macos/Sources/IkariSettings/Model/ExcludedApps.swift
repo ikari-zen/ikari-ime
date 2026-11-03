@@ -1,9 +1,9 @@
-// 「文脈を共有しないアプリ」の欄（ADR 0015 D6）で、アプリ（.app）と Bundle ID を行き来する部分。
+// 「ショートコードを使わないアプリ」の欄（ADR 0027 §8.1）で、アプリ（.app）と Bundle ID を行き来する部分。
 // SwiftUI や NSOpenPanel には触れない。システムへの問い合わせは引数で差し替えられる。
 import AppKit
 import Foundation
 
-enum SharedExcludeApps {
+enum ExcludedApps {
     /// 一覧に出す 1 行
     struct Row: Equatable, Identifiable {
         var bundleID: String

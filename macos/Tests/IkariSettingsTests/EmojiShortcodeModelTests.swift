@@ -1,6 +1,6 @@
 // 設定の処理は shell-core（ikari_settings_*）を通すので、XCFramework のあるビルドだけで流す（ADR 0041 §2.3）
 #if IKARI_HAS_SHELL_FFI
-// 「絵文字のショートコード」の欄（ADR 0027 §8.1）のモデル。「文脈を共有しないアプリ」の欄（SharedExcludeModelTests）と同じ作り。
+// 「絵文字のショートコード」の欄（ADR 0027 §8.1）のモデル。
 import Foundation
 import Testing
 
@@ -38,8 +38,6 @@ import Testing
         #expect(model.errorMessage == nil)
         #expect(model.values.emojiShortcodeExclude.last == "com.example.Slack")
         #expect(harness.shell.state.snapshot.settings["emoji.shortcode_exclude"]?.hasSuffix(",com.example.Slack") == true)
-        // 「文脈を共有しないアプリ」は変わらない
-        #expect(model.values.contextSharedExclude == SettingsValues.defaults.contextSharedExclude)
 
         await model.removeEmojiShortcodeExclude("com.apple.Terminal")
         #expect(!model.values.emojiShortcodeExclude.contains("com.apple.Terminal"))

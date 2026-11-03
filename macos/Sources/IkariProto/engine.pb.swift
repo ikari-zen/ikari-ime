@@ -820,9 +820,7 @@ public nonisolated struct Ikari_Engine_V1_HelloReply: Sendable {
   public init() {}
 }
 
-/// share_context: このクライアントが「最近の確定」をほかのアプリと貸し借りしてよいか（ADR 0015 D5、D6）。
-/// 除外するアプリ（パスワード管理、ターミナルなど）は false。省略（false）は「貸し借りしない」で、今までの挙動と同じ。
-/// 殻は、除外でないアプリでは true を送る。判定は殻の中だけで行い、エンジンは Bundle ID を保存しない。
+/// 4 は share_context（ADR 0015 D5、D6。ADR 0046 で借用を廃止）。番号と名前は再利用しない
 public nonisolated struct Ikari_Engine_V1_BeginSession: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -833,8 +831,6 @@ public nonisolated struct Ikari_Engine_V1_BeginSession: Sendable {
   public var clientBundleID: String = String()
 
   public var secure: Bool = false
-
-  public var shareContext: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -2556,7 +2552,7 @@ nonisolated extension Ikari_Engine_V1_HelloReply: SwiftProtobuf.Message, SwiftPr
 
 nonisolated extension Ikari_Engine_V1_BeginSession: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".BeginSession"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}client_bundle_id\0\u{1}secure\0\u{3}share_context\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}client_bundle_id\0\u{1}secure\0\u{b}share_context\0\u{c}\u{4}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2567,7 +2563,6 @@ nonisolated extension Ikari_Engine_V1_BeginSession: SwiftProtobuf.Message, Swift
       case 1: try { try decoder.decodeSingularUInt64Field(value: &self.sessionID) }()
       case 2: try { try decoder.decodeSingularStringField(value: &self.clientBundleID) }()
       case 3: try { try decoder.decodeSingularBoolField(value: &self.secure) }()
-      case 4: try { try decoder.decodeSingularBoolField(value: &self.shareContext) }()
       default: break
       }
     }
@@ -2583,9 +2578,6 @@ nonisolated extension Ikari_Engine_V1_BeginSession: SwiftProtobuf.Message, Swift
     if self.secure != false {
       try visitor.visitSingularBoolField(value: self.secure, fieldNumber: 3)
     }
-    if self.shareContext != false {
-      try visitor.visitSingularBoolField(value: self.shareContext, fieldNumber: 4)
-    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -2593,7 +2585,6 @@ nonisolated extension Ikari_Engine_V1_BeginSession: SwiftProtobuf.Message, Swift
     if lhs.sessionID != rhs.sessionID {return false}
     if lhs.clientBundleID != rhs.clientBundleID {return false}
     if lhs.secure != rhs.secure {return false}
-    if lhs.shareContext != rhs.shareContext {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
