@@ -44,7 +44,6 @@ fn begin_app(e: &Engine, session: u64, bundle: &str, secure: bool) {
             session_id: session,
             client_bundle_id: bundle.into(),
             secure,
-            share_context: false,
         }),
     );
     assert!(matches!(r, envelope::Body::Ack(_)), "{r:?}");

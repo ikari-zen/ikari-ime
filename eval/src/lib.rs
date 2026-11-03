@@ -7,6 +7,7 @@
 pub mod ab;
 pub mod ajimee;
 pub mod boundary;
+pub mod carry;
 pub mod compare;
 pub mod gates;
 pub mod holdout;

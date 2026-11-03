@@ -839,33 +839,6 @@ fn commit_records_changed_clauses_with_the_left_clause_as_context() {
     assert_eq!(changed.analysis.bos_right_id, ID_PARTICLE);
 }
 
-/// 借りた左文脈（ADR 0015 Q7）では、記録のイベントの左文脈が空になる（読み全体も変えた文節も）
-#[test]
-fn borrowed_left_context_is_not_recorded() {
-    let conv = converter();
-    let ctx = Context::new()
-        .with_left_text("ユーザー辞書に")
-        .with_left_borrowed(true);
-    let mut seg = segmented_in(&conv, "ゆーざーじしょにたんごをとうろくする", &ctx);
-    let _ = all_candidates(&mut seg, 1);
-    let list = all_candidates(&mut seg, 2);
-    let hiragana = list
-        .iter()
-        .position(|c| c.surface == "とうろくする")
-        .unwrap();
-    let commit = seg
-        .commit(&[
-            SegmentChoice::Candidate(0),
-            SegmentChoice::Candidate(0),
-            SegmentChoice::Candidate(hiragana),
-        ])
-        .unwrap();
-    assert_eq!(commit.events.len(), 2);
-    for ev in &commit.events {
-        assert!(ev.analysis.tokens.is_empty());
-    }
-}
-
 #[test]
 fn a_rewriter_or_literal_clause_keeps_the_whole_out_of_learning() {
     let conv = converter_with(Arc::new(CostRanker), vec![Arc::new(MeiRewriter)]);

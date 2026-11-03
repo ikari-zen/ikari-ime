@@ -42,15 +42,11 @@ public struct SessionInfo: Sendable, Equatable {
     public var clientBundleID: String
     /// `IsSecureEventInputEnabled()` が真
     public var secure: Bool
-    /// ほかのアプリと「最近の確定」を貸し借りしてよいか（ADR 0015 D6）。除外するアプリは false。
-    /// 既定の false は「貸し借りしない」で、今までの挙動と同じ。除外の判定は殻の中だけで行う
-    public var shareContext: Bool
 
-    public init(sessionID: UInt64, clientBundleID: String, secure: Bool, shareContext: Bool = false) {
+    public init(sessionID: UInt64, clientBundleID: String, secure: Bool) {
         self.sessionID = sessionID
         self.clientBundleID = clientBundleID
         self.secure = secure
-        self.shareContext = shareContext
     }
 }
 

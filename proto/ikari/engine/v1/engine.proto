@@ -53,10 +53,8 @@ message EngineConfig { string data_dir = 1; bool enable_lm = 2; uint32 idle_unlo
 message Hello { string shell_version = 1; }
 message HelloReply { string engine_version = 1; string dict_label = 2; LmState lm = 3; }
 enum LmState { LM_STATE_UNSPECIFIED = 0; LM_DISABLED = 1; LM_LOADING = 2; LM_READY = 3; LM_FAILED = 4; }
-// share_context: このクライアントが「最近の確定」をほかのアプリと貸し借りしてよいか（ADR 0015 D5、D6）。
-// 除外するアプリ（パスワード管理、ターミナルなど）は false。省略（false）は「貸し借りしない」で、今までの挙動と同じ。
-// 殻は、除外でないアプリでは true を送る。判定は殻の中だけで行い、エンジンは Bundle ID を保存しない。
-message BeginSession { uint64 session_id = 1; string client_bundle_id = 2; bool secure = 3; bool share_context = 4; }
+// 4 は share_context（ADR 0015 D5、D6。ADR 0046 で借用を廃止）。番号と名前は再利用しない
+message BeginSession { reserved 4; reserved "share_context"; uint64 session_id = 1; string client_bundle_id = 2; bool secure = 3; }
 message EndSession { uint64 session_id = 1; }
 message SurroundingText { string left = 1; string right = 2; bool available = 3; }   // 末尾 2000 文字に切る（殻）
 message Prefetch { uint64 session_id = 1; string reading = 2; SurroundingText context = 3; uint64 context_rev = 4; }

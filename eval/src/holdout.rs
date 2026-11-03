@@ -121,6 +121,8 @@ pub fn holdout_cases(sentences: &[HoldoutSentence], context_chars: usize) -> Vec
                     profile: None,
                     context: tail(&context, context_chars).to_owned(),
                     right: String::new(),
+                    field: None,
+                    history: String::new(),
                     reading,
                     expected: surface.clone(),
                     note: String::new(),

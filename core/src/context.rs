@@ -9,13 +9,6 @@ use crate::user::Profile;
 pub struct Context {
     /// カーソルより前の文脈（周辺テキストと確定履歴を合わせたもの）。末尾がカーソルの直前
     pub left_text: String,
-    /// `left_text` が、ほかの入力欄（ほかのアプリ）から借りたものなら true（ADR 0015 D5、D8）。既定 false。
-    ///
-    /// 契約: true のとき `LearningRanker` は、学習の文脈の特徴量（Prev、PrevContent、Bag、Topic）を
-    /// 空にする。引き当て（候補の順位づけ）も、確定のときの記録も、「文脈なし」として扱う
-    /// （ADR 0013 の「記録のない文脈」）。話題、LM、連接、文書内キャッシュは、借りた左文脈を
-    /// ふつうの左文脈と同じに使う。
-    pub left_borrowed: bool,
     /// 補助（フェーズ0では使わない）
     pub right_text: String,
     /// 同じ入力欄・同じセッションの確定履歴（古い順）
@@ -51,11 +44,6 @@ impl Context {
         self
     }
 
-    pub fn with_left_borrowed(mut self, borrowed: bool) -> Self {
-        self.left_borrowed = borrowed;
-        self
-    }
-
     pub fn with_secure(mut self, secure: bool) -> Self {
         self.secure = secure;
         self
@@ -66,15 +54,4 @@ impl Context {
 pub struct Commit {
     pub reading: String,
     pub surface: String,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn left_is_not_borrowed_by_default() {
-        assert!(!Context::new().left_borrowed);
-        assert!(Context::new().with_left_borrowed(true).left_borrowed);
-    }
 }

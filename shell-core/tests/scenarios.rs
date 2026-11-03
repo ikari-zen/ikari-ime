@@ -517,7 +517,7 @@ fn describe(body: &Body) -> Map<String, Value> {
             "begin_session",
             json!({
                 "session_id": m.session_id, "client_bundle_id": m.client_bundle_id,
-                "secure": m.secure, "share_context": m.share_context,
+                "secure": m.secure,
             }),
         ),
         Body::EndSession(m) => ("end_session", json!({ "session_id": m.session_id })),

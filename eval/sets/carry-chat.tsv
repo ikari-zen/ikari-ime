@@ -1,0 +1,78 @@
+# carry-chat: チャットの形（前のメッセージが完結した文、次のメッセージの頭で同音語）の手書きのセット（ADR 0046 §7.1）。
+# Claude の下書き。ユーザーの確認待ち（ADR 0015 Q8 と同じ扱い）。右の note は、文脈がなければ 1 位になりそうな別の表記。
+# -e: 送信で空になった入力欄（field=available、context 空、history=前のメッセージ）。-o: 入力欄に少し打ってある（history が context で終わる。重なりの除去）。-n: 周辺テキストが取れない欄（field=none）。
+id	kind	tags	profile	context	reading	expected	note	source	field	history
+chat-01-e	話題	carry-chat			ひんしを	品詞を	文脈なしなら 瀕死を になりうる	claude-draft	available	名詞や動詞など、品詞の話をした
+chat-01-o	話題	carry-chat		それと、	ひんしを	品詞を	文脈なしなら 瀕死を になりうる	claude-draft	available	名詞や動詞など、品詞の話をしたそれと、
+chat-01-n	話題	carry-chat			ひんしを	品詞を	文脈なしなら 瀕死を になりうる	claude-draft	none	名詞や動詞など、品詞の話をした
+chat-02-e	話題	carry-chat			ひんしを	品詞を	文脈なしなら 瀕死を になりうる	claude-draft	available	辞書に単語を登録したい
+chat-02-o	話題	carry-chat		次は	ひんしを	品詞を	文脈なしなら 瀕死を になりうる	claude-draft	available	辞書に単語を登録したい次は
+chat-03-e	話題	carry-chat			ひんしだ	瀕死だ	文脈なしなら 品詞だ になりうる	claude-draft	available	ボスとの戦いで体力がほとんど残っていない
+chat-03-o	話題	carry-chat		ちなみに	ひんしだ	瀕死だ	文脈なしなら 品詞だ になりうる	claude-draft	available	ボスとの戦いで体力がほとんど残っていないちなみに
+chat-04-e	話題	carry-chat			きこうが	気候が	文脈なしなら 機構が になりうる	claude-draft	available	天気予報を見た
+chat-04-o	話題	carry-chat		そういえば、	きこうが	気候が	文脈なしなら 機構が になりうる	claude-draft	available	天気予報を見たそういえば、
+chat-04-n	話題	carry-chat			きこうが	気候が	文脈なしなら 機構が になりうる	claude-draft	none	天気予報を見た
+chat-05-e	話題	carry-chat			きこうが	機構が	文脈なしなら 気候が になりうる	claude-draft	available	国連の組織について調べた
+chat-05-o	話題	carry-chat		あと、	きこうが	機構が	文脈なしなら 気候が になりうる	claude-draft	available	国連の組織について調べたあと、
+chat-06-e	話題	carry-chat			きこうする	寄稿する	文脈なしなら 気候する になりうる	claude-draft	available	新聞の編集部から依頼があった
+chat-06-o	話題	carry-chat		それと、	きこうする	寄稿する	文脈なしなら 気候する になりうる	claude-draft	available	新聞の編集部から依頼があったそれと、
+chat-07-e	話題	carry-chat			せいかを	成果を	文脈なしなら 聖火を になりうる	claude-draft	available	研究の発表会に向けて準備している
+chat-07-o	話題	carry-chat		次は	せいかを	成果を	文脈なしなら 聖火を になりうる	claude-draft	available	研究の発表会に向けて準備している次は
+chat-07-n	話題	carry-chat			せいかを	成果を	文脈なしなら 聖火を になりうる	claude-draft	none	研究の発表会に向けて準備している
+chat-08-e	話題	carry-chat			せいかを	聖火を	文脈なしなら 成果を になりうる	claude-draft	available	オリンピックの開会式が楽しみだ
+chat-08-o	話題	carry-chat		ちなみに	せいかを	聖火を	文脈なしなら 成果を になりうる	claude-draft	available	オリンピックの開会式が楽しみだちなみに
+chat-09-e	話題	carry-chat			せいかを	生花を	文脈なしなら 成果を になりうる	claude-draft	available	花屋でお花を買ってきた
+chat-09-o	話題	carry-chat		そういえば、	せいかを	生花を	文脈なしなら 成果を になりうる	claude-draft	available	花屋でお花を買ってきたそういえば、
+chat-10-e	話題	carry-chat			こうしんを	更新を	文脈なしなら 行進を になりうる	claude-draft	available	ブログの記事を書いた
+chat-10-o	話題	carry-chat		あと、	こうしんを	更新を	文脈なしなら 行進を になりうる	claude-draft	available	ブログの記事を書いたあと、
+chat-11-e	話題	carry-chat			こうしんを	行進を	文脈なしなら 更新を になりうる	claude-draft	available	運動会のパレードを見た
+chat-11-o	話題	carry-chat		それと、	こうしんを	行進を	文脈なしなら 更新を になりうる	claude-draft	available	運動会のパレードを見たそれと、
+chat-12-e	話題	carry-chat			こうしんを	交信を	文脈なしなら 更新を になりうる	claude-draft	available	無線で連絡を取った
+chat-12-o	話題	carry-chat		次は	こうしんを	交信を	文脈なしなら 更新を になりうる	claude-draft	available	無線で連絡を取った次は
+chat-13-e	話題	carry-chat			しょうじょうが	症状が	文脈なしなら 賞状が になりうる	claude-draft	available	医者に診てもらった
+chat-13-o	話題	carry-chat		ちなみに	しょうじょうが	症状が	文脈なしなら 賞状が になりうる	claude-draft	available	医者に診てもらったちなみに
+chat-13-n	話題	carry-chat			しょうじょうが	症状が	文脈なしなら 賞状が になりうる	claude-draft	none	医者に診てもらった
+chat-14-e	話題	carry-chat			しょうじょうが	賞状が	文脈なしなら 症状が になりうる	claude-draft	available	卒業式で表彰された
+chat-14-o	話題	carry-chat		そういえば、	しょうじょうが	賞状が	文脈なしなら 症状が になりうる	claude-draft	available	卒業式で表彰されたそういえば、
+chat-15-e	話題	carry-chat			はしを	橋を	文脈なしなら 箸を になりうる	claude-draft	available	川の近くを歩いた
+chat-15-o	話題	carry-chat		あと、	はしを	橋を	文脈なしなら 箸を になりうる	claude-draft	available	川の近くを歩いたあと、
+chat-16-e	話題	carry-chat			はしを	箸を	文脈なしなら 橋を になりうる	claude-draft	available	食事の準備をした
+chat-16-o	話題	carry-chat		それと、	はしを	箸を	文脈なしなら 橋を になりうる	claude-draft	available	食事の準備をしたそれと、
+chat-17-e	話題	carry-chat			きかいが	機械が	文脈なしなら 機会が になりうる	claude-draft	available	工場で働いている
+chat-17-o	話題	carry-chat		次は	きかいが	機械が	文脈なしなら 機会が になりうる	claude-draft	available	工場で働いている次は
+chat-18-e	話題	carry-chat			きかいが	機会が	文脈なしなら 機械が になりうる	claude-draft	available	今度の面接のことを考えている
+chat-18-o	話題	carry-chat		ちなみに	きかいが	機会が	文脈なしなら 機械が になりうる	claude-draft	available	今度の面接のことを考えているちなみに
+chat-19-e	話題	carry-chat			かんきを	換気を	文脈なしなら 寒気を になりうる	claude-draft	available	部屋が暑い
+chat-19-o	話題	carry-chat		そういえば、	かんきを	換気を	文脈なしなら 寒気を になりうる	claude-draft	available	部屋が暑いそういえば、
+chat-20-e	話題	carry-chat			かんきが	寒気が	文脈なしなら 換気が になりうる	claude-draft	available	風邪をひいたかもしれない
+chat-20-o	話題	carry-chat		あと、	かんきが	寒気が	文脈なしなら 換気が になりうる	claude-draft	available	風邪をひいたかもしれないあと、
+chat-21-e	話題	carry-chat			かんきに	歓喜に	文脈なしなら 換気に になりうる	claude-draft	available	優勝が決まった
+chat-21-o	話題	carry-chat		それと、	かんきに	歓喜に	文脈なしなら 換気に になりうる	claude-draft	available	優勝が決まったそれと、
+chat-22-e	話題	carry-chat			こうぎを	講義を	文脈なしなら 抗議を になりうる	claude-draft	available	大学の授業が始まる
+chat-22-o	話題	carry-chat		次は	こうぎを	講義を	文脈なしなら 抗議を になりうる	claude-draft	available	大学の授業が始まる次は
+chat-23-e	話題	carry-chat			こうぎを	抗議を	文脈なしなら 講義を になりうる	claude-draft	available	判定に納得がいかない
+chat-23-o	話題	carry-chat		ちなみに	こうぎを	抗議を	文脈なしなら 講義を になりうる	claude-draft	available	判定に納得がいかないちなみに
+chat-24-e	話題	carry-chat			せいけんを	聖剣を	文脈なしなら 政権を になりうる	claude-draft	available	勇者が伝説の剣を探す
+chat-24-o	話題	carry-chat		そういえば、	せいけんを	聖剣を	文脈なしなら 政権を になりうる	claude-draft	available	勇者が伝説の剣を探すそういえば、
+chat-25-e	話題	carry-chat			こうじを	公示を	文脈なしなら 工事を になりうる	claude-draft	available	選挙の日程が決まった
+chat-25-o	話題	carry-chat		あと、	こうじを	公示を	文脈なしなら 工事を になりうる	claude-draft	available	選挙の日程が決まったあと、
+chat-26-e	話題	carry-chat			こうじを	麹を	文脈なしなら 公示を になりうる	claude-draft	available	酒蔵を見学した
+chat-26-o	話題	carry-chat		それと、	こうじを	麹を	文脈なしなら 公示を になりうる	claude-draft	available	酒蔵を見学したそれと、
+chat-27-e	話題	carry-chat			しめいを	氏名を	文脈なしなら 使命を になりうる	claude-draft	available	書類に印鑑が要る
+chat-27-o	話題	carry-chat		次は	しめいを	氏名を	文脈なしなら 使命を になりうる	claude-draft	available	書類に印鑑が要る次は
+chat-28-e	話題	carry-chat			しめいを	指名を	文脈なしなら 氏名を になりうる	claude-draft	available	会議で担当者が決まった
+chat-28-o	話題	carry-chat		ちなみに	しめいを	指名を	文脈なしなら 氏名を になりうる	claude-draft	available	会議で担当者が決まったちなみに
+chat-29-e	話題	carry-chat			しめいを	使命を	文脈なしなら 氏名を になりうる	claude-draft	available	大きな責任を感じている
+chat-29-o	話題	carry-chat		そういえば、	しめいを	使命を	文脈なしなら 氏名を になりうる	claude-draft	available	大きな責任を感じているそういえば、
+chat-30-e	話題	carry-chat			かさを	傘を	文脈なしなら 笠を になりうる	claude-draft	available	朝から雨が降っている
+chat-30-o	話題	carry-chat		あと、	かさを	傘を	文脈なしなら 笠を になりうる	claude-draft	available	朝から雨が降っているあと、
+chat-31-e	話題	carry-chat			ちんたいを	賃貸を	文脈なしなら 沈滞を になりうる	claude-draft	available	新しい家を探している
+chat-31-o	話題	carry-chat		それと、	ちんたいを	賃貸を	文脈なしなら 沈滞を になりうる	claude-draft	available	新しい家を探しているそれと、
+chat-32-e	話題	carry-chat			ちんたいが	沈滞が	文脈なしなら 賃貸が になりうる	claude-draft	available	会社の売り上げが落ちてきた
+chat-32-o	話題	carry-chat		次は	ちんたいが	沈滞が	文脈なしなら 賃貸が になりうる	claude-draft	available	会社の売り上げが落ちてきた次は
+chat-33-e	話題	carry-chat			でんげんを	電源を	文脈なしなら 電現を になりうる	claude-draft	available	スマホの充電が切れそうだ
+chat-33-o	話題	carry-chat		ちなみに	でんげんを	電源を	文脈なしなら 電現を になりうる	claude-draft	available	スマホの充電が切れそうだちなみに
+chat-34-e	話題	carry-chat			かいぎを	会議を	文脈なしなら 懐疑を になりうる	claude-draft	available	来月の会議の日程を調整している
+chat-34-o	話題	carry-chat		そういえば、	かいぎを	会議を	文脈なしなら 懐疑を になりうる	claude-draft	available	来月の会議の日程を調整しているそういえば、
+chat-35-e	話題	carry-chat			かいぎてきな	懐疑的な	文脈なしなら 会議的な になりうる	claude-draft	available	新しい制度の導入に慎重だ
+chat-35-o	話題	carry-chat		あと、	かいぎてきな	懐疑的な	文脈なしなら 会議的な になりうる	claude-draft	available	新しい制度の導入に慎重だあと、

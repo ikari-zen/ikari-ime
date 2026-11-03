@@ -35,8 +35,6 @@ struct SettingsValues: Equatable, Sendable {
     var idleUnloadSecs = 0
     var lmDeadlineMs = 0
     var convertWaitMs = 0
-    /// `context.shared_exclude`。ほかのアプリと文脈を貸し借りしないアプリの Bundle ID
-    var contextSharedExclude: [String] = []
     /// `emoji.shortcode`。絵文字のショートコード（`:eyes:`）のオン・オフ
     var emojiShortcode = false
     /// `emoji.shortcode_exclude`。ショートコードを使わないアプリの Bundle ID
@@ -84,7 +82,6 @@ struct SettingsValues: Equatable, Sendable {
         idleUnloadSecs = Int(message.engineIdleUnloadSecs)
         lmDeadlineMs = Int(message.engineLmDeadlineMs)
         convertWaitMs = Int(message.engineConvertWaitMs)
-        contextSharedExclude = message.contextSharedExclude
         emojiShortcode = message.emojiShortcode
         emojiShortcodeExclude = message.emojiShortcodeExclude
         emojiSmallLetters = message.emojiSmallLetters

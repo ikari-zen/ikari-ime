@@ -236,7 +236,6 @@ fn session(id: u64, bundle: &str, secure: bool) -> v1::BeginSession {
         session_id: id,
         client_bundle_id: bundle.into(),
         secure,
-        share_context: false,
     }
 }
 

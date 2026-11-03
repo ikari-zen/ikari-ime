@@ -192,7 +192,7 @@ impl Inner {
         let surrounding = filled
             .as_ref()
             .map_or(p.context.as_ref(), |f| Some(&f.surrounding));
-        let ctx = self.context_for(&stack, p.session_id, false, history, surrounding);
+        let ctx = self.context_for(&stack, false, history, surrounding);
         let entry = CacheEntry::with_context(key, PrefetchContext::new(surrounding, filled_chars));
         lock_mutex(&self.cache).insert(Arc::clone(&entry));
         if let Some(replaced) = self.queue.submit(entry, ctx) {
@@ -274,8 +274,7 @@ impl Inner {
             Some(hit) => hit,
             None => {
                 // 先行計算がない、または間に合わなかった。LM を使わずにその場で変換する
-                let ctx =
-                    self.context_for(&stack, c.session_id, secure, history, c.context.as_ref());
+                let ctx = self.context_for(&stack, secure, history, c.context.as_ref());
                 let conv = stack
                     .converter
                     .convert_until(&c.reading, &ctx, Some(Instant::now()));

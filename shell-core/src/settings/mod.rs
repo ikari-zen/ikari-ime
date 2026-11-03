@@ -32,7 +32,6 @@ pub use chord::KeyChord;
 pub use defaults::*;
 pub use parse::{
     effective_entries, engine_settings_differ, is_acceptable, is_known_key, parse_bundle_id_list,
-    shares_context,
 };
 pub use store::{Reload, SettingsChange, SettingsStore, StoreError, Updated};
 pub use values::{

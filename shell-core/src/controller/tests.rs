@@ -218,19 +218,57 @@ fn a_new_bundle_gets_a_new_session_and_the_same_bundle_keeps_it() {
     assert_eq!(second.client_bundle_id, "com.apple.Safari");
 }
 
-#[test]
-fn excluded_apps_do_not_share_context() {
-    let mut shell = shell(SettingsSource::Inline(String::new()), resources());
+fn activate_app(shell: &mut Shell, bundle_id: &str) -> u64 {
     shell.dispatch(
         ShellEvent::Activate {
-            bundle_id: "com.apple.Terminal".into(),
+            bundle_id: bundle_id.into(),
             secure: false,
         },
         &mut NoText,
     );
-    assert!(!shell.machine().unwrap().session().share_context);
-    activate(&mut shell);
-    assert!(shell.machine().unwrap().session().share_context);
+    shell.machine().unwrap().session().session_id
+}
+
+#[test]
+fn going_back_to_an_app_reuses_its_session_id() {
+    // ADR 0046 A1: A → B → A で A の ID が戻る
+    let mut shell = shell(SettingsSource::Inline(String::new()), resources());
+    let a = activate_app(&mut shell, "com.example.A");
+    let b = activate_app(&mut shell, "com.example.B");
+    assert_ne!(a, b);
+    assert_eq!(activate_app(&mut shell, "com.example.A"), a);
+    assert_eq!(activate_app(&mut shell, "com.example.B"), b);
+    // 覚えていない新しいアプリは、これまでと重ならない ID
+    let c = activate_app(&mut shell, "com.example.C");
+    assert!(c != a && c != b);
+}
+
+#[test]
+fn an_unknown_bundle_id_is_never_reused() {
+    let mut shell = shell(SettingsSource::Inline(String::new()), resources());
+    let first = activate_app(&mut shell, "");
+    activate_app(&mut shell, "com.example.A");
+    assert_ne!(activate_app(&mut shell, ""), first);
+}
+
+#[test]
+fn the_oldest_app_is_forgotten_after_sixty_four_apps() {
+    let mut shell = shell(SettingsSource::Inline(String::new()), resources());
+    let first = activate_app(&mut shell, "com.example.app0");
+    for n in 1..SESSION_ID_MEMORY_MAX {
+        activate_app(&mut shell, &format!("com.example.app{n}"));
+    }
+    // 64 件までは覚えている
+    assert_eq!(activate_app(&mut shell, "com.example.app0"), first);
+    // 65 個目で、最も長く使っていないもの（app1）を忘れる。app0 は今使ったので残る
+    activate_app(&mut shell, "com.example.extra");
+    assert_eq!(activate_app(&mut shell, "com.example.app0"), first);
+    let forgotten = shell
+        .session_ids
+        .iter()
+        .all(|(b, _)| b != "com.example.app1");
+    assert!(forgotten);
+    assert_eq!(shell.session_ids.len(), SESSION_ID_MEMORY_MAX);
 }
 
 #[test]

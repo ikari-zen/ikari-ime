@@ -32,7 +32,7 @@ struct MockLm {
     warm_ups: AtomicU64,
     warm_thread: Mutex<Option<std::thread::ThreadId>>,
     /// 最後の `rank` が受けた文脈（左文脈、借りたか）
-    last_context: Mutex<Option<(String, bool)>>,
+    last_context: Mutex<Option<String>>,
 }
 
 impl MockLm {
@@ -53,8 +53,7 @@ impl MockLm {
 impl Ranker for MockLm {
     fn rank(&self, input: &RankInput<'_>, cands: &mut [Candidate]) {
         self.calls.fetch_add(1, Ordering::Relaxed);
-        *self.last_context.lock().unwrap() =
-            Some((input.context.left_text.clone(), input.context.left_borrowed));
+        *self.last_context.lock().unwrap() = Some(input.context.left_text.clone());
         let now = Instant::now();
         match input.deadline {
             Some(deadline) if now + self.delay <= deadline => {
@@ -225,7 +224,6 @@ fn begin(e: &Engine, session: u64, secure: bool) {
             session_id: session,
             client_bundle_id: "test".into(),
             secure,
-            share_context: false,
         }),
     );
     assert!(matches!(r, envelope::Body::Ack(_)), "{r:?}");

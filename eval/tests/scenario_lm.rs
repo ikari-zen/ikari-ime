@@ -35,6 +35,11 @@ fn env_path(name: &str) -> PathBuf {
 }
 
 fn run_scenario(scenario: &str) {
+    run_scenario_with(scenario, &[]);
+}
+
+/// `extra` は ikari-eval に足す引数（`--carry-fill` など）
+fn run_scenario_with(scenario: &str, extra: &[&str]) {
     let (dict, model) = (env_path(DICT_ENV), env_path(MODEL_ENV));
     let file = workspace_root().join("eval/scenarios").join(scenario);
     let out = Command::new(env!("CARGO_BIN_EXE_ikari-eval"))
@@ -48,6 +53,7 @@ fn run_scenario(scenario: &str) {
             "--lm-deadline-ms",
             DEADLINE_MS,
         ])
+        .args(extra)
         .arg("--scenario")
         .arg(&file)
         .output()
@@ -97,4 +103,11 @@ fn b23_susumeru_learning_without_context_with_the_lm() {
 #[ignore = "requires the real dictionary and a zenz GGUF model (IKARI_DICT_DIR, IKARI_ZENZ_MODEL)"]
 fn b23_same_context_keeps_the_learned_surface_with_the_lm() {
     run_scenario("b23-same-context.tsv");
+}
+
+/// ADR 0046: 入力欄の左が足りないとき、同じアプリの確定履歴で補うと 品詞を が 1 位になる（`--carry-fill 40`）
+#[test]
+#[ignore = "requires the real dictionary and a zenz GGUF model (IKARI_DICT_DIR, IKARI_ZENZ_MODEL)"]
+fn c182_carryover_puts_the_history_into_the_left_context_with_the_lm() {
+    run_scenario_with("c182-carryover.tsv", &["--carry-fill", "40"]);
 }

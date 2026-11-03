@@ -129,27 +129,6 @@ final class SettingsModel {
     func setLMDeadlineMs(_ ms: Int) async { await apply(.lmDeadlineMs(Int64(ms))) }
     func setConvertWaitMs(_ ms: Int) async { await apply(.convertWaitMs(Int64(ms))) }
 
-    /// 文脈を貸し借りしないアプリに Bundle ID を足す。空白は削る。使えない文字があれば足さずに、画面に断りを出す
-    func addSharedExclude(_ rawID: String) async { await apply(.addSharedExclude(rawID)) }
-
-    /// 選んだアプリ（`.app`）の Bundle ID を足す。Bundle ID を読めなければ足さずに、画面に断りを出す
-    func addSharedExclude(appAt url: URL) async {
-        guard let id = bundleID(ofAppAt: url) else { return }
-        await addSharedExclude(id)
-    }
-
-    private func bundleID(ofAppAt url: URL) -> String? {
-        guard let id = SharedExcludeApps.bundleID(ofAppAt: url) else {
-            errorMessage = "「\(url.deletingPathExtension().lastPathComponent)」の Bundle ID を読めませんでした。Bundle ID を直接入力してください"
-            return nil
-        }
-        return id
-    }
-
-    func removeSharedExclude(_ id: String) async { await apply(.removeSharedExclude(id)) }
-    /// 既定の一覧に戻す（設定の行を消す）
-    func resetSharedExclude() async { await apply(.resetSharedExclude(Ikari_Shell_V1_Empty())) }
-
     // MARK: 郵便番号（ADR 0032）など、オン・オフの設定
 
     func setPostalJapanese(_ enabled: Bool) async { await apply(.postalJapanese(enabled)) }
@@ -170,6 +149,14 @@ final class SettingsModel {
     func addEmojiShortcodeExclude(appAt url: URL) async {
         guard let id = bundleID(ofAppAt: url) else { return }
         await addEmojiShortcodeExclude(id)
+    }
+
+    private func bundleID(ofAppAt url: URL) -> String? {
+        guard let id = ExcludedApps.bundleID(ofAppAt: url) else {
+            errorMessage = "「\(url.deletingPathExtension().lastPathComponent)」の Bundle ID を読めませんでした。Bundle ID を直接入力してください"
+            return nil
+        }
+        return id
     }
 
     func removeEmojiShortcodeExclude(_ id: String) async { await apply(.removeEmojiShortcodeExclude(id)) }

@@ -165,7 +165,6 @@ fn values_to_pb(values: &SettingsValues) -> pb::SettingsSnapshot {
         engine_idle_unload_secs: values.idle_unload_secs,
         engine_lm_deadline_ms: values.lm_deadline_ms,
         engine_convert_wait_ms: values.convert_wait_ms,
-        context_shared_exclude: values.context_shared_exclude.clone(),
         emoji_shortcode: values.emoji_shortcode,
         emoji_shortcode_exclude: values.emoji_shortcode_exclude.clone(),
         emoji_small_letters: values.emoji_small_letters,
@@ -232,9 +231,6 @@ fn intent_from_pb(kind: Option<app::intent::Kind>) -> Result<SettingsIntent, i32
         K::DateWeekdayDates(v) => I::DateWeekdayDates(v),
         K::EmojiSmallLetters(v) => I::EmojiSmallLetters(v),
         K::EmojiShortcode(v) => I::EmojiShortcode(v),
-        K::AddSharedExclude(v) => I::AddSharedExclude(v),
-        K::RemoveSharedExclude(v) => I::RemoveSharedExclude(v),
-        K::ResetSharedExclude(_) => I::ResetSharedExclude,
         K::AddEmojiShortcodeExclude(v) => I::AddEmojiShortcodeExclude(v),
         K::RemoveEmojiShortcodeExclude(v) => I::RemoveEmojiShortcodeExclude(v),
         K::ResetEmojiShortcodeExclude(_) => I::ResetEmojiShortcodeExclude,
@@ -459,7 +455,7 @@ mod tests {
         assert_eq!(changes.set[0].key, "paging.size");
         assert_eq!(changes.set[0].value, "9");
         assert!(matches!(
-            plan(&[], K::AddSharedExclude("a b".into())),
+            plan(&[], K::AddEmojiShortcodeExclude("a b".into())),
             R::Error(app::PlanError {
                 kind: Some(app::plan_error::Kind::InvalidBundleId(_))
             })

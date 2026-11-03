@@ -23,6 +23,8 @@ pub(crate) fn result(id: &str, kind: &str, tags: &[&str], rank: Option<usize>) -
             profile: None,
             context: "ctx|x".into(),
             right: String::new(),
+            field: None,
+            history: String::new(),
             reading: "よみ".into(),
             expected: "期待".into(),
             note: String::new(),

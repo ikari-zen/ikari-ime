@@ -691,30 +691,6 @@ public nonisolated struct Ikari_Settings_V1_Intent: Sendable {
     set {kind = .emojiShortcode(newValue)}
   }
 
-  public var addSharedExclude: String {
-    get {
-      if case .addSharedExclude(let v)? = kind {return v}
-      return String()
-    }
-    set {kind = .addSharedExclude(newValue)}
-  }
-
-  public var removeSharedExclude: String {
-    get {
-      if case .removeSharedExclude(let v)? = kind {return v}
-      return String()
-    }
-    set {kind = .removeSharedExclude(newValue)}
-  }
-
-  public var resetSharedExclude: Ikari_Shell_V1_Empty {
-    get {
-      if case .resetSharedExclude(let v)? = kind {return v}
-      return Ikari_Shell_V1_Empty()
-    }
-    set {kind = .resetSharedExclude(newValue)}
-  }
-
   public var addEmojiShortcodeExclude: String {
     get {
       if case .addEmojiShortcodeExclude(let v)? = kind {return v}
@@ -766,9 +742,6 @@ public nonisolated struct Ikari_Settings_V1_Intent: Sendable {
     case dateWeekdayDates(Bool)
     case emojiSmallLetters(Bool)
     case emojiShortcode(Bool)
-    case addSharedExclude(String)
-    case removeSharedExclude(String)
-    case resetSharedExclude(Ikari_Shell_V1_Empty)
     case addEmojiShortcodeExclude(String)
     case removeEmojiShortcodeExclude(String)
     case resetEmojiShortcodeExclude(Ikari_Shell_V1_Empty)
@@ -1969,7 +1942,7 @@ nonisolated extension Ikari_Settings_V1_KeymapIntent: SwiftProtobuf.Message, Swi
 
 nonisolated extension Ikari_Settings_V1_Intent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Intent"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}input_method\0\u{3}keymap_preset\0\u{3}paging_wrap\0\u{3}page_size\0\u{3}lm_enabled\0\u{3}idle_unload_secs\0\u{3}lm_deadline_ms\0\u{3}convert_wait_ms\0\u{3}postal_japanese\0\u{3}postal_english\0\u{3}postal_te_prefix\0\u{3}candidate_hide_when_confident\0\u{3}unicode_notation\0\u{3}date_weekday_dates\0\u{3}emoji_small_letters\0\u{3}emoji_shortcode\0\u{3}add_shared_exclude\0\u{3}remove_shared_exclude\0\u{3}reset_shared_exclude\0\u{3}add_emoji_shortcode_exclude\0\u{3}remove_emoji_shortcode_exclude\0\u{3}reset_emoji_shortcode_exclude\0\u{1}keymap\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}input_method\0\u{3}keymap_preset\0\u{3}paging_wrap\0\u{3}page_size\0\u{3}lm_enabled\0\u{3}idle_unload_secs\0\u{3}lm_deadline_ms\0\u{3}convert_wait_ms\0\u{3}postal_japanese\0\u{3}postal_english\0\u{3}postal_te_prefix\0\u{3}candidate_hide_when_confident\0\u{3}unicode_notation\0\u{3}date_weekday_dates\0\u{3}emoji_small_letters\0\u{3}emoji_shortcode\0\u{4}\u{4}add_emoji_shortcode_exclude\0\u{3}remove_emoji_shortcode_exclude\0\u{3}reset_emoji_shortcode_exclude\0\u{1}keymap\0\u{b}add_shared_exclude\0\u{b}remove_shared_exclude\0\u{b}reset_shared_exclude\0\u{c}\u{11}\u{1}\u{c}\u{12}\u{1}\u{c}\u{13}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2105,35 +2078,6 @@ nonisolated extension Ikari_Settings_V1_Intent: SwiftProtobuf.Message, SwiftProt
           self.kind = .emojiShortcode(v)
         }
       }()
-      case 17: try {
-        var v: String?
-        try decoder.decodeSingularStringField(value: &v)
-        if let v = v {
-          if self.kind != nil {try decoder.handleConflictingOneOf()}
-          self.kind = .addSharedExclude(v)
-        }
-      }()
-      case 18: try {
-        var v: String?
-        try decoder.decodeSingularStringField(value: &v)
-        if let v = v {
-          if self.kind != nil {try decoder.handleConflictingOneOf()}
-          self.kind = .removeSharedExclude(v)
-        }
-      }()
-      case 19: try {
-        var v: Ikari_Shell_V1_Empty?
-        var hadOneofValue = false
-        if let current = self.kind {
-          hadOneofValue = true
-          if case .resetSharedExclude(let m) = current {v = m}
-        }
-        try decoder.decodeSingularMessageField(value: &v)
-        if let v = v {
-          if hadOneofValue {try decoder.handleConflictingOneOf()}
-          self.kind = .resetSharedExclude(v)
-        }
-      }()
       case 20: try {
         var v: String?
         try decoder.decodeSingularStringField(value: &v)
@@ -2250,18 +2194,6 @@ nonisolated extension Ikari_Settings_V1_Intent: SwiftProtobuf.Message, SwiftProt
     case .emojiShortcode?: try {
       guard case .emojiShortcode(let v)? = self.kind else { preconditionFailure() }
       try visitor.visitSingularBoolField(value: v, fieldNumber: 16)
-    }()
-    case .addSharedExclude?: try {
-      guard case .addSharedExclude(let v)? = self.kind else { preconditionFailure() }
-      try visitor.visitSingularStringField(value: v, fieldNumber: 17)
-    }()
-    case .removeSharedExclude?: try {
-      guard case .removeSharedExclude(let v)? = self.kind else { preconditionFailure() }
-      try visitor.visitSingularStringField(value: v, fieldNumber: 18)
-    }()
-    case .resetSharedExclude?: try {
-      guard case .resetSharedExclude(let v)? = self.kind else { preconditionFailure() }
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 19)
     }()
     case .addEmojiShortcodeExclude?: try {
       guard case .addEmojiShortcodeExclude(let v)? = self.kind else { preconditionFailure() }

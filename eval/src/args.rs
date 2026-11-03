@@ -148,6 +148,28 @@ pub(crate) enum SetFormat {
     Ajimee,
 }
 
+/// `--carry-joint` の値（`ikari_core::CarryJoint` に対応）
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub(crate) enum CarryJointArg {
+    None,
+    Period,
+    Newline,
+}
+
+impl RunArgs {
+    /// `--carry-fill`・`--carry-joint` から作る組み立ての値
+    pub(crate) fn carry_params(&self) -> ikari_core::CarryParams {
+        ikari_core::CarryParams {
+            fill_chars: self.carry_fill,
+            joint: match self.carry_joint {
+                CarryJointArg::None => ikari_core::CarryJoint::None,
+                CarryJointArg::Period => ikari_core::CarryJoint::Period,
+                CarryJointArg::Newline => ikari_core::CarryJoint::Newline,
+            },
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, ValueEnum)]
 pub(crate) enum SplitArg {
     Dev,
@@ -235,6 +257,13 @@ pub(crate) struct RunArgs {
     /// 省略時は `ConvertOptions.lm_budget`（max(30ms, 6ms×読みの文字数)、上限 300ms）
     #[arg(long)]
     pub(crate) lm_deadline_ms: Option<u64>,
+    /// 左文脈の目標の長さ（文字数。ADR 0046 の `carry_fill_chars`）。0 なら履歴を足さない（既定）。
+    /// `field` 列のあるセットとシナリオにだけ効く
+    #[arg(long, default_value_t = 0)]
+    pub(crate) carry_fill: usize,
+    /// 足した履歴と入力欄の左のあいだの区切り（ADR 0046 の `carry_joint`）
+    #[arg(long, value_enum, default_value = "none")]
+    pub(crate) carry_joint: CarryJointArg,
     /// 学習ストアの置き場所。省略時は一時ディレクトリ（利用者のデータを評価に混ぜない）。
     /// 指定したディレクトリに user_dict.tsv があれば、ユーザー辞書として重ねる
     #[arg(long)]

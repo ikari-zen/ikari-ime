@@ -3,9 +3,10 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use ikari_core::{Context, Converter, Profile};
+use ikari_core::{CarryParams, Context, Converter, Profile};
 
 use crate::EvalCase;
+use crate::carry::left_text;
 
 /// 既定: max_rank 50, repeat 20
 #[derive(Clone, Debug)]
@@ -47,6 +48,9 @@ pub struct RunOptions<'a> {
     /// 先行計算が済んでいる状況（エンジンの Prefetch は最大 300ms を使う）の再現に使う。
     /// None なら `Converter::convert` / `page` の既定（`lm_budget`）。
     pub lm_deadline: Option<Duration>,
+    /// `field` 列のあるケースの左文脈の組み立て（`--carry-fill`・`--carry-joint`。ADR 0046）。
+    /// None なら足さない。`field` 列のないケースには影響しない
+    pub carry: Option<CarryParams>,
 }
 
 impl RunOptions<'_> {
@@ -57,9 +61,13 @@ impl RunOptions<'_> {
     }
 }
 
-fn case_context(case: &EvalCase, profile: Option<Arc<Profile>>) -> Context {
+fn case_context(
+    case: &EvalCase,
+    profile: Option<Arc<Profile>>,
+    carry: Option<CarryParams>,
+) -> Context {
     Context::new()
-        .with_left_text(case.context.as_str())
+        .with_left_text(left_text(&case.context, case.field, &case.history, carry))
         .with_right_text(case.right.as_str())
         .with_profile(profile)
 }
@@ -136,7 +144,7 @@ pub fn run_with(
     cases
         .iter()
         .map(|case| {
-            let ctx = case_context(case, opts.profile_for(case));
+            let ctx = case_context(case, opts.profile_for(case), opts.carry);
             let started = Instant::now();
             let (cold, mut conversion) =
                 time_first_page(conv, &case.reading, &ctx, opts.lm_deadline);

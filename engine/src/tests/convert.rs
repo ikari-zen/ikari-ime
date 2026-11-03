@@ -674,7 +674,7 @@ fn fill_lets_a_grown_left_hit_by_content_with_the_lm() {
         line.contains("fill=2 fill_eq=1 fill_tail=1 fill_dleft=+0"),
         "{line}"
     );
-    assert_eq!(mock.last_context.lock().unwrap().clone().unwrap().0, grown);
+    assert_eq!(mock.last_context.lock().unwrap().clone().unwrap(), grown);
     let text = log_text(&e, &dir);
     for secret in [FILL_BEFORE, FILL_SURFACE] {
         assert!(!text.contains(secret), "{secret} leaked");
@@ -768,10 +768,7 @@ fn fill_truncates_to_the_context_limit() {
         line.contains("fill_eq=1 fill_tail=1 fill_dleft=+0"),
         "{line}"
     );
-    assert_eq!(
-        mock.last_context.lock().unwrap().clone().unwrap().0,
-        expected
-    );
+    assert_eq!(mock.last_context.lock().unwrap().clone().unwrap(), expected);
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -789,7 +786,7 @@ fn fill_hit_by_key_when_the_rev_stays() {
     assert!(!line.contains("by=content"), "{line}");
     assert!(line.contains("fill=2 fill_eq=0"), "{line}");
     assert_eq!(
-        mock.last_context.lock().unwrap().clone().unwrap().0,
+        mock.last_context.lock().unwrap().clone().unwrap(),
         joined(&[FILL_BEFORE, FILL_SURFACE])
     );
     let _ = std::fs::remove_dir_all(dir);
@@ -813,6 +810,6 @@ fn content_hit_commit_uses_the_convert_context() {
     );
     assert!(matches!(reply, envelope::Body::Ack(_)), "{reply:?}");
     // 変換を作った文脈 = Convert の文脈。確定の学習はこの変換の解析で記録される
-    assert_eq!(mock.last_context.lock().unwrap().clone().unwrap().0, grown);
+    assert_eq!(mock.last_context.lock().unwrap().clone().unwrap(), grown);
     let _ = std::fs::remove_dir_all(dir);
 }

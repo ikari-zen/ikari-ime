@@ -102,7 +102,7 @@ pub struct PrefetchContext {
 }
 
 impl PrefetchContext {
-    /// 変換の文脈になる形（`build_context_borrowing` と同じ切り方）にそろえる。
+    /// 変換の文脈になる形（`build_context` の周辺テキストと同じ切り方）にそろえる。
     /// Prefetch と Convert を同じ形で比べるため、どちらもここを通す
     pub fn new(surrounding: Option<&pb::SurroundingText>, filled: usize) -> PrefetchContext {
         let (left, right, available) = match surrounding {

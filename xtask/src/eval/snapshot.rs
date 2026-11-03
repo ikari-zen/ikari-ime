@@ -94,6 +94,24 @@ const FULL_SETS: [(&str, &str); 11] = [
     ("path-loses-full", "eval/sets/path-loses.tsv"),
 ];
 
+/// 左文脈の持ち越し（ADR 0046）の派生セット（C1〜C5 と手書きの carry-chat）。`ranker` は full。
+/// `--carry-fill 0`（既定）と、足す設定（`CARRY_ON_ARGS`）の両方で流す
+const CARRY_SETS: [(&str, &str); 6] = [
+    ("carry-empty", "eval/sets/carry-empty.tsv"),
+    ("carry-overlap", "eval/sets/carry-overlap.tsv"),
+    ("carry-unrelated", "eval/sets/carry-unrelated.tsv"),
+    ("carry-mismatch", "eval/sets/carry-mismatch.tsv"),
+    (
+        "carry-empty-unrelated",
+        "eval/sets/carry-empty-unrelated.tsv",
+    ),
+    ("carry-chat", "eval/sets/carry-chat.tsv"),
+];
+/// 足す設定の評価に付ける引数（スナップショットの安定のための固定値。既定の値の提案ではない）
+const CARRY_ON_ARGS: [&str; 4] = ["--carry-fill", "40", "--carry-joint", "period"];
+/// 足す設定で流すシナリオ（`--carry-fill 40` が要る。ADR 0046 §7.1）
+const CARRY_SCENARIO: &str = "c182-carryover";
+
 /// リファクタの前後で振る舞いが変わっていないことを確かめるための snapshot を取る、または基準と比べる
 #[derive(Debug, clap::Args)]
 pub struct Args {
@@ -491,10 +509,17 @@ impl Snapshot {
         Ok(())
     }
 
-    fn run_scenario(&self, name: &str, file: &str, use_lm: bool) -> Result<(), Failure> {
+    fn run_scenario(
+        &self,
+        name: &str,
+        file: &str,
+        use_lm: bool,
+        extra: &[&str],
+    ) -> Result<(), Failure> {
         let md = self.out.join("scenario").join(format!("{name}.md"));
         let mut args = self.base_args("full");
         args.extend(["--scenario".to_owned(), file.to_owned()]);
+        args.extend(extra.iter().map(|s| (*s).to_owned()));
         if use_lm {
             args.extend(
                 [
@@ -733,6 +758,13 @@ impl Snapshot {
         for (name, set) in FULL_SETS {
             self.run_eval(name, "full", false, &["--set", set])?;
         }
+        // 3n. 左文脈の持ち越し（ADR 0046）。足さない（既定）と、足す設定の両方
+        for (name, set) in CARRY_SETS {
+            self.run_eval(name, "full", false, &["--set", set])?;
+            let mut on = vec!["--set", set];
+            on.extend(CARRY_ON_ARGS);
+            self.run_eval(&format!("{name}-fill"), "full", false, &on)?;
+        }
         // 3c. segments（文節の区切り。ケース別の --out-cases がないので、レポートを比べる）
         let mut seg = vec!["segments".to_owned()];
         seg.extend(self.base_args("full"));
@@ -790,10 +822,20 @@ impl Snapshot {
         // 6. シナリオ
         for scenario in SCENARIOS {
             let file = format!("eval/scenarios/{scenario}.tsv");
-            self.run_scenario(scenario, &file, false)?;
+            self.run_scenario(scenario, &file, false, &[])?;
             if has_lm {
-                self.run_scenario(&format!("{scenario}-lm"), &file, true)?;
+                self.run_scenario(&format!("{scenario}-lm"), &file, true, &[])?;
             }
+        }
+        let carry_file = format!("eval/scenarios/{CARRY_SCENARIO}.tsv");
+        self.run_scenario(CARRY_SCENARIO, &carry_file, false, &CARRY_ON_ARGS)?;
+        if has_lm {
+            self.run_scenario(
+                &format!("{CARRY_SCENARIO}-lm"),
+                &carry_file,
+                true,
+                &CARRY_ON_ARGS,
+            )?;
         }
         // 7. CLI
         self.run_cli_golden()?;
