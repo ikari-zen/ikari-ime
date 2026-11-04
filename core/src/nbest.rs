@@ -422,6 +422,81 @@ mod tests {
         assert_eq!(tail_of(&mut towards_noun, &mut pops), "ん");
     }
 
+    // ---- through（ADR 0048 §3）----
+
+    fn node_of(lat: &Lattice, start: u32, end: u32) -> u32 {
+        (0..lat.node_count() as u32)
+            .find(|&id| {
+                let n = lat.node(id);
+                n.start == start && n.end == end && n.word.is_some()
+            })
+            .expect("node")
+    }
+
+    fn drain_through(lat: &Lattice, g: &dyn Grammar, end: u16, through: u32) -> Vec<Path> {
+        let mut nb = NBest::through(lat, g, end, through);
+        let mut pops = UNLIMITED;
+        let mut out = Vec::new();
+        while let Some(p) = nb.next(lat, g, &mut pops) {
+            out.push(p);
+        }
+        out
+    }
+
+    #[test]
+    fn through_yields_only_paths_containing_the_node_in_ascending_order() {
+        let (g, d) = sample();
+        let lat = build("へんかんする", &d, &g, g.bos_eos_id());
+        // へんか（0..3）、かん（2..4）、へんかん（0..4）、する（4..6）、か（2..3）
+        for (start, end) in [(0, 3), (2, 4), (0, 4), (4, 6), (2, 3)] {
+            let id = node_of(&lat, start, end);
+            let got = drain_through(&lat, &g, g.bos_eos_id(), id);
+            let mut want: Vec<(i32, Vec<u32>)> = brute_force(&lat, &g)
+                .into_iter()
+                .filter(|(_, nodes)| nodes.contains(&id))
+                .collect();
+            want.sort();
+            let costs: Vec<i32> = got.iter().map(|p| p.cost).collect();
+            assert!(
+                costs.windows(2).all(|w| w[0] <= w[1]),
+                "{start}..{end}: {costs:?}"
+            );
+            let mut got_sorted: Vec<(i32, Vec<u32>)> =
+                got.into_iter().map(|p| (p.cost, p.nodes)).collect();
+            got_sorted.sort();
+            assert!(!want.is_empty());
+            assert_eq!(got_sorted, want, "{start}..{end}");
+        }
+    }
+
+    #[test]
+    fn through_keeps_the_end_connection() {
+        let (mut g, d) = sample();
+        g.set(ID_PARTICLE, ID_NOUN, 20);
+        let lat = build("へんかん", &d, &g, g.bos_eos_id());
+        let id = node_of(&lat, 0, 4);
+        let a = drain_through(&lat, &g, g.bos_eos_id(), id);
+        let b = drain_through(&lat, &g, ID_NOUN, id);
+        assert_eq!((a.len(), b.len()), (1, 1));
+        let n = lat.node(id);
+        assert_eq!(
+            b[0].cost - a[0].cost,
+            i32::from(g.connection_cost(n.right_id, ID_NOUN))
+                - i32::from(g.connection_cost(n.right_id, g.bos_eos_id()))
+        );
+    }
+
+    #[test]
+    fn through_respects_the_pops_budget() {
+        let (g, d) = sample();
+        let lat = build("へんかんする", &d, &g, g.bos_eos_id());
+        let id = node_of(&lat, 0, 4);
+        let mut nb = NBest::through(&lat, &g, g.bos_eos_id(), id);
+        let mut pops = 0;
+        assert!(nb.next(&lat, &g, &mut pops).is_none());
+        assert!(!nb.is_exhausted());
+    }
+
     // ---- 副詞の直後の名詞（ADR 0008）: 前向きと後ろ向きが同じ辺の補正を使う ----
 
     fn surfaces(lat: &Lattice, d: &dyn Dictionary, p: &Path) -> String {

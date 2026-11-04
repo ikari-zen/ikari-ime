@@ -1264,3 +1264,193 @@ fn k1_caps_only_unknown_katakana() {
     assert!(dict_off.is_some());
     assert_eq!(dict_off, dict_on);
 }
+
+// ---- 語の予約枠と、かな・アンカーの基準（ADR 0048、#185） ----
+
+const COMPOSITE_COST: i16 = 1000;
+const WORD_COST: i16 = 6000;
+
+fn reserve_opts(pool_size: usize, word_reserve: usize) -> ConvertOptions {
+    ConvertOptions {
+        pool_size,
+        word_reserve,
+        ..ConvertOptions::default()
+    }
+}
+
+/// いき（動詞 1000）+ ち（名詞 1000）の合成が、いきち（名詞 6000）の 1 語より先に並ぶ（#185 の型）
+fn ikichi_dict() -> (DenseGrammar, InMemoryDictionary) {
+    let g = grammar();
+    let mut d = InMemoryDictionary::new(g.grammar_id());
+    d.insert(
+        "いき",
+        "行き",
+        ID_VERB_SURU,
+        ID_VERB_SURU,
+        COMPOSITE_COST,
+        1,
+    );
+    d.insert("ち", "値", ID_NOUN, ID_NOUN, COMPOSITE_COST, 0);
+    d.insert("いきち", "閾値", ID_NOUN, ID_NOUN, WORD_COST, 0);
+    (g, d)
+}
+
+fn first_pool(opts: ConvertOptions) -> Vec<Candidate> {
+    let (g, d) = ikichi_dict();
+    let c = conv_with(g, d, cost_ranker(), opts);
+    c.convert("いきち", &Context::new()).generated().to_vec()
+}
+
+#[test]
+fn reserve_adds_the_single_word_covering_a_composite_span() {
+    let off = first_pool(reserve_opts(1, 0));
+    assert!(off.iter().all(|c| c.surface != "閾値"), "{off:?}");
+    let on = first_pool(reserve_opts(1, 1));
+    let word = on.iter().find(|c| c.surface == "閾値").expect("reserved");
+    // 経路のコストのまま（加点しない）。辞書の経路として足される
+    assert_eq!(word.origin, CandidateOrigin::Dictionary);
+    assert_eq!(word.base_cost, i32::from(WORD_COST));
+    assert_eq!(word.score, word.base_cost);
+    assert_eq!(word.segments.len(), 1);
+    // 上位は変わらない
+    assert_eq!(on[0].surface, "行き値");
+    assert_eq!(on[0].surface, off[0].surface);
+}
+
+#[test]
+fn reserve_zero_changes_nothing() {
+    let surfaces = |o: ConvertOptions| -> Vec<(String, i32)> {
+        first_pool(o)
+            .into_iter()
+            .map(|c| (c.surface, c.base_cost))
+            .collect()
+    };
+    assert_eq!(surfaces(reserve_opts(1, 0)), surfaces(pool_of(1)));
+    assert_eq!(
+        surfaces(reserve_opts(30, 0)),
+        surfaces(ConvertOptions::default())
+    );
+}
+
+#[test]
+fn reserve_skips_words_already_in_the_pool() {
+    // プールに 閾値 が既にあれば、予約枠は何も足さない
+    let off = first_pool(reserve_opts(30, 0));
+    let on = first_pool(reserve_opts(30, 5));
+    assert_eq!(
+        off.iter().map(|c| &c.surface).collect::<Vec<_>>(),
+        on.iter().map(|c| &c.surface).collect::<Vec<_>>()
+    );
+    assert_eq!(on.iter().filter(|c| c.surface == "閾値").count(), 1);
+}
+
+#[test]
+fn reserve_ignores_spans_with_a_particle() {
+    // きょう + は（助詞）の区間は合成とみなさない。きょうは（教派）の 1 語があっても足さない
+    let g = grammar();
+    let mut d = InMemoryDictionary::new(g.grammar_id());
+    d.insert("きょう", "今日", ID_NOUN, ID_NOUN, COMPOSITE_COST, 0);
+    d.insert("は", "は", ID_PARTICLE, ID_PARTICLE, COMPOSITE_COST, 2);
+    d.insert("きょうは", "教派", ID_NOUN, ID_NOUN, WORD_COST, 0);
+    let c = conv_with(g, d, cost_ranker(), reserve_opts(1, 5));
+    let conv = c.convert("きょうは", &Context::new());
+    let s: Vec<&str> = conv
+        .generated()
+        .iter()
+        .map(|c| c.surface.as_str())
+        .collect();
+    assert_eq!(s[0], "今日は");
+    assert!(!s.contains(&"教派"), "{s:?}");
+}
+
+/// ち・い・き（名詞）の 3 語の合成が、ちい（地位）といき（息）の 1 語で覆える
+fn chiiki_converter(opts: ConvertOptions) -> Converter {
+    let g = grammar();
+    let mut d = InMemoryDictionary::new(g.grammar_id());
+    d.insert("ち", "値", ID_NOUN, ID_NOUN, COMPOSITE_COST, 0);
+    d.insert("い", "胃", ID_NOUN, ID_NOUN, COMPOSITE_COST, 0);
+    d.insert("き", "木", ID_NOUN, ID_NOUN, COMPOSITE_COST, 0);
+    d.insert("ちい", "地位", ID_NOUN, ID_NOUN, WORD_COST, 0);
+    d.insert("いき", "息", ID_NOUN, ID_NOUN, WORD_COST, 0);
+    conv_with(g, d, cost_ranker(), opts)
+}
+
+#[test]
+fn reserve_stops_at_the_limit() {
+    let dictionary_count = |word_reserve: usize| {
+        let c = chiiki_converter(reserve_opts(1, word_reserve));
+        let conv = c.convert("ちいき", &Context::new());
+        conv.generated()
+            .iter()
+            .filter(|c| c.origin == CandidateOrigin::Dictionary)
+            .count()
+    };
+    // A* の 1 件 + 予約枠
+    assert_eq!(dictionary_count(0), 1);
+    assert_eq!(dictionary_count(1), 2);
+    assert_eq!(dictionary_count(2), 3);
+    assert_eq!(dictionary_count(9), 3);
+}
+
+/// 同音語のコストの刻み（60 件で 3000。未知語の 5000 より下）
+const HOMOPHONE_COST_STEP: i16 = 50;
+
+fn many_homophones_n(n: i16, ranker: Arc<dyn Ranker>, opts: ConvertOptions) -> Converter {
+    let g = grammar();
+    let mut d = InMemoryDictionary::new(g.grammar_id());
+    for i in 0..n {
+        d.insert(
+            "あ",
+            &format!("w{i:02}"),
+            ID_NOUN,
+            ID_NOUN,
+            HOMOPHONE_COST_STEP * (i + 1),
+            0,
+        );
+    }
+    conv_with(g, d, ranker, opts)
+}
+
+#[test]
+fn kana_cost_does_not_depend_on_pool_size() {
+    let kana_costs = |pool_size: usize| {
+        let c = many_homophones_n(60, cost_ranker(), pool_of(pool_size));
+        let conv = c.convert("あ", &Context::new());
+        let by = |o: CandidateOrigin| {
+            conv.generated()
+                .iter()
+                .find(|c| c.origin == o)
+                .map(|c| c.base_cost)
+        };
+        (by(CandidateOrigin::Hiragana), by(CandidateOrigin::Katakana))
+    };
+    // 先頭 30 件の最大（1500）+ 1
+    assert_eq!(kana_costs(30), (Some(1501), Some(1501)));
+    assert_eq!(kana_costs(45), kana_costs(30));
+    assert_eq!(kana_costs(35), kana_costs(30));
+}
+
+#[test]
+fn rewriter_anchor_ignores_reserved_candidates() {
+    let r_cost = |opts: ConvertOptions| {
+        let (g, d) = ikichi_dict();
+        let c = Converter::builder(Arc::new(d), Arc::new(g))
+            .rewriters(vec![Fixed::new("fixed", &[("R", 7)]) as Arc<dyn Rewriter>])
+            .clock(Arc::new(FixedClock(NOW)))
+            .options(ConvertOptions {
+                rewriter_anchor: 2,
+                ..opts
+            })
+            .build()
+            .unwrap();
+        let conv = c.convert("いきち", &Context::new());
+        conv.generated()
+            .iter()
+            .find(|c| c.surface == "R")
+            .map(|c| c.base_cost)
+    };
+    // A* の候補だけで基準を作る。予約枠（閾値 6000）は入らない
+    let without = r_cost(reserve_opts(1, 0));
+    assert_eq!(r_cost(reserve_opts(1, 3)), without);
+    assert!(without.is_some_and(|c| c < i32::from(WORD_COST)));
+}
