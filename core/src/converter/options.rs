@@ -18,6 +18,8 @@ const DEFAULT_DATE_ANCHOR: usize = 3;
 /// 日付の位置を `--ranker-config` で指す接頭辞とキー（`rewriter.date_anchor`）
 const DATE_ANCHOR_PREFIX: &str = "rewriter";
 const DATE_ANCHOR_KEYS: [&str; 1] = ["date_anchor"];
+/// かな・カタカナの候補のコストの基準にする A* の先頭の件数（ADR 0048 §4。`pool_size` を変えても位置が動かないように固定）
+pub(super) const KANA_COST_BASIS_POOL: usize = 30;
 /// 語の予約枠の既定（ADR 0048 §3。0 = 無効。掃引までは今と同じ動き）
 const DEFAULT_WORD_RESERVE: usize = 0;
 /// 最初のプールに必ず足す候補の数（ひらがなとカタカナ。ADR 0048 §7）

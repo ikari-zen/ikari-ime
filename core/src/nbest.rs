@@ -37,10 +37,21 @@ pub(crate) struct Path {
     pub nodes: Vec<u32>,
 }
 
+/// `NBest::through` の制約（ノードとその区間）
+#[derive(Clone, Copy)]
+struct Through {
+    id: u32,
+    start: u32,
+    end: u32,
+}
+
 pub(crate) struct NBest {
     heap: BinaryHeap<Reverse<State>>,
     steps: Vec<Step>,
     seq: u64,
+    through: Option<Through>,
+    /// EOS の代わりの右の語の左ID（`with_end`）。同じ区間の `through` を作り直すために持つ
+    end_left_id: u16,
 }
 
 impl NBest {
@@ -51,32 +62,70 @@ impl NBest {
     /// `with_end` と同じ。ただし、出す経路はノード `through` を必ず通る
     /// （`through` の区間と重なるほかのノードへは進まない）。コストの昇順は保つ（ADR 0048 §3）。
     ///
-    /// 契約スタブ。本体はレーン A（ADR 0048 §8）。
-    #[allow(dead_code)]
+    /// ヒューリスティック（`best`）は制約なしの最小コストで、制約つきでも下界のままなので A* は正しい。
+    /// ただし `through` より後ろ側では `best` が緩く、展開は増える。
     pub fn through(
-        _lattice: &Lattice,
-        _grammar: &dyn Grammar,
-        _end_left_id: u16,
-        _through: u32,
+        lattice: &Lattice,
+        grammar: &dyn Grammar,
+        end_left_id: u16,
+        through: u32,
     ) -> Self {
-        unimplemented!("ADR 0048 レーン A")
+        let node = lattice.node(through);
+        let mut nb = Self::empty(
+            Some(Through {
+                id: through,
+                start: node.start,
+                end: node.end,
+            }),
+            end_left_id,
+        );
+        nb.push_initial(lattice, grammar, end_left_id);
+        nb
     }
 
     /// `new` の EOS を、右の文節の最初の語の左ID（`end_left_id`）にしたもの（ADR 0006 §3.1-2）。
     /// 右の文節との連接コストがパスのコストに入る。`new(l, g)` は `with_end(l, g, g.bos_eos_id())` と同じ。
     pub fn with_end(lattice: &Lattice, grammar: &dyn Grammar, end_left_id: u16) -> Self {
-        let mut nb = NBest {
+        let mut nb = Self::empty(None, end_left_id);
+        nb.push_initial(lattice, grammar, end_left_id);
+        nb
+    }
+
+    fn empty(through: Option<Through>, end_left_id: u16) -> Self {
+        NBest {
             heap: BinaryHeap::new(),
             steps: Vec::new(),
             seq: 0,
-        };
+            through,
+            end_left_id,
+        }
+    }
+
+    /// 読みの末尾で終わるノードから探索を始める
+    fn push_initial(&mut self, lattice: &Lattice, grammar: &dyn Grammar, end_left_id: u16) {
         for &id in lattice.ending_at(lattice.len_chars() as u32) {
+            if !self.allows(lattice.node(id), id) {
+                continue;
+            }
             let node = lattice.node(id);
             let g = i32::from(grammar.connection_cost(node.right_id, end_left_id));
-            let step = nb.push_step(id, NO_STEP);
-            nb.push_state(node.best + g, step, g);
+            let step = self.push_step(id, NO_STEP);
+            self.push_state(node.best + g, step, g);
         }
-        nb
+    }
+
+    /// `through` の制約のもとで、`node`（id は `id`）を経路に入れてよいか。
+    /// 後ろ向きに進むので、`through` の右側のノードだけを見ればよい（左側は `through` から先の連接で重ならない）
+    fn allows(&self, node: &crate::lattice::Node, id: u32) -> bool {
+        match self.through {
+            None => true,
+            Some(t) => id == t.id || node.start >= t.end || node.end <= t.start,
+        }
+    }
+
+    /// この探索の EOS 側の連接に使う左ID（`new` なら BOS/EOS のID）
+    pub fn end_left_id(&self) -> u16 {
+        self.end_left_id
     }
 
     /// 探索する候補が残っていないか
@@ -103,6 +152,9 @@ impl NBest {
             let node_cost = i32::from(node.cost);
             for &p in lattice.ending_at(node.start) {
                 let prev = lattice.node(p);
+                if !self.allows(prev, p) {
+                    continue;
+                }
                 let g = state.g
                     + node_cost
                     + i32::from(grammar.connection_cost(prev.right_id, node.left_id))
