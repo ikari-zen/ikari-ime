@@ -267,13 +267,27 @@ impl Converter {
             });
         }
         let analysis = self.analyzer.analyze(&ctx.left_text, &ctx.history);
-        if analysis.tokens.is_empty() && analysis.bos_right_id != bos_eos {
-            return Arc::new(AnalyzedContext {
+        let analysis = if analysis.tokens.is_empty() && analysis.bos_right_id != bos_eos {
+            Arc::new(AnalyzedContext {
                 bos_right_id: bos_eos,
                 ..(*analysis).clone()
-            });
+            })
+        } else {
+            analysis
+        };
+        if ctx.left_carried_chars == 0 {
+            return analysis;
         }
-        analysis
+        // 足した前文の境目（ADR 0049 §4.2）。キャッシュの Arc は共有なので複製して入れる
+        let original_left = ctx
+            .left_text
+            .chars()
+            .count()
+            .saturating_sub(ctx.left_carried_chars);
+        Arc::new(AnalyzedContext {
+            carried_from: Some(u32::try_from(original_left).unwrap_or(u32::MAX)),
+            ..(*analysis).clone()
+        })
     }
 }
 

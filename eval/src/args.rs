@@ -156,6 +156,16 @@ pub(crate) enum CarryJointArg {
     Newline,
 }
 
+impl From<ikari_core::CarryJoint> for CarryJointArg {
+    fn from(j: ikari_core::CarryJoint) -> Self {
+        match j {
+            ikari_core::CarryJoint::None => Self::None,
+            ikari_core::CarryJoint::Period => Self::Period,
+            ikari_core::CarryJoint::Newline => Self::Newline,
+        }
+    }
+}
+
 impl RunArgs {
     /// `--carry-fill`・`--carry-joint` から作る組み立ての値
     pub(crate) fn carry_params(&self) -> ikari_core::CarryParams {
@@ -257,12 +267,14 @@ pub(crate) struct RunArgs {
     /// 省略時は `ConvertOptions.lm_budget`（max(30ms, 6ms×読みの文字数)、上限 300ms）
     #[arg(long)]
     pub(crate) lm_deadline_ms: Option<u64>,
-    /// 左文脈の目標の長さ（文字数。ADR 0046 の `carry_fill_chars`）。0 なら履歴を足さない（既定）。
+    /// 左文脈の目標の長さ（文字数。ADR 0046 の `carry_fill_chars`）。0 なら履歴を足さない。
+    /// 既定は `CarryParams::DEFAULT`（engine と同じ。ADR 0049）。
     /// `field` 列のあるセットとシナリオにだけ効く
-    #[arg(long, default_value_t = 0)]
+    #[arg(long, default_value_t = ikari_core::CarryParams::DEFAULT.fill_chars)]
     pub(crate) carry_fill: usize,
     /// 足した履歴と入力欄の左のあいだの区切り（ADR 0046 の `carry_joint`）
-    #[arg(long, value_enum, default_value = "none")]
+    /// 既定は `CarryParams::DEFAULT`
+    #[arg(long, value_enum, default_value_t = CarryJointArg::from(ikari_core::CarryParams::DEFAULT.joint))]
     pub(crate) carry_joint: CarryJointArg,
     /// 学習ストアの置き場所。省略時は一時ディレクトリ（利用者のデータを評価に混ぜない）。
     /// 指定したディレクトリに user_dict.tsv があれば、ユーザー辞書として重ねる
@@ -274,4 +286,21 @@ pub(crate) struct RunArgs {
     /// 住所 ↔ 郵便番号の表（postal.tsv）。既定は `<dict>/postal.tsv`（なければ郵便番号の候補は出ない。ADR 0032）
     #[arg(long)]
     pub(crate) postal: Option<PathBuf>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn carry_params_default_follows_core_default() {
+        let cli = Cli::try_parse_from(["ikari-eval"]).expect("no flags parse");
+        assert_eq!(cli.run.carry_params(), ikari_core::CarryParams::DEFAULT);
+    }
+
+    #[test]
+    fn carry_fill_zero_means_no_carry() {
+        let cli = Cli::try_parse_from(["ikari-eval", "--carry-fill", "0"]).expect("parse");
+        assert_eq!(cli.run.carry_params().fill_chars, 0);
+    }
 }

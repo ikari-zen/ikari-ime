@@ -1455,3 +1455,21 @@ fn rewriter_anchor_ignores_reserved_candidates() {
     assert_eq!(r_cost(reserve_opts(1, 3)), without);
     assert!(without.is_some_and(|c| c < i32::from(WORD_COST)));
 }
+
+#[test]
+fn analyze_sets_carried_from_as_the_original_left_length() {
+    let (g, d) = natta_setup();
+    let c = builder_for(g, d)
+        .analyzer(FixedAnalyzer::new(ID_PARTICLE, 1))
+        .build()
+        .unwrap();
+    let ctx = Context::new().with_left_text("前文です春に");
+    // 前文なしは None（今と同じ）
+    assert_eq!(c.analyze(&ctx).carried_from, None);
+    // 先頭 4 字が前文。元の左は 2 字
+    let with = ctx.clone().with_left_carried_chars(4);
+    assert_eq!(c.analyze(&with).carried_from, Some(2));
+    // 全部が前文なら元の左は 0 字
+    let all = ctx.clone().with_left_carried_chars(6);
+    assert_eq!(c.analyze(&all).carried_from, Some(0));
+}
