@@ -45,7 +45,7 @@ impl Default for TopicConfig {
             tau: 0.10,
             max_total: 5000,
             recent_tokens: 50,
-            decay: 0.97,
+            decay: 0.8, // ADR 0047（#178）。掃引: eval/reports/topic-decay-sweep-2026-11-04.md
             min_content: 1,
         }
     }
