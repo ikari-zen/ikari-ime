@@ -159,6 +159,13 @@ impl Conversion {
         self.rank_and_append(pool);
     }
 
+    /// ADR 0048 §3 の規則で予約枠の候補を作る。`pool` は A* から取った候補だけ。
+    /// 契約スタブ（空を返す）。本体はレーン A。
+    #[allow(dead_code)]
+    fn reserve_word_candidates(&mut self, _pool: &[Candidate]) -> Vec<Candidate> {
+        Vec::new()
+    }
+
     /// 英字の語を含む候補ごとに、その語を読みのカタカナなどに置き換えた候補を足す（ADR 0020 §3.4）。
     /// 表記が未出のものだけ。コストは元の候補と同じ（最後の段で1位にするのは `CompositeRanker`）。
     fn add_english_replacements(&mut self, pool: &mut Vec<Candidate>) {

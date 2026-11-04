@@ -48,6 +48,20 @@ impl NBest {
         Self::with_end(lattice, grammar, grammar.bos_eos_id())
     }
 
+    /// `with_end` と同じ。ただし、出す経路はノード `through` を必ず通る
+    /// （`through` の区間と重なるほかのノードへは進まない）。コストの昇順は保つ（ADR 0048 §3）。
+    ///
+    /// 契約スタブ。本体はレーン A（ADR 0048 §8）。
+    #[allow(dead_code)]
+    pub fn through(
+        _lattice: &Lattice,
+        _grammar: &dyn Grammar,
+        _end_left_id: u16,
+        _through: u32,
+    ) -> Self {
+        unimplemented!("ADR 0048 レーン A")
+    }
+
     /// `new` の EOS を、右の文節の最初の語の左ID（`end_left_id`）にしたもの（ADR 0006 §3.1-2）。
     /// 右の文節との連接コストがパスのコストに入る。`new(l, g)` は `with_end(l, g, g.bos_eos_id())` と同じ。
     pub fn with_end(lattice: &Lattice, grammar: &dyn Grammar, end_left_id: u16) -> Self {
