@@ -41,9 +41,9 @@ pub struct CarryParams {
 
 impl CarryParams {
     /// 既定（ADR 0049 K1）。engine と eval の両方がこれを使う。
-    /// 契約のコミットでは今と同じ動き（`fill_chars: 0`）。統合で 40 にする（ADR 0049 §7）
+    /// `fill_chars: 40` は ADR 0049 の決定（掃引: eval/reports/0046-fill-topic-sweep-2026-11-04.md）
     pub const DEFAULT: CarryParams = CarryParams {
-        fill_chars: 0,
+        fill_chars: 40,
         joint: CarryJoint::None,
     };
 }
@@ -365,8 +365,12 @@ mod tests {
             carried(FieldLeft::Available("次は"), "品詞の話をした次は", &P40),
             8
         );
-        let none = CarryParams::DEFAULT;
-        assert_eq!(none.fill_chars, 0);
+        // 既定は ADR 0049 で 40。足さない設定は fill_chars: 0 を明示する
+        assert_eq!(CarryParams::DEFAULT.fill_chars, 40);
+        let none = CarryParams {
+            fill_chars: 0,
+            ..CarryParams::DEFAULT
+        };
         assert_eq!(
             carried(FieldLeft::Available("次は"), "品詞の話をした次は", &none),
             0

@@ -272,11 +272,14 @@ fn coming_back_after_the_pause_ttl_starts_without_context() {
 
 #[test]
 fn carry_fill_adds_the_same_sessions_history_to_a_short_left() {
-    // ADR 0046 E1・E2: 左が履歴の接尾辞なら、足りないぶんを履歴から足す。既定（fill = 0）では足さない
+    // ADR 0046 E1・E2: 左が履歴の接尾辞なら、足りないぶんを履歴から足す。fill = 0 では足さない（既定は 40。ADR 0049）
     let (e, mock) = engine(0);
     begin_with(&e, 1, false);
     commit_text(&e, 1, "品詞の話をした");
     commit_text(&e, 1, "次は");
+    let mut off = ContextLimits::DEFAULT;
+    off.carry.fill_chars = 0;
+    set_limits(&e, off);
     assert_eq!(convert_with_surrounding(&e, &mock, 1, "次は", true), "次は");
     let mut limits = ContextLimits::DEFAULT;
     limits.carry.fill_chars = 40;
@@ -303,7 +306,10 @@ fn left_carried_chars_counts_the_part_added_from_history() {
     commit_text(&e, 1, "品詞の話をした");
     commit_text(&e, 1, "次は");
     let carried = |mock: &Arc<MockLm>| mock.last_carried.lock().unwrap().expect("ranked");
-    // 既定（この PR では fill = 0）: 足さない
+    // fill = 0（既定は 40。ADR 0049）: 足さない
+    let mut off = ContextLimits::DEFAULT;
+    off.carry.fill_chars = 0;
+    set_limits(&e, off);
     convert_with_surrounding(&e, &mock, 1, "次は", true);
     assert_eq!(carried(&mock), 0);
     let mut limits = ContextLimits::DEFAULT;

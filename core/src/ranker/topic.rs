@@ -66,7 +66,7 @@ impl Default for TopicConfig {
             decay: 0.8, // ADR 0047（#178）。掃引: eval/reports/topic-decay-sweep-2026-11-04.md
             min_content: 1,
             carry_mult_empty: 1.0,
-            carry_mult: 1.0,
+            carry_mult: 0.5, // ADR 0049（掃引: eval/reports/0046-fill-topic-sweep-2026-11-04.md）
         }
     }
 }
@@ -633,13 +633,13 @@ mod tests {
     #[test]
     fn carry_mult_defaults_and_overrides() {
         let d = TopicConfig::from_kv(&BTreeMap::new()).unwrap();
-        assert_eq!((d.carry_mult_empty, d.carry_mult), (1.0, 1.0));
+        assert_eq!((d.carry_mult_empty, d.carry_mult), (1.0, 0.5));
         let cfg = TopicConfig::from_kv(&kv(&[
             ("topic.carry_mult_empty", "0.25"),
-            ("topic.carry_mult", "0.5"),
+            ("topic.carry_mult", "0.75"),
         ]))
         .unwrap();
-        assert_eq!((cfg.carry_mult_empty, cfg.carry_mult), (0.25, 0.5));
+        assert_eq!((cfg.carry_mult_empty, cfg.carry_mult), (0.25, 0.75));
     }
 
     #[test]

@@ -1,6 +1,6 @@
 # ADR 0046: 左文脈が足りないぶんを同じアプリの確定履歴から足し、アプリを行き来しても履歴を保つ（ほかのアプリからの借用は廃止）
 
-- 状態: 採用（2026-11-03〜04 にユーザーが §12 を決定。ほかのアプリからは借りない）。値（`carry_fill_chars`、区切り）は掃引のあとに確認する
+- 状態: 採用（2026-11-03〜04 にユーザーが §12 を決定。ほかのアプリからは借りない）。値（`carry_fill_chars`、区切り）は掃引のあとに確認する（値は ADR 0049 で決定）
 - 日付: 2026-11-03（初版）、2026-11-04（借用の廃止に改訂）
 - 対象: 新しい `core/src/context_carry.rs`（左文脈を組み立てる純関数と型）、`core/src/context.rs` と学習・変換の `left_borrowed` の分岐、`engine/src/session.rs`、`engine/src/context_limits.rs`、`engine/src/tests/context.rs`、`shell-core/src/controller/mod.rs`（アプリごとのセッションの ID を使い回す）、`shell-core/src/machine/`・`shell-core/src/settings/`・`shell-core/src/types.rs`・`shell-ffi/src/`（`share_context` と `context.shared_exclude` の削除）、proto 3 つ（§8.3）、設定アプリ（Swift。除外するアプリの節の削除）、`eval/src/set.rs`・`eval/src/scenario.rs`・`eval/src/args.rs`、`eval/scripts/`、`eval/sets/`、`eval/scenarios/`。LM（`lm/`）と学習の形式は変えない
 - 前提: main = dda8fe3。ADR 0015（D1 休止と再開、D5 アプリをまたぐ「最近の確定」と X5、D6 除外、D7 LM の窓 40、D8・Q7 借りた文脈で学習しない）、ADR 0002 §0.4（zenz のプロンプト）
