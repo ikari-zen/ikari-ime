@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use ikari_core::{CarryParams, Context, Converter, Profile};
 
 use crate::EvalCase;
-use crate::carry::left_text;
+use crate::carry::left_context;
 
 /// 既定: max_rank 50, repeat 20
 #[derive(Clone, Debug)]
@@ -66,8 +66,7 @@ fn case_context(
     profile: Option<Arc<Profile>>,
     carry: Option<CarryParams>,
 ) -> Context {
-    Context::new()
-        .with_left_text(left_text(&case.context, case.field, &case.history, carry))
+    left_context(&case.context, case.field, &case.history, carry)
         .with_right_text(case.right.as_str())
         .with_profile(profile)
 }
