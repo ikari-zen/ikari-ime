@@ -80,7 +80,7 @@ const SET_KATAKANA: &str = "eval/sets/katakana-suffix.tsv";
 const SET_SEGMENTS: &str = "eval/sets/segments.tsv";
 const SET_VERBS: &str = "eval/sets/verbs.tsv";
 /// 辞書の次の評価セット（名前、ファイル）。`ranker` は full。dev / test をまとめて流す
-const FULL_SETS: [(&str, &str); 11] = [
+const FULL_SETS: [(&str, &str); 12] = [
     ("context-compound-full", "eval/sets/context-compound.tsv"),
     ("adverbs-full", "eval/sets/adverbs.tsv"),
     ("verbs-full", SET_VERBS),
@@ -92,6 +92,7 @@ const FULL_SETS: [(&str, &str); 11] = [
     ("toshiyou-full", "eval/sets/toshiyou.tsv"),
     ("sahen-shiyou-full", "eval/sets/sahen-shiyou.tsv"),
     ("path-loses-full", "eval/sets/path-loses.tsv"),
+    ("issue185-full", "eval/sets/issue185.tsv"),
 ];
 
 /// 左文脈の持ち越し（ADR 0046）の派生セット（C1〜C5 と手書きの carry-chat）。`ranker` は full。
@@ -1331,6 +1332,6 @@ mod tests {
     fn full_sets_are_in_the_shell_order() {
         let names: Vec<&str> = FULL_SETS.iter().map(|(name, _)| *name).collect();
         assert_eq!(names.first(), Some(&"context-compound-full"));
-        assert_eq!(names.last(), Some(&"path-loses-full"));
+        assert_eq!(names.last(), Some(&"issue185-full"));
     }
 }
