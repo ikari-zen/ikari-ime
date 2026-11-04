@@ -33,6 +33,8 @@ struct MockLm {
     warm_thread: Mutex<Option<std::thread::ThreadId>>,
     /// 最後の `rank` が受けた文脈（左文脈、借りたか）
     last_context: Mutex<Option<String>>,
+    /// 最後の `rank` が受けた、左文脈のうち履歴から足した字数（ADR 0049）
+    last_carried: Mutex<Option<usize>>,
 }
 
 impl MockLm {
@@ -46,6 +48,7 @@ impl MockLm {
             warm_ups: AtomicU64::new(0),
             warm_thread: Mutex::new(None),
             last_context: Mutex::new(None),
+            last_carried: Mutex::new(None),
         })
     }
 }
@@ -54,6 +57,7 @@ impl Ranker for MockLm {
     fn rank(&self, input: &RankInput<'_>, cands: &mut [Candidate]) {
         self.calls.fetch_add(1, Ordering::Relaxed);
         *self.last_context.lock().unwrap() = Some(input.context.left_text.clone());
+        *self.last_carried.lock().unwrap() = Some(input.context.left_carried_chars);
         let now = Instant::now();
         match input.deadline {
             Some(deadline) if now + self.delay <= deadline => {

@@ -813,3 +813,37 @@ fn content_hit_commit_uses_the_convert_context() {
     assert_eq!(mock.last_context.lock().unwrap().clone().unwrap(), grown);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// ADR 0049 §5・K6: fill > 0 では左文脈が確定履歴に依る。確定の前の履歴で作った先行計算に、
+/// 確定のあと（周辺テキストも番号も同じ）の変換が当たらない
+#[test]
+fn commit_drops_the_prefetch_built_from_the_old_history() {
+    let (e, mock) = engine(0);
+    let mut limits = crate::context_limits::ContextLimits::DEFAULT;
+    limits.carry.fill_chars = 40;
+    *e.inner.limits.write().unwrap() = limits;
+    begin(&e, 1, false);
+    let empty_field = || surrounding("", "", true);
+    let commit = |surface: &str| {
+        send(
+            &e,
+            envelope::Body::CommitText(pb::CommitText {
+                session_id: 1,
+                reading: "よみ".into(),
+                surface: surface.into(),
+            }),
+        );
+    };
+    commit("旧");
+    prefetch_with(&e, 1, 1, empty_field());
+    settle(&e);
+    assert_eq!(mock.last_context.lock().unwrap().as_deref(), Some("旧"));
+    commit("新");
+    *mock.last_context.lock().unwrap() = None;
+    convert_with(&e, 1, 1, empty_field());
+    assert_eq!(
+        mock.last_context.lock().unwrap().as_deref(),
+        Some("旧新"),
+        "converted with the new history, not the old prefetch"
+    );
+}

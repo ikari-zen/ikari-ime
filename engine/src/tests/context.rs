@@ -296,6 +296,39 @@ fn carry_fill_adds_the_same_sessions_history_to_a_short_left() {
 }
 
 #[test]
+fn left_carried_chars_counts_the_part_added_from_history() {
+    // ADR 0049 K2: 足した前文の字数（区切りを含む）を LM の文脈に渡す
+    let (e, mock) = engine(0);
+    begin_with(&e, 1, false);
+    commit_text(&e, 1, "品詞の話をした");
+    commit_text(&e, 1, "次は");
+    let carried = |mock: &Arc<MockLm>| mock.last_carried.lock().unwrap().expect("ranked");
+    // 既定（この PR では fill = 0）: 足さない
+    convert_with_surrounding(&e, &mock, 1, "次は", true);
+    assert_eq!(carried(&mock), 0);
+    let mut limits = ContextLimits::DEFAULT;
+    limits.carry.fill_chars = 40;
+    limits.carry.joint = ikari_core::CarryJoint::Period;
+    set_limits(&e, limits);
+    // 前文 + 区切り（「品詞の話をした。」の 8 字）
+    assert_eq!(
+        convert_with_surrounding(&e, &mock, 1, "次は", true),
+        "品詞の話をした。次は"
+    );
+    assert_eq!(carried(&mock), 8);
+    // 空の欄: 履歴 + 区切りの全体が足した前文（元の左は 0 字）
+    let text = convert_with_surrounding(&e, &mock, 1, "", true);
+    assert_eq!(carried(&mock), text.chars().count());
+    // 周辺テキストなし（Unavailable）: 履歴の全体
+    let text = convert_context(&e, &mock, 1);
+    assert_eq!(carried(&mock), text.chars().count());
+    assert!(carried(&mock) > 0);
+    // 足さない（履歴の接尾辞でない）: 0
+    convert_with_surrounding(&e, &mock, 1, "別の", true);
+    assert_eq!(carried(&mock), 0);
+}
+
+#[test]
 fn secure_commits_go_nowhere() {
     let (e, mock) = engine(0);
     begin_with(&e, 1, true);
