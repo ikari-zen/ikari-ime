@@ -709,6 +709,7 @@ mod compound_tests {
                 bos_right_id: LEFT_RIGHT_ID,
                 bos_alternatives: Vec::new(),
                 content_count: 1,
+                carried_from: None,
             }
         }
 

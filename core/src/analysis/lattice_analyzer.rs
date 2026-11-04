@@ -430,6 +430,7 @@ impl ContextAnalyzer for LatticeContextAnalyzer {
             bos_right_id,
             bos_alternatives,
             content_count,
+            carried_from: None,
         });
         *guard = Some(Cache {
             window: window.to_owned(),
@@ -946,6 +947,31 @@ mod tests {
         assert_eq!(extended.tokens.last().unwrap().char_end, 0);
         assert_eq!(extended.tokens[0].char_end, 1);
         assert_eq!(extended.bos_right_id, ID_PARTICLE);
+    }
+
+    #[test]
+    fn extended_shifts_carried_from() {
+        let g = grammar();
+        let d = dict(&g);
+        let a = LatticeContextAnalyzer::new(Arc::new(dict(&g)), Arc::new(grammar()));
+        let tail = a.analyze("春に", &[]);
+        let segments = segments_of(&tail);
+        let added: u32 = segments
+            .iter()
+            .map(|s| u32::try_from(s.surface.chars().count()).unwrap())
+            .sum();
+        let mut base = (*a.analyze("やっと春に", &[])).clone();
+        base.carried_from = Some(2);
+        assert_eq!(
+            base.extended(&segments, &g, &d).carried_from,
+            Some(2 + added)
+        );
+        // 前文なしはなしのまま。足すものがなければそのまま
+        base.carried_from = None;
+        assert_eq!(base.extended(&segments, &g, &d).carried_from, None);
+        base.carried_from = Some(0);
+        assert_eq!(base.extended(&[], &g, &d).carried_from, Some(0));
+        assert_eq!(base.extended(&segments, &g, &d).carried_from, Some(added));
     }
 
     /// 「関数名」を 関数 + 名 に分けられる辞書。未知語（漢字3文字を1ノード）の固定のコスト 6000 より、

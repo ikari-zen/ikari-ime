@@ -650,6 +650,7 @@ impl ContextAnalyzer for FixedAnalyzer {
             bos_right_id: self.bos_right_id,
             bos_alternatives: Vec::new(),
             content_count: self.tokens,
+            carried_from: None,
         })
     }
 }

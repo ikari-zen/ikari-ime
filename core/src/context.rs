@@ -9,6 +9,8 @@ use crate::user::Profile;
 pub struct Context {
     /// カーソルより前の文脈（周辺テキストと確定履歴を合わせたもの）。末尾がカーソルの直前
     pub left_text: String,
+    /// `left_text` の先頭のうち、履歴から足した前文の字数。0 = 足していない（ADR 0049 K2）
+    pub left_carried_chars: usize,
     /// 補助（フェーズ0では使わない）
     pub right_text: String,
     /// 同じ入力欄・同じセッションの確定履歴（古い順）
@@ -26,6 +28,11 @@ impl Context {
 
     pub fn with_left_text(mut self, s: impl Into<String>) -> Self {
         self.left_text = s.into();
+        self
+    }
+
+    pub fn with_left_carried_chars(mut self, n: usize) -> Self {
+        self.left_carried_chars = n;
         self
     }
 
@@ -54,4 +61,18 @@ impl Context {
 pub struct Commit {
     pub reading: String,
     pub surface: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn left_carried_chars_defaults_to_zero() {
+        assert_eq!(Context::new().left_carried_chars, 0);
+        assert_eq!(
+            Context::new().with_left_carried_chars(3).left_carried_chars,
+            3
+        );
+    }
 }
