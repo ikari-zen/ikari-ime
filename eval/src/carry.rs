@@ -1,7 +1,7 @@
 //! 左文脈の持ち越し（ADR 0046 §7.1）。評価セットと scenario の `field`・`history` 列から、
 //! core の `compose_left`（engine と同じ関数）で左文脈を作る。
 
-use ikari_core::{CarryJoint, CarryParams, FieldLeft, LeftSources, compose_left};
+use ikari_core::{CarryJoint, CarryParams, Context, FieldLeft, LeftSources, compose_left};
 
 /// 左文脈の最大の文字数（engine の `MAX_CONTEXT_CHARS`。eval は engine に依存しないので値を揃える）
 pub const COMPOSE_MAX_CHARS: usize = 2000;
@@ -29,7 +29,7 @@ pub fn parse_field(cell: &str) -> Result<Option<FieldMode>, String> {
     }
 }
 
-/// 足さない設定（`fill = 0`。契約の既定）
+/// 足さない設定（`--carry-fill 0` の意味。既定は `CarryParams::DEFAULT`）
 pub const NO_CARRY: CarryParams = CarryParams {
     fill_chars: 0,
     joint: CarryJoint::None,
@@ -43,22 +43,46 @@ pub fn left_text(
     history: &str,
     carry: Option<CarryParams>,
 ) -> String {
+    left_composed(context, field, history, carry).0
+}
+
+/// [`left_text`] と、そのうち履歴から足した字数（`compose_left` の `carried_chars`）。
+/// `field` がなければ前文がないので 0（ADR 0049 §3）
+pub fn left_composed(
+    context: &str,
+    field: Option<FieldMode>,
+    history: &str,
+    carry: Option<CarryParams>,
+) -> (String, usize) {
     let Some(mode) = field else {
-        return context.to_owned();
+        return (context.to_owned(), 0);
     };
     let field_left = match mode {
         FieldMode::None => FieldLeft::Unavailable,
         FieldMode::Available => FieldLeft::Available(context),
     };
-    compose_left(
+    let composed = compose_left(
         &LeftSources {
             field: field_left,
             history,
         },
         &carry.unwrap_or(NO_CARRY),
         COMPOSE_MAX_CHARS,
-    )
-    .text
+    );
+    (composed.text, composed.carried_chars)
+}
+
+/// 左文脈と `left_carried_chars` を入れた `Context`（`run` と scenario の共通の入口）
+pub fn left_context(
+    context: &str,
+    field: Option<FieldMode>,
+    history: &str,
+    carry: Option<CarryParams>,
+) -> Context {
+    let (text, carried) = left_composed(context, field, history, carry);
+    Context::new()
+        .with_left_text(text)
+        .with_left_carried_chars(carried)
 }
 
 #[cfg(test)]
@@ -79,6 +103,31 @@ mod tests {
         for c in [None, carry(40, CarryJoint::Period)] {
             assert_eq!(left_text("前の文", None, HISTORY, c), "前の文");
         }
+    }
+
+    #[test]
+    fn no_field_has_no_carried_chars() {
+        for c in [None, carry(40, CarryJoint::Period)] {
+            let ctx = left_context("前の文", None, HISTORY, c);
+            assert_eq!(ctx.left_carried_chars, 0);
+            assert_eq!(ctx.left_text, "前の文");
+        }
+    }
+
+    #[test]
+    fn carried_chars_match_compose_left() {
+        let p = carry(40, CarryJoint::Period);
+        let ctx = left_context("", Some(FieldMode::Available), HISTORY, p);
+        let expected = HISTORY.chars().count() + 1;
+        assert_eq!(ctx.left_carried_chars, expected);
+        assert_eq!(ctx.left_text.chars().count(), expected);
+        let ctx = left_context("次は", Some(FieldMode::Available), "品詞の話をした次は", p);
+        assert_eq!(ctx.left_text, "品詞の話をした。次は");
+        assert_eq!(ctx.left_carried_chars, "品詞の話をした。".chars().count());
+        let ctx = left_context("", Some(FieldMode::None), HISTORY, p);
+        assert_eq!(ctx.left_carried_chars, HISTORY.chars().count());
+        let ctx = left_context("", Some(FieldMode::Available), HISTORY, None);
+        assert_eq!(ctx.left_carried_chars, 0);
     }
 
     #[test]

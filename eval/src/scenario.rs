@@ -12,9 +12,9 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::time::{Duration, Instant};
 
-use ikari_core::{CarryParams, CommitEvent, Context, Converter};
+use ikari_core::{CarryParams, CommitEvent, Converter};
 
-use crate::carry::{FieldMode, left_text, parse_field};
+use crate::carry::{FieldMode, left_context, parse_field};
 use crate::run::find_rank_until;
 use crate::{EvalSetError, cell};
 
@@ -296,15 +296,9 @@ impl<F: FnMut(CommitEvent)> ConverterHost<'_, F> {
         step: &ScenarioStep,
         max_rank: usize,
     ) -> (ikari_core::Conversion, Option<usize>, Option<String>) {
-        let ctx = Context::new().with_left_text(step.context.as_str());
         let deadline = self.lm_deadline.map(|d| Instant::now() + d);
         // `field` 列があれば compose_left で左文脈を作り直す（なければ context のまま。ADR 0046）
-        let ctx = ctx.with_left_text(left_text(
-            &step.context,
-            step.field,
-            &step.history,
-            self.carry,
-        ));
+        let ctx = left_context(&step.context, step.field, &step.history, self.carry);
         let mut conversion = match deadline {
             Some(d) => self.converter.convert_until(&step.reading, &ctx, Some(d)),
             None => self.converter.convert(&step.reading, &ctx),
