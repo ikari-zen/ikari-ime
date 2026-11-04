@@ -195,6 +195,7 @@ fn window_analysis(running: &[ContextToken]) -> AnalyzedContext {
         tokens,
         bos_alternatives: Vec::new(),
         content_count,
+        carried_from: None,
     }
 }
 

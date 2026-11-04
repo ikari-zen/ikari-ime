@@ -37,6 +37,9 @@ pub struct AnalyzedContext {
     pub bos_alternatives: Vec<(u16, i32)>,
     /// tokens のうち内容語の数（プロファイルの減衰に使う）
     pub content_count: usize,
+    /// これ以上の `char_end` のトークンは、履歴から足した前文（末尾からの距離）。None = 前文なし
+    /// （ADR 0049 K3）
+    pub carried_from: Option<u32>,
 }
 
 impl AnalyzedContext {
@@ -84,6 +87,7 @@ impl AnalyzedContext {
             bos_right_id: last.right_id,
             bos_alternatives: Vec::new(),
             content_count,
+            carried_from: self.carried_from.map(|b| b.saturating_add(shift)),
         }
     }
 

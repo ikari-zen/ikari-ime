@@ -39,6 +39,15 @@ pub struct CarryParams {
     pub joint: CarryJoint,
 }
 
+impl CarryParams {
+    /// 既定（ADR 0049 K1）。engine と eval の両方がこれを使う。
+    /// 契約のコミットでは今と同じ動き（`fill_chars: 0`）。統合で 40 にする（ADR 0049 §7）
+    pub const DEFAULT: CarryParams = CarryParams {
+        fill_chars: 0,
+        joint: CarryJoint::None,
+    };
+}
+
 /// 組み立ての材料
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LeftSources<'a> {
@@ -60,6 +69,9 @@ pub enum LeftOrigin {
 pub struct ComposedLeft {
     pub text: String,
     pub origin: LeftOrigin,
+    /// `text` の先頭のうち、履歴から足した字数（区切りを含む）。
+    /// History なら `text` 全体の字数、Field・Empty なら 0（ADR 0049 K2）
+    pub carried_chars: usize,
 }
 
 /// 区切りを入れない末尾の文字（句読点、閉じ括弧、改行、空白）
@@ -94,6 +106,7 @@ fn field_only(l: &str, max_chars: usize) -> ComposedLeft {
     ComposedLeft {
         text: tail_chars(l, max_chars).to_string(),
         origin,
+        carried_chars: 0,
     }
 }
 
@@ -107,11 +120,15 @@ pub fn compose_left(src: &LeftSources<'_>, p: &CarryParams, max_chars: usize) ->
                 ComposedLeft {
                     text: String::new(),
                     origin: LeftOrigin::Empty,
+                    carried_chars: 0,
                 }
             } else {
+                let text = tail_chars(h, max_chars).to_string();
+                let carried_chars = text.chars().count();
                 ComposedLeft {
-                    text: tail_chars(h, max_chars).to_string(),
+                    text,
                     origin: LeftOrigin::History,
+                    carried_chars,
                 }
             };
         }
@@ -127,13 +144,17 @@ pub fn compose_left(src: &LeftSources<'_>, p: &CarryParams, max_chars: usize) ->
             return ComposedLeft {
                 text: tail_chars(l, max_chars).to_string(),
                 origin: LeftOrigin::Empty,
+                carried_chars: 0,
             };
         }
         let j = joint_after(h, p.joint);
         let keep = max_chars.saturating_sub(j.chars().count());
+        let text = format!("{}{}", tail_chars(h, keep), j);
+        let carried_chars = text.chars().count();
         return ComposedLeft {
-            text: format!("{}{}", tail_chars(h, keep), j),
+            text,
             origin: LeftOrigin::History,
+            carried_chars,
         };
     }
     let deficit = p.fill_chars.saturating_sub(l.chars().count());
@@ -153,8 +174,10 @@ pub fn compose_left(src: &LeftSources<'_>, p: &CarryParams, max_chars: usize) ->
         return field_only(l, max_chars);
     }
     let take = (deficit - j_len).min(max_chars.saturating_sub(l.chars().count() + j_len));
+    let carried = format!("{}{}", tail_chars(prefix, take), j);
     ComposedLeft {
-        text: format!("{}{}{}", tail_chars(prefix, take), j, l),
+        carried_chars: carried.chars().count(),
+        text: format!("{carried}{l}"),
         origin: LeftOrigin::FieldWithHistory,
     }
 }
@@ -312,5 +335,45 @@ mod tests {
             3,
         );
         assert_eq!(r.text, "うえお");
+    }
+
+    fn carried(field: FieldLeft<'_>, h: &str, p: &CarryParams) -> usize {
+        compose_left(&LeftSources { field, history: h }, p, MAX).carried_chars
+    }
+
+    #[test]
+    fn carried_chars_counts_the_prefix_with_joint() {
+        // 履歴だけ（区切り込み）。Unavailable は全体
+        assert_eq!(carried(FieldLeft::Available(""), "品詞の話をした", &P40), 8);
+        assert_eq!(carried(FieldLeft::Unavailable, "品詞の話", &P40), 4);
+        // 足した前文 + 区切り + L
+        let r = compose_left(
+            &LeftSources {
+                field: FieldLeft::Available("次は"),
+                history: "品詞の話をした次は",
+            },
+            &P40,
+            MAX,
+        );
+        assert_eq!(r.text, "品詞の話をした。次は");
+        assert_eq!(r.carried_chars, 8);
+    }
+
+    #[test]
+    fn carried_chars_is_zero_without_carry() {
+        assert_eq!(
+            carried(FieldLeft::Available("次は"), "品詞の話をした次は", &P40),
+            8
+        );
+        let none = CarryParams::DEFAULT;
+        assert_eq!(none.fill_chars, 0);
+        assert_eq!(
+            carried(FieldLeft::Available("次は"), "品詞の話をした次は", &none),
+            0
+        );
+        assert_eq!(carried(FieldLeft::Available(""), "", &P40), 0);
+        assert_eq!(carried(FieldLeft::Unavailable, "", &P40), 0);
+        let long = "あ".repeat(50);
+        assert_eq!(carried(FieldLeft::Available(&long), "x", &P40), 0);
     }
 }

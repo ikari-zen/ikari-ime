@@ -220,6 +220,7 @@ pub(crate) mod test_support {
             bos_right_id: 0,
             bos_alternatives: Vec::new(),
             content_count,
+            carried_from: None,
         }
     }
 

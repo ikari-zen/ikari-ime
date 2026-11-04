@@ -14,14 +14,28 @@ use crate::candidate::Candidate;
 use crate::vectors::WordVectors;
 
 const CONFIG_PREFIX: &str = names::TOPIC;
-const CONFIG_KEYS: [&str; 6] = [
+const CONFIG_KEYS: [&str; 8] = [
     "weight",
     "tau",
     "max_total",
     "recent_tokens",
     "decay",
     "min_content",
+    "carry_mult_empty",
+    "carry_mult",
 ];
+
+/// 倍率は 0.0 以上（負はエラー）
+fn non_negative(name: &str, value: f32) -> Result<f32, RankerConfigError> {
+    if value >= 0.0 {
+        Ok(value)
+    } else {
+        Err(RankerConfigError {
+            key: format!("{CONFIG_PREFIX}.{name}"),
+            message: "must be 0.0 or greater".to_owned(),
+        })
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TopicConfig {
@@ -36,6 +50,11 @@ pub struct TopicConfig {
     pub decay: f32,
     /// 内容語がこれ未満なら加点しない
     pub min_content: usize,
+    /// 元の左が 0 字のときの、足した前文の加点の倍率（`topic.carry_mult_empty`。ADR 0049 K4）。
+    /// 採点はまだ使わない（レーン A）
+    pub carry_mult_empty: f32,
+    /// 元の左があるときの倍率（`topic.carry_mult`）。契約のコミットでは 1.0、統合で 0.5
+    pub carry_mult: f32,
 }
 
 impl Default for TopicConfig {
@@ -47,6 +66,8 @@ impl Default for TopicConfig {
             recent_tokens: 50,
             decay: 0.8, // ADR 0047（#178）。掃引: eval/reports/topic-decay-sweep-2026-11-04.md
             min_content: 1,
+            carry_mult_empty: 1.0,
+            carry_mult: 1.0,
         }
     }
 }
@@ -64,6 +85,11 @@ impl TopicConfig {
             recent_tokens: scope.get("recent_tokens", d.recent_tokens)?,
             decay: scope.get_float("decay", d.decay)?,
             min_content: scope.get("min_content", d.min_content)?,
+            carry_mult_empty: non_negative(
+                "carry_mult_empty",
+                scope.get_float("carry_mult_empty", d.carry_mult_empty)?,
+            )?,
+            carry_mult: non_negative("carry_mult", scope.get_float("carry_mult", d.carry_mult)?)?,
         })
     }
 }
@@ -448,5 +474,33 @@ mod tests {
             .into_iter()
             .collect();
         assert!(TopicConfig::from_kv(&bad).is_err());
+    }
+
+    fn kv(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+            .collect()
+    }
+
+    #[test]
+    fn carry_mult_defaults_and_overrides() {
+        let d = TopicConfig::from_kv(&BTreeMap::new()).unwrap();
+        assert_eq!((d.carry_mult_empty, d.carry_mult), (1.0, 1.0));
+        let cfg = TopicConfig::from_kv(&kv(&[
+            ("topic.carry_mult_empty", "0.25"),
+            ("topic.carry_mult", "0.5"),
+        ]))
+        .unwrap();
+        assert_eq!((cfg.carry_mult_empty, cfg.carry_mult), (0.25, 0.5));
+    }
+
+    #[test]
+    fn carry_mult_rejects_bad_values_and_unknown_keys() {
+        for bad in ["x", "-0.1", "NaN", "inf"] {
+            assert!(TopicConfig::from_kv(&kv(&[("topic.carry_mult", bad)])).is_err());
+            assert!(TopicConfig::from_kv(&kv(&[("topic.carry_mult_empty", bad)])).is_err());
+        }
+        assert!(TopicConfig::from_kv(&kv(&[("topic.carry_mul", "1")])).is_err());
     }
 }
