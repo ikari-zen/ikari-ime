@@ -85,11 +85,8 @@ impl Inner {
     }
 
     pub(crate) fn drop_session_state(&self, session: u64) {
-        if let Some(entry) = self.queue.forget_session(session) {
-            entry.abandon();
-        }
+        self.drop_prefetch(session);
         self.lookahead.forget_session(session);
-        lock_mutex(&self.cache).remove_session(session);
         lock_mutex(&self.ctx_trace).remove_session(session);
         lock_mutex(&self.conversions).remove_session(session);
     }
@@ -130,6 +127,17 @@ impl Inner {
             drop_count += 1;
         }
         s.history.drain(..drop_count);
+        drop(sessions);
+        self.drop_prefetch(session);
+    }
+
+    /// 先行計算とキューを捨てる。左文脈が確定履歴に依るので、確定の前に作った計算を確定のあとに
+    /// 使わない（ADR 0049 K6、§5）。文節の先読みは触らない
+    fn drop_prefetch(&self, session: u64) {
+        if let Some(entry) = self.queue.forget_session(session) {
+            entry.abandon();
+        }
+        lock_mutex(&self.cache).remove_session(session);
     }
 
     /// 休止から `paused_session_ttl` たったセッションを捨てる（見回りから）
@@ -192,7 +200,9 @@ impl Inner {
             field,
             history: &joined,
         };
-        ctx.left_text = compose_left(&src, carry, MAX_CONTEXT_CHARS).text;
-        ctx.with_history(history)
+        let composed = compose_left(&src, carry, MAX_CONTEXT_CHARS);
+        ctx.left_text = composed.text;
+        ctx.with_left_carried_chars(composed.carried_chars)
+            .with_history(history)
     }
 }
