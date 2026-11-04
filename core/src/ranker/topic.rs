@@ -51,7 +51,6 @@ pub struct TopicConfig {
     /// 内容語がこれ未満なら加点しない
     pub min_content: usize,
     /// 元の左が 0 字のときの、足した前文の加点の倍率（`topic.carry_mult_empty`。ADR 0049 K4）。
-    /// 採点はまだ使わない（レーン A）
     pub carry_mult_empty: f32,
     /// 元の左があるときの倍率（`topic.carry_mult`）。契約のコミットでは 1.0、統合で 0.5
     pub carry_mult: f32,
@@ -105,12 +104,19 @@ impl TopicRanker {
     }
 
     /// 文脈ベクトル（L2 正規化済み）。使えるベクトルが `min_content` 個未満なら None。
-    fn context_vector(&self, input: &RankInput<'_>) -> Option<Vec<f32>> {
+    /// `part` で境目（`carried_from`）の手前・後ろのトークンだけに絞る。
+    fn context_vector(&self, input: &RankInput<'_>, part: Part) -> Option<Vec<f32>> {
         let dims = self.vectors.dims();
         let mut mean = WeightedMean::new(dims);
         let mut used = 0;
         let mut weight = 1.0f32;
-        let newest_first = input.analysis.tokens.iter().rev().filter(|t| t.is_content);
+        let boundary = input.analysis.carried_from;
+        let newest_first = input
+            .analysis
+            .tokens
+            .iter()
+            .rev()
+            .filter(|t| t.is_content && part.contains(boundary, t.char_end));
         for token in newest_first {
             if used >= self.cfg.recent_tokens {
                 break;
@@ -130,28 +136,86 @@ impl TopicRanker {
     }
 }
 
+/// 文脈ベクトルに使うトークンの範囲（ADR 0049 §4.3）
+#[derive(Clone, Copy)]
+enum Part {
+    /// 境目なしの全体
+    All,
+    /// 元の左（`char_end < carried_from`）
+    Own,
+    /// 履歴から足した前文（`char_end >= carried_from`）
+    Prior,
+}
+
+impl Part {
+    fn contains(self, boundary: Option<u32>, char_end: u32) -> bool {
+        match (self, boundary) {
+            (Self::All, _) | (_, None) => true,
+            (Self::Own, Some(b)) => char_end < b,
+            (Self::Prior, Some(b)) => char_end >= b,
+        }
+    }
+}
+
+/// 文脈ベクトルと、その加点にかける倍率
+type WeightedContext<'a> = (Option<&'a Vec<f32>>, f32);
+
+impl TopicRanker {
+    /// 候補の内容語ごとの加点の合計（倍率をかけたあと。上限の前）
+    fn candidate_total(
+        &self,
+        input: &RankInput<'_>,
+        cand: &Candidate,
+        contexts: &[WeightedContext<'_>],
+    ) -> f32 {
+        let weight = self.cfg.weight as f32;
+        let mut total = 0.0f32;
+        for seg in content_segments(input.grammar, cand) {
+            let Some(v) = segment_lemma(input.dict, seg)
+                .1
+                .and_then(|id| self.vectors.vector(id))
+            else {
+                continue;
+            };
+            for (ctx_vec, mult) in contexts {
+                let Some(ctx_vec) = ctx_vec else { continue };
+                if let Some(cos) = cosine(v, ctx_vec) {
+                    total += mult * weight * (cos - self.cfg.tau).max(0.0);
+                }
+            }
+        }
+        total
+    }
+}
+
 impl Ranker for TopicRanker {
     fn rank(&self, input: &RankInput<'_>, cands: &mut [Candidate]) {
         if input.context.secure {
             return;
         }
-        let Some(ctx_vec) = self.context_vector(input) else {
-            return;
-        };
-        let weight = self.cfg.weight as f32;
-        for cand in cands.iter_mut() {
-            let mut total = 0.0f32;
-            for seg in content_segments(input.grammar, cand) {
-                let Some(v) = segment_lemma(input.dict, seg)
-                    .1
-                    .and_then(|id| self.vectors.vector(id))
-                else {
-                    continue;
+        // 境目がなければ今までどおりベクトル 1 つ。あれば元の左（own）と足した前文（prior）で
+        // 別々に作り、前文の加点に倍率をかける（元の左が 0 字なら carry_mult_empty、他は carry_mult）
+        let parts: Vec<(Option<Vec<f32>>, f32)> = match input.analysis.carried_from {
+            None => vec![(self.context_vector(input, Part::All), 1.0)],
+            Some(b) => {
+                let m = if b == 0 {
+                    self.cfg.carry_mult_empty
+                } else {
+                    self.cfg.carry_mult
                 };
-                if let Some(cos) = cosine(v, &ctx_vec) {
-                    total += weight * (cos - self.cfg.tau).max(0.0);
-                }
+                vec![
+                    (self.context_vector(input, Part::Own), 1.0),
+                    (self.context_vector(input, Part::Prior), m),
+                ]
             }
+        };
+        if parts.iter().all(|(v, _)| v.is_none()) {
+            return;
+        }
+        let contexts: Vec<WeightedContext<'_>> =
+            parts.iter().map(|(v, m)| (v.as_ref(), *m)).collect();
+        for cand in cands.iter_mut() {
+            let total = self.candidate_total(input, cand, &contexts);
             apply_bonus(cand, (total.round() as i32).min(self.cfg.max_total));
         }
     }
@@ -421,6 +485,89 @@ mod tests {
             &mut cands,
         );
         assert_eq!((cands[0].score, cands[1].score), (5000, 5004));
+    }
+
+    /// 足した前文（IT。遠い）と元の左（小説。近い）。境目は呼び出し側が渡す
+    fn carried_analysis(boundary: Option<u32>) -> AnalyzedContext {
+        let mut tokens: Vec<_> = (0..3)
+            .map(|i| token("it", "it", Some(IT), true, 8 - i))
+            .collect();
+        tokens.extend((0..3).map(|i| token("nv", "nv", Some(NOVEL), true, 3 - i)));
+        let mut a = analysis(tokens);
+        a.carried_from = boundary;
+        a
+    }
+
+    /// 元の左が 0 字の形（前文のトークンだけ）
+    fn prior_only(boundary: Option<u32>) -> AnalyzedContext {
+        let mut a = carried_analysis(boundary);
+        a.tokens.retain(|t| t.char_end > 3);
+        a
+    }
+
+    /// 上限に当たらない設定で IT 候補の加点を測る
+    fn it_bonus(analysis: &AnalyzedContext, cfg: TopicConfig) -> i32 {
+        let mut env = Env::new();
+        let it = env.word("構成", "構成", Some(IT), POS_NOUN);
+        let mut cands = vec![cand(vec![it], 10_000)];
+        let cfg = TopicConfig {
+            weight: 1000,
+            max_total: 100_000,
+            ..cfg
+        };
+        env.rank(
+            &TopicRanker::new(vectors(), cfg),
+            &Context::new(),
+            analysis,
+            &mut cands,
+        );
+        10_000 - cands[0].score
+    }
+
+    fn mult(empty: f32, other: f32) -> TopicConfig {
+        TopicConfig {
+            carry_mult_empty: empty,
+            carry_mult: other,
+            ..adr_config()
+        }
+    }
+
+    #[test]
+    fn without_boundary_the_multipliers_do_not_matter() {
+        let a = carried_analysis(None);
+        let base = it_bonus(&a, adr_config());
+        assert!(base > 0);
+        assert_eq!(it_bonus(&a, mult(0.0, 0.0)), base);
+        assert_eq!(it_bonus(&a, mult(3.0, 3.0)), base);
+    }
+
+    #[test]
+    fn empty_original_left_with_unit_multiplier_equals_no_boundary() {
+        // 元の左が 0 字（b = 0）。own は空で、前文だけのベクトル 1 つと同じ点
+        assert_eq!(
+            it_bonus(&prior_only(Some(0)), mult(1.0, 0.5)),
+            it_bonus(&prior_only(None), adr_config())
+        );
+    }
+
+    #[test]
+    fn empty_original_left_uses_carry_mult_empty() {
+        let a = prior_only(Some(0));
+        assert!(it_bonus(&a, mult(1.0, 0.0)) > 0);
+        assert_eq!(it_bonus(&a, mult(0.0, 1.0)), 0);
+    }
+
+    #[test]
+    fn prior_bonus_is_scaled_when_original_left_exists() {
+        let a = carried_analysis(Some(4));
+        // 元の左（小説）は IT 候補に加点しない。加点は前文だけから来るので m に比例する
+        let full = it_bonus(&a, mult(1.0, 1.0));
+        let half = it_bonus(&a, mult(1.0, 0.5));
+        assert!(full > 0);
+        assert!((full - 2 * half).abs() <= 1, "{full} {half}");
+        assert_eq!(it_bonus(&a, mult(1.0, 0.0)), 0);
+        // carry_mult_empty は元の左があるときは使わない
+        assert_eq!(it_bonus(&a, mult(0.0, 0.5)), half);
     }
 
     /// dims() と実際の行の長さが食い違う壊れた vectors
