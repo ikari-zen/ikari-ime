@@ -7,12 +7,14 @@ use std::time::Instant;
 use ikari_input::hiragana_to_katakana;
 
 use super::ConvertOptions;
+use super::options::KANA_COST_BASIS_POOL;
 use crate::analysis::AnalyzedContext;
 use crate::candidate::{Candidate, CandidateOrigin, Segment};
 use crate::context::Context;
-use crate::dict::{Dictionary, Grammar};
+use crate::dict::{Dictionary, Grammar, WordId};
 use crate::lattice::Lattice;
 use crate::nbest::{NBest, Path};
+use crate::pos::pos1;
 use crate::ranker::english_first;
 use crate::ranker::{RankInput, Ranker};
 use crate::rewriter::{Clock, RewriteInput, RewritePosition, Rewriter};
@@ -25,6 +27,24 @@ const SMALL_VOWEL_KANA: [(char, char); 5] = [
     ('ぇ', 'ェ'),
     ('ぉ', 'ォ'),
 ];
+
+/// 語の予約枠の「合成」とみなす最小のセグメント数（ADR 0048 §3-1）
+const MIN_COMPOSITE_SEGMENTS: usize = 2;
+/// 合成の部品にしない品詞1（名詞 + 助詞 の区間まで 1 語に置き換えると、LM の採点が増えすぎる。ADR 0048 §5）
+const NON_COMPOSITE_POS1: [&str; 2] = ["助詞", "助動詞"];
+
+/// 候補の各セグメントが覆う読みの区間（文字位置 `[start, end)`）
+fn segment_spans(cand: &Candidate) -> Vec<(u32, u32)> {
+    let mut pos = 0u32;
+    cand.segments
+        .iter()
+        .map(|s| {
+            let start = pos;
+            pos += s.reading.chars().count() as u32;
+            (start, pos)
+        })
+        .collect()
+}
 
 fn is_han(c: char) -> bool {
     matches!(c, '\u{3400}'..='\u{4DBF}' | '\u{4E00}'..='\u{9FFF}' | '\u{F900}'..='\u{FAFF}' | '々' | '〆')
@@ -124,10 +144,21 @@ impl Conversion {
         let mut pool = self.take_dictionary_candidates(self.opts.pool_size);
         self.exhausted = self.nbest.is_exhausted();
 
-        // かなの候補は辞書の候補だけを基準にする（Rewriter の候補で動かさない）
-        let kana_cost = pool.iter().map(|c| c.base_cost).max().unwrap_or(0) + 1;
+        // かなの候補は A* の先頭 `KANA_COST_BASIS_POOL` 件だけを基準にする（Rewriter・予約枠の候補や
+        // `pool_size` で動かさない。ADR 0048 §4）
+        let kana_cost = pool
+            .iter()
+            .take(KANA_COST_BASIS_POOL)
+            .map(|c| c.base_cost)
+            .max()
+            .unwrap_or(0)
+            + 1;
         let best_cost = pool.iter().map(|c| c.base_cost).min().unwrap_or(0);
-        self.add_rewriter_candidates(&mut pool);
+        // Rewriter のアンカーも A* の候補だけで作る
+        let anchor_costs: Vec<i32> = pool.iter().map(|c| c.base_cost).collect();
+        let reserved = self.reserve_word_candidates(&pool);
+        pool.extend(reserved);
+        self.add_rewriter_candidates(&mut pool, anchor_costs);
         let hiragana = self.lattice.key().to_owned();
         let katakana = hiragana_to_katakana(&hiragana);
         // カタカナ語らしい読みだけ、カタカナの候補のコストを下げる（#271。既定は無効）。
@@ -159,6 +190,102 @@ impl Conversion {
         self.rank_and_append(pool);
     }
 
+    /// ADR 0048 §3 の規則で予約枠の候補を作る。`pool` は A* から取った候補だけ。
+    ///
+    /// 上位の候補が 2 語以上の合成（助詞・助動詞を含まない）で覆う区間を、辞書の 1 語のノードが
+    /// ちょうど覆えるとき、その語を通る最良の経路を `word_reserve` 件まで足す。
+    /// 探索の予算は主の A* とは別に `max_astar_pops` 1 つ分を、全区間で分け合う。
+    fn reserve_word_candidates(&mut self, pool: &[Candidate]) -> Vec<Candidate> {
+        let mut out = Vec::new();
+        if self.opts.word_reserve == 0 {
+            return out;
+        }
+        let existing: HashSet<(u32, u32, WordId)> = pool
+            .iter()
+            .flat_map(|c| {
+                segment_spans(c)
+                    .into_iter()
+                    .zip(&c.segments)
+                    .filter_map(|((start, end), seg)| seg.word.map(|w| (start, end, w)))
+            })
+            .collect();
+        let mut tried: HashSet<(u32, u32)> = HashSet::new();
+        let mut pops = self.opts.max_astar_pops;
+        for cand in pool {
+            let spans = segment_spans(cand);
+            let composable: Vec<bool> = cand
+                .segments
+                .iter()
+                .map(|s| self.is_composable_segment(s))
+                .collect();
+            for len in MIN_COMPOSITE_SEGMENTS..=cand.segments.len() {
+                for i in 0..=cand.segments.len() - len {
+                    if !composable[i..i + len].iter().all(|&ok| ok) {
+                        continue;
+                    }
+                    if out.len() >= self.opts.word_reserve || pops == 0 {
+                        return out;
+                    }
+                    let (start, end) = (spans[i].0, spans[i + len - 1].1);
+                    if !tried.insert((start, end)) {
+                        continue;
+                    }
+                    let Some(node_id) = self.covering_word_node(start, end) else {
+                        continue;
+                    };
+                    let word = self.lattice.node(node_id).word;
+                    if word.is_some_and(|w| existing.contains(&(start, end, w))) {
+                        continue;
+                    }
+                    if let Some(c) = self.best_candidate_through(node_id, &mut pops) {
+                        out.push(c);
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// 合成の部品になる（辞書の語で、助詞・助動詞でない）セグメントか
+    fn is_composable_segment(&self, seg: &Segment) -> bool {
+        seg.word.is_some()
+            && self
+                .grammar
+                .pos_name(seg.pos_id)
+                .is_some_and(|name| !NON_COMPOSITE_POS1.contains(&pos1(name)))
+    }
+
+    /// 区間 `[start, end)` をちょうど覆う辞書のノードのうち、ノードのコストが最小のもの（未知語は除く）
+    fn covering_word_node(&self, start: u32, end: u32) -> Option<u32> {
+        self.lattice
+            .ending_at(end)
+            .iter()
+            .copied()
+            .filter(|&id| {
+                let n = self.lattice.node(id);
+                n.start == start && n.word.is_some()
+            })
+            .min_by_key(|&id| self.lattice.node(id).cost)
+    }
+
+    /// ノードを必ず通る最良の経路を候補にする。表記が既に出ているときは足さない（`seen`）。
+    /// 辞書から引けないパスは飛ばして次を取る。予算は `pops` から引く。
+    fn best_candidate_through(&mut self, node_id: u32, pops: &mut usize) -> Option<Candidate> {
+        let mut nbest = NBest::through(
+            &self.lattice,
+            &*self.grammar,
+            self.nbest.end_left_id(),
+            node_id,
+        );
+        let path = loop {
+            let path = nbest.next(&self.lattice, &*self.grammar, pops)?;
+            if let Some(cand) = self.path_to_candidate(&path) {
+                break cand;
+            }
+        };
+        self.seen.insert(path.surface.clone()).then_some(path)
+    }
+
     /// 英字の語を含む候補ごとに、その語を読みのカタカナなどに置き換えた候補を足す（ADR 0020 §3.4）。
     /// 表記が未出のものだけ。コストは元の候補と同じ（最後の段で1位にするのは `CompositeRanker`）。
     fn add_english_replacements(&mut self, pool: &mut Vec<Candidate>) {
@@ -177,11 +304,10 @@ impl Conversion {
     /// base_cost = 辞書の候補を base_cost の昇順に並べた `rewriter_anchor` 番目 + 1。
     /// 番号が候補数を超えれば最後の候補を基準にする。`rewriter_anchor = 0` は 1 として扱う。
     /// 日付（`AfterWords`）は同じ規則を `date_anchor` で行う。
-    fn add_rewriter_candidates(&mut self, pool: &mut Vec<Candidate>) {
+    fn add_rewriter_candidates(&mut self, pool: &mut Vec<Candidate>, mut costs: Vec<i32>) {
         if self.rewriters.is_empty() {
             return;
         }
-        let mut costs: Vec<i32> = pool.iter().map(|c| c.base_cost).collect();
         costs.sort_unstable();
         let cost_after = |n: usize| {
             let n = n.max(1).min(costs.len().max(1));

@@ -27,6 +27,24 @@ pub(super) fn default_rewriters(
     rewriters
 }
 
+/// `--ranker-config` で `ConvertOptions` に渡すキーの接頭辞（LM 以外の Ranker には渡さない）
+const CONVERT_KEY_PREFIX: &str = "convert.";
+/// LM が採点する最初のプールの件数のキー（既定は `ConvertOptions::first_pool_capacity`。ADR 0048 §7）
+const KEY_LM_MAX_CANDIDATES: &str = "zenz.max_candidates";
+
+/// LM に渡す kv。`zenz.max_candidates` が無ければ最初のプールの件数にする（指定があればそちらが優先）。
+fn build_lm_kv(
+    ranker_config: &BTreeMap<String, String>,
+    lm: LmOverrides,
+    convert: &ConvertOptions,
+) -> BTreeMap<String, String> {
+    let mut kv = ranker_config.clone();
+    lm.apply(&mut kv);
+    kv.entry(KEY_LM_MAX_CANDIDATES.to_owned())
+        .or_insert_with(|| convert.first_pool_capacity().to_string());
+    kv
+}
+
 /// 開いた辞書と文法（`assemble` の入力）。
 pub struct StackInputs {
     pub dict: Arc<dyn Dictionary>,
@@ -86,6 +104,8 @@ pub(super) fn assemble_with(
     let mut convert = opts
         .convert
         .clone()
+        .with_pool_kv(&opts.ranker_config)
+        .map_err(|e| config_err("convert", e))?
         .with_date_anchor_kv(&opts.ranker_config)
         .map_err(|e| config_err("rewriter", e))?;
     // 変換のラティスの辺の補正は `--ranker-config` の `lattice.adverb_noun.*` で上書きできる（ADR 0008 §3.2）
@@ -177,7 +197,7 @@ pub(super) fn assemble_with(
     let other_kv: BTreeMap<String, String> = opts
         .ranker_config
         .iter()
-        .filter(|(k, _)| !k.starts_with(LM_KEY_PREFIX))
+        .filter(|(k, _)| !k.starts_with(LM_KEY_PREFIX) && !k.starts_with(CONVERT_KEY_PREFIX))
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
 
@@ -276,8 +296,7 @@ pub(super) fn assemble_with(
             Some(parts) => parts,
             None => {
                 let path = paths.lm_model.as_deref().unwrap_or(Path::new(""));
-                let mut lm_kv = opts.ranker_config.clone();
-                opts.lm.apply(&mut lm_kv);
+                let lm_kv = build_lm_kv(&opts.ranker_config, opts.lm, &convert);
                 lm::build(path, &lm_kv)?
             }
         };
@@ -377,4 +396,53 @@ pub(super) fn assemble_with(
         lm_ranker,
         postal: Some(postal),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn kv(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+            .collect()
+    }
+
+    #[test]
+    fn convert_pool_keys_apply_and_unknown_is_error() {
+        let c = ConvertOptions::default()
+            .with_pool_kv(&kv(&[("convert.pool_size", "10")]))
+            .unwrap();
+        assert_eq!(c.pool_size, 10);
+        assert!(
+            ConvertOptions::default()
+                .with_pool_kv(&kv(&[("convert.x", "1")]))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn lm_max_candidates_defaults_to_first_pool_capacity() {
+        let c = ConvertOptions::default();
+        let lm_kv = build_lm_kv(&BTreeMap::new(), LmOverrides::default(), &c);
+        assert_eq!(lm_kv[KEY_LM_MAX_CANDIDATES], "32");
+        let c = ConvertOptions {
+            word_reserve: 4,
+            ..ConvertOptions::default()
+        };
+        let lm_kv = build_lm_kv(&BTreeMap::new(), LmOverrides::default(), &c);
+        assert_eq!(lm_kv[KEY_LM_MAX_CANDIDATES], "36");
+    }
+
+    #[test]
+    fn explicit_max_candidates_wins() {
+        let c = ConvertOptions::default();
+        let lm_kv = build_lm_kv(
+            &kv(&[("zenz.max_candidates", "50")]),
+            LmOverrides::default(),
+            &c,
+        );
+        assert_eq!(lm_kv[KEY_LM_MAX_CANDIDATES], "50");
+    }
 }

@@ -165,6 +165,7 @@ impl Converter {
         let opts = ConvertOptions {
             page_size: opts.page_size.clamp(1, MAX_PAGE_SIZE),
             pool_size: opts.pool_size.max(1),
+            word_reserve: opts.word_reserve,
             chunk_size: opts.chunk_size.max(1),
             max_astar_pops: opts.max_astar_pops,
             rewriter_anchor: opts.rewriter_anchor,

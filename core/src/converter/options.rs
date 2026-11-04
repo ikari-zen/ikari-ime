@@ -18,6 +18,15 @@ const DEFAULT_DATE_ANCHOR: usize = 3;
 /// 日付の位置を `--ranker-config` で指す接頭辞とキー（`rewriter.date_anchor`）
 const DATE_ANCHOR_PREFIX: &str = "rewriter";
 const DATE_ANCHOR_KEYS: [&str; 1] = ["date_anchor"];
+/// かな・カタカナの候補のコストの基準にする A* の先頭の件数（ADR 0048 §4。`pool_size` を変えても位置が動かないように固定）
+pub(super) const KANA_COST_BASIS_POOL: usize = 30;
+/// 語の予約枠の既定（ADR 0048 §3。0 = 無効。掃引までは今と同じ動き）
+const DEFAULT_WORD_RESERVE: usize = 0;
+/// 最初のプールに必ず足す候補の数（ひらがなとカタカナ。ADR 0048 §7）
+const POOL_FIXED_KANA_CANDIDATES: usize = 2;
+/// 最初のプールの件数を `--ranker-config` で指す接頭辞とキー（`convert.pool_size`、`convert.word_reserve`）
+const POOL_PREFIX: &str = "convert";
+const POOL_KEYS: [&str; 2] = ["pool_size", "word_reserve"];
 /// LM を待つ時間の既定（ADR 0004 §3.4、ADR 0003 §7.2）。`max(30ms, 読み1文字あたり 6ms)`、上限 300ms
 const DEFAULT_LM_BUDGET_BASE: Duration = Duration::from_millis(30);
 const DEFAULT_LM_BUDGET_PER_CHAR: Duration = Duration::from_millis(6);
@@ -464,6 +473,8 @@ pub struct ConvertOptions {
     pub page_size: usize,
     /// 最初に生成して Ranker に渡す候補の数。既定 30
     pub pool_size: usize,
+    /// 語の予約枠の上限（ADR 0048 §3）。0 = 無効
+    pub word_reserve: usize,
     /// 2ページ目以降で追加生成する単位。既定 page_size
     pub chunk_size: usize,
     /// 1回の追加生成で A* が展開する上限。既定 20_000（遅延の保護）
@@ -503,6 +514,23 @@ impl ConvertOptions {
         self.date_anchor = scope.get("date_anchor", self.date_anchor)?;
         Ok(self)
     }
+
+    /// `convert.pool_size`、`convert.word_reserve` で上書きする。この接頭辞で未知のキーや数でない値ならエラー。
+    pub fn with_pool_kv(
+        mut self,
+        kv: &BTreeMap<String, String>,
+    ) -> Result<Self, RankerConfigError> {
+        let scope = ScopedKv::new(POOL_PREFIX, &POOL_KEYS, kv)?;
+        self.pool_size = scope.get("pool_size", self.pool_size)?;
+        self.word_reserve = scope.get("word_reserve", self.word_reserve)?;
+        Ok(self)
+    }
+
+    /// LM が採点すべき最初のプールの件数（`pool_size + word_reserve + 2`。ADR 0048 §7）。
+    /// stack が `zenz.max_candidates` の既定に使う
+    pub fn first_pool_capacity(&self) -> usize {
+        self.pool_size.max(1) + self.word_reserve + POOL_FIXED_KANA_CANDIDATES
+    }
 }
 
 impl Default for ConvertOptions {
@@ -510,6 +538,7 @@ impl Default for ConvertOptions {
         Self {
             page_size: DEFAULT_PAGE_SIZE,
             pool_size: DEFAULT_POOL_SIZE,
+            word_reserve: DEFAULT_WORD_RESERVE,
             chunk_size: DEFAULT_PAGE_SIZE,
             max_astar_pops: DEFAULT_MAX_ASTAR_POPS,
             rewriter_anchor: DEFAULT_REWRITER_ANCHOR,
@@ -541,6 +570,37 @@ mod tests {
         assert_eq!(r.bonus, 2000);
         assert!(
             d.with_kv(&kv(&[("lattice.compound_word.nope", "1")]))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn pool_defaults_and_capacity() {
+        let o = ConvertOptions::default();
+        assert_eq!(o.pool_size, 30);
+        assert_eq!(o.word_reserve, 0);
+        assert_eq!(o.first_pool_capacity(), 32);
+    }
+
+    #[test]
+    fn pool_kv_overrides_and_rejects_unknown() {
+        let o = ConvertOptions::default()
+            .with_pool_kv(&kv(&[
+                ("convert.pool_size", "40"),
+                ("convert.word_reserve", "5"),
+                ("zenz.weight", "x"),
+            ]))
+            .unwrap();
+        assert_eq!((o.pool_size, o.word_reserve), (40, 5));
+        assert_eq!(o.first_pool_capacity(), 47);
+        assert!(
+            ConvertOptions::default()
+                .with_pool_kv(&kv(&[("convert.nope", "1")]))
+                .is_err()
+        );
+        assert!(
+            ConvertOptions::default()
+                .with_pool_kv(&kv(&[("convert.pool_size", "x")]))
                 .is_err()
         );
     }
