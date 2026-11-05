@@ -6,6 +6,7 @@
 //!
 //! 振る舞いは Swift 版と同じにする（共通のシナリオ `shell-core/scenarios/*.json` と、このモジュールのテストで縛る）。
 
+mod clause_delete;
 mod composer;
 mod engine;
 mod state;
@@ -42,6 +43,7 @@ use crate::types::{
     CandidateItem, CandidateKind, CandidatePanelModel, KeyInput, KeyKind, MarkedText, SelectedText,
     SettingsSnapshot, ShellAction, SurroundingText, Utf16Len, Utf16Range,
 };
+use clause_delete::DeletePreview;
 use state::{to_u32, to_usize};
 
 /// エンジンが受け付ける読みの長さの上限（超えたら殻のフォールバックの候補を出す）。
@@ -190,6 +192,8 @@ pub struct InputStateMachine {
     ascii_prefix: String,
     mode: SegmentMode,
     restore_target: Option<RestoreTarget>,
+    /// 文節ごとの削除のプレビューのモード（ADR 0050 §3.4）
+    delete_preview: Option<DeletePreview>,
     shortcode: ShortcodeMachine,
     /// ショートコードの打ち直しで、キーを流し直している間
     replaying_shortcode: bool,
@@ -235,6 +239,7 @@ impl InputStateMachine {
             ascii_prefix: String::new(),
             mode: SegmentMode::default(),
             restore_target: None,
+            delete_preview: None,
             shortcode,
             replaying_shortcode: false,
             input_is_repeat: false,
@@ -303,6 +308,7 @@ impl InputStateMachine {
         }
         self.session.secure = secure;
         if secure {
+            self.delete_preview = None;
             self.cached_context = None;
             self.episode = None;
         }
@@ -324,6 +330,8 @@ impl InputStateMachine {
     /// IMK の `commitComposition`。表示中の文字列をそのまま確定する。
     pub fn commit_composition(&mut self, reason: DiagEnd) -> Vec<ShellAction> {
         if self.state == InputState::Idle {
+            // 確定後のプレビュー中の変換中の文字列は、アプリが元の表記のまま確定する（ADR 0050 §3.4）
+            self.delete_preview = None;
             return Vec::new();
         }
         self.external_end = Some(reason);
@@ -543,6 +551,9 @@ impl InputStateMachine {
     }
 
     fn dispatch(&mut self, input: &KeyInput, text: &mut dyn TextAccess) -> Vec<ShellAction> {
+        if self.delete_preview.is_some() {
+            return self.handle_delete_preview(input, text);
+        }
         if self.is_shortcode_state() {
             // ショートコードの間は、キー割り当てより先に機械へ渡す
             if !self.session.secure {
@@ -553,6 +564,13 @@ impl InputStateMachine {
             return actions;
         }
         if let Some(action) = self.bound_action(input) {
+            if matches!(
+                action,
+                KeymapAction::ClauseDelete | KeymapAction::ClauseDeletePreview
+            ) && let Some(actions) = self.start_clause_delete(action, text)
+            {
+                return actions;
+            }
             if action.is_script_conversion() {
                 return if self.state == InputState::Idle {
                     vec![ShellAction::PassThrough]
@@ -1842,6 +1860,7 @@ impl InputStateMachine {
         self.ascii_prefix.clear();
         self.mode = SegmentMode::default();
         self.restore_target = None;
+        self.delete_preview = None;
         self.last_prefetched_reading = None;
         self.composing_keystrokes = 0;
         // 確定すると左文脈が変わる。次の合成の始めに取り直す

@@ -159,7 +159,7 @@ pub enum ChordRecording {
 
 impl KeyChord {
     /// 状態機械が割り当てとして引くキー。F キーと、←/→/↑/↓（修飾キーの有無を問わない）と、
-    /// Ctrl / Option / Command を伴う 1 文字だけ。`Machine::bound_action` と設定アプリの記録が同じ規則を使う。
+    /// Ctrl / Option / Command を伴う 1 文字と Backspace だけ。`Machine::bound_action` と設定アプリの記録が同じ規則を使う。
     pub fn for_lookup(input: &KeyInput) -> Result<Self, ChordRefusal> {
         let named = |name: &str| Self::new(name, input.modifiers);
         match &input.key {
@@ -173,6 +173,16 @@ impl KeyChord {
                     return Err(ChordRefusal::NeedsModifier);
                 }
                 Ok(named(&text.to_lowercase()))
+            }
+            // Backspace は、Ctrl / Option / Command を伴うときだけ引く（ADR 0050。`option+backspace`）。
+            // 修飾キーのない Backspace と Shift だけの Backspace は、打鍵そのものを奪うので引かない
+            KeyKind::Backspace => {
+                let m = input.modifiers;
+                if m.control || m.option || m.command {
+                    Ok(named("backspace"))
+                } else {
+                    Err(ChordRefusal::NeedsModifier)
+                }
             }
             KeyKind::Left => Ok(named("left")),
             KeyKind::Right => Ok(named("right")),
@@ -567,12 +577,7 @@ mod tests {
 
     #[test]
     fn keys_the_machine_does_not_look_up_are_refused() {
-        for kind in [
-            KeyKind::Space,
-            KeyKind::Enter,
-            KeyKind::Backspace,
-            KeyKind::Other,
-        ] {
+        for kind in [KeyKind::Space, KeyKind::Enter, KeyKind::Other] {
             assert_eq!(
                 KeyChord::record(&key(kind.clone(), CTRL)),
                 ChordRecording::Refused(ChordRefusal::Unsupported),
@@ -588,6 +593,33 @@ mod tests {
             KeyChord::record(&key(KeyKind::Escape, CTRL)),
             ChordRecording::Refused(ChordRefusal::Unsupported)
         );
+    }
+
+    #[test]
+    fn backspace_needs_ctrl_option_or_command() {
+        let option = Modifiers {
+            option: true,
+            ..Modifiers::NONE
+        };
+        let shift_option = Modifiers {
+            shift: true,
+            option: true,
+            ..Modifiers::NONE
+        };
+        assert_eq!(
+            KeyChord::record(&key(KeyKind::Backspace, option)),
+            ChordRecording::Chord(chord("option+backspace"))
+        );
+        assert_eq!(
+            KeyChord::record(&key(KeyKind::Backspace, shift_option)),
+            ChordRecording::Chord(chord("shift+option+backspace"))
+        );
+        for modifiers in [Modifiers::NONE, SHIFT] {
+            assert_eq!(
+                KeyChord::record(&key(KeyKind::Backspace, modifiers)),
+                ChordRecording::Refused(ChordRefusal::NeedsModifier)
+            );
+        }
     }
 
     #[test]
