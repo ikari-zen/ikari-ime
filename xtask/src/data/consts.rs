@@ -14,6 +14,16 @@ pub struct LibConsts {
     arrays: HashMap<String, Vec<String>>,
 }
 
+/// 外来語の一覧の取得元（`scripts/lib.sh` の `WEBWORDS_LIST_*`）
+#[allow(dead_code, reason = "レーン D（ADR 0055 §7）が fetch と dict で使う")]
+#[derive(Debug, PartialEq, Eq)]
+pub struct WebwordsList {
+    /// data/raw/ からの相対パス（展開後）
+    pub path: String,
+    pub url: String,
+    pub sha256: String,
+}
+
 impl LibConsts {
     pub fn load(root: &Path) -> Result<Self, XtaskError> {
         let path = root.join(LIB_SH);
@@ -78,6 +88,21 @@ impl LibConsts {
             .ok_or_else(|| XtaskError(format!("{LIB_SH} に {name} がありません")))
     }
 
+    /// 外来語の一覧（ADR 0055）の置き場所と取得元。URL か sha256 が空なら `None`（取得しない・辞書に組み込まない）。
+    #[allow(dead_code, reason = "レーン D（ADR 0055 §7）が fetch と dict で使う")]
+    pub fn webwords_list(&self) -> Result<Option<WebwordsList>, XtaskError> {
+        let url = self.get("WEBWORDS_LIST_URL")?;
+        let sha256 = self.get("WEBWORDS_LIST_SHA256")?;
+        if url.is_empty() || sha256.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(WebwordsList {
+            path: self.get("WEBWORDS_LIST_PATH")?.to_owned(),
+            url: url.to_owned(),
+            sha256: sha256.to_owned(),
+        }))
+    }
+
     pub fn array(&self, name: &str) -> Result<&[String], XtaskError> {
         self.arrays
             .get(name)
@@ -98,6 +123,25 @@ mod tests {
         assert_eq!(c.get("D").unwrap(), "sudachi-2026");
         assert_eq!(c.array("F").unwrap(), ["a.bin", "b.dict"]);
         assert!(c.get("X").is_err());
+    }
+
+    #[test]
+    fn webwords_list_is_none_until_url_and_sha256_are_set() {
+        let empty = LibConsts::parse(
+            "readonly WEBWORDS_LIST_PATH=\"webwords/w.tsv\"\nreadonly WEBWORDS_LIST_URL=\"\"\nreadonly WEBWORDS_LIST_SHA256=\"\"\n",
+        );
+        assert_eq!(empty.webwords_list().unwrap(), None);
+        let set = LibConsts::parse(
+            "readonly WEBWORDS_LIST_PATH=\"webwords/w.tsv\"\nreadonly WEBWORDS_LIST_URL=\"https://x/w.xz\"\nreadonly WEBWORDS_LIST_SHA256=\"ab\"\n",
+        );
+        assert_eq!(set.webwords_list().unwrap().unwrap().path, "webwords/w.tsv");
+    }
+
+    #[test]
+    fn real_lib_sh_has_no_webwords_list_yet() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let c = LibConsts::load(&root).unwrap();
+        assert_eq!(c.webwords_list().unwrap(), None);
     }
 
     #[test]

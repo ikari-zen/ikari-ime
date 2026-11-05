@@ -42,9 +42,38 @@ pub struct Args {
     /// ポリシーのファイル（掃引用。省略すると dict-builder/policy/chive.tsv）
     #[arg(long)]
     policy: Option<PathBuf>,
+    /// 外来語の一覧（ADR 0055）を使わない（掃引・比較用。今は一覧を使わないので何も変わらない）
+    #[arg(long)]
+    no_webwords: bool,
+    /// 外来語の df の下限（掃引用。ADR 0055 §5.3。中身は未実装で、指定するとエラー）
+    #[arg(long)]
+    webwords_min_df: Option<String>,
+    /// 外来語（普通名詞）のコスト（掃引用。未実装で、指定するとエラー）
+    #[arg(long)]
+    webwords_cost: Option<String>,
+    /// 外来語の固有名詞の出発点からの差（掃引用。`<区分>=<値>`。複数指定できる。未実装で、指定するとエラー）
+    #[arg(long, value_name = "CLASS=VALUE")]
+    webwords_proper_offset: Vec<String>,
+}
+
+impl Args {
+    /// 外来語の掃引用の引数は、受け口だけで中身がない（ADR 0055 §7 の契約のコミット。レーン D が実装する）。
+    /// 黙って無視しないように、指定されたらエラーにする。`--no-webwords` は一覧を使わない今と同じ動きなので受け付ける
+    fn check_webwords_args(&self) -> Result<(), Failure> {
+        let given = self.webwords_min_df.is_some()
+            || self.webwords_cost.is_some()
+            || !self.webwords_proper_offset.is_empty();
+        if given {
+            return Err(Failure::new(
+                "--webwords-* は未実装です（ADR 0055 §7 のレーン D）",
+            ));
+        }
+        Ok(())
+    }
 }
 
 pub fn run_command(args: Args) -> Result<(), Failure> {
+    args.check_webwords_args()?;
     let root = repo_root();
     let consts = LibConsts::load(&root).map_err(|e| Failure::new(e.to_string()))?;
     Builder::new(&root, &consts, args)?.run()

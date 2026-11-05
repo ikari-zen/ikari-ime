@@ -18,6 +18,7 @@ mod data;
 mod dict;
 mod eval;
 mod perf;
+mod webwords;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -44,6 +45,8 @@ enum Command {
     Perf(perf::Args),
     /// テストの行カバレッジの測定（cargo-llvm-cov が要る。issue #158）
     Cov(cov::Args),
+    /// Wikipedia 日本語版のダンプから外来語の一覧を作る（メンテナー用。ADR 0055 §5.1。issue #113）
+    Webwords(webwords::Args),
 }
 
 /// xtask の誤り。メッセージは利用者に出す。
@@ -67,6 +70,7 @@ fn main() -> ExitCode {
         Command::Eval(args) => eval::run(args),
         Command::Perf(args) => perf::run(args),
         Command::Cov(args) => cov::run(args),
+        Command::Webwords(args) => webwords::run(args),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -94,6 +98,9 @@ mod tests {
             .get_subcommands()
             .map(|command| command.get_name().to_owned())
             .collect();
-        assert_eq!(names, ["check", "dict", "data", "eval", "perf", "cov"]);
+        assert_eq!(
+            names,
+            ["check", "dict", "data", "eval", "perf", "cov", "webwords"]
+        );
     }
 }
