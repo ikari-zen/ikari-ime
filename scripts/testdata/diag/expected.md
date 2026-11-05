@@ -82,7 +82,7 @@
 | panel=client | 1 |
 | panel=last_known | 2 |
 | panel=none | 1 |
-| convert/prefetch の ctx=0 | 1 (33.3%) |
+| convert/prefetch の ctx=0 | 1 (20.0%) |
 | sh_engine timeout 合計 | 2 |
 | sh_engine interrupted 合計 | 0 |
 | sh_engine invalidated 合計 | 0 |
@@ -128,13 +128,47 @@
 | app | convert | miss=context | 率 | lm_applied=0 | 率 |
 |---|---|---|---|---|---|
 | (不明) | 3 | 1 | 33.3% | 1 | 33.3% |
+| com.example.Editor | 1 | 0 | 0.0% | 0 | 0.0% |
+| com.example.Terminal | 1 | 0 | 0.0% | 0 | 0.0% |
+
+## 異常終了
+
+| 項目 | 件数 |
+|---|---|
+| エンジンの前回の終わり方の記録 | 4 |
+| エンジン exit=clean | 1 |
+| エンジン exit=term | 1 |
+| エンジン exit=crash | 1 |
+| エンジン exit=unknown | 1 |
+| エンジン sig=11 | 1 |
+| エンジン sig=15 | 1 |
+| エンジン 2026-10-28 exit=crash | 1 |
+| エンジン 2026-10-28 exit=unknown | 1 |
+| エンジン 2026-10-29 exit=clean | 1 |
+| エンジン 2026-10-29 exit=term | 1 |
+| 殻の前回の終わり方の記録 | 2 |
+| 殻 exit=clean | 0 |
+| 殻 exit=term | 0 |
+| 殻 exit=crash | 1 |
+| 殻 exit=unknown | 1 |
+| 殻 sig=11 | 1 |
+| 殻 2026-10-28 exit=unknown | 1 |
+| 殻 2026-10-29 exit=crash | 1 |
+| エンジン exit=crash の直前の convert app=com.example.Editor | 1 |
+| 殻 exit=crash の直前の convert app=com.example.Terminal | 1 |
+| エンジンの exit=unknown のうち、殻の exit=unknown が 2 分以内にあるもの | 1 |
+| エンジン panic 合計 | 2 |
+| エンジン panic loc=engine/src/lib.rs:120 | 2 |
+| 殻 sh_panic 合計 | 3 |
+| 殻 sh_panic loc=shell-core/src/engine/mod.rs:40 | 2 |
+| 殻 sh_panic loc=external | 1 |
 
 ## 性能（us）
 
 | 項目 | 件数 | p50 | p95 | p99 |
 |---|---|---|---|---|
-| convert（全体） | 3 | 60 | 5200 | 5200 |
-| convert cache=hit lm_applied=1 | 2 | 40 | 60 | 60 |
+| convert（全体） | 5 | 50 | 5200 | 5200 |
+| convert cache=hit lm_applied=1 | 4 | 50 | 60 | 60 |
 | convert cache=miss lm_applied=0 | 1 | 5200 | 5200 | 5200 |
 | segment_page | 0 | - | - | - |
 | page | 0 | - | - | - |
@@ -145,12 +179,12 @@
 
 | 項目 | 件数 | 率など |
 |---|---|---|
-| convert 件数 | 3 |  |
-| cache=hit | 2 | 66.7% |
-| cache=miss | 1 | 33.3% |
-| lm_applied=1 | 2 | 66.7% |
-| miss=context | 1 | 33.3% |
-| LM なし（lm_applied=0） | 1 | 33.3% |
+| convert 件数 | 5 |  |
+| cache=hit | 4 | 80.0% |
+| cache=miss | 1 | 20.0% |
+| lm_applied=1 | 4 | 80.0% |
+| miss=context | 1 | 20.0% |
+| LM なし（lm_applied=0） | 1 | 20.0% |
 | by=content | 0 | 0.0% |
 | fill のある convert | 0 | 0.0% |
 | fill_eq=1 | 0 | - |
@@ -166,15 +200,17 @@
 
 | 項目 | 値 |
 |---|---|
-| 読んだファイル | 2 |
-| 読めた行 | 33 |
+| 読んだファイル | 3 |
+| 読めた行 | 46 |
 | 形の違う行（欠け） | 1 |
 | log_dropped 合計 | 5 |
 | diag_reject 合計 | 2 |
-| エンジンの起動（epoch） | 3 |
+| エンジンの起動（epoch） | 4 |
 | セッション（epoch, session= の組） | 4 |
 | smoke のセッション | 1 |
-| 除いた smoke の行 | 3 |
-| 期間(UTC) | 2026-10-26 〜 2026-10-27 |
+| 除いた smoke の行 | 4 |
+| 期間(UTC) | 2026-10-26 〜 2026-10-29 |
 | 行数 2026-10-26 | 7 |
 | 行数 2026-10-27 | 23 |
+| 行数 2026-10-28 | 8 |
+| 行数 2026-10-29 | 4 |
