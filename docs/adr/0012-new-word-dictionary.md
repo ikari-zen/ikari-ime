@@ -519,3 +519,7 @@
 - ADR 0002 §3（形式 v2）、§4 と §22（ポリシー、`lemma_rank`）、§10（ユーザー辞書）。ADR 0007、ADR 0008（覆う語を見る規則）
 - docs/user-feedback.md §1.1（入力を正とする）
 - 一次情報: github.com/WorksApplications/SudachiDict（Releases）、sudachi の S3 の sudachidict-raw/20260723/notcore_lex.zip、github.com/tokuhirom/jawiki-kana-kanji-dict（README、Releases v2026.10.01.191227）、github.com/ncaq/dic-nico-intersection-pixiv（README、public/ の履歴）、github.com/utuhiro78/merge-ut-dictionaries（README）、mozcdic-ut-jawiki、mozcdic-ut-sudachidict、github.com/skk-dev/dict（SKK-JISYO.L のヘッダ）、github.com/neologd/mecab-ipadic-neologd（seed の履歴）、ja.wikipedia.org の Kubernetes の記事の冒頭、Wikidata の Q22661306 など
+
+## 補足（2026-11-06）
+
+- 訂正（[ADR 0054](0054-web-words-classify-and-build.md) §9）: §0.3 の表と §7 案C の「jawiki-kana-kanji-dict の生成物は MIT」は誤り。リポジトリのライセンスの表示は CC BY-SA へのリンク。案C を採らなかった判断は変わらない。
