@@ -73,9 +73,12 @@ impl RunMark {
 /// C0 のスタブ: 何も入れない。
 pub fn install_signal_handlers() {}
 
+/// panic の記録の送り先。引数は `(thread の語, 絞り込んだ場所)`（メッセージは渡さない）
+pub type PanicSink = Box<dyn Fn(&str, &str) + Send + Sync + 'static>;
+
 /// panic の hook を入れる。`sink` へ `(thread の語, 絞り込んだ場所)` を渡す。前の hook は呼んでから記録する。
 /// メッセージは `sink` に渡さない。C0 のスタブ: 何も入れない。
-pub fn install_panic_hook(sink: Box<dyn Fn(&str, &str) + Send + Sync + 'static>) {
+pub fn install_panic_hook(sink: PanicSink) {
     let _ = sink;
 }
 
