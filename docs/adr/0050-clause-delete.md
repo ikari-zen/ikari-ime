@@ -5,6 +5,7 @@
 - 対象: shell-core（`keymap.rs`、`settings/`、`types.rs`、`host.rs` の周辺テキストの型、`machine/`、新しい `clause.rs`、`scenarios/clause-delete.json`）、proto（`shell.proto` に動作 1 つと項目 2 つ、`engine.proto` に要求 1 つ）、core（`converter/segment.rs` に文節を取り除く操作）、engine（その要求の受け口）、Swift（動作の実行 1 つ、周辺テキストにキャレットの位置、設定画面の項目、削除対象の見た目）、プリセットの TSV 3 つ、`docs/phase2-contract.md` §3・§4
 - 前提: main = 80bc52e。ADR 0006（文節のモード §8、再変換 §9、置き換え §9.5、最初の Space は全体の候補 §16.6）、ADR 0041（shell-core の契約）、ADR 0042（判断は Rust）
 - タスク: #193
+- 補足（2026-11-06）: 削除の「元に戻す」（`clause.undo`、既定 Ctrl+Z）と、英語のモードでの文節削除・英字の直前での素通しは [ADR 0053](0053-clause-delete-undo.md)。§7 の「英語のモード」の行は、0053 §10 の Q1 が決まったら改める。確定後の削除は、`replacementRange` を無視するアプリ（TextEdit）では空の変換中の文字列に置き換えて確定する（PR #199）
 - 判断の置き場所: **すべて Rust（shell-core）**。どこからどこまでを消すか、最小文字数、文頭・文末、断る条件、プレビューの状態は shell-core が決める。Swift は、範囲を消す 1 回の `insertText`、キャレットの位置を周辺テキストに足すこと、削除対象の見た目（UI）だけを持つ。文節の区切りは core（エンジン経由）が返す
 
 ---

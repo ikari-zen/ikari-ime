@@ -6,9 +6,10 @@ use ikari_proto::settings::v1 as app;
 use ikari_proto::shell::v1 as pb;
 use ikari_proto::v1 as engine;
 use ikari_shell_core::settings::{
-    self, CONVERT_WAIT_RANGE, DictionaryDraft, DraftProblem, IDLE_UNLOAD_RANGE, ImportSize,
-    KeyChord, KeymapBinding, KeymapPresetTable, KeymapRowData, LM_DEADLINE_RANGE, MAX_IMPORT_BYTES,
-    PAGE_SIZE_MAX, PAGE_SIZE_MIN, PlanError, SettingsIntent, SettingsValues,
+    self, CLAUSE_MIN_CHARS_MAX, CLAUSE_MIN_CHARS_MIN, CONVERT_WAIT_RANGE, DictionaryDraft,
+    DraftProblem, IDLE_UNLOAD_RANGE, ImportSize, KeyChord, KeymapBinding, KeymapPresetTable,
+    KeymapRowData, LM_DEADLINE_RANGE, MAX_IMPORT_BYTES, PAGE_SIZE_MAX, PAGE_SIZE_MIN, PlanError,
+    SettingsIntent, SettingsValues,
 };
 use ikari_shell_core::{KeymapPreset, SettingsChanges};
 use prost::Message;
@@ -224,6 +225,7 @@ fn intent_from_pb(kind: Option<app::intent::Kind>) -> Result<SettingsIntent, i32
         K::IdleUnloadSecs(v) => I::IdleUnloadSecs(v),
         K::LmDeadlineMs(v) => I::LmDeadlineMs(v),
         K::ConvertWaitMs(v) => I::ConvertWaitMs(v),
+        K::ClauseMinChars(v) => I::ClauseMinChars(v),
         K::PostalJapanese(v) => I::PostalJapanese(v),
         K::PostalEnglish(v) => I::PostalEnglish(v),
         K::PostalTePrefix(v) => I::PostalTePrefix(v),
@@ -368,6 +370,9 @@ fn constants() -> app::Constants {
         idle_unload_secs: Some(range_to_pb(&IDLE_UNLOAD_RANGE)),
         lm_deadline_ms: Some(range_to_pb(&LM_DEADLINE_RANGE)),
         convert_wait_ms: Some(range_to_pb(&CONVERT_WAIT_RANGE)),
+        clause_min_chars: Some(range_to_pb(
+            &(i64::from(CLAUSE_MIN_CHARS_MIN)..=i64::from(CLAUSE_MIN_CHARS_MAX)),
+        )),
         max_import_bytes: MAX_IMPORT_BYTES,
     }
 }

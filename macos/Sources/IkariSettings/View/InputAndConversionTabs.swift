@@ -231,6 +231,17 @@ struct ConversionTab: View {
                 Text("最初の Space で 1 位だけを出します。もう一度 Space か ↓ で一覧を出します。")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("文節ごとの削除") {
+                Stepper(
+                    "最小の文字数: \(model.values.clauseMinChars) 文字",
+                    value: .asyncSetter(get: { model.values.clauseMinChars }, set: model.setClauseMinChars),
+                    in: SettingsValues.clauseMinCharsRange
+                )
+                Text(
+                    "消す文字がこの数に満たないときは、前の文節まで広げて消します（既定は \(SettingsValues.defaults.clauseMinChars) 文字。\(SettingsValues.clauseMinCharsRange.lowerBound) は下限なし）。削除の取り消しは Ctrl+Z（ikari が消した直後だけ。それ以外の取り消しはアプリの Cmd+Z）。キーは「操作ごとのキー」で変えられます。"
+                )
+                .font(.caption).foregroundStyle(.secondary)
+            }
             Section("言語モデル（zenz）") {
                 Toggle(
                     "言語モデルで候補を並べ替える",

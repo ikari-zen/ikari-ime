@@ -45,11 +45,13 @@ pub enum KeymapAction {
     ClauseDelete,
     /// 削除の対象をハイライトするモードに入る（ADR 0050）。既定は `shift+option+backspace`
     ClauseDeletePreview,
+    /// 文節削除を 1 段戻す（ADR 0053）。削除の直後だけ受け取る。既定は `ctrl+z`
+    ClauseUndo,
 }
 
 impl KeymapAction {
     /// 設定アプリの画面と `settings.tsv` の並び（Swift の `allCases` と同じ順）。
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 18] = [
         Self::ToHiragana,
         Self::ToFullwidthKatakana,
         Self::ToHalfwidthKatakana,
@@ -67,6 +69,7 @@ impl KeymapAction {
         Self::ModeJapanese,
         Self::ClauseDelete,
         Self::ClauseDeletePreview,
+        Self::ClauseUndo,
     ];
 
     /// TSV と設定のキーに使う名前（Swift の `rawValue`）。
@@ -89,6 +92,7 @@ impl KeymapAction {
             Self::ModeJapanese => "mode.japanese",
             Self::ClauseDelete => "clause.delete",
             Self::ClauseDeletePreview => "clause.delete_preview",
+            Self::ClauseUndo => "clause.undo",
         }
     }
 
@@ -159,7 +163,7 @@ pub enum ChordRecording {
 
 impl KeyChord {
     /// 状態機械が割り当てとして引くキー。F キーと、←/→/↑/↓（修飾キーの有無を問わない）と、
-    /// Ctrl / Option / Command を伴う 1 文字だけ。`Machine::bound_action` と設定アプリの記録が同じ規則を使う。
+    /// Ctrl / Option / Command を伴う 1 文字と Backspace だけ。`Machine::bound_action` と設定アプリの記録が同じ規則を使う。
     pub fn for_lookup(input: &KeyInput) -> Result<Self, ChordRefusal> {
         let named = |name: &str| Self::new(name, input.modifiers);
         match &input.key {
@@ -173,6 +177,16 @@ impl KeyChord {
                     return Err(ChordRefusal::NeedsModifier);
                 }
                 Ok(named(&text.to_lowercase()))
+            }
+            // Backspace は、Ctrl / Option / Command を伴うときだけ引く（ADR 0050。`option+backspace`）。
+            // 修飾キーのない Backspace と Shift だけの Backspace は、打鍵そのものを奪うので引かない
+            KeyKind::Backspace => {
+                let m = input.modifiers;
+                if m.control || m.option || m.command {
+                    Ok(named("backspace"))
+                } else {
+                    Err(ChordRefusal::NeedsModifier)
+                }
             }
             KeyKind::Left => Ok(named("left")),
             KeyKind::Right => Ok(named("right")),
@@ -567,12 +581,7 @@ mod tests {
 
     #[test]
     fn keys_the_machine_does_not_look_up_are_refused() {
-        for kind in [
-            KeyKind::Space,
-            KeyKind::Enter,
-            KeyKind::Backspace,
-            KeyKind::Other,
-        ] {
+        for kind in [KeyKind::Space, KeyKind::Enter, KeyKind::Other] {
             assert_eq!(
                 KeyChord::record(&key(kind.clone(), CTRL)),
                 ChordRecording::Refused(ChordRefusal::Unsupported),
@@ -588,6 +597,33 @@ mod tests {
             KeyChord::record(&key(KeyKind::Escape, CTRL)),
             ChordRecording::Refused(ChordRefusal::Unsupported)
         );
+    }
+
+    #[test]
+    fn backspace_needs_ctrl_option_or_command() {
+        let option = Modifiers {
+            option: true,
+            ..Modifiers::NONE
+        };
+        let shift_option = Modifiers {
+            shift: true,
+            option: true,
+            ..Modifiers::NONE
+        };
+        assert_eq!(
+            KeyChord::record(&key(KeyKind::Backspace, option)),
+            ChordRecording::Chord(chord("option+backspace"))
+        );
+        assert_eq!(
+            KeyChord::record(&key(KeyKind::Backspace, shift_option)),
+            ChordRecording::Chord(chord("shift+option+backspace"))
+        );
+        for modifiers in [Modifiers::NONE, SHIFT] {
+            assert_eq!(
+                KeyChord::record(&key(KeyKind::Backspace, modifiers)),
+                ChordRecording::Refused(ChordRefusal::NeedsModifier)
+            );
+        }
     }
 
     #[test]
@@ -714,7 +750,7 @@ mod tests {
             }
         }
         // 文節の操作と再変換（ADR 0006 §8.1）は両プリセットで同じ。↑↓ は候補の軸（ADR 0014 §2.4）
-        let segment: [(KeymapAction, &str); 9] = [
+        let segment: [(KeymapAction, &str); 10] = [
             (KeymapAction::SegmentFocusLeft, "left"),
             (KeymapAction::SegmentFocusRight, "right"),
             (KeymapAction::SegmentShrink, "shift+left"),
@@ -724,14 +760,15 @@ mod tests {
             (KeymapAction::CandidatePrevious, "up"),
             (KeymapAction::ClauseDelete, "option+backspace"),
             (KeymapAction::ClauseDeletePreview, "shift+option+backspace"),
+            (KeymapAction::ClauseUndo, "ctrl+z"),
         ];
         for (action, key) in segment {
             assert_eq!(macos.action(&chord(key)), Some(action));
             assert_eq!(ms_ime.action(&chord(key)), Some(action));
             assert!(!action.is_script_conversion());
         }
-        assert_eq!(macos.bindings.len(), 18);
-        assert_eq!(ms_ime.bindings.len(), 19);
+        assert_eq!(macos.bindings.len(), 19);
+        assert_eq!(ms_ime.bindings.len(), 20);
         // 別のプリセットのキーは効かない
         assert_eq!(macos.action(&chord("ctrl+u")), None);
         assert_eq!(ms_ime.action(&chord("ctrl+j")), None);
@@ -812,7 +849,7 @@ mod tests {
             keymap.action(&chord("ctrl+j")),
             Some(KeymapAction::ToHiragana)
         );
-        assert_eq!(keymap.bindings.len(), 18);
+        assert_eq!(keymap.bindings.len(), 19);
     }
 
     /// Swift の `parsedSettingsDriveTheKeymap` の keymap 側

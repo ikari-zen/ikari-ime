@@ -47,12 +47,13 @@
 - `pages` の各ページに `layout`（`ConvertReply.layout`。下の区切りの形）を付けられる。`convert` の返事だけに付ける。
 - `segment_pages`: `[{"segment": 1, "page_index": 0, "candidates": [...], "has_next": false}]`。`segment_page` の要求の `segment` と `index` が合うものを返す。
 - `resizes`: `[{"segment": 0, "delta": -1, "layout_rev": 0, "layout": {...}}]`。`resize_segment` の要求の `segment`、`delta`（と、書けば `layout_rev`）が合うものを返す。
+- `removes`: `[{"first": 1, "count": 2, "layout_rev": 0, "layout": {...}}]`。`remove_segments` の要求の `first`、`count`（と、書けば `layout_rev`）が合うものを返す（ADR 0050）。
 - `reconvert`: 区切り 1 つ。`reconvert` の返事。
 - 区切りの形: `{"conversion_id": 11, "layout_rev": 0, "segments": [{"reading": "はじめて", "surface": "初めて"}], "focused": 0, "focused_page": {"page_index": 0, "candidates": [...], "has_next": true}}`（`layout_rev`、`focused`、`focused_page` は省略可）。
 - `emoji_table`: `[{"name": "eyes", "emoji": "👀"}]`（名前の UTF-8 のバイト順で昇順。エンジンの検証と同じ）。Rust は `Activate` で取り、Swift は表を状態機械に渡す。
 - `postal`: `{"1000001": ["東京都千代田区千代田"]}`。`postal_lookup` の返事（なければ空）。
 - 書いていない要求は `{"engine": "bad_request"}`（`postal_lookup` は空、`hello` は成功）。
-- `failures`: `[{"request": "page", "nth": 1, "error": "timeout"}]` のように、ある種類の要求の `nth` 回目（1 から）だけを失敗させる。`error` は `"unavailable"`、`"timeout"`、`"invalid_reply"`、`{"engine": "<ErrorCode の snake_case>"}`。返事を待つ要求（`convert`、`page`、`segment_page`、`resize_segment`、`reconvert`、`postal_lookup`）に使う。
+- `failures`: `[{"request": "page", "nth": 1, "error": "timeout"}]` のように、ある種類の要求の `nth` 回目（1 から）だけを失敗させる。`error` は `"unavailable"`、`"timeout"`、`"invalid_reply"`、`{"engine": "<ErrorCode の snake_case>"}`。返事を待つ要求（`convert`、`page`、`segment_page`、`resize_segment`、`remove_segments`、`reconvert`、`postal_lookup`）に使う。
 
 ### 周辺テキスト（`surrounding`）
 `{"left": …, "right": …, "document_length": …, "available": …}`。`available: false` はホストが取れなかった（`TextAccess::surrounding` が `None`）。`document_length` を省けば `left` と `right` の長さの和。
@@ -114,3 +115,4 @@ Swift の替え玉が本物と違うもの（かな入力の合成器が文字�
 | `shortcode.json` | 日本語のモードの絵文字のショートコード（ADR 0027）。1 件は `rust_only` | 10 |
 | `shell.json` | 殻の判断（セッション、英語のモード、モードの切り替え、メニュー）。全部 `rust_only` | 18 |
 | `clause-delete.json` | 文節ごとの削除（ADR 0050 §9）。先書き。`pending` の印を、レーン A が外す | 24 |
+| `clause-undo.json` | 文節削除の元に戻す（ADR 0053 §9.2）、英語のモードでの文節削除（4 件は `rust_only`）、直前が英字のときの素通し | 25 |

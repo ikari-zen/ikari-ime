@@ -73,7 +73,7 @@ pub const DEFAULT_EMOJI_SHORTCODE_EXCLUDE: [&str; 4] = [
 ];
 
 /// 割り当てられる操作の名前（`keymap.<操作>` と keymap の TSV の操作）。並びは `effective_entries` と画面の順
-pub const KEYMAP_ACTIONS: [&str; 17] = [
+pub const KEYMAP_ACTIONS: [&str; 18] = [
     "convert.hiragana",
     "convert.fullwidth_katakana",
     "convert.halfwidth_katakana",
@@ -91,6 +91,7 @@ pub const KEYMAP_ACTIONS: [&str; 17] = [
     "mode.japanese",
     "clause.delete",
     "clause.delete_preview",
+    "clause.undo",
 ];
 
 pub fn is_keymap_action(name: &str) -> bool {

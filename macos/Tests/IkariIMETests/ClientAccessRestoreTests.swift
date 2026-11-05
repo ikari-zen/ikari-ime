@@ -12,6 +12,8 @@ final class FakeTextClient: NSObject, IMKTextInput {
     var document: String
     var marked: NSRange = NSRange(location: NSNotFound, length: 0)
     var reportsRelativeMarkedRange = false
+    /// 真なら、変換中の文字列がないときの `insertText` の `replacementRange` を無視する（TextEdit の振る舞い）
+    var ignoresInsertReplacementRange = false
     private(set) var insertCalls: [(text: String, range: NSRange)] = []
 
     init(document: String) { self.document = document }
@@ -30,6 +32,7 @@ final class FakeTextClient: NSObject, IMKTextInput {
     func insertText(_ string: Any!, replacementRange: NSRange) {
         let text = (string as? String) ?? (string as? NSAttributedString)?.string ?? ""
         insertCalls.append((text, replacementRange))
+        if ignoresInsertReplacementRange, marked.location == NSNotFound, replacementRange.location != NSNotFound { return }
         utf16Replace(target(replacementRange), with: text)
         marked = NSRange(location: NSNotFound, length: 0)
     }

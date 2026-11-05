@@ -40,6 +40,12 @@ pub trait MachineEngine: Send + Sync {
         request: v1::ResizeSegment,
         timeout: Duration,
     ) -> Result<v1::SegmentLayout, EngineError>;
+    /// 変換中の文節を取り除く（ADR 0050 §5.3）。返事は新しい区切り
+    fn remove_segments(
+        &self,
+        request: v1::RemoveSegments,
+        timeout: Duration,
+    ) -> Result<v1::SegmentLayout, EngineError>;
     fn commit_segments(&self, request: v1::CommitSegments);
     fn reconvert(
         &self,
@@ -106,6 +112,14 @@ impl MachineEngine for EngineLink {
         timeout: Duration,
     ) -> Result<v1::SegmentLayout, EngineError> {
         EngineLink::resize(self, request, timeout)
+    }
+
+    fn remove_segments(
+        &self,
+        request: v1::RemoveSegments,
+        timeout: Duration,
+    ) -> Result<v1::SegmentLayout, EngineError> {
+        EngineLink::remove_segments(self, request, timeout)
     }
 
     fn commit_segments(&self, request: v1::CommitSegments) {

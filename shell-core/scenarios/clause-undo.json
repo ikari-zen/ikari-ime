@@ -1,0 +1,2075 @@
+{
+  "description": "文節削除の元に戻す（ADR 0053 §9.2）と、英語のモードでの文節削除、直前が英字のときの素通し",
+  "scenarios": [
+    {
+      "name": "idle: ctrl+z writes the deleted clause back at the caret",
+      "setup": {
+        "surrounding": {
+          "left": "俺は正しい",
+          "right": ""
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "range": {
+                "length": 3,
+                "location": 2
+              },
+              "type": "delete_text"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "surrounding": {
+            "left": "俺は",
+            "right": ""
+          },
+          "engine": [],
+          "note": "書き戻しは Commit（キャレットへの挿入）。エンジンへは何も送らない（学習しない）",
+          "expect": [
+            {
+              "text": "正しい",
+              "type": "commit"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "surrounding": {
+            "left": "俺は正しい",
+            "right": ""
+          },
+          "note": "段は 1 つだけ。次は覚えがないのでアプリへ",
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "idle: a character key after the deletion forgets it",
+      "setup": {
+        "surrounding": {
+          "left": "俺は正しい",
+          "right": ""
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "range": {
+                "length": 3,
+                "location": 2
+              },
+              "type": "delete_text"
+            }
+          ]
+        },
+        {
+          "press": "a",
+          "surrounding": {
+            "left": "俺は",
+            "right": ""
+          },
+          "expect": [
+            {
+              "highlighted_length": 1,
+              "text": "あ",
+              "type": "set_marked_text"
+            }
+          ]
+        },
+        {
+          "press": "enter",
+          "expect": [
+            {
+              "text": "あ",
+              "type": "commit"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "surrounding": {
+            "left": "俺はあ",
+            "right": ""
+          },
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "idle: cmd+z after the deletion forgets it",
+      "setup": {
+        "surrounding": {
+          "left": "俺は正しい",
+          "right": ""
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "range": {
+                "length": 3,
+                "location": 2
+              },
+              "type": "delete_text"
+            }
+          ]
+        },
+        {
+          "press": "cmd+z",
+          "surrounding": {
+            "left": "俺は",
+            "right": ""
+          },
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "idle: ctrl+z passes through when the caret moved",
+      "setup": {
+        "surrounding": {
+          "left": "俺は正しい",
+          "right": ""
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "range": {
+                "length": 3,
+                "location": 2
+              },
+              "type": "delete_text"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "surrounding": {
+            "left": "俺",
+            "right": "は",
+            "caret": {
+              "location": 1,
+              "length": 0
+            }
+          },
+          "note": "クリックでキャレットが動いた",
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "surrounding": {
+            "left": "俺は",
+            "right": ""
+          },
+          "note": "覚えは捨てた",
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "idle: ctrl+z passes through when the caret became a selection",
+      "setup": {
+        "surrounding": {
+          "left": "俺は正しい",
+          "right": ""
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "range": {
+                "length": 3,
+                "location": 2
+              },
+              "type": "delete_text"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "surrounding": {
+            "left": "俺",
+            "right": "は",
+            "caret": {
+              "location": 2,
+              "length": 1
+            }
+          },
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "idle: ctrl+z passes through when the text was not deleted",
+      "setup": {
+        "surrounding": {
+          "left": "俺は正しい",
+          "right": ""
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "range": {
+                "length": 3,
+                "location": 2
+              },
+              "type": "delete_text"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "surrounding": {
+            "left": "俺は正し",
+            "right": ""
+          },
+          "note": "左が消した直後と違う（消せていない）",
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "idle: ctrl+z passes through when the document length differs",
+      "setup": {
+        "surrounding": {
+          "left": "俺は正しい",
+          "right": ""
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "range": {
+                "length": 3,
+                "location": 2
+              },
+              "type": "delete_text"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "surrounding": {
+            "left": "俺は",
+            "right": "",
+            "document_length": 9
+          },
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "idle: ctrl+z passes through when the text to the right changed",
+      "setup": {
+        "surrounding": {
+          "left": "俺は正しい",
+          "right": "です"
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              },
+              {
+                "reading": "です",
+                "surface": "です"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "range": {
+                "length": 3,
+                "location": 2
+              },
+              "type": "delete_text"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "surrounding": {
+            "left": "俺は",
+            "right": "だ"
+          },
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "idle: ctrl+z without a deletion passes through as before",
+      "steps": [
+        {
+          "press": "ctrl+z",
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "preview after commit: ctrl+z writes back the deleted target",
+      "setup": {
+        "surrounding": {
+          "left": "俺は正しい",
+          "right": ""
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "shift+option+backspace",
+          "expect": [
+            {
+              "delete_target": true,
+              "replacement_range": {
+                "length": 3,
+                "location": 2
+              },
+              "text": "正しい",
+              "type": "set_marked_text"
+            }
+          ]
+        },
+        {
+          "press": "left",
+          "expect": [
+            {
+              "replacing": {
+                "length": 3,
+                "location": 2
+              },
+              "text": "正しい",
+              "type": "restore"
+            },
+            {
+              "delete_target": true,
+              "replacement_range": {
+                "length": 2,
+                "location": 0
+              },
+              "text": "俺は",
+              "type": "set_marked_text"
+            }
+          ]
+        },
+        {
+          "press": "backspace",
+          "expect": [
+            {
+              "replacing": {
+                "length": 2,
+                "location": 0
+              },
+              "text": "",
+              "type": "restore"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "surrounding": {
+            "left": "",
+            "right": "正しい"
+          },
+          "note": "プレビューで離れた単位を消したあとも、キャレットは消した範囲の始まり（推測。ADR 0053 §8 の U1 で確かめる）",
+          "expect": [
+            {
+              "text": "俺は",
+              "type": "commit"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "composing: ctrl+z restores the reading",
+      "setup": {
+        "engine": {
+          "pages": [
+            {
+              "conversion_id": 93,
+              "page_index": 0,
+              "has_next": false,
+              "candidates": [
+                {
+                  "surface": "今日は雨が降る"
+                }
+              ],
+              "layout": {
+                "conversion_id": 93,
+                "layout_rev": 0,
+                "segments": [
+                  {
+                    "reading": "きょうは",
+                    "surface": "今日は"
+                  },
+                  {
+                    "reading": "あめが",
+                    "surface": "雨が"
+                  },
+                  {
+                    "reading": "ふる",
+                    "surface": "降る"
+                  }
+                ],
+                "focused": 0,
+                "focused_page": {
+                  "candidates": [
+                    {
+                      "surface": "今日は"
+                    }
+                  ],
+                  "has_next": false
+                }
+              }
+            }
+          ]
+        }
+      },
+      "steps": [
+        {
+          "type_text": "kyouhaamegafuru",
+          "expect": [
+            {
+              "text": "k",
+              "type": "set_marked_text"
+            },
+            {
+              "text": "ky",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 2,
+              "text": "きょ",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 3,
+              "text": "きょう",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 3,
+              "text": "きょうh",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 4,
+              "text": "きょうは",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 5,
+              "text": "きょうはあ",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 5,
+              "text": "きょうはあm",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 6,
+              "text": "きょうはあめ",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 6,
+              "text": "きょうはあめg",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 7,
+              "text": "きょうはあめが",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 7,
+              "text": "きょうはあめがf",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 8,
+              "text": "きょうはあめがふ",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 8,
+              "text": "きょうはあめがふr",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 9,
+              "text": "きょうはあめがふる",
+              "type": "set_marked_text"
+            }
+          ]
+        },
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "highlighted_length": 4,
+              "text": "きょうは",
+              "type": "set_marked_text"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "expect": [
+            {
+              "highlighted_length": 9,
+              "text": "きょうはあめがふる",
+              "type": "set_marked_text"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "composing: ctrl+z restores a reading that was deleted entirely",
+      "setup": {
+        "engine": {
+          "pages": [
+            {
+              "conversion_id": 95,
+              "page_index": 0,
+              "has_next": false,
+              "candidates": [
+                {
+                  "surface": "今日"
+                }
+              ],
+              "layout": {
+                "conversion_id": 95,
+                "layout_rev": 0,
+                "segments": [
+                  {
+                    "reading": "きょう",
+                    "surface": "今日"
+                  }
+                ],
+                "focused": 0,
+                "focused_page": {
+                  "candidates": [
+                    {
+                      "surface": "今日"
+                    }
+                  ],
+                  "has_next": false
+                }
+              }
+            }
+          ]
+        }
+      },
+      "steps": [
+        {
+          "type_text": "kyou",
+          "expect": [
+            {
+              "text": "k",
+              "type": "set_marked_text"
+            },
+            {
+              "text": "ky",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 2,
+              "text": "きょ",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 3,
+              "text": "きょう",
+              "type": "set_marked_text"
+            }
+          ]
+        },
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "text": "",
+              "type": "set_marked_text"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "expect": [
+            {
+              "highlighted_length": 3,
+              "text": "きょう",
+              "type": "set_marked_text"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "expect": [
+            {
+              "text": "きょう",
+              "type": "commit"
+            },
+            {
+              "type": "pass_through"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "converting clauses: ctrl+z returns to the whole reading, and again for the earlier deletion",
+      "setup": {
+        "engine": {
+          "pages": [
+            {
+              "conversion_id": 93,
+              "page_index": 0,
+              "has_next": false,
+              "candidates": [
+                {
+                  "surface": "今日は雨が降る"
+                }
+              ],
+              "layout": {
+                "conversion_id": 93,
+                "layout_rev": 0,
+                "segments": [
+                  {
+                    "reading": "きょうは",
+                    "surface": "今日は"
+                  },
+                  {
+                    "reading": "あめが",
+                    "surface": "雨が"
+                  },
+                  {
+                    "reading": "ふる",
+                    "surface": "降る"
+                  }
+                ],
+                "focused": 0,
+                "focused_page": {
+                  "candidates": [
+                    {
+                      "surface": "今日は"
+                    }
+                  ],
+                  "has_next": false
+                }
+              }
+            }
+          ],
+          "segment_pages": [
+            {
+              "segment": 1,
+              "page_index": 0,
+              "candidates": [
+                {
+                  "surface": "雨が"
+                }
+              ],
+              "has_next": false
+            },
+            {
+              "segment": 2,
+              "page_index": 0,
+              "candidates": [
+                {
+                  "surface": "降る"
+                }
+              ],
+              "has_next": false
+            }
+          ],
+          "removes": [
+            {
+              "first": 1,
+              "count": 1,
+              "layout_rev": 0,
+              "layout": {
+                "conversion_id": 93,
+                "layout_rev": 1,
+                "segments": [
+                  {
+                    "reading": "きょうは",
+                    "surface": "今日は"
+                  },
+                  {
+                    "reading": "ふる",
+                    "surface": "降る"
+                  }
+                ],
+                "focused": 0
+              }
+            },
+            {
+              "first": 0,
+              "count": 1,
+              "layout_rev": 1,
+              "layout": {
+                "conversion_id": 93,
+                "layout_rev": 2,
+                "segments": [
+                  {
+                    "reading": "ふる",
+                    "surface": "降る"
+                  }
+                ],
+                "focused": 0,
+                "focused_page": {
+                  "candidates": [
+                    {
+                      "surface": "降る"
+                    }
+                  ],
+                  "has_next": false
+                }
+              }
+            }
+          ]
+        }
+      },
+      "steps": [
+        {
+          "type_text": "kyouhaamegafuru",
+          "expect": [
+            {
+              "text": "k",
+              "type": "set_marked_text"
+            },
+            {
+              "text": "ky",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 2,
+              "text": "きょ",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 3,
+              "text": "きょう",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 3,
+              "text": "きょうh",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 4,
+              "text": "きょうは",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 5,
+              "text": "きょうはあ",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 5,
+              "text": "きょうはあm",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 6,
+              "text": "きょうはあめ",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 6,
+              "text": "きょうはあめg",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 7,
+              "text": "きょうはあめが",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 7,
+              "text": "きょうはあめがf",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 8,
+              "text": "きょうはあめがふ",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 8,
+              "text": "きょうはあめがふr",
+              "type": "set_marked_text"
+            },
+            {
+              "highlighted_length": 9,
+              "text": "きょうはあめがふる",
+              "type": "set_marked_text"
+            }
+          ]
+        },
+        {
+          "press": "space",
+          "expect": [
+            {
+              "segments": [
+                3,
+                2,
+                2
+              ],
+              "text": "今日は雨が降る",
+              "type": "set_marked_text"
+            },
+            {
+              "candidates": [
+                {
+                  "surface": "今日は雨が降る"
+                }
+              ],
+              "reserved_rows": 1,
+              "selected": 0,
+              "type": "show_candidates"
+            }
+          ]
+        },
+        {
+          "press": "left",
+          "expect": [
+            {
+              "focused": 2,
+              "segments": [
+                3,
+                2,
+                2
+              ],
+              "text": "今日は雨が降る",
+              "type": "set_marked_text"
+            },
+            {
+              "candidates": [
+                {
+                  "surface": "降る"
+                }
+              ],
+              "reserved_rows": 1,
+              "selected": 0,
+              "type": "show_candidates"
+            }
+          ]
+        },
+        {
+          "press": "left",
+          "expect": [
+            {
+              "focused": 1,
+              "segments": [
+                3,
+                2,
+                2
+              ],
+              "text": "今日は雨が降る",
+              "type": "set_marked_text"
+            },
+            {
+              "candidates": [
+                {
+                  "surface": "雨が"
+                }
+              ],
+              "reserved_rows": 1,
+              "selected": 0,
+              "type": "show_candidates"
+            }
+          ]
+        },
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "focused": 0,
+              "segments": [
+                3,
+                2
+              ],
+              "text": "今日は降る",
+              "type": "set_marked_text"
+            },
+            {
+              "candidates": [
+                {
+                  "surface": "今日は"
+                }
+              ],
+              "reserved_rows": 1,
+              "selected": 0,
+              "type": "show_candidates"
+            }
+          ]
+        },
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "highlighted_length": 2,
+              "text": "降る",
+              "type": "set_marked_text"
+            },
+            {
+              "candidates": [
+                {
+                  "surface": "降る"
+                }
+              ],
+              "reserved_rows": 1,
+              "selected": 0,
+              "type": "show_candidates"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "expect": [
+            {
+              "type": "hide_candidates"
+            },
+            {
+              "highlighted_length": 6,
+              "text": "きょうはふる",
+              "type": "set_marked_text"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "expect": [
+            {
+              "highlighted_length": 9,
+              "text": "きょうはあめがふる",
+              "type": "set_marked_text"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "expect": [
+            {
+              "text": "きょうはあめがふる",
+              "type": "commit"
+            },
+            {
+              "type": "pass_through"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "reconversion: ctrl+z is not taken after a deletion inside a reconversion",
+      "setup": {
+        "surrounding": {
+          "left": "今日は雨が降る",
+          "right": ""
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 96,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "きょうは",
+                "surface": "今日は"
+              },
+              {
+                "reading": "あめが",
+                "surface": "雨が"
+              },
+              {
+                "reading": "ふる",
+                "surface": "降る"
+              }
+            ],
+            "focused": 0,
+            "focused_page": {
+              "candidates": [
+                {
+                  "surface": "今日は"
+                }
+              ],
+              "has_next": false
+            }
+          },
+          "segment_pages": [
+            {
+              "segment": 1,
+              "page_index": 0,
+              "candidates": [
+                {
+                  "surface": "雨が"
+                }
+              ],
+              "has_next": false
+            },
+            {
+              "segment": 2,
+              "page_index": 0,
+              "candidates": [
+                {
+                  "surface": "降る"
+                }
+              ],
+              "has_next": false
+            }
+          ],
+          "removes": [
+            {
+              "first": 1,
+              "count": 1,
+              "layout_rev": 0,
+              "layout": {
+                "conversion_id": 96,
+                "layout_rev": 1,
+                "segments": [
+                  {
+                    "reading": "きょうは",
+                    "surface": "今日は"
+                  },
+                  {
+                    "reading": "ふる",
+                    "surface": "降る"
+                  }
+                ],
+                "focused": 0
+              }
+            }
+          ]
+        }
+      },
+      "steps": [
+        {
+          "press": "ctrl+shift+r",
+          "selection": {
+            "range": {
+              "location": 0,
+              "length": 7
+            },
+            "text": "今日は雨が降る"
+          },
+          "expect": [
+            {
+              "focused": 0,
+              "replacement_range": {
+                "length": 7,
+                "location": 0
+              },
+              "segments": [
+                3,
+                2,
+                2
+              ],
+              "text": "今日は雨が降る",
+              "type": "set_marked_text"
+            },
+            {
+              "candidates": [
+                {
+                  "surface": "今日は"
+                }
+              ],
+              "reserved_rows": 1,
+              "selected": 0,
+              "type": "show_candidates"
+            }
+          ]
+        },
+        {
+          "press": "left",
+          "expect": [
+            {
+              "focused": 2,
+              "segments": [
+                3,
+                2,
+                2
+              ],
+              "text": "今日は雨が降る",
+              "type": "set_marked_text"
+            },
+            {
+              "candidates": [
+                {
+                  "surface": "降る"
+                }
+              ],
+              "reserved_rows": 1,
+              "selected": 0,
+              "type": "show_candidates"
+            }
+          ]
+        },
+        {
+          "press": "left",
+          "expect": [
+            {
+              "focused": 1,
+              "segments": [
+                3,
+                2,
+                2
+              ],
+              "text": "今日は雨が降る",
+              "type": "set_marked_text"
+            },
+            {
+              "candidates": [
+                {
+                  "surface": "雨が"
+                }
+              ],
+              "reserved_rows": 1,
+              "selected": 0,
+              "type": "show_candidates"
+            }
+          ]
+        },
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "focused": 0,
+              "segments": [
+                3,
+                2
+              ],
+              "text": "今日は降る",
+              "type": "set_marked_text"
+            },
+            {
+              "candidates": [
+                {
+                  "surface": "今日は"
+                }
+              ],
+              "reserved_rows": 1,
+              "selected": 0,
+              "type": "show_candidates"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "expect": [
+            {
+              "text": "今日は降る",
+              "type": "commit"
+            },
+            {
+              "type": "hide_candidates"
+            },
+            {
+              "type": "pass_through"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "idle: deactivate forgets the deletion",
+      "setup": {
+        "surrounding": {
+          "left": "俺は正しい",
+          "right": ""
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "range": {
+                "length": 3,
+                "location": 2
+              },
+              "type": "delete_text"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "deactivate"
+          },
+          "expect": [
+            {
+              "type": "hide_candidates"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "surrounding": {
+            "left": "俺は",
+            "right": ""
+          },
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "idle: commit_composition forgets the deletion",
+      "setup": {
+        "surrounding": {
+          "left": "俺は正しい",
+          "right": ""
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "range": {
+                "length": 3,
+                "location": 2
+              },
+              "type": "delete_text"
+            }
+          ]
+        },
+        {
+          "host": {
+            "type": "commit_composition"
+          },
+          "expect": []
+        },
+        {
+          "press": "ctrl+z",
+          "surrounding": {
+            "left": "俺は",
+            "right": ""
+          },
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "idle: mode change forgets the deletion",
+      "setup": {
+        "surrounding": {
+          "left": "俺は正しい",
+          "right": ""
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "range": {
+                "length": 3,
+                "location": 2
+              },
+              "type": "delete_text"
+            }
+          ]
+        },
+        {
+          "host": {
+            "type": "input_mode_changed",
+            "mode_id": "com.apple.inputmethod.Roman"
+          },
+          "expect": [
+            {
+              "type": "hide_candidates"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "surrounding": {
+            "left": "俺は",
+            "right": ""
+          },
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "idle: ctrl+z does nothing special when clause.undo is none",
+      "setup": {
+        "settings": [
+          "keymap.clause.undo\tnone"
+        ],
+        "surrounding": {
+          "left": "俺は正しい",
+          "right": ""
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "range": {
+                "length": 3,
+                "location": 2
+              },
+              "type": "delete_text"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "surrounding": {
+            "left": "俺は",
+            "right": ""
+          },
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "idle: clause.undo can be rebound to another key",
+      "setup": {
+        "settings": [
+          "keymap.clause.undo\tctrl+y"
+        ],
+        "surrounding": {
+          "left": "俺は正しい",
+          "right": ""
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "range": {
+                "length": 3,
+                "location": 2
+              },
+              "type": "delete_text"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+y",
+          "surrounding": {
+            "left": "俺は",
+            "right": ""
+          },
+          "expect": [
+            {
+              "text": "正しい",
+              "type": "commit"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "idle: option+backspace passes through without the engine when the text before the caret is ascii",
+      "setup": {
+        "surrounding": {
+          "left": "今日は meeting",
+          "right": ""
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 97,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "きょうは",
+                "surface": "今日は"
+              },
+              {
+                "reading": "みーてぃんぐ",
+                "surface": "meeting"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "engine": [],
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        },
+        {
+          "press": "option+backspace",
+          "surrounding": {
+            "left": "今日は meeting  ",
+            "right": ""
+          },
+          "engine": [],
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        },
+        {
+          "press": "shift+option+backspace",
+          "engine": [],
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "idle: option+backspace still works when a newline separates the ascii",
+      "setup": {
+        "surrounding": {
+          "left": "abc\n俺は正しい",
+          "right": ""
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "range": {
+                "length": 3,
+                "location": 6
+              },
+              "type": "delete_text"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "english mode: option+backspace deletes the last clause of a japanese sentence and ctrl+z writes it back",
+      "rust_only": "英語のモードの口は shell-core のコントローラの判断（ADR 0053 §6.4）",
+      "setup": {
+        "surrounding": {
+          "left": "俺は正しい",
+          "right": ""
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "host": {
+            "type": "input_mode_changed",
+            "mode_id": "com.apple.inputmethod.Roman"
+          },
+          "expect": [
+            {
+              "type": "hide_candidates"
+            }
+          ]
+        },
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "range": {
+                "length": 3,
+                "location": 2
+              },
+              "type": "delete_text"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "surrounding": {
+            "left": "俺は",
+            "right": ""
+          },
+          "expect": [
+            {
+              "text": "正しい",
+              "type": "commit"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "english mode: option+backspace after english text passes through without the engine",
+      "rust_only": "英語のモードの口は shell-core のコントローラの判断（ADR 0053 §6.4）",
+      "setup": {
+        "surrounding": {
+          "left": "今日は meeting",
+          "right": ""
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 97,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "きょうは",
+                "surface": "今日は"
+              },
+              {
+                "reading": "みーてぃんぐ",
+                "surface": "meeting"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "host": {
+            "type": "input_mode_changed",
+            "mode_id": "com.apple.inputmethod.Roman"
+          },
+          "expect": [
+            {
+              "type": "hide_candidates"
+            }
+          ]
+        },
+        {
+          "press": "option+backspace",
+          "engine": [],
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "english mode: typing forgets the deletion, and ctrl+z without a deletion is the app's",
+      "rust_only": "英語のモードの口は shell-core のコントローラの判断（ADR 0053 §6.4）",
+      "setup": {
+        "surrounding": {
+          "left": "俺は正しい",
+          "right": ""
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "host": {
+            "type": "input_mode_changed",
+            "mode_id": "com.apple.inputmethod.Roman"
+          },
+          "expect": [
+            {
+              "type": "hide_candidates"
+            }
+          ]
+        },
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "range": {
+                "length": 3,
+                "location": 2
+              },
+              "type": "delete_text"
+            }
+          ]
+        },
+        {
+          "press": "a",
+          "surrounding": {
+            "left": "俺は",
+            "right": ""
+          },
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "surrounding": {
+            "left": "俺はa",
+            "right": ""
+          },
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "english mode: the preview deletes the target and ctrl+z writes it back",
+      "rust_only": "英語のモードの口は shell-core のコントローラの判断（ADR 0053 §6.4）",
+      "setup": {
+        "surrounding": {
+          "left": "俺は正しい",
+          "right": ""
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "host": {
+            "type": "input_mode_changed",
+            "mode_id": "com.apple.inputmethod.Roman"
+          },
+          "expect": [
+            {
+              "type": "hide_candidates"
+            }
+          ]
+        },
+        {
+          "press": "shift+option+backspace",
+          "expect": [
+            {
+              "delete_target": true,
+              "replacement_range": {
+                "length": 3,
+                "location": 2
+              },
+              "text": "正しい",
+              "type": "set_marked_text"
+            }
+          ]
+        },
+        {
+          "press": "backspace",
+          "expect": [
+            {
+              "replacing": {
+                "length": 3,
+                "location": 2
+              },
+              "text": "",
+              "type": "restore"
+            }
+          ]
+        },
+        {
+          "press": "ctrl+z",
+          "surrounding": {
+            "left": "俺は",
+            "right": ""
+          },
+          "expect": [
+            {
+              "text": "正しい",
+              "type": "commit"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

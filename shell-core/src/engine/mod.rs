@@ -303,6 +303,21 @@ impl EngineLink {
         codec::segment_layout(self.round_trip(timeout, &Body::ResizeSegment(request))?)
     }
 
+    /// 変換中の文節 `[first, first + count)` を取り除く（ADR 0050 §5.3）。返事は新しい区切り（`layout_rev` が上がる）。
+    pub fn remove_segments(
+        &self,
+        request: v1::RemoveSegments,
+        timeout: Duration,
+    ) -> Result<v1::SegmentLayout, EngineError> {
+        if request.count == 0
+            || request.first as usize >= codec::MAX_SEGMENTS
+            || request.count as usize > codec::MAX_SEGMENTS
+        {
+            return Err(bad_request());
+        }
+        codec::segment_layout(self.round_trip(timeout, &Body::RemoveSegments(request))?)
+    }
+
     /// 文節ごとの選択で確定する（返事を待たない）。
     pub fn commit_segments(&self, request: v1::CommitSegments) {
         if request.choices.is_empty() || !codec::is_valid_choices(&request.choices) {

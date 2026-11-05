@@ -475,7 +475,7 @@ impl Shell {
         client.machine.activate_if_needed();
 
         if self.input_mode == InputMode::English {
-            return self.handle_english(input);
+            return self.handle_english(input, text);
         }
         let input = &japanese_key(input, client.machine.settings().input_method);
         // キー割り当ての `mode.*` は、変換より先に見る（合成中なら今の表示のまま確定してから切り替える）
@@ -501,7 +501,7 @@ impl Shell {
     // MARK: 英語のモード（ADR 0026 §5.2。エンジンは同期で呼ばない）
 
     /// 英語のモードの打鍵。順は、secure → `mode.*` → ショートコードの口 → 文脈のたまりに足して素通し。
-    fn handle_english(&mut self, input: &KeyInput) -> Vec<ShellAction> {
+    fn handle_english(&mut self, input: &KeyInput, text: &mut dyn TextAccess) -> Vec<ShellAction> {
         let input = english_key(input);
         let keymap = self.keymap_for_client();
         match EnglishMode::classify(&input, &keymap, self.input_mode) {
@@ -521,6 +521,9 @@ impl Shell {
                 consumed(actions)
             }
             EnglishKeyClass::Text => {
+                if let Some(actions) = self.english_clause_key(&input, text) {
+                    return actions;
+                }
                 // 設定と入力先の ID は借りる（打鍵ごとに複製しない）。借用はこの塊の中で終わる
                 let now = self.now();
                 let outcome = {
@@ -549,6 +552,32 @@ impl Shell {
                 consumed(actions)
             }
         }
+    }
+
+    /// 英語のモードでの文節削除のキー（ADR 0053 §6.4）。当たれば状態機械に渡す（日本語のモードの確定後と同じ規則。
+    /// 直前が英字ならエンジンを呼ばずに素通し）。当たらないキーは、取り消しの覚えを捨てて `None`。
+    /// ショートコードと郵便番号の状態の中は、今の扱い
+    fn english_clause_key(
+        &mut self,
+        input: &KeyInput,
+        text: &mut dyn TextAccess,
+    ) -> Option<Vec<ShellAction>> {
+        let in_shortcode = self.english.is_shortcode_active() || self.english.is_postal_active();
+        let handled = !in_shortcode
+            && self
+                .client
+                .as_ref()
+                .is_some_and(|client| client.machine.handles_clause_key(input));
+        if !handled {
+            if let Some(client) = &mut self.client {
+                client.machine.forget_clause_undo();
+            }
+            return None;
+        }
+        // 消す前に、英語の文脈のたまりを確定履歴へ送る（削除で取り消さない。ADR 0050 D9）
+        self.flush_english_pool();
+        let client = self.client.as_mut()?;
+        Some(client.machine.handle(input, text))
     }
 
     /// 郵便番号の住所を、主スレッドの外で 1 回だけ問い合わせる（ADR 0032 §9.1）。返事は `finish` で受ける

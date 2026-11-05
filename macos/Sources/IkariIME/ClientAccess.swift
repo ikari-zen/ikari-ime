@@ -41,6 +41,9 @@ struct ClientAccess: @unchecked Sendable {
             text.right = string(NSRange(location: rightStart, length: length)) ?? ""
         }
         text.documentLength = UInt32(clamping: max(0, total))
+        // キャレット（選択）の範囲。文節ごとの削除の範囲づくりに shell-core が使う（ADR 0050 §5.2）
+        text.caret.location = UInt32(clamping: selected.location)
+        text.caret.length = UInt32(clamping: max(0, selected.length))
         return text
     }
 
@@ -94,6 +97,20 @@ struct ClientAccess: @unchecked Sendable {
             : Self.notFound
         client.setMarkedText(
             attributed, selectionRange: NSRange(location: attributed.length, length: 0), replacementRange: replacement)
+    }
+
+    /// 確定済みの文字列の範囲を消す（`insertText("")` の 1 回。ADR 0050 §5.2）。範囲は shell-core が UTF-16 で渡す
+    ///
+    /// アプリによっては、変換中の文字列がないときの `insertText` の `replacementRange` を無視する（TextEdit。実機で確認、2026-11-06）。
+    /// 文書の長さが減らなければ、範囲を空の変換中の文字列に置き換えてから確定する方法に切り替える
+    func deleteText(_ range: Ikari_Shell_V1_Utf16Range) {
+        let target = NSRange(location: Int(range.location), length: Int(range.length))
+        let before = client.length()
+        client.insertText("", replacementRange: target)
+        // 長さが取れないアプリでは確かめられない（最初の方法のまま）
+        guard before != NSNotFound, before > 0, client.length() >= before else { return }
+        client.setMarkedText("", selectionRange: NSRange(location: 0, length: 0), replacementRange: target)
+        client.insertText("", replacementRange: Self.notFound)
     }
 
     /// 元の文字列を、変換中の範囲を置き換える 1 回の `insertText` で書き戻す。前後に `setMarkedText("")` も `unmarkText` も呼ばない
@@ -162,6 +179,7 @@ enum MarkedTextAttributes {
 
         if marked.segments.isEmpty {
             attributed.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: full)
+            if marked.deleteTarget { addDeleteTargetLook(to: attributed, range: full) }
             let highlight = NSRange(location: 0, length: min(Int(marked.highlightedLength), full.length))
             if highlight.length > 0 {
                 attributed.addAttribute(.underlineStyle, value: NSUnderlineStyle.thick.rawValue, range: highlight)
@@ -177,6 +195,7 @@ enum MarkedTextAttributes {
             let style: NSUnderlineStyle = index == focused ? .thick : .single
             attributed.addAttribute(.underlineStyle, value: style.rawValue, range: range)
             attributed.addAttribute(.markedClauseSegment, value: index, range: range)
+            if marked.deleteTarget, index == focused { addDeleteTargetLook(to: attributed, range: range) }
             location += range.length
         }
         // 長さが足りない壊れた入力でも、下線のない文字を残さない
@@ -185,6 +204,14 @@ enum MarkedTextAttributes {
             attributed.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: rest)
         }
         return attributed
+    }
+
+    /// 削除の対象の見た目（ADR 0050 §3.4）。打ち消し線と薄い赤の背景。背景を無視するアプリでも、打ち消し線で分かる
+    static let deleteTargetBackground = NSColor.systemRed.withAlphaComponent(0.25)
+
+    static func addDeleteTargetLook(to attributed: NSMutableAttributedString, range: NSRange) {
+        attributed.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+        attributed.addAttribute(.backgroundColor, value: deleteTargetBackground, range: range)
     }
 }
 
