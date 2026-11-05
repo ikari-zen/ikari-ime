@@ -59,6 +59,7 @@ pub struct IkariShellConfig {
     pub shell_version: IkariStr,
     pub settings_path: IkariStr,
     pub resources_dir: IkariStr,
+    pub diag_dir: IkariStr,
 }
 
 pub type TextFn = unsafe extern "C" fn(ctx: *mut c_void, out: *mut IkariShellBuf) -> i32;
@@ -291,6 +292,8 @@ fn config_from(config: &IkariShellConfig) -> Result<ShellConfig, &'static str> {
     let shell_version = text(&config.shell_version, "shell_version is not valid UTF-8")?;
     let settings_path = text(&config.settings_path, "settings_path is not valid UTF-8")?;
     let resources_dir = text(&config.resources_dir, "resources_dir is not valid UTF-8")?;
+    // C0: 形だけ確かめる。印とシグナルの処理への配線は R3（ADR 0051 §8）
+    let _diag_dir = text(&config.diag_dir, "diag_dir is not valid UTF-8")?;
     Ok(ShellConfig {
         shell_version: shell_version.to_owned(),
         settings: if settings_path.is_empty() {
@@ -424,6 +427,17 @@ pub unsafe extern "C" fn ikari_shell_engine_down(s: *mut IkariShell, generation:
     });
 }
 
+/// 殻の正常な終わりを印に残す（ADR 0051）。C0 のスタブ: 何もしない（配線は R3）。
+///
+/// # Safety
+/// 引数はどの値でもよい（NULL、解放ずみ、知らない番号は何もしない）。
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ikari_shell_note_exit(s: *mut IkariShell) {
+    guard((), || {
+        let _ = s;
+    });
+}
+
 /// # Safety
 /// 引数はどの値でもよい（NULL、解放ずみ、知らない番号は何もしない）。
 #[unsafe(no_mangle)]
@@ -503,6 +517,7 @@ pub(crate) mod tests {
             shell_version: IkariStr::of("test"),
             settings_path: IkariStr::of(""),
             resources_dir: IkariStr::of(""),
+            diag_dir: IkariStr::of(""),
         }
     }
 

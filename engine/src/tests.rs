@@ -695,6 +695,7 @@ mod admin_import;
 mod admin_learning;
 mod context;
 mod convert;
+mod crash_record;
 mod diag;
 mod emoji;
 mod lifecycle;

@@ -180,14 +180,17 @@ public final class ShellABI {
 
     private let handle: OpaquePointer
 
-    public init(shellVersion: String, settingsPath: String, resourcesDir: String, host: ShellHost) throws {
+    /// `diagDir` は診断ログのディレクトリ（ADR 0051）。空なら起動中の印を持たない（既定。配線は R3）
+    public init(shellVersion: String, settingsPath: String, resourcesDir: String, diagDir: String = "", host: ShellHost) throws {
         var error = IkariShellBuf(ptr: nil, len: 0)
         let table = makeHostTable(host)
         let created = withIkariStr(shellVersion) { version in
             withIkariStr(settingsPath) { settings in
                 withIkariStr(resourcesDir) { resources in
-                    var config = IkariShellConfig(shell_version: version, settings_path: settings, resources_dir: resources)
-                    return ikari_shell_new(&config, table, &error)
+                    withIkariStr(diagDir) { diag in
+                        var config = IkariShellConfig(shell_version: version, settings_path: settings, resources_dir: resources, diag_dir: diag)
+                        return ikari_shell_new(&config, table, &error)
+                    }
                 }
             }
         }
@@ -195,6 +198,9 @@ public final class ShellABI {
         guard let created else { throw CreateError(message: message) }
         handle = created
     }
+
+    /// 殻の正常な終わりを印に残す（`applicationWillTerminate` から 1 回。ADR 0051。呼び出しの配線は R3）
+    public func noteExit() { ikari_shell_note_exit(handle) }
 
     deinit { ikari_shell_free(handle) }
 
@@ -275,9 +281,11 @@ public final class ShellABI {
         public let message: String
     }
 
-    public init(shellVersion: String, settingsPath: String, resourcesDir: String, host: ShellHost) throws {
+    public init(shellVersion: String, settingsPath: String, resourcesDir: String, diagDir: String = "", host: ShellHost) throws {
         throw CreateError(message: "shell-ffi is not linked")
     }
+
+    public func noteExit() {}
 
     public var downNotifier: ShellDownNotifier { ShellDownNotifier() }
 
