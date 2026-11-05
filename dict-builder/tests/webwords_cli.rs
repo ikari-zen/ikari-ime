@@ -14,7 +14,7 @@ fn run(args: &[&str]) -> (bool, String) {
 }
 
 #[test]
-fn collect_is_registered_and_not_implemented() {
+fn collect_is_registered_and_reads_the_given_files() {
     let (ok, stderr) = run(&[
         "webwords",
         "collect",
@@ -23,8 +23,12 @@ fn collect_is_registered_and_not_implemented() {
         "--out",
         "o.tsv",
     ]);
+    // 実装済み。存在しない入力は未実装ではなく、ファイルの名前つきの入出力の誤りになる
     assert!(!ok);
-    assert!(stderr.contains("未実装"), "{stderr}");
+    assert!(
+        !stderr.contains("未実装") && stderr.contains("a.bz2"),
+        "{stderr}"
+    );
 }
 
 #[test]
