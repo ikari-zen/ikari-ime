@@ -280,23 +280,24 @@ pub(crate) fn apply(
             rights,
         });
     }
-    if let [a, b] = sides.as_slice() {
-        if a.rights.iter().any(|r| b.rights.contains(r)) {
-            return Err(config_error("格助詞「の」 and 連体詞 share a right id"));
-        }
+    if let [a, b] = sides.as_slice()
+        && a.rights.iter().any(|r| b.rights.contains(r))
+    {
+        return Err(config_error("格助詞「の」 and 連体詞 share a right id"));
     }
 
     // 閾値の確認（元の連接表で計算する。補正が効かなくなったことを黙って見逃さない）
     let mut side_reports: Vec<(&'static str, SideReport)> = Vec::new();
     for side in &sides {
         let t = threshold(lexicon, penalties, matrix, ken, &side.rights);
-        if let Some((t, rival)) = &t {
-            if enforce_threshold && side.delta <= *t {
-                return Err(config_error(format!(
-                    "{}: delta {} does not exceed the threshold {t} (rival {rival}); the correction would have no effect",
-                    side.key, side.delta
-                )));
-            }
+        if let Some((t, rival)) = &t
+            && enforce_threshold
+            && side.delta <= *t
+        {
+            return Err(config_error(format!(
+                "{}: delta {} does not exceed the threshold {t} (rival {rival}); the correction would have no effect",
+                side.key, side.delta
+            )));
         }
         side_reports.push((
             side.key,
