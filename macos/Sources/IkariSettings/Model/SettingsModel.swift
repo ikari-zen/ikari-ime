@@ -46,6 +46,8 @@ final class SettingsModel {
         .modeToggle: "モード: 日本語と英語を切り替え",
         .modeEnglish: "モード: 英語にする",
         .modeJapanese: "モード: 日本語にする",
+        .clauseDelete: "直前の文節を削除",
+        .clauseDeletePreview: "削除する文節を見てから削除",
     ]
     static let invalidBundleIDMessage = "Bundle ID には英数字、「.」「-」「_」だけを使えます（例: com.apple.Terminal）"
     static let coreUnavailableMessage = "設定を処理できませんでした。設定アプリを入れ直してください"
@@ -128,6 +130,7 @@ final class SettingsModel {
     func setIdleUnloadSecs(_ secs: Int) async { await apply(.idleUnloadSecs(Int64(secs))) }
     func setLMDeadlineMs(_ ms: Int) async { await apply(.lmDeadlineMs(Int64(ms))) }
     func setConvertWaitMs(_ ms: Int) async { await apply(.convertWaitMs(Int64(ms))) }
+    func setClauseMinChars(_ count: Int) async { await apply(.clauseMinChars(Int64(count))) }
 
     // MARK: 郵便番号（ADR 0032）など、オン・オフの設定
 

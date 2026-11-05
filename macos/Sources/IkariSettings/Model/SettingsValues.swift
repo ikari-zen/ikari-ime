@@ -20,6 +20,8 @@ struct SettingsValues: Equatable, Sendable {
     static let lmDeadlineRange = SettingsCore.range(SettingsCore.constants.lmDeadlineMs)
     /// `engine.convert_wait_ms` の範囲（0 = 待たない）
     static let convertWaitRange = SettingsCore.range(SettingsCore.constants.convertWaitMs)
+    /// `clause.min_chars` の範囲（1 = 下限なし）
+    static let clauseMinCharsRange = SettingsCore.range(SettingsCore.constants.clauseMinChars)
     /// `paging.size` の範囲
     static let pageSizeRange = SettingsCore.range(SettingsCore.constants.pageSize)
     /// 何も書いていないときの値
@@ -35,6 +37,8 @@ struct SettingsValues: Equatable, Sendable {
     var idleUnloadSecs = 0
     var lmDeadlineMs = 0
     var convertWaitMs = 0
+    /// `clause.min_chars`。文節ごとの削除で、消す文字がこの数に満たなければ前の文節まで広げる
+    var clauseMinChars = 0
     /// `emoji.shortcode`。絵文字のショートコード（`:eyes:`）のオン・オフ
     var emojiShortcode = false
     /// `emoji.shortcode_exclude`。ショートコードを使わないアプリの Bundle ID
@@ -82,6 +86,7 @@ struct SettingsValues: Equatable, Sendable {
         idleUnloadSecs = Int(message.engineIdleUnloadSecs)
         lmDeadlineMs = Int(message.engineLmDeadlineMs)
         convertWaitMs = Int(message.engineConvertWaitMs)
+        clauseMinChars = Int(message.clauseMinChars)
         emojiShortcode = message.emojiShortcode
         emojiShortcodeExclude = message.emojiShortcodeExclude
         emojiSmallLetters = message.emojiSmallLetters
