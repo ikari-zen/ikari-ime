@@ -1,6 +1,6 @@
 # ADR 0050: 文節ごとの削除（Option+Delete ですぐ消す、Shift+Option+Delete で対象を見てから消す）
 
-- 状態: 承認（2026-11-05 ユーザー決定。キー、最小文字数の数え方、途中のカーソルの扱い、§12 の Q1〜Q3 はすべて推奨どおり、最小文字数の設定範囲は 1〜10）
+- 状態: 採用（2026-11-05 ユーザー決定。キー、最小文字数の数え方、途中のカーソルの扱い、§12 の Q1〜Q3 はすべて推奨どおり、最小文字数の設定範囲は 1〜10）
 - 日付: 2026-11-05
 - 対象: shell-core（`keymap.rs`、`settings/`、`types.rs`、`host.rs` の周辺テキストの型、`machine/`、新しい `clause.rs`、`scenarios/clause-delete.json`）、proto（`shell.proto` に動作 1 つと項目 2 つ、`engine.proto` に要求 1 つ）、core（`converter/segment.rs` に文節を取り除く操作）、engine（その要求の受け口）、Swift（動作の実行 1 つ、周辺テキストにキャレットの位置、設定画面の項目、削除対象の見た目）、プリセットの TSV 3 つ、`docs/phase2-contract.md` §3・§4
 - 前提: main = 80bc52e。ADR 0006（文節のモード §8、再変換 §9、置き換え §9.5、最初の Space は全体の候補 §16.6）、ADR 0041（shell-core の契約）、ADR 0042（判断は Rust）
