@@ -189,6 +189,7 @@ impl ScenarioSurrounding {
 ///
 /// - `convert` は `pages[0]`、`page`（index = i）は `pages[i]` を返す。ないときは `engine: bad_request`。
 /// - `segment_page` は `segment_pages` の中で `segment` と `page_index`（要求の `index`）が合うもの、
+///   `remove_segments` は `removes` の中で `first` と `count`（と、書いてあれば `layout_rev`）が合うもの、
 ///   `resize_segment` は `resizes` の中で `segment` と `delta`（と、書いてあれば `layout_rev`）が合うもの、
 ///   `reconvert` は `reconvert` を返す。ないときは `engine: bad_request`。
 /// - `postal_lookup` は `postal` の番号の住所（なければ空）。`emoji_table` は `emoji_table`。`hello` は成功。
@@ -206,6 +207,9 @@ pub struct EngineScript {
     /// 区切り直しの返事（L-A2 で足した）
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub resizes: Vec<ScriptResize>,
+    /// 文節を取り除く返事（ADR 0050 のレーン A で足した）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub removes: Vec<ScriptRemove>,
     /// 再変換の返事（L-A2 で足した）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reconvert: Option<ScriptLayout>,
@@ -291,6 +295,17 @@ pub struct ScriptResize {
     pub layout: ScriptLayout,
 }
 
+/// `remove_segments` の返事。`first` と `count`（と、書いてあれば `layout_rev`）で引く。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ScriptRemove {
+    pub first: u32,
+    pub count: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout_rev: Option<u32>,
+    pub layout: ScriptLayout,
+}
+
 /// 絵文字の表の 1 行。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -304,6 +319,17 @@ impl EngineScript {
         self.segment_pages
             .iter()
             .find(|page| page.segment == segment && page.page_index == index)
+    }
+
+    pub fn remove(&self, first: u32, count: u32, layout_rev: u32) -> Option<&ScriptLayout> {
+        self.removes
+            .iter()
+            .find(|remove| {
+                remove.first == first
+                    && remove.count == count
+                    && remove.layout_rev.is_none_or(|rev| rev == layout_rev)
+            })
+            .map(|remove| &remove.layout)
     }
 
     pub fn resize(&self, segment: u32, delta: i32, layout_rev: u32) -> Option<&ScriptLayout> {

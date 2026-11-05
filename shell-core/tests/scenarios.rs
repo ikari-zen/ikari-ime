@@ -398,6 +398,12 @@ fn answer(script: &EngineScript, body: &Body) -> Body {
                 None => error_reply(EngineErrorCode::BadRequest),
             }
         }
+        Body::RemoveSegments(request) => {
+            match script.remove(request.first, request.count, request.layout_rev) {
+                Some(layout) => Body::SegmentLayout(layout_reply(layout)),
+                None => error_reply(EngineErrorCode::BadRequest),
+            }
+        }
         Body::Reconvert(_) => match &script.reconvert {
             Some(layout) => Body::SegmentLayout(layout_reply(layout)),
             None => error_reply(EngineErrorCode::BadRequest),

@@ -25,6 +25,7 @@ enum Call {
     Cancel(u64),
     SegmentPage(v1::SegmentPageRequest),
     Resize(v1::ResizeSegment),
+    RemoveSegments(v1::RemoveSegments),
     CommitSegments(v1::CommitSegments),
     Reconvert(v1::Reconvert),
 }
@@ -35,6 +36,7 @@ struct FakeEngine {
     diags: Mutex<Vec<DiagEvent>>,
     convert: Mutex<Option<Result<v1::ConvertReply, EngineError>>>,
     reconvert: Mutex<Option<v1::SegmentLayout>>,
+    remove: Mutex<Option<v1::SegmentLayout>>,
 }
 
 use crate::types::EngineError;
@@ -144,6 +146,18 @@ impl MachineEngine for FakeEngine {
     ) -> Result<v1::SegmentLayout, EngineError> {
         self.record(Call::Resize(request));
         Err(EngineError::Timeout)
+    }
+    fn remove_segments(
+        &self,
+        request: v1::RemoveSegments,
+        _: Duration,
+    ) -> Result<v1::SegmentLayout, EngineError> {
+        self.record(Call::RemoveSegments(request));
+        self.remove
+            .lock()
+            .unwrap()
+            .clone()
+            .ok_or(EngineError::Timeout)
     }
     fn commit_segments(&self, request: v1::CommitSegments) {
         self.record(Call::CommitSegments(request));
