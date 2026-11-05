@@ -51,6 +51,8 @@ pub(crate) trait SegConv: Send {
         left: &[ikari_core::SegmentChoice],
         deadline: Option<Instant>,
     ) -> Result<(), SegmentError>;
+    /// 文節 [first, first + count) を取り除く（ADR 0050 §5.3）。版が上がる。失敗したら何も変えない
+    fn remove(&mut self, first: usize, count: usize) -> Result<(), SegmentError>;
 }
 
 /// `convert_until` の結果を区切るところ
@@ -143,6 +145,10 @@ impl SegConv for RealSeg {
         self.converter
             .resize(&mut self.seg, index, delta, left, deadline)
     }
+
+    fn remove(&mut self, first: usize, count: usize) -> Result<(), SegmentError> {
+        self.seg.remove(first, count)
+    }
 }
 
 /// 文節 1 つぶんの、エンジン側で持つ生成済みの列。コアが返した塊を順に足したもの（コアの列と同じ並び）
@@ -227,6 +233,13 @@ impl SegEntry {
             self.lists.truncate(index);
             self.lists.resize_with(count, SegList::default);
         }
+        Ok(())
+    }
+
+    /// 文節 [first, first + count) を取り除く。残りの文節の生成済みの列は、位置を詰めて保つ
+    pub fn remove(&mut self, first: usize, count: usize) -> Result<(), Fail> {
+        self.seg.remove(first, count).map_err(fail_of)?;
+        self.lists.drain(first..first + count);
         Ok(())
     }
 
@@ -670,9 +683,27 @@ impl crate::Inner {
         Ok((envelope::Body::Ack(pb::Ack {}), note))
     }
 
-    /// 変換中の文節を取り除く（ADR 0050 §5.3）。契約の時点では受け口だけで、いつも `BAD_REQUEST`（中身はレーン B）
-    pub(crate) fn remove_segments(&self, _r: pb::RemoveSegments) -> Result<envelope::Body, Fail> {
-        Err(Fail::bad("remove_segments is not implemented yet"))
+    /// 変換中の文節を取り除く（ADR 0050 §5.3）。LM は使わない（残りの文節の列は保つ）。
+    /// 返事は新しい区切り（版が 1 上がる）。`focused` は取り除いた範囲の左の文節（先頭なら 0）。
+    /// 全部を取り除く指定、範囲外は `BAD_REQUEST`（殻は全部消えるときは `Cancel` する）。
+    /// 先読みは版が変わるので、続きを作らずに止まる
+    pub(crate) fn remove_segments(&self, r: pb::RemoveSegments) -> Result<envelope::Body, Fail> {
+        let started = Instant::now();
+        let first = usize::try_from(r.first).unwrap_or(usize::MAX);
+        let count = usize::try_from(r.count).unwrap_or(usize::MAX);
+        let (conv, _, _) = crate::lock_mutex(&self.conversions)
+            .get(r.conversion_id)
+            .ok_or(crate::UNKNOWN_CONVERSION)?;
+        let mut entry = crate::lock_mutex(&conv);
+        check_rev(&entry, r.layout_rev)?;
+        entry.remove(first, count)?;
+        Ok(envelope::Body::SegmentLayout(layout_reply(
+            r.conversion_id,
+            entry.layout(),
+            first.saturating_sub(1),
+            None,
+            crate::micros_u32(started),
+        )))
     }
 
     /// 区切り直し（ADR 0006 §4）。LM を待たずに計算する（§16.1-6）。返事は新しい区切りと、

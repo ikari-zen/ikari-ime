@@ -172,6 +172,11 @@ pub(crate) struct MockSeg {
 }
 
 impl MockSeg {
+    /// 1 文節は読み全体の列そのもの。区切りを変えたあと（版が上がったあと）は使わない（本物と同じ）
+    fn uses_whole_list(&self) -> bool {
+        self.layout.spans.len() == 1 && !self.synthetic && self.layout.rev == 0
+    }
+
     /// 文節（読み `reading`）の `j` 番目の候補の表記
     fn surface_of(&self, reading: &str, j: usize) -> String {
         if self.synthetic && j == 0 {
@@ -252,7 +257,7 @@ impl SegConv for MockSeg {
         if seg >= self.layout.spans.len() {
             return Err(SegmentError::OutOfRange);
         }
-        if self.layout.spans.len() == 1 && !self.synthetic {
+        if self.uses_whole_list() {
             // 1 文節は読み全体の列そのもの
             return Ok(self.whole.page_until(index, deadline).map(|p| Chunk {
                 candidates: p.candidates.to_vec(),
@@ -295,7 +300,7 @@ impl SegConv for MockSeg {
         if choices.len() != spans.len() {
             return Err(SegmentError::OutOfRange);
         }
-        let single = spans.len() == 1 && !self.synthetic;
+        let single = self.uses_whole_list();
         let mut surfaces = Vec::new();
         for (span, choice) in spans.iter().zip(choices) {
             surfaces.push(match choice {
@@ -412,6 +417,37 @@ impl SegConv for MockSeg {
         self.layout.rev += 1;
         self.lists.truncate(index);
         self.lists.resize(self.layout.spans.len(), None);
+        Ok(())
+    }
+
+    fn remove(&mut self, first: usize, count: usize) -> Result<(), SegmentError> {
+        self.seam.record(Call {
+            what: "remove",
+            seg: first,
+            index: count,
+            left_len: 0,
+            left: Vec::new(),
+            deadline: None,
+            at: Instant::now(),
+        });
+        let total = self.layout.spans.len();
+        let end = first.checked_add(count).ok_or(SegmentError::OutOfRange)?;
+        if count == 0 || end > total {
+            return Err(SegmentError::OutOfRange);
+        }
+        if count == total {
+            return Err(SegmentError::Empty);
+        }
+        self.layout.spans.drain(first..end);
+        self.lists.drain(first..end);
+        let mut start = 0;
+        for span in &mut self.layout.spans {
+            let len = span.end - span.start;
+            span.start = start;
+            span.end = start + len;
+            start = span.end;
+        }
+        self.layout.rev += 1;
         Ok(())
     }
 }

@@ -227,6 +227,10 @@ impl SegConv for PanicOnceSeg {
     ) -> Result<(), ikari_core::SegmentError> {
         self.inner.resize(index, delta, left, deadline)
     }
+
+    fn remove(&mut self, first: usize, count: usize) -> Result<(), ikari_core::SegmentError> {
+        self.inner.remove(first, count)
+    }
 }
 
 #[test]
