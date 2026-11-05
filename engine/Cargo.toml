@@ -14,6 +14,7 @@ lm-metal = ["lm", "ikari-stack/lm-metal"]
 ikari-core.workspace = true
 ikari-stack.workspace = true
 ikari-proto.workspace = true
+ikari-runmark.workspace = true
 prost.workspace = true
 flate2.workspace = true
 jiff.workspace = true
