@@ -174,6 +174,7 @@ fn values_to_pb(values: &SettingsValues) -> pb::SettingsSnapshot {
         unicode_notation: values.unicode_notation,
         date_weekday_dates: values.date_weekday_dates,
         candidate_hide_when_confident: values.candidate_hide_when_confident,
+        clause_min_chars: values.clause_min_chars,
     }
 }
 

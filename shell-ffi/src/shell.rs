@@ -549,6 +549,7 @@ pub(crate) mod tests {
             left: "左😀".into(),
             right: "右".into(),
             document_length: 4,
+            caret: None,
         };
         copy_into(out, &prost::Message::encode_to_vec(&message));
         HOST_TEXT_OK

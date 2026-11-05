@@ -22,7 +22,7 @@ enum RelayPolicy {
         case .helloReply, .beginSession, .ack, .endSession, .prefetch, .convert, .convertReply, .page, .pageReply,
             .commit, .commitText, .cancel, .shutdown, .error,
             // 文節の編集と再変換（ADR 0006）は殻の入力だけが送る。設定アプリから中継しない
-            .segmentPage, .segmentPageReply, .resizeSegment, .segmentLayout, .commitSegments, .reconvert,
+            .segmentPage, .segmentPageReply, .resizeSegment, .removeSegments, .segmentLayout, .commitSegments, .reconvert,
             .userDictListReply, .learningStatusReply, .exportReply, .importReply, .profileReply,
             // 絵文字の表（ADR 0027）は殻の入力だけが頼む。設定アプリから中継しない
             .emojiTable, .emojiTableReply,

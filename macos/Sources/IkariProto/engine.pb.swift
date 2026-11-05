@@ -711,6 +711,15 @@ public nonisolated struct Ikari_Engine_V1_Envelope: Sendable {
     set {body = .setProfile(newValue)}
   }
 
+  /// ---- 文節ごとの削除（ADR 0050 §5.3。追加だけなので schema_version は 1 のまま）----
+  public var removeSegments: Ikari_Engine_V1_RemoveSegments {
+    get {
+      if case .removeSegments(let v)? = body {return v}
+      return Ikari_Engine_V1_RemoveSegments()
+    }
+    set {body = .removeSegments(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Body: Equatable, Sendable {
@@ -770,6 +779,8 @@ public nonisolated struct Ikari_Engine_V1_Envelope: Sendable {
     case profileReply(Ikari_Engine_V1_ProfileReply)
     /// 返事は ProfileReply（変更後）
     case setProfile(Ikari_Engine_V1_ProfileSet)
+    /// ---- 文節ごとの削除（ADR 0050 §5.3。追加だけなので schema_version は 1 のまま）----
+    case removeSegments(Ikari_Engine_V1_RemoveSegments)
 
   }
 
@@ -1229,6 +1240,26 @@ public nonisolated struct Ikari_Engine_V1_ResizeSegment: Sendable {
   public var delta: Int32 = 0
 
   public var left: [Ikari_Engine_V1_SegmentChoice] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// 変換中の文節 [first, first + count) を取り除く（ADR 0050 §5.3）。返事は SegmentLayout（layout_rev を 1 進める。
+/// focused は first − 1、first が 0 なら 0）。全部を取り除く指定は BAD_REQUEST
+public nonisolated struct Ikari_Engine_V1_RemoveSegments: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var conversionID: UInt64 = 0
+
+  public var layoutRev: UInt32 = 0
+
+  public var first: UInt32 = 0
+
+  public var count: UInt32 = 0
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -1719,7 +1750,7 @@ nonisolated extension Ikari_Engine_V1_ProfileWeightKind: SwiftProtobuf._ProtoNam
 
 nonisolated extension Ikari_Engine_V1_Envelope: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Envelope"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}schema_version\0\u{3}request_id\0\u{2}\u{8}hello\0\u{3}hello_reply\0\u{3}begin_session\0\u{1}ack\0\u{3}end_session\0\u{1}prefetch\0\u{1}convert\0\u{3}convert_reply\0\u{1}page\0\u{3}page_reply\0\u{1}commit\0\u{3}commit_text\0\u{1}cancel\0\u{1}shutdown\0\u{3}segment_page\0\u{3}segment_page_reply\0\u{3}resize_segment\0\u{3}segment_layout\0\u{3}commit_segments\0\u{1}reconvert\0\u{1}error\0\u{3}emoji_table\0\u{3}emoji_table_reply\0\u{1}diag\0\u{3}postal_lookup\0\u{3}postal_lookup_reply\0\u{4}\u{5}list_user_dict\0\u{3}user_dict_list_reply\0\u{3}add_user_dict\0\u{3}remove_user_dict\0\u{3}learning_status\0\u{3}learning_status_reply\0\u{3}reset_learning\0\u{3}export_data\0\u{3}export_reply\0\u{3}import_data\0\u{3}import_reply\0\u{3}get_profile\0\u{3}profile_reply\0\u{3}set_profile\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}schema_version\0\u{3}request_id\0\u{2}\u{8}hello\0\u{3}hello_reply\0\u{3}begin_session\0\u{1}ack\0\u{3}end_session\0\u{1}prefetch\0\u{1}convert\0\u{3}convert_reply\0\u{1}page\0\u{3}page_reply\0\u{1}commit\0\u{3}commit_text\0\u{1}cancel\0\u{1}shutdown\0\u{3}segment_page\0\u{3}segment_page_reply\0\u{3}resize_segment\0\u{3}segment_layout\0\u{3}commit_segments\0\u{1}reconvert\0\u{1}error\0\u{3}emoji_table\0\u{3}emoji_table_reply\0\u{1}diag\0\u{3}postal_lookup\0\u{3}postal_lookup_reply\0\u{4}\u{5}list_user_dict\0\u{3}user_dict_list_reply\0\u{3}add_user_dict\0\u{3}remove_user_dict\0\u{3}learning_status\0\u{3}learning_status_reply\0\u{3}reset_learning\0\u{3}export_data\0\u{3}export_reply\0\u{3}import_data\0\u{3}import_reply\0\u{3}get_profile\0\u{3}profile_reply\0\u{3}set_profile\0\u{3}remove_segments\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2249,6 +2280,19 @@ nonisolated extension Ikari_Engine_V1_Envelope: SwiftProtobuf.Message, SwiftProt
           self.body = .setProfile(v)
         }
       }()
+      case 54: try {
+        var v: Ikari_Engine_V1_RemoveSegments?
+        var hadOneofValue = false
+        if let current = self.body {
+          hadOneofValue = true
+          if case .removeSegments(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.body = .removeSegments(v)
+        }
+      }()
       default: break
       }
     }
@@ -2425,6 +2469,10 @@ nonisolated extension Ikari_Engine_V1_Envelope: SwiftProtobuf.Message, SwiftProt
     case .setProfile?: try {
       guard case .setProfile(let v)? = self.body else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 53)
+    }()
+    case .removeSegments?: try {
+      guard case .removeSegments(let v)? = self.body else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 54)
     }()
     case nil: break
     }
@@ -3485,6 +3533,51 @@ nonisolated extension Ikari_Engine_V1_ResizeSegment: SwiftProtobuf.Message, Swif
     if lhs.segment != rhs.segment {return false}
     if lhs.delta != rhs.delta {return false}
     if lhs.left != rhs.left {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Ikari_Engine_V1_RemoveSegments: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".RemoveSegments"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}conversion_id\0\u{3}layout_rev\0\u{1}first\0\u{1}count\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularUInt64Field(value: &self.conversionID) }()
+      case 2: try { try decoder.decodeSingularUInt32Field(value: &self.layoutRev) }()
+      case 3: try { try decoder.decodeSingularUInt32Field(value: &self.first) }()
+      case 4: try { try decoder.decodeSingularUInt32Field(value: &self.count) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.conversionID != 0 {
+      try visitor.visitSingularUInt64Field(value: self.conversionID, fieldNumber: 1)
+    }
+    if self.layoutRev != 0 {
+      try visitor.visitSingularUInt32Field(value: self.layoutRev, fieldNumber: 2)
+    }
+    if self.first != 0 {
+      try visitor.visitSingularUInt32Field(value: self.first, fieldNumber: 3)
+    }
+    if self.count != 0 {
+      try visitor.visitSingularUInt32Field(value: self.count, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Ikari_Engine_V1_RemoveSegments, rhs: Ikari_Engine_V1_RemoveSegments) -> Bool {
+    if lhs.conversionID != rhs.conversionID {return false}
+    if lhs.layoutRev != rhs.layoutRev {return false}
+    if lhs.first != rhs.first {return false}
+    if lhs.count != rhs.count {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

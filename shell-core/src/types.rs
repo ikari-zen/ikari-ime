@@ -149,6 +149,10 @@ pub struct SurroundingText {
     /// 文書全体の長さ（ホストが返した値。返さないアプリは 0）
     #[serde(default)]
     pub document_length: Utf16Len,
+    /// キャレット（選択）の範囲（UTF-16。`client.selectedRange()`）。取れなければ `None`（ADR 0050 §5.2）。
+    /// 文脈（Prefetch・Convert の `SurroundingText`）には送らない
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub caret: Option<Utf16Range>,
 }
 
 /// 選択範囲とその文字列（再変換の対象。ADR 0006 §9.2）。
@@ -181,6 +185,9 @@ pub struct MarkedText {
     /// 下線を付けるか。英語のモードのショートコードを打っている途中だけ false（ADR 0027 §9.5）
     #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub underlined: bool,
+    /// フォーカスしている文節（`focused`）を削除の対象として見せる（ADR 0050 §3.4）。既定 false
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub delete_target: bool,
 }
 
 impl MarkedText {
@@ -193,6 +200,7 @@ impl MarkedText {
             focused: None,
             replacement_range: None,
             underlined: true,
+            delete_target: false,
         }
     }
 }
@@ -448,6 +456,11 @@ pub enum ShellAction {
     ShowCandidates(CandidatePanelModel),
     MoveSelection(CandidatePanelModel),
     HideCandidates,
+    /// 確定済みの文字列の範囲を消す（ADR 0050 §3.3）。変換中の文字列がないときだけ返す。
+    /// macOS は `client.insertText("", replacementRange: range)` を 1 回
+    DeleteText {
+        range: Utf16Range,
+    },
     /// 元の文字列を、`replacing` の範囲を置き換える 1 回の挿入で書き戻す（ADR 0006 §16.3）
     Restore {
         text: String,
@@ -575,6 +588,8 @@ pub struct SettingsSnapshot {
     pub date_weekday_dates: bool,
     /// `candidate.hide_when_confident`
     pub candidate_hide_when_confident: bool,
+    /// `clause.min_chars`（1..10。ADR 0050）
+    pub clause_min_chars: u32,
 }
 
 /// 設定の警告の種類。値の文字列は含めない（ログにユーザーの文字列を残さない）。

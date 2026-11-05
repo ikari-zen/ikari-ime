@@ -288,6 +288,9 @@ final class ShellDriver: @unchecked Sendable {
                 panelReport = nil
             case .restore(let restore):
                 access?.restore(restore.text, replacing: restore.replacing)
+            case .deleteText:
+                // 契約の時点では shell-core がまだ返さない。実行（insertText の 1 回）はレーン C（ADR 0050 §10）
+                break
             case .resolveStrayMarkedText:
                 // 何も入力していないのに変換中の文字列が残っているときは、確定するだけにしてキーをアプリへ渡さない
                 // （チャット欄で Enter が送信になるのを防ぐ）。なければキーはアプリへ

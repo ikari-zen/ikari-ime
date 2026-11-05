@@ -10,8 +10,12 @@ use serde_json::{Map, Value};
 
 use crate::types::{
     CandidateItem, EngineError, KeyInput, KeyKind, Modifiers, SelectedText, ShellAction,
-    ShellEvent, SurroundingText, Utf16Len,
+    ShellEvent, SurroundingText, Utf16Len, Utf16Range,
 };
+
+fn is_false(value: &bool) -> bool {
+    !*value
+}
 
 /// 1 つの JSON ファイル。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -126,6 +130,12 @@ pub struct ScenarioSurrounding {
     pub document_length: Option<Utf16Len>,
     #[serde(default = "default_true")]
     pub available: bool,
+    /// キャレットの範囲。省けば「`left` の終わりに長さ 0」（ホストが取れる普通の場合。位置は文書の長さ − `right` の長さ）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub caret: Option<Utf16Range>,
+    /// ホストがキャレットを返せない（`SurroundingText.caret` が `None`）。ADR 0050 §7
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub no_caret: bool,
 }
 
 impl ScenarioSurrounding {
@@ -135,6 +145,8 @@ impl ScenarioSurrounding {
             right: String::new(),
             document_length: None,
             available: false,
+            caret: None,
+            no_caret: false,
         }
     }
 
@@ -150,10 +162,25 @@ impl ScenarioSurrounding {
                     .saturating_add(Utf16Len::of(&self.right).get()),
             )
         });
+        let caret = if self.no_caret {
+            None
+        } else {
+            Some(
+                self.caret.unwrap_or(Utf16Range {
+                    location: Utf16Len(
+                        document_length
+                            .get()
+                            .saturating_sub(Utf16Len::of(&self.right).get()),
+                    ),
+                    length: Utf16Len::ZERO,
+                }),
+            )
+        };
         Some(SurroundingText {
             left: self.left.clone(),
             right: self.right.clone(),
             document_length,
+            caret,
         })
     }
 }
@@ -323,6 +350,10 @@ pub struct Scenario {
     /// Swift の実行器は飛ばして数える。L-A2 で足した）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rust_only: Option<String>,
+    /// まだ通らない理由。印があるシナリオは、形の検査だけをして、照合を飛ばす（先書きの契約。実装するレーンが印を外す。
+    /// ADR 0050 §9）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending: Option<String>,
     #[serde(default)]
     pub setup: Setup,
     pub steps: Vec<Step>,
@@ -405,6 +436,7 @@ pub const ENGINE_REQUEST_TYPES: &[&str] = &[
     "shutdown",
     "segment_page",
     "resize_segment",
+    "remove_segments",
     "commit_segments",
     "reconvert",
     "postal_lookup",

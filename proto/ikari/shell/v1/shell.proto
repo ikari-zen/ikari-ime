@@ -46,7 +46,12 @@ message KeyInput {
 }
 
 // ホストの口の返事（IkariShellHost.surrounding / selection。§4.4）
-message SurroundingText { string left = 1; string right = 2; uint32 document_length = 3; }
+message SurroundingText {
+  string left = 1; string right = 2; uint32 document_length = 3;
+  // キャレット（選択）の範囲（UTF-16。client.selectedRange()）。取れなければ省く（ADR 0050 §5.2）。
+  // 文脈（engine.proto の SurroundingText）には送らない
+  optional Utf16Range caret = 4;
+}
 message SelectedText { Utf16Range range = 1; string text = 2; }
 
 // ---------------------------------------------------------------- 表示
@@ -58,6 +63,7 @@ message MarkedText {
   optional uint32 focused = 4;
   Utf16Range replacement_range = 5;   // ないときは省く
   bool underlined = 6;
+  bool delete_target = 7;   // フォーカスしている文節を削除の対象として見せる（ADR 0050 §3.4）
 }
 
 enum CandidateKind {
@@ -195,6 +201,8 @@ message ShellEvent {
 
 message Commit { string text = 1; }
 message Restore { string text = 1; Utf16Range replacing = 2; }
+// 確定済みの文字列の範囲を消す（ADR 0050 §3.3）。変換中の文字列がないときだけ返す
+message DeleteText { Utf16Range range = 1; }
 message Prefetch { string reading = 1; }
 message ScheduleTimer { uint32 id = 1; uint32 after_ms = 2; }
 message CancelTimer { uint32 id = 1; }
@@ -222,6 +230,8 @@ message ShellAction {
     // L-E で追加
     SelectMode select_mode = 16;
     BridgeClose bridge_close = 17;
+    // ADR 0050
+    DeleteText delete_text = 18;
   }
 }
 
@@ -276,6 +286,7 @@ message SettingsSnapshot {
   bool unicode_notation = 17;
   bool date_weekday_dates = 18;
   bool candidate_hide_when_confident = 19;
+  uint32 clause_min_chars = 20;
 }
 
 enum SettingsIssueKind {

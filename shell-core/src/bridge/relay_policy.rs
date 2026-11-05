@@ -45,6 +45,7 @@ pub fn is_allowed(body: Option<&EnvelopeBody>) -> bool {
         | EnvelopeBody::SegmentPage(_)
         | EnvelopeBody::SegmentPageReply(_)
         | EnvelopeBody::ResizeSegment(_)
+        | EnvelopeBody::RemoveSegments(_)
         | EnvelopeBody::SegmentLayout(_)
         | EnvelopeBody::CommitSegments(_)
         | EnvelopeBody::Reconvert(_)

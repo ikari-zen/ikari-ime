@@ -16,3 +16,5 @@ shift+right	segment.expand
 ctrl+shift+r	reconvert
 down	candidate.next
 up	candidate.previous
+option+backspace	clause.delete
+shift+option+backspace	clause.delete_preview

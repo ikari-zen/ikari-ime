@@ -219,6 +219,7 @@ fn surrounding(left: &str) -> Option<SurroundingText> {
         left: left.into(),
         right: String::new(),
         document_length: Utf16Len::of(left),
+        caret: None,
     })
 }
 
@@ -438,6 +439,7 @@ fn surrounding_text_is_cut_to_the_engine_limit_in_characters() {
         left: left.clone(),
         right: "い".repeat(2500),
         document_length: Utf16Len(5002),
+        caret: None,
     });
     h.type_text("hi");
     h.press(KeyKind::Space);

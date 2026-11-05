@@ -81,6 +81,7 @@ pub fn decode_surrounding(bytes: &[u8]) -> Result<SurroundingText> {
         left: message.left,
         right: message.right,
         document_length: Utf16Len(message.document_length),
+        caret: message.caret.map(range_from_pb),
     })
 }
 
@@ -263,6 +264,7 @@ fn marked_from_pb(marked: pb::MarkedText) -> MarkedText {
         focused: marked.focused,
         replacement_range: marked.replacement_range.map(range_from_pb),
         underlined: marked.underlined,
+        delete_target: marked.delete_target,
     }
 }
 
@@ -274,6 +276,7 @@ fn marked_to_pb(marked: &MarkedText) -> pb::MarkedText {
         focused: marked.focused,
         replacement_range: marked.replacement_range.as_ref().map(range_to_pb),
         underlined: marked.underlined,
+        delete_target: marked.delete_target,
     }
 }
 
@@ -586,6 +589,9 @@ fn action_to_pb(action: &ShellAction) -> pb::ShellAction {
             text: text.clone(),
             replacing: Some(range_to_pb(replacing)),
         }),
+        ShellAction::DeleteText { range } => Action::DeleteText(pb::DeleteText {
+            range: Some(range_to_pb(range)),
+        }),
         ShellAction::ResolveStrayMarkedText => Action::ResolveStrayMarkedText(pb::Empty {}),
         ShellAction::Prefetch { reading } => Action::Prefetch(pb::Prefetch {
             reading: reading.clone(),
@@ -633,6 +639,13 @@ fn action_from_pb(action: pb::ShellAction) -> Result<ShellAction> {
                     restore
                         .replacing
                         .ok_or(ConvertError::Missing("Restore.replacing"))?,
+                ),
+            },
+            Action::DeleteText(delete) => ShellAction::DeleteText {
+                range: range_from_pb(
+                    delete
+                        .range
+                        .ok_or(ConvertError::Missing("DeleteText.range"))?,
                 ),
             },
             Action::ResolveStrayMarkedText(_) => ShellAction::ResolveStrayMarkedText,
@@ -762,6 +775,7 @@ fn snapshot_to_pb(snapshot: &SettingsSnapshot) -> pb::SettingsSnapshot {
         unicode_notation: snapshot.unicode_notation,
         date_weekday_dates: snapshot.date_weekday_dates,
         candidate_hide_when_confident: snapshot.candidate_hide_when_confident,
+        clause_min_chars: snapshot.clause_min_chars,
     }
 }
 
@@ -789,6 +803,7 @@ pub fn snapshot_from_pb(snapshot: pb::SettingsSnapshot) -> Result<SettingsSnapsh
         unicode_notation: snapshot.unicode_notation,
         date_weekday_dates: snapshot.date_weekday_dates,
         candidate_hide_when_confident: snapshot.candidate_hide_when_confident,
+        clause_min_chars: snapshot.clause_min_chars,
     })
 }
 
@@ -934,6 +949,7 @@ mod tests {
                     length: Utf16Len(2),
                 }),
                 underlined: false,
+                delete_target: true,
             }),
             ShellAction::Commit {
                 text: "品詞".into(),
@@ -946,6 +962,12 @@ mod tests {
                 replacing: Utf16Range {
                     location: Utf16Len(0),
                     length: Utf16Len(2),
+                },
+            },
+            ShellAction::DeleteText {
+                range: Utf16Range {
+                    location: Utf16Len(5),
+                    length: Utf16Len(3),
                 },
             },
             ShellAction::ResolveStrayMarkedText,

@@ -34,6 +34,8 @@ enum KeymapAction: String, Sendable, CaseIterable {
     case modeToggle = "mode.toggle"
     case modeEnglish = "mode.english"
     case modeJapanese = "mode.japanese"
+    case clauseDelete = "clause.delete"
+    case clauseDeletePreview = "clause.delete_preview"
 }
 
 struct KeyModifiers: OptionSet, Sendable, Hashable {

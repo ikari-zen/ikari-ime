@@ -623,9 +623,22 @@ public nonisolated struct Ikari_Shell_V1_SurroundingText: Sendable {
 
   public var documentLength: UInt32 = 0
 
+  /// キャレット（選択）の範囲（UTF-16。client.selectedRange()）。取れなければ省く（ADR 0050 §5.2）。
+  /// 文脈（engine.proto の SurroundingText）には送らない
+  public var caret: Ikari_Shell_V1_Utf16Range {
+    get {_caret ?? Ikari_Shell_V1_Utf16Range()}
+    set {_caret = newValue}
+  }
+  /// Returns true if `caret` has been explicitly set.
+  public var hasCaret: Bool {self._caret != nil}
+  /// Clears the value of `caret`. Subsequent reads from it will return its default value.
+  public mutating func clearCaret() {self._caret = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
+
+  fileprivate var _caret: Ikari_Shell_V1_Utf16Range? = nil
 }
 
 public nonisolated struct Ikari_Shell_V1_SelectedText: Sendable {
@@ -682,6 +695,9 @@ public nonisolated struct Ikari_Shell_V1_MarkedText: Sendable {
   public mutating func clearReplacementRange() {self._replacementRange = nil}
 
   public var underlined: Bool = false
+
+  /// フォーカスしている文節を削除の対象として見せる（ADR 0050 §3.4）
+  public var deleteTarget: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -1104,6 +1120,28 @@ public nonisolated struct Ikari_Shell_V1_Restore: Sendable {
   fileprivate var _replacing: Ikari_Shell_V1_Utf16Range? = nil
 }
 
+/// 確定済みの文字列の範囲を消す（ADR 0050 §3.3）。変換中の文字列がないときだけ返す
+public nonisolated struct Ikari_Shell_V1_DeleteText: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var range: Ikari_Shell_V1_Utf16Range {
+    get {_range ?? Ikari_Shell_V1_Utf16Range()}
+    set {_range = newValue}
+  }
+  /// Returns true if `range` has been explicitly set.
+  public var hasRange: Bool {self._range != nil}
+  /// Clears the value of `range`. Subsequent reads from it will return its default value.
+  public mutating func clearRange() {self._range = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _range: Ikari_Shell_V1_Utf16Range? = nil
+}
+
 public nonisolated struct Ikari_Shell_V1_Prefetch: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -1324,6 +1362,15 @@ public nonisolated struct Ikari_Shell_V1_ShellAction: Sendable {
     set {action = .bridgeClose(newValue)}
   }
 
+  /// ADR 0050
+  public var deleteText: Ikari_Shell_V1_DeleteText {
+    get {
+      if case .deleteText(let v)? = action {return v}
+      return Ikari_Shell_V1_DeleteText()
+    }
+    set {action = .deleteText(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Action: Equatable, Sendable {
@@ -1345,6 +1392,8 @@ public nonisolated struct Ikari_Shell_V1_ShellAction: Sendable {
     /// L-E で追加
     case selectMode(Ikari_Shell_V1_SelectMode)
     case bridgeClose(Ikari_Shell_V1_BridgeClose)
+    /// ADR 0050
+    case deleteText(Ikari_Shell_V1_DeleteText)
 
   }
 
@@ -1619,6 +1668,11 @@ public nonisolated struct Ikari_Shell_V1_SettingsSnapshot: @unchecked Sendable {
   public var candidateHideWhenConfident: Bool {
     get {_storage._candidateHideWhenConfident}
     set {_uniqueStorage()._candidateHideWhenConfident = newValue}
+  }
+
+  public var clauseMinChars: UInt32 {
+    get {_storage._clauseMinChars}
+    set {_uniqueStorage()._clauseMinChars = newValue}
   }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -1958,7 +2012,7 @@ nonisolated extension Ikari_Shell_V1_KeyInput: SwiftProtobuf.Message, SwiftProto
 
 nonisolated extension Ikari_Shell_V1_SurroundingText: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SurroundingText"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}left\0\u{1}right\0\u{3}document_length\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}left\0\u{1}right\0\u{3}document_length\0\u{1}caret\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1969,12 +2023,17 @@ nonisolated extension Ikari_Shell_V1_SurroundingText: SwiftProtobuf.Message, Swi
       case 1: try { try decoder.decodeSingularStringField(value: &self.left) }()
       case 2: try { try decoder.decodeSingularStringField(value: &self.right) }()
       case 3: try { try decoder.decodeSingularUInt32Field(value: &self.documentLength) }()
+      case 4: try { try decoder.decodeSingularMessageField(value: &self._caret) }()
       default: break
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
     if !self.left.isEmpty {
       try visitor.visitSingularStringField(value: self.left, fieldNumber: 1)
     }
@@ -1984,6 +2043,9 @@ nonisolated extension Ikari_Shell_V1_SurroundingText: SwiftProtobuf.Message, Swi
     if self.documentLength != 0 {
       try visitor.visitSingularUInt32Field(value: self.documentLength, fieldNumber: 3)
     }
+    try { if let v = self._caret {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -1991,6 +2053,7 @@ nonisolated extension Ikari_Shell_V1_SurroundingText: SwiftProtobuf.Message, Swi
     if lhs.left != rhs.left {return false}
     if lhs.right != rhs.right {return false}
     if lhs.documentLength != rhs.documentLength {return false}
+    if lhs._caret != rhs._caret {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -2037,7 +2100,7 @@ nonisolated extension Ikari_Shell_V1_SelectedText: SwiftProtobuf.Message, SwiftP
 
 nonisolated extension Ikari_Shell_V1_MarkedText: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".MarkedText"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}text\0\u{3}highlighted_length\0\u{1}segments\0\u{1}focused\0\u{3}replacement_range\0\u{1}underlined\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}text\0\u{3}highlighted_length\0\u{1}segments\0\u{1}focused\0\u{3}replacement_range\0\u{1}underlined\0\u{3}delete_target\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2051,6 +2114,7 @@ nonisolated extension Ikari_Shell_V1_MarkedText: SwiftProtobuf.Message, SwiftPro
       case 4: try { try decoder.decodeSingularUInt32Field(value: &self._focused) }()
       case 5: try { try decoder.decodeSingularMessageField(value: &self._replacementRange) }()
       case 6: try { try decoder.decodeSingularBoolField(value: &self.underlined) }()
+      case 7: try { try decoder.decodeSingularBoolField(value: &self.deleteTarget) }()
       default: break
       }
     }
@@ -2079,6 +2143,9 @@ nonisolated extension Ikari_Shell_V1_MarkedText: SwiftProtobuf.Message, SwiftPro
     if self.underlined != false {
       try visitor.visitSingularBoolField(value: self.underlined, fieldNumber: 6)
     }
+    if self.deleteTarget != false {
+      try visitor.visitSingularBoolField(value: self.deleteTarget, fieldNumber: 7)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -2089,6 +2156,7 @@ nonisolated extension Ikari_Shell_V1_MarkedText: SwiftProtobuf.Message, SwiftPro
     if lhs._focused != rhs._focused {return false}
     if lhs._replacementRange != rhs._replacementRange {return false}
     if lhs.underlined != rhs.underlined {return false}
+    if lhs.deleteTarget != rhs.deleteTarget {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -2947,6 +3015,40 @@ nonisolated extension Ikari_Shell_V1_Restore: SwiftProtobuf.Message, SwiftProtob
   }
 }
 
+nonisolated extension Ikari_Shell_V1_DeleteText: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".DeleteText"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}range\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._range) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._range {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Ikari_Shell_V1_DeleteText, rhs: Ikari_Shell_V1_DeleteText) -> Bool {
+    if lhs._range != rhs._range {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
 nonisolated extension Ikari_Shell_V1_Prefetch: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Prefetch"
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}reading\0")
@@ -3139,7 +3241,7 @@ nonisolated extension Ikari_Shell_V1_BridgeClose: SwiftProtobuf.Message, SwiftPr
 
 nonisolated extension Ikari_Shell_V1_ShellAction: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ShellAction"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pass_through\0\u{1}consume\0\u{3}set_marked_text\0\u{1}commit\0\u{3}show_candidates\0\u{3}move_selection\0\u{3}hide_candidates\0\u{1}restore\0\u{3}resolve_stray_marked_text\0\u{1}prefetch\0\u{3}show_menu\0\u{3}schedule_timer\0\u{3}cancel_timer\0\u{3}bridge_reply\0\u{3}open_settings\0\u{3}select_mode\0\u{3}bridge_close\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pass_through\0\u{1}consume\0\u{3}set_marked_text\0\u{1}commit\0\u{3}show_candidates\0\u{3}move_selection\0\u{3}hide_candidates\0\u{1}restore\0\u{3}resolve_stray_marked_text\0\u{1}prefetch\0\u{3}show_menu\0\u{3}schedule_timer\0\u{3}cancel_timer\0\u{3}bridge_reply\0\u{3}open_settings\0\u{3}select_mode\0\u{3}bridge_close\0\u{3}delete_text\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -3368,6 +3470,19 @@ nonisolated extension Ikari_Shell_V1_ShellAction: SwiftProtobuf.Message, SwiftPr
           self.action = .bridgeClose(v)
         }
       }()
+      case 18: try {
+        var v: Ikari_Shell_V1_DeleteText?
+        var hadOneofValue = false
+        if let current = self.action {
+          hadOneofValue = true
+          if case .deleteText(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.action = .deleteText(v)
+        }
+      }()
       default: break
       }
     }
@@ -3446,6 +3561,10 @@ nonisolated extension Ikari_Shell_V1_ShellAction: SwiftProtobuf.Message, SwiftPr
     case .bridgeClose?: try {
       guard case .bridgeClose(let v)? = self.action else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 17)
+    }()
+    case .deleteText?: try {
+      guard case .deleteText(let v)? = self.action else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 18)
     }()
     case nil: break
     }
@@ -3717,7 +3836,7 @@ nonisolated extension Ikari_Shell_V1_PanelPlacement: SwiftProtobuf.Message, Swif
 
 nonisolated extension Ikari_Shell_V1_SettingsSnapshot: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SettingsSnapshot"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}input_method\0\u{3}keymap_preset\0\u{3}keymap_overrides\0\u{3}paging_wrap\0\u{3}page_size\0\u{3}engine_lm\0\u{3}engine_idle_unload_secs\0\u{3}engine_lm_deadline_ms\0\u{3}engine_convert_wait_ms\0\u{4}\u{2}emoji_shortcode\0\u{3}emoji_shortcode_exclude\0\u{3}emoji_small_letters\0\u{3}postal_japanese\0\u{3}postal_english\0\u{3}postal_te_prefix\0\u{3}unicode_notation\0\u{3}date_weekday_dates\0\u{3}candidate_hide_when_confident\0\u{b}context_shared_exclude\0\u{c}\u{a}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}input_method\0\u{3}keymap_preset\0\u{3}keymap_overrides\0\u{3}paging_wrap\0\u{3}page_size\0\u{3}engine_lm\0\u{3}engine_idle_unload_secs\0\u{3}engine_lm_deadline_ms\0\u{3}engine_convert_wait_ms\0\u{4}\u{2}emoji_shortcode\0\u{3}emoji_shortcode_exclude\0\u{3}emoji_small_letters\0\u{3}postal_japanese\0\u{3}postal_english\0\u{3}postal_te_prefix\0\u{3}unicode_notation\0\u{3}date_weekday_dates\0\u{3}candidate_hide_when_confident\0\u{3}clause_min_chars\0\u{b}context_shared_exclude\0\u{c}\u{a}\u{1}")
 
   fileprivate class _StorageClass {
     var _inputMethod: Ikari_Shell_V1_InputMethodKind = .unspecified
@@ -3738,6 +3857,7 @@ nonisolated extension Ikari_Shell_V1_SettingsSnapshot: SwiftProtobuf.Message, Sw
     var _unicodeNotation: Bool = false
     var _dateWeekdayDates: Bool = false
     var _candidateHideWhenConfident: Bool = false
+    var _clauseMinChars: UInt32 = 0
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -3766,6 +3886,7 @@ nonisolated extension Ikari_Shell_V1_SettingsSnapshot: SwiftProtobuf.Message, Sw
       _unicodeNotation = source._unicodeNotation
       _dateWeekdayDates = source._dateWeekdayDates
       _candidateHideWhenConfident = source._candidateHideWhenConfident
+      _clauseMinChars = source._clauseMinChars
     }
   }
 
@@ -3802,6 +3923,7 @@ nonisolated extension Ikari_Shell_V1_SettingsSnapshot: SwiftProtobuf.Message, Sw
         case 17: try { try decoder.decodeSingularBoolField(value: &_storage._unicodeNotation) }()
         case 18: try { try decoder.decodeSingularBoolField(value: &_storage._dateWeekdayDates) }()
         case 19: try { try decoder.decodeSingularBoolField(value: &_storage._candidateHideWhenConfident) }()
+        case 20: try { try decoder.decodeSingularUInt32Field(value: &_storage._clauseMinChars) }()
         default: break
         }
       }
@@ -3864,6 +3986,9 @@ nonisolated extension Ikari_Shell_V1_SettingsSnapshot: SwiftProtobuf.Message, Sw
       if _storage._candidateHideWhenConfident != false {
         try visitor.visitSingularBoolField(value: _storage._candidateHideWhenConfident, fieldNumber: 19)
       }
+      if _storage._clauseMinChars != 0 {
+        try visitor.visitSingularUInt32Field(value: _storage._clauseMinChars, fieldNumber: 20)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -3891,6 +4016,7 @@ nonisolated extension Ikari_Shell_V1_SettingsSnapshot: SwiftProtobuf.Message, Sw
         if _storage._unicodeNotation != rhs_storage._unicodeNotation {return false}
         if _storage._dateWeekdayDates != rhs_storage._dateWeekdayDates {return false}
         if _storage._candidateHideWhenConfident != rhs_storage._candidateHideWhenConfident {return false}
+        if _storage._clauseMinChars != rhs_storage._clauseMinChars {return false}
         return true
       }
       if !storagesAreEqual {return false}

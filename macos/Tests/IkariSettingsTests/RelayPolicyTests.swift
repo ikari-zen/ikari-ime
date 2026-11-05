@@ -52,6 +52,7 @@ private func engineFrame(id: UInt64 = 4, _ build: (inout EngineEnvelope) -> Void
             { $0.segmentPage = Ikari_Engine_V1_SegmentPageRequest() },
             { $0.segmentPageReply = Ikari_Engine_V1_SegmentPageReply() },
             { $0.resizeSegment = Ikari_Engine_V1_ResizeSegment() },
+            { $0.removeSegments = Ikari_Engine_V1_RemoveSegments() },
             { $0.segmentLayout = Ikari_Engine_V1_SegmentLayout() },
             { $0.commitSegments = Ikari_Engine_V1_CommitSegments() },
             { $0.reconvert = Ikari_Engine_V1_Reconvert() },

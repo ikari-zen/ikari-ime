@@ -41,11 +41,15 @@ pub enum KeymapAction {
     ModeEnglish,
     /// 日本語のモードにする
     ModeJapanese,
+    /// 直前の文節をすぐ消す（ADR 0050）。既定は `option+backspace`
+    ClauseDelete,
+    /// 削除の対象をハイライトするモードに入る（ADR 0050）。既定は `shift+option+backspace`
+    ClauseDeletePreview,
 }
 
 impl KeymapAction {
     /// 設定アプリの画面と `settings.tsv` の並び（Swift の `allCases` と同じ順）。
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 17] = [
         Self::ToHiragana,
         Self::ToFullwidthKatakana,
         Self::ToHalfwidthKatakana,
@@ -61,6 +65,8 @@ impl KeymapAction {
         Self::ModeToggle,
         Self::ModeEnglish,
         Self::ModeJapanese,
+        Self::ClauseDelete,
+        Self::ClauseDeletePreview,
     ];
 
     /// TSV と設定のキーに使う名前（Swift の `rawValue`）。
@@ -81,6 +87,8 @@ impl KeymapAction {
             Self::ModeToggle => "mode.toggle",
             Self::ModeEnglish => "mode.english",
             Self::ModeJapanese => "mode.japanese",
+            Self::ClauseDelete => "clause.delete",
+            Self::ClauseDeletePreview => "clause.delete_preview",
         }
     }
 
@@ -706,7 +714,7 @@ mod tests {
             }
         }
         // 文節の操作と再変換（ADR 0006 §8.1）は両プリセットで同じ。↑↓ は候補の軸（ADR 0014 §2.4）
-        let segment: [(KeymapAction, &str); 7] = [
+        let segment: [(KeymapAction, &str); 9] = [
             (KeymapAction::SegmentFocusLeft, "left"),
             (KeymapAction::SegmentFocusRight, "right"),
             (KeymapAction::SegmentShrink, "shift+left"),
@@ -714,14 +722,16 @@ mod tests {
             (KeymapAction::Reconvert, "ctrl+shift+r"),
             (KeymapAction::CandidateNext, "down"),
             (KeymapAction::CandidatePrevious, "up"),
+            (KeymapAction::ClauseDelete, "option+backspace"),
+            (KeymapAction::ClauseDeletePreview, "shift+option+backspace"),
         ];
         for (action, key) in segment {
             assert_eq!(macos.action(&chord(key)), Some(action));
             assert_eq!(ms_ime.action(&chord(key)), Some(action));
             assert!(!action.is_script_conversion());
         }
-        assert_eq!(macos.bindings.len(), 16);
-        assert_eq!(ms_ime.bindings.len(), 17);
+        assert_eq!(macos.bindings.len(), 18);
+        assert_eq!(ms_ime.bindings.len(), 19);
         // 別のプリセットのキーは効かない
         assert_eq!(macos.action(&chord("ctrl+u")), None);
         assert_eq!(ms_ime.action(&chord("ctrl+j")), None);
@@ -802,7 +812,7 @@ mod tests {
             keymap.action(&chord("ctrl+j")),
             Some(KeymapAction::ToHiragana)
         );
-        assert_eq!(keymap.bindings.len(), 16);
+        assert_eq!(keymap.bindings.len(), 18);
     }
 
     /// Swift の `parsedSettingsDriveTheKeymap` の keymap 側

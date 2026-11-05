@@ -21,6 +21,10 @@ pub const LM_DEADLINE_RANGE: std::ops::RangeInclusive<i64> = 50..=2000;
 /// `engine.convert_wait_ms` の範囲（暫定。0 = 待たない）
 pub const CONVERT_WAIT_RANGE: std::ops::RangeInclusive<i64> = 0..=200;
 
+/// `clause.min_chars` の範囲（ADR 0050）
+pub const CLAUSE_MIN_CHARS_RANGE: std::ops::RangeInclusive<i64> =
+    (CLAUSE_MIN_CHARS_MIN as i64)..=(CLAUSE_MIN_CHARS_MAX as i64);
+
 /// 操作ごとのキー割り当て。`Preset` は上書きなし
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KeymapBinding {
@@ -53,6 +57,7 @@ pub struct SettingsValues {
     pub unicode_notation: bool,
     pub date_weekday_dates: bool,
     pub candidate_hide_when_confident: bool,
+    pub clause_min_chars: u32,
 }
 
 impl Default for SettingsValues {
@@ -77,6 +82,7 @@ impl Default for SettingsValues {
             unicode_notation: d.unicode_notation,
             date_weekday_dates: d.date_weekday_dates,
             candidate_hide_when_confident: d.candidate_hide_when_confident,
+            clause_min_chars: d.clause_min_chars,
         }
     }
 }
@@ -157,6 +163,9 @@ impl SettingsValues {
             KEY_CANDIDATE_HIDE_WHEN_CONFIDENT,
             values.candidate_hide_when_confident,
         );
+        if let Some(n) = ranged(KEY_CLAUSE_MIN_CHARS, &CLAUSE_MIN_CHARS_RANGE) {
+            values.clause_min_chars = n;
+        }
         values
     }
 }
@@ -325,6 +334,8 @@ pub enum SettingsIntent {
     PostalEnglish(bool),
     PostalTePrefix(bool),
     CandidateHideWhenConfident(bool),
+    /// 範囲の外は範囲に丸める
+    ClauseMinChars(i64),
     UnicodeNotation(bool),
     DateWeekdayDates(bool),
     EmojiSmallLetters(bool),
@@ -517,6 +528,12 @@ impl SettingsValues {
                 self.candidate_hide_when_confident,
                 *on,
                 KEY_CANDIDATE_HIDE_WHEN_CONFIDENT,
+            ),
+            I::ClauseMinChars(n) => clamped_changed(
+                self.clause_min_chars,
+                *n,
+                &CLAUSE_MIN_CHARS_RANGE,
+                KEY_CLAUSE_MIN_CHARS,
             ),
             I::UnicodeNotation(on) => {
                 switch_changed(self.unicode_notation, *on, KEY_UNICODE_NOTATION)
@@ -1074,12 +1091,14 @@ mod tests {
             ("reconvert", "ctrl+shift+r"),
             ("candidate.next", "down"),
             ("candidate.previous", "up"),
+            ("clause.delete", "option+backspace"),
+            ("clause.delete_preview", "shift+option+backspace"),
         ] {
             assert_eq!(macos.get(&chord(key)).map(String::as_str), Some(action));
             assert_eq!(ms_ime.get(&chord(key)).map(String::as_str), Some(action));
         }
-        assert_eq!(macos.len(), 16);
-        assert_eq!(ms_ime.len(), 17);
+        assert_eq!(macos.len(), 18);
+        assert_eq!(ms_ime.len(), 19);
         assert!(!macos.contains_key(&chord("ctrl+u")));
         assert!(!ms_ime.contains_key(&chord("ctrl+j")));
     }

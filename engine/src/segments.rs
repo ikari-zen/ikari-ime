@@ -670,6 +670,11 @@ impl crate::Inner {
         Ok((envelope::Body::Ack(pb::Ack {}), note))
     }
 
+    /// 変換中の文節を取り除く（ADR 0050 §5.3）。契約の時点では受け口だけで、いつも `BAD_REQUEST`（中身はレーン B）
+    pub(crate) fn remove_segments(&self, _r: pb::RemoveSegments) -> Result<envelope::Body, Fail> {
+        Err(Fail::bad("remove_segments is not implemented yet"))
+    }
+
     /// 区切り直し（ADR 0006 §4）。LM を待たずに計算する（§16.1-6）。返事は新しい区切りと、
     /// フォーカスしている文節の 1 ページ目
     pub(crate) fn resize_segment(&self, r: pb::ResizeSegment) -> Result<envelope::Body, Fail> {

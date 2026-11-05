@@ -1,7 +1,7 @@
 //! 共通のシナリオ（`shell-core/scenarios/*.json`）の Rust の実行器（ADR 0041 §5）。
 //!
 //! - `scenarios_are_well_formed`: すべてのファイルが Rust の型で読め、手順の形が正しいこと（いつも流す）。
-//! - `scenarios_match_on_rust`: `Shell` に流して期待と比べる（`rust_only` を含む全件）。
+//! - `scenarios_match_on_rust`: `Shell` に流して期待と比べる（`rust_only` を含む全件。`pending` の印があるものは飛ばす）。
 //! - `record_expectations`: 期待を書くときの記録（手で流す。README）。
 
 use std::path::Path;
@@ -57,6 +57,9 @@ fn scenarios_match_on_rust() {
     let mut count = 0;
     for (path, file) in &files {
         for scenario in &file.scenarios {
+            if scenario.pending.is_some() {
+                continue;
+            }
             count += 1;
             let setup = file.defaults.resolve(&scenario.setup);
             if let Err(message) = run(&setup, scenario, None) {
@@ -569,6 +572,13 @@ fn describe(body: &Body) -> Map<String, Value> {
             json!({
                 "conversion_id": m.conversion_id, "layout_rev": m.layout_rev,
                 "segment": m.segment, "delta": m.delta, "left": choices(&m.left),
+            }),
+        ),
+        Body::RemoveSegments(m) => (
+            "remove_segments",
+            json!({
+                "conversion_id": m.conversion_id, "layout_rev": m.layout_rev,
+                "first": m.first, "count": m.count,
             }),
         ),
         Body::CommitSegments(m) => (
