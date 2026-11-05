@@ -29,6 +29,26 @@ import Testing
         #expect(text?.documentLength == 3)
     }
 
+    @Test func caretIsTheSelectedRange() {
+        let client = FakeTextClient(document: "あいう")
+        client.selected = NSRange(location: 2, length: 1)
+        let text = ClientAccess(client: client).surroundingText()
+        #expect(text?.caret.location == 2)
+        #expect(text?.caret.length == 1)
+    }
+
+    @Test func deleteTextReplacesTheRangeWithNothingInOneCall() {
+        let client = FakeTextClient(document: "今日は晴れ")
+        var range = Ikari_Shell_V1_Utf16Range()
+        range.location = 3
+        range.length = 2
+        ClientAccess(client: client).deleteText(range)
+        #expect(client.document == "今日は")
+        #expect(client.insertCalls.count == 1)
+        #expect(client.insertCalls.first?.text == "")
+        #expect(client.insertCalls.first?.range == NSRange(location: 3, length: 2))
+    }
+
     @Test func surroundingTextReturnsTheLeftText() {
         let client = FakeTextClient(document: "あいう")
         client.selected = NSRange(location: 2, length: 0)

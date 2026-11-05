@@ -112,6 +112,29 @@ func makeSettingsModel(_ harness: Harness) async -> SettingsModel {
         #expect(model.values.convertWaitMs == SettingsValues.convertWaitRange.upperBound)
     }
 
+    @Test func clauseMinCharsIsWrittenAndClamped() async throws {
+        let harness = try await Harness.make()
+        defer { harness.close() }
+        let model = await makeSettingsModel(harness)
+        #expect(model.values.clauseMinChars == 3)
+        await model.setClauseMinChars(5)
+        #expect(model.values.clauseMinChars == 5)
+        await model.setClauseMinChars(0)
+        #expect(model.values.clauseMinChars == SettingsValues.clauseMinCharsRange.lowerBound)
+        await model.setClauseMinChars(99)
+        #expect(model.values.clauseMinChars == SettingsValues.clauseMinCharsRange.upperBound)
+        #expect(SettingsValues.clauseMinCharsRange == 1...10)
+    }
+
+    @Test func clauseDeleteKeysAreListed() async throws {
+        let harness = try await Harness.make()
+        defer { harness.close() }
+        let model = await makeSettingsModel(harness)
+        let actions = model.keymapRows.map(\.action)
+        #expect(actions.contains(.clauseDelete))
+        #expect(actions.contains(.clauseDeletePreview))
+    }
+
     @Test func pageSizeAndIdleSecondsAreClamped() async throws {
         let harness = try await Harness.make()
         defer { harness.close() }

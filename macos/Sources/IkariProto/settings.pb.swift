@@ -723,6 +723,14 @@ public nonisolated struct Ikari_Settings_V1_Intent: Sendable {
     set {kind = .keymap(newValue)}
   }
 
+  public var clauseMinChars: Int64 {
+    get {
+      if case .clauseMinChars(let v)? = kind {return v}
+      return 0
+    }
+    set {kind = .clauseMinChars(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Kind: Equatable, Sendable {
@@ -746,6 +754,7 @@ public nonisolated struct Ikari_Settings_V1_Intent: Sendable {
     case removeEmojiShortcodeExclude(String)
     case resetEmojiShortcodeExclude(Ikari_Shell_V1_Empty)
     case keymap(Ikari_Settings_V1_KeymapIntent)
+    case clauseMinChars(Int64)
 
   }
 
@@ -1255,6 +1264,15 @@ public nonisolated struct Ikari_Settings_V1_Constants: Sendable {
   /// Clears the value of `convertWaitMs`. Subsequent reads from it will return its default value.
   public mutating func clearConvertWaitMs() {self._convertWaitMs = nil}
 
+  public var clauseMinChars: Ikari_Settings_V1_IntRange {
+    get {_clauseMinChars ?? Ikari_Settings_V1_IntRange()}
+    set {_clauseMinChars = newValue}
+  }
+  /// Returns true if `clauseMinChars` has been explicitly set.
+  public var hasClauseMinChars: Bool {self._clauseMinChars != nil}
+  /// Clears the value of `clauseMinChars`. Subsequent reads from it will return its default value.
+  public mutating func clearClauseMinChars() {self._clauseMinChars = nil}
+
   /// インポートのファイルの上限（バイト）
   public var maxImportBytes: UInt64 = 0
 
@@ -1267,6 +1285,7 @@ public nonisolated struct Ikari_Settings_V1_Constants: Sendable {
   fileprivate var _idleUnloadSecs: Ikari_Settings_V1_IntRange? = nil
   fileprivate var _lmDeadlineMs: Ikari_Settings_V1_IntRange? = nil
   fileprivate var _convertWaitMs: Ikari_Settings_V1_IntRange? = nil
+  fileprivate var _clauseMinChars: Ikari_Settings_V1_IntRange? = nil
 }
 
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
@@ -1942,7 +1961,7 @@ nonisolated extension Ikari_Settings_V1_KeymapIntent: SwiftProtobuf.Message, Swi
 
 nonisolated extension Ikari_Settings_V1_Intent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Intent"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}input_method\0\u{3}keymap_preset\0\u{3}paging_wrap\0\u{3}page_size\0\u{3}lm_enabled\0\u{3}idle_unload_secs\0\u{3}lm_deadline_ms\0\u{3}convert_wait_ms\0\u{3}postal_japanese\0\u{3}postal_english\0\u{3}postal_te_prefix\0\u{3}candidate_hide_when_confident\0\u{3}unicode_notation\0\u{3}date_weekday_dates\0\u{3}emoji_small_letters\0\u{3}emoji_shortcode\0\u{4}\u{4}add_emoji_shortcode_exclude\0\u{3}remove_emoji_shortcode_exclude\0\u{3}reset_emoji_shortcode_exclude\0\u{1}keymap\0\u{b}add_shared_exclude\0\u{b}remove_shared_exclude\0\u{b}reset_shared_exclude\0\u{c}\u{11}\u{1}\u{c}\u{12}\u{1}\u{c}\u{13}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}input_method\0\u{3}keymap_preset\0\u{3}paging_wrap\0\u{3}page_size\0\u{3}lm_enabled\0\u{3}idle_unload_secs\0\u{3}lm_deadline_ms\0\u{3}convert_wait_ms\0\u{3}postal_japanese\0\u{3}postal_english\0\u{3}postal_te_prefix\0\u{3}candidate_hide_when_confident\0\u{3}unicode_notation\0\u{3}date_weekday_dates\0\u{3}emoji_small_letters\0\u{3}emoji_shortcode\0\u{4}\u{4}add_emoji_shortcode_exclude\0\u{3}remove_emoji_shortcode_exclude\0\u{3}reset_emoji_shortcode_exclude\0\u{1}keymap\0\u{3}clause_min_chars\0\u{b}add_shared_exclude\0\u{b}remove_shared_exclude\0\u{b}reset_shared_exclude\0\u{c}\u{11}\u{1}\u{c}\u{12}\u{1}\u{c}\u{13}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2120,6 +2139,14 @@ nonisolated extension Ikari_Settings_V1_Intent: SwiftProtobuf.Message, SwiftProt
           self.kind = .keymap(v)
         }
       }()
+      case 24: try {
+        var v: Int64?
+        try decoder.decodeSingularInt64Field(value: &v)
+        if let v = v {
+          if self.kind != nil {try decoder.handleConflictingOneOf()}
+          self.kind = .clauseMinChars(v)
+        }
+      }()
       default: break
       }
     }
@@ -2210,6 +2237,10 @@ nonisolated extension Ikari_Settings_V1_Intent: SwiftProtobuf.Message, SwiftProt
     case .keymap?: try {
       guard case .keymap(let v)? = self.kind else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 23)
+    }()
+    case .clauseMinChars?: try {
+      guard case .clauseMinChars(let v)? = self.kind else { preconditionFailure() }
+      try visitor.visitSingularInt64Field(value: v, fieldNumber: 24)
     }()
     case nil: break
     }
@@ -3107,7 +3138,7 @@ nonisolated extension Ikari_Settings_V1_IntRange: SwiftProtobuf.Message, SwiftPr
 
 nonisolated extension Ikari_Settings_V1_Constants: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Constants"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}defaults\0\u{3}page_size\0\u{3}idle_unload_secs\0\u{3}lm_deadline_ms\0\u{3}convert_wait_ms\0\u{3}max_import_bytes\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}defaults\0\u{3}page_size\0\u{3}idle_unload_secs\0\u{3}lm_deadline_ms\0\u{3}convert_wait_ms\0\u{3}max_import_bytes\0\u{3}clause_min_chars\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -3121,6 +3152,7 @@ nonisolated extension Ikari_Settings_V1_Constants: SwiftProtobuf.Message, SwiftP
       case 4: try { try decoder.decodeSingularMessageField(value: &self._lmDeadlineMs) }()
       case 5: try { try decoder.decodeSingularMessageField(value: &self._convertWaitMs) }()
       case 6: try { try decoder.decodeSingularUInt64Field(value: &self.maxImportBytes) }()
+      case 7: try { try decoder.decodeSingularMessageField(value: &self._clauseMinChars) }()
       default: break
       }
     }
@@ -3149,6 +3181,9 @@ nonisolated extension Ikari_Settings_V1_Constants: SwiftProtobuf.Message, SwiftP
     if self.maxImportBytes != 0 {
       try visitor.visitSingularUInt64Field(value: self.maxImportBytes, fieldNumber: 6)
     }
+    try { if let v = self._clauseMinChars {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 7)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -3158,6 +3193,7 @@ nonisolated extension Ikari_Settings_V1_Constants: SwiftProtobuf.Message, SwiftP
     if lhs._idleUnloadSecs != rhs._idleUnloadSecs {return false}
     if lhs._lmDeadlineMs != rhs._lmDeadlineMs {return false}
     if lhs._convertWaitMs != rhs._convertWaitMs {return false}
+    if lhs._clauseMinChars != rhs._clauseMinChars {return false}
     if lhs.maxImportBytes != rhs.maxImportBytes {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true

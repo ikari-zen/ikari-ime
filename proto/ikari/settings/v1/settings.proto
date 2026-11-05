@@ -115,6 +115,7 @@ message Intent {
     string remove_emoji_shortcode_exclude = 21;
     ikari.shell.v1.Empty reset_emoji_shortcode_exclude = 22;
     KeymapIntent keymap = 23;
+    int64 clause_min_chars = 24;
   }
 }
 
@@ -287,6 +288,7 @@ message Constants {
   IntRange idle_unload_secs = 3;
   IntRange lm_deadline_ms = 4;
   IntRange convert_wait_ms = 5;
+  IntRange clause_min_chars = 7;
   // インポートのファイルの上限（バイト）
   uint64 max_import_bytes = 6;
 }

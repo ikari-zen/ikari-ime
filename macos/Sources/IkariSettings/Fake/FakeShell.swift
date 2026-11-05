@@ -39,6 +39,7 @@ struct FakeState: Sendable {
         "engine.idle_unload_secs": "300",
         "engine.lm_deadline_ms": "300",
         "engine.convert_wait_ms": "30",
+        "clause.min_chars": "3",
         "emoji.shortcode": "off",
         "emoji.small_letters": "off",
         "postal.japanese": "on",

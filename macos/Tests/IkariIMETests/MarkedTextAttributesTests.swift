@@ -37,6 +37,33 @@ private func marked(
         #expect([0, 2, 3, 5].map { clause(text, at: $0) } == [0, 0, 1, 1])
     }
 
+    @Test func deleteTargetStrikesOnlyTheFocusedSegment() {
+        var input = marked(text: "初めて知った", segments: [3, 3], focused: 1)
+        input.deleteTarget = true
+        let text = MarkedTextAttributes.attributedString(for: input)
+        func strike(_ index: Int) -> Int? { text.attribute(.strikethroughStyle, at: index, effectiveRange: nil) as? Int }
+        func background(_ index: Int) -> NSColor? { text.attribute(.backgroundColor, at: index, effectiveRange: nil) as? NSColor }
+        #expect([0, 2].map { strike($0) } == [nil, nil])
+        #expect([3, 5].map { strike($0) } == [NSUnderlineStyle.single.rawValue, NSUnderlineStyle.single.rawValue])
+        #expect(background(0) == nil)
+        #expect(background(4) == MarkedTextAttributes.deleteTargetBackground)
+        // 下線は今のまま（フォーカスは太い）
+        #expect(style(text, at: 4) == NSUnderlineStyle.thick.rawValue)
+    }
+
+    @Test func withoutDeleteTargetThereIsNoStrikethrough() {
+        let text = MarkedTextAttributes.attributedString(for: marked(text: "初めて知った", segments: [3, 3], focused: 1))
+        #expect(text.attribute(.strikethroughStyle, at: 4, effectiveRange: nil) == nil)
+        #expect(text.attribute(.backgroundColor, at: 4, effectiveRange: nil) == nil)
+    }
+
+    @Test func deleteTargetWithoutSegmentsMarksTheWholeText() {
+        var input = marked(text: "ひんし")
+        input.deleteTarget = true
+        let text = MarkedTextAttributes.attributedString(for: input)
+        #expect(text.attribute(.strikethroughStyle, at: 2, effectiveRange: nil) != nil)
+    }
+
     @Test func segmentLengthsAreUtf16UnitsSoAnEmojiIsTwoUnits() {
         let text = MarkedTextAttributes.attributedString(for: marked(text: "😀知った", segments: [2, 3], focused: 1))
         #expect(style(text, at: 1) == NSUnderlineStyle.single.rawValue)
