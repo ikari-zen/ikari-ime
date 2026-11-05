@@ -188,19 +188,6 @@ impl Conversion {
         }
         self.add_english_replacements(&mut pool);
         self.rank_and_append(pool);
-        self.rescue_generated_kana();
-    }
-
-    /// ADR 0052: 並べ終えた最初のプール（`generated`）に、読みそのままのかなの救済をかける
-    pub(super) fn rescue_generated_kana(&mut self) {
-        let hiragana = self.lattice.key().to_owned();
-        let katakana = hiragana_to_katakana(&hiragana);
-        rescue_reading_kana(
-            &mut self.generated,
-            &hiragana,
-            &katakana,
-            self.opts.kana_rescue_rank,
-        );
     }
 
     /// ADR 0048 §3 の規則で予約枠の候補を作る。`pool` は A* から取った候補だけ。
@@ -462,52 +449,6 @@ impl Conversion {
         self.ranker.rank(&input, &mut chunk);
         chunk.sort_by_key(|c| c.score);
         self.generated.append(&mut chunk);
-    }
-}
-
-/// ADR 0052 §3.1: 読みそのままの平仮名・片仮名が `limit` 位（1 始まり）より後ろにあるときだけ、
-/// `limit - k + 1`〜`limit` 位（k = 後ろにあった件数）へ相対順のまま差し込む。
-/// `limit` 位以内のかなは動かさない。押し出された候補は消えず後ろへずれる。score は書き換えない。冪等。
-/// `limit` = 0 なら何もしない
-pub(super) fn rescue_reading_kana(
-    cands: &mut Vec<Candidate>,
-    hiragana: &str,
-    katakana: &str,
-    limit: usize,
-) {
-    if limit == 0 {
-        return;
-    }
-    let is_target = |c: &Candidate| c.surface == hiragana || c.surface == katakana;
-    let mut behind = Vec::new();
-    let mut i = limit;
-    while i < cands.len() {
-        if is_target(&cands[i]) {
-            behind.push(cands.remove(i));
-        } else {
-            i += 1;
-        }
-    }
-    if behind.is_empty() {
-        return;
-    }
-    // 範囲内の最後の位置に対象がいるとき（k = 1）は、その対象を `limit` 位に残したまま、
-    // 後ろにあった方を `limit - 1` 位に入れる（範囲内の対象を押し出さない）
-    let window_start = limit.saturating_sub(behind.len()).min(cands.len());
-    let mut kept = Vec::new();
-    let mut i = window_start;
-    while i < cands.len().min(limit) {
-        if is_target(&cands[i]) {
-            kept.push(cands.remove(i));
-        } else {
-            i += 1;
-        }
-    }
-    let at = limit
-        .saturating_sub(behind.len() + kept.len())
-        .min(cands.len());
-    for (offset, c) in behind.into_iter().chain(kept).enumerate() {
-        cands.insert(at + offset, c);
     }
 }
 
