@@ -97,7 +97,11 @@ fn steps(root: &Path, plan: &Plan) -> Result<(), Failure> {
     docs::leaks(root)?;
     docs::adr_status(root)?;
     docs::shell_syntax(root)?;
-    for script in ["scripts/test-diag-report.sh", "scripts/test-hooks.sh"] {
+    for script in [
+        "scripts/test-diag-report.sh",
+        "scripts/test-hooks.sh",
+        "scripts/test-clean.sh",
+    ] {
         docs::run_script(root, script)?;
     }
     if plan.docs_only {
