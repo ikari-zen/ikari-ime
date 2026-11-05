@@ -44,6 +44,7 @@
 scripts/setup.sh --signing team          # 辞書のビルド → データの配置 → アプリのビルドとインストール → smoke
 scripts/check.sh                         # fmt、clippy、cargo test、swift test、文書のリンク（コミット前に必ず通す）
 scripts/check.sh --real --perf           # 実辞書・実モデルのテストと性能（data/ が要る）
+scripts/clean.sh                         # 使っていないブランチ、worktree、成果物の一覧（dry-run）。--apply で消す。--branches --remote --worktrees --artifacts で絞る
 macos/scripts/build.sh --signing team --release   # アプリのビルドと署名（インストールはしない）
 cargo run --release -p ikari-eval -- --ranker full --set eval/sets/homophones-ext.tsv   # 評価
 cargo xtask cov                          # テストの行カバレッジ（cargo-llvm-cov が要る）。--group conversion、--lm、--real、--out eval/reports/coverage-日付.md。check.sh には入れない
