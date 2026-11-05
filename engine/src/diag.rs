@@ -272,42 +272,6 @@ impl Inner {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn app_word_checks_charset_and_length() {
-        assert_eq!(app_word("com.microsoft.VSCode"), "com.microsoft.VSCode");
-        assert_eq!(app_word("net.my-app.X1"), "net.my-app.X1");
-        assert_eq!(app_word(""), "none");
-        assert_eq!(app_word("com.example.あ"), "invalid");
-        assert_eq!(app_word("a b"), "invalid");
-        assert_eq!(app_word("a=b"), "invalid");
-        assert_eq!(
-            app_word(&"a".repeat(MAX_BUNDLE_ID_BYTES)),
-            "a".repeat(MAX_BUNDLE_ID_BYTES)
-        );
-        assert_eq!(app_word(&"a".repeat(MAX_BUNDLE_ID_BYTES + 1)), "invalid");
-    }
-
-    #[test]
-    fn rewriter_note_lists_unique_names_in_order() {
-        let r = |name| CandidateOrigin::Rewriter { name, format: 0 };
-        let origins = [
-            CandidateOrigin::Dictionary,
-            r("postal"),
-            r("date"),
-            r("postal"),
-        ];
-        assert_eq!(
-            rewriter_note(origins.iter()).as_deref(),
-            Some("rw=postal,date")
-        );
-        assert_eq!(rewriter_note([CandidateOrigin::Katakana].iter()), None);
-    }
-}
-
 // ---- panic の記録（ADR 0051 §5.1、§5.3）
 
 /// panic の行を書く先（今のエンジンのログ）。エンジンを開き直しても hook は 1 つなので、差し替えられる場所を通す。
@@ -368,4 +332,40 @@ pub fn install_crash_handlers() {
         ikari_runmark::install_signal_handlers();
         ikari_runmark::install_panic_hook(Box::new(record_panic));
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn app_word_checks_charset_and_length() {
+        assert_eq!(app_word("com.microsoft.VSCode"), "com.microsoft.VSCode");
+        assert_eq!(app_word("net.my-app.X1"), "net.my-app.X1");
+        assert_eq!(app_word(""), "none");
+        assert_eq!(app_word("com.example.あ"), "invalid");
+        assert_eq!(app_word("a b"), "invalid");
+        assert_eq!(app_word("a=b"), "invalid");
+        assert_eq!(
+            app_word(&"a".repeat(MAX_BUNDLE_ID_BYTES)),
+            "a".repeat(MAX_BUNDLE_ID_BYTES)
+        );
+        assert_eq!(app_word(&"a".repeat(MAX_BUNDLE_ID_BYTES + 1)), "invalid");
+    }
+
+    #[test]
+    fn rewriter_note_lists_unique_names_in_order() {
+        let r = |name| CandidateOrigin::Rewriter { name, format: 0 };
+        let origins = [
+            CandidateOrigin::Dictionary,
+            r("postal"),
+            r("date"),
+            r("postal"),
+        ];
+        assert_eq!(
+            rewriter_note(origins.iter()).as_deref(),
+            Some("rw=postal,date")
+        );
+        assert_eq!(rewriter_note([CandidateOrigin::Katakana].iter()), None);
+    }
 }
