@@ -1,6 +1,6 @@
 # ADR 0052: 読みそのままの平仮名と片仮名を、並べ替えのあとで 30 位以内に引き上げる（救済）
 
-- 状態: 提案
+- 状態: 採用（2026-11-05 ユーザー決定。§の「ユーザーに聞くこと」3 点はすべて推奨どおり。実装までリードに任せる）
 - 日付: 2026-11-05
 - 対象: `core/src/converter/conversion.rs`（最初のプールの並べ替えのあと）、`core/src/converter/segment.rs`（`pin_first` のあと）、`core/src/converter/options.rs`（上限の項目と `--ranker-config` の入口）、`core/src/converter/tests.rs`、`core/src/converter/segment_tests.rs`、`eval/sets/kana-rescue.tsv`（新規）、`eval/scripts/snapshot.sh`（セットを足すだけ）。Ranker（`lm/`、学習）、辞書、ラティス、shell-core、Swift は変えない
 - 前提: main = dfc32fb。ADR 0048 §2-2・§4・§7（プールの並びと LM の採点上限、かなの固定 2 件）、ADR 0037 §11・§12（K1 を採らなかった経緯）
