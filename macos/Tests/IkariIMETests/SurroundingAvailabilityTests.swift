@@ -49,6 +49,17 @@ import Testing
         #expect(client.insertCalls.first?.range == NSRange(location: 3, length: 2))
     }
 
+    @Test func deleteTextFallsBackWhenTheAppIgnoresTheReplacementRange() {
+        // 範囲を無視するアプリ（TextEdit）。文書の長さが減らないので、空の変換中の文字列で置き換えて確定する
+        let client = FakeTextClient(document: "今日は晴れ")
+        client.ignoresInsertReplacementRange = true
+        var range = Ikari_Shell_V1_Utf16Range()
+        range.location = 3
+        range.length = 2
+        ClientAccess(client: client).deleteText(range)
+        #expect(client.document == "今日は")
+    }
+
     @Test func surroundingTextReturnsTheLeftText() {
         let client = FakeTextClient(document: "あいう")
         client.selected = NSRange(location: 2, length: 0)
