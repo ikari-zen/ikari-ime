@@ -1,6 +1,6 @@
 # ADR 0053: 文節削除の「元に戻す」（ikari が覚えて書き戻す。既定 Ctrl+Z）と、英語のモードでの文節削除
 
-- 状態: 採用（「元に戻す」を ikari に足すこと、既定のキー Ctrl+Z、削除の直後だけ受け取ること、キーを設定で変えられること、範囲は文節削除だけ: 2026-11-06 ユーザー決定）。**§10 の Q1〜Q3 は提案**（英語のモードでの文節削除、変換中の取り消し、英字の直前での素通し）
+- 状態: 採用（「元に戻す」を ikari に足すこと、既定のキー Ctrl+Z、削除の直後だけ受け取ること、キーを設定で変えられること、範囲は文節削除だけ: 2026-11-06 ユーザー決定）。§10 の Q1〜Q3（英語のモードでの文節削除、変換中の取り消し、英字の直前での素通し）も、2026-11-06 にユーザーが推奨どおりに決定
 - 日付: 2026-11-06
 - 対象: shell-core（`keymap.rs`、`machine/clause_delete.rs`、`machine/mod.rs`、`controller/mod.rs` の英語のモードの口、`scenarios/clause-undo.json`）、プリセットの TSV 3 つ、Swift の `allCases`（設定画面の並び）、`docs/phase2-contract.md` §4。proto と engine と core は変えない
 - 前提: origin/feat/clause-delete = 0fae486（PR #199）。ADR 0050（文節ごとの削除）、ADR 0026（英語のモード）、ADR 0041（shell-core の契約）、ADR 0042（判断は Rust）
