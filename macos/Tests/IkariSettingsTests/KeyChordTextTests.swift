@@ -73,11 +73,17 @@ private func readsBack(_ chord: KeyChord) -> Bool {
             KeyChordText.record(keyCode: KeyEvents.returnKey, charactersIgnoringModifiers: "\r", modifiers: .control)
                 == .rejected(.unsupportedKey))
         #expect(
-            KeyChordText.record(keyCode: KeyEvents.delete, charactersIgnoringModifiers: "\u{7F}", modifiers: .control)
-                == .rejected(.unsupportedKey))
-        #expect(
             KeyChordText.record(keyCode: KeyEvents.escape, charactersIgnoringModifiers: "\u{1B}", modifiers: .control)
                 == .rejected(.unsupportedKey))
+    }
+
+    @Test func deleteNeedsAModifierToBeBound() {
+        #expect(
+            KeyChordText.record(keyCode: KeyEvents.delete, charactersIgnoringModifiers: "\u{7F}", modifiers: .control)
+                == .chord(KeyChord(key: "backspace", modifiers: .control)))
+        #expect(
+            KeyChordText.record(keyCode: KeyEvents.delete, charactersIgnoringModifiers: "\u{7F}", modifiers: [])
+                == .rejected(.needsModifier))
     }
 
     @Test func displaysArrowsAsSymbolsWithModifiers() {
