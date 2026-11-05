@@ -20,6 +20,8 @@ pub(crate) struct KindSpec {
     pub kind: &'static str,
     pub num_keys: &'static [&'static str],
     pub tags: &'static [TagSpec],
+    /// 一覧にできないタグ（panic の場所）のキー。値は `loc_or_external` を通す（ADR 0051 §5.2）
+    pub loc_key: Option<&'static str>,
 }
 
 impl KindSpec {
@@ -40,6 +42,13 @@ impl KindSpec {
 pub(crate) const KIND_SH_EPISODE: &str = "sh_episode";
 pub(crate) const KIND_SH_MODE: &str = "sh_mode";
 pub(crate) const KIND_SH_ENGINE: &str = "sh_engine";
+pub(crate) const KIND_SH_PREV_EXIT: &str = "sh_prev_exit";
+pub(crate) const KIND_SH_PANIC: &str = "sh_panic";
+
+/// 場所の値に置き換える語（形が外れたとき。行は捨てない。ADR 0051 §5.2）
+pub(crate) const LOC_EXTERNAL: &str = "external";
+/// 場所の最大バイト数（ADR 0051 §5.2）
+pub(crate) const MAX_LOC_BYTES: usize = 96;
 
 const MODES: &[&str] = &["romaji", "kana", "shortcode_en", "shortcode_ja"];
 const STARTS: &[&str] = &["typing", "reconvert"];
@@ -88,6 +97,10 @@ const CTXS: &[&str] = &["ok", "none"];
 const LANGS: &[&str] = &["ja", "en"];
 // `key` = ikari のキー割り当て（`mode.*`）、`os` = macOS 経由（入力メニュー、英数・かなキーなど。通知の時点では区別できない）
 const VIAS: &[&str] = &["key", "os"];
+// 前回の終わり方（`runmark::Exit` の語と 1 対 1。ADR 0051 §4.1）
+const EXITS: &[&str] = &["clean", "term", "crash", "unknown"];
+// panic のあったスレッド（殻は要求を処理する主スレッドか、それ以外）
+const PANIC_THREADS: &[&str] = &["main", "other"];
 
 pub(crate) const SCHEMA: &[KindSpec] = &[
     KindSpec {
@@ -142,6 +155,7 @@ pub(crate) const SCHEMA: &[KindSpec] = &[
                 values: CTXS,
             },
         ],
+        loc_key: None,
     },
     KindSpec {
         kind: KIND_SH_MODE,
@@ -160,6 +174,7 @@ pub(crate) const SCHEMA: &[KindSpec] = &[
                 values: VIAS,
             },
         ],
+        loc_key: None,
     },
     KindSpec {
         kind: KIND_SH_ENGINE,
@@ -173,8 +188,52 @@ pub(crate) const SCHEMA: &[KindSpec] = &[
             "resync",
         ],
         tags: &[],
+        loc_key: None,
+    },
+    KindSpec {
+        kind: KIND_SH_PREV_EXIT,
+        num_keys: &["sig", "up_s"],
+        tags: &[TagSpec {
+            key: "exit",
+            values: EXITS,
+        }],
+        loc_key: None,
+    },
+    KindSpec {
+        kind: KIND_SH_PANIC,
+        num_keys: &["n"],
+        tags: &[TagSpec {
+            key: "thread",
+            values: PANIC_THREADS,
+        }],
+        loc_key: Some("loc"),
     },
 ];
+
+/// panic の場所の形の検査。`[A-Za-z0-9_/.-]+\.rs:[0-9]+` で 96 バイトまで、`/` で始まらず、`..` を含まない。
+/// 外れたら `LOC_EXTERNAL`（ホームのパスなどを書かないための最後の守り。ADR 0051 §5.3）
+pub(crate) fn loc_or_external(loc: &str) -> &str {
+    if is_well_formed_loc(loc) {
+        loc
+    } else {
+        LOC_EXTERNAL
+    }
+}
+
+fn is_well_formed_loc(loc: &str) -> bool {
+    if loc.len() > MAX_LOC_BYTES || loc.starts_with('/') || loc.contains("..") {
+        return false;
+    }
+    let Some((path, line)) = loc.rsplit_once(".rs:") else {
+        return false;
+    };
+    !path.is_empty()
+        && path
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'/' | b'.' | b'-'))
+        && !line.is_empty()
+        && line.bytes().all(|b| b.is_ascii_digit())
+}
 
 /// kind の許可。なければ None（行ごと捨てて `diag_reject` を数える）
 pub(crate) fn spec_for(kind: &str) -> Option<&'static KindSpec> {
@@ -257,6 +316,15 @@ pub(crate) fn validate(event: &pb::DiagEvent) -> Result<Accepted, Rejected> {
         parts.push(format!("{key}={}", n.value));
     }
     for t in &event.tags {
+        if let Some(loc_key) = spec.loc_key.filter(|k| *k == t.key) {
+            // 場所は一覧にできない。形を検査して、外れたら `external` に置き換える（行は捨てない）
+            if seen.contains(&loc_key) {
+                return reject(RejectReason::DupKey, kind);
+            }
+            seen.push(loc_key);
+            parts.push(format!("{loc_key}={}", loc_or_external(&t.value)));
+            continue;
+        }
         if t.key.len() > MAX_VALUE_BYTES || t.value.len() > MAX_VALUE_BYTES {
             return reject(RejectReason::TooLong, kind);
         }
@@ -374,7 +442,13 @@ mod tests {
     fn kinds_are_unique_and_found() {
         let kinds: HashSet<_> = SCHEMA.iter().map(|s| s.kind).collect();
         assert_eq!(kinds.len(), SCHEMA.len());
-        for k in [KIND_SH_EPISODE, KIND_SH_MODE, KIND_SH_ENGINE] {
+        for k in [
+            KIND_SH_EPISODE,
+            KIND_SH_MODE,
+            KIND_SH_ENGINE,
+            KIND_SH_PREV_EXIT,
+            KIND_SH_PANIC,
+        ] {
             assert!(spec_for(k).is_some(), "{k}");
         }
         assert!(spec_for("convert").is_none());
@@ -386,6 +460,9 @@ mod tests {
         for s in SCHEMA {
             assert!(is_word(s.kind), "{}", s.kind);
             for k in s.num_keys {
+                assert!(is_word(k), "{k}");
+            }
+            if let Some(k) = s.loc_key {
                 assert!(is_word(k), "{k}");
             }
             for t in s.tags {
@@ -412,6 +489,89 @@ mod tests {
                 assert_eq!(vals.len(), t.values.len(), "{}.{}", s.kind, t.key);
             }
         }
+    }
+
+    #[test]
+    fn prev_exit_and_panic_events_are_accepted_with_listed_values() {
+        let ok = validate(&event(
+            "sh_prev_exit",
+            &[("sig", 11), ("up_s", 5310)],
+            &[("exit", "crash")],
+        ))
+        .unwrap();
+        assert_eq!(ok.note, "sig=11 up_s=5310 exit=crash");
+        let ok = validate(&event(
+            "sh_panic",
+            &[("n", 2)],
+            &[("loc", "shell-core/src/lib.rs:42"), ("thread", "main")],
+        ))
+        .unwrap();
+        assert_eq!(ok.note, "n=2 loc=shell-core/src/lib.rs:42 thread=main");
+    }
+
+    #[test]
+    fn prev_exit_and_panic_reject_words_outside_the_list() {
+        assert_eq!(
+            reason(&event("sh_prev_exit", &[], &[("exit", "explode")])),
+            RejectReason::TagValue
+        );
+        assert_eq!(
+            reason(&event("sh_prev_exit", &[], &[("exit", "こんにちは")])),
+            RejectReason::TagValue
+        );
+        assert_eq!(
+            reason(&event("sh_panic", &[], &[("thread", "ikari-log")])),
+            RejectReason::TagValue
+        );
+        assert_eq!(
+            reason(&event("sh_panic", &[("reading", 1)], &[])),
+            RejectReason::NumKey
+        );
+        // loc は sh_panic だけのキー
+        assert_eq!(
+            reason(&event("sh_prev_exit", &[], &[("loc", "a.rs:1")])),
+            RejectReason::TagKey
+        );
+        assert_eq!(
+            reason(&event(
+                "sh_panic",
+                &[],
+                &[("loc", "a.rs:1"), ("loc", "b.rs:2")]
+            )),
+            RejectReason::DupKey
+        );
+    }
+
+    #[test]
+    fn panic_loc_with_a_bad_shape_is_replaced_with_external() {
+        let note = |loc: &str| {
+            validate(&event("sh_panic", &[], &[("loc", loc)]))
+                .unwrap()
+                .note
+        };
+        assert_eq!(note("engine/src/lib.rs:477"), "loc=engine/src/lib.rs:477");
+        for bad in [
+            "/Users/someone/.cargo/registry/src/x/lib.rs:1",
+            "/rustc/abc/library/core/src/option.rs:1",
+            "../secret.rs:1",
+            "a/../b.rs:1",
+            "engine/src/lib.rs",
+            "engine/src/lib.rs:",
+            "engine/src/lib.rs:x",
+            "engine/src/lib.txt:1",
+            "エンジン/lib.rs:1",
+            ".rs:1",
+            "a b.rs:1",
+            "",
+        ] {
+            assert_eq!(note(bad), "loc=external", "{bad:?}");
+        }
+        let long = format!("{}.rs:1", "a".repeat(MAX_LOC_BYTES));
+        assert_eq!(note(&long), "loc=external");
+        // 上限ちょうどは残る
+        let edge = format!("{}.rs:1", "a".repeat(MAX_LOC_BYTES - ".rs:1".len()));
+        assert_eq!(edge.len(), MAX_LOC_BYTES);
+        assert_eq!(note(&edge), format!("loc={edge}"));
     }
 
     #[test]

@@ -79,6 +79,7 @@ typedef struct {
     IkariStr shell_version;  // 殻の版（エンジンとの hello の照合）
     IkariStr settings_path;  // settings.tsv の絶対パス。空なら既定値だけで動かす（テスト用）
     IkariStr resources_dir;  // 同梱の資源の置き場所（.app の Resources）
+    IkariStr diag_dir;       // 診断ログのディレクトリ（<UserDir>/logs）。起動中の印 shell.run を置く。空なら印もシグナルの処理も持たない（ADR 0051）
 } IkariShellConfig;
 
 // ホストの口（§4.3、§4.4）。ctx はすべてのコールバックの第 1 引数にそのまま渡る。
@@ -120,6 +121,10 @@ int32_t ikari_shell_dispatch(IkariShell *s, IkariStr event, IkariShellBuf *actio
 // エンジンへの接続 generation（engine_connect が返した番号）が落ちた。**どのスレッドからでも呼べる**。
 // 古い接続の通知、解放ずみの shell、範囲外の kind は無視する。
 void ikari_shell_engine_down(IkariShell *s, uint64_t generation, uint8_t kind);
+
+// 殻が正常に終わる（applicationWillTerminate）ことを印に残す（ADR 0051。exit=clean）。1 回呼べばよい。
+// NULL、解放ずみ、diag_dir が空の shell には何もしない。ikari_shell_free の前に呼ぶ。
+void ikari_shell_note_exit(IkariShell *s);
 
 // NULL、解放ずみは何もしない（二重の free は安全）。コールバックの中から呼んでもよい（dispatch が返ってから片付ける）。
 void ikari_shell_free(IkariShell *s);

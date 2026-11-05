@@ -89,6 +89,7 @@ fn config() -> IkariShellConfig {
         shell_version: IkariStr::of("0.1.0-test"),
         settings_path: IkariStr::EMPTY,
         resources_dir: IkariStr::EMPTY,
+        diag_dir: IkariStr::EMPTY,
     }
 }
 

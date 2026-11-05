@@ -28,6 +28,8 @@ mod counts;
 mod gate;
 
 #[cfg(test)]
+mod crash_record;
+#[cfg(test)]
 mod tests;
 
 pub use admin::EngineAdmin;
