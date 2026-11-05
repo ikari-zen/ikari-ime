@@ -34,6 +34,7 @@ mod classify;
 mod collect;
 mod lex;
 mod rules;
+mod sqldump;
 mod types;
 
 pub use classify::{ClassifyConfig, classify};
