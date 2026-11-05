@@ -7,7 +7,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 use std::slice;
 
-use ikari_engine::{Engine, EngineConfig, EngineError, error_envelope};
+use ikari_engine::{Engine, EngineConfig, EngineError, error_envelope, install_crash_handlers};
 use ikari_proto::SCHEMA_VERSION;
 use ikari_proto::v1::{ErrorCode, ErrorReply};
 use prost::Message;
@@ -68,7 +68,11 @@ pub unsafe extern "C" fn ikari_engine_open(
         let cfg = EngineConfig::decode(raw)
             .map_err(|_| error_reply(ErrorCode::BadRequest, "invalid EngineConfig"))?;
         Engine::open(&cfg)
-            .map(|engine| Box::into_raw(Box::new(IkariEngine { engine })))
+            .map(|engine| {
+                // プロセスの入口で 1 回だけ（2 回目以降は何もしない。ADR 0051 §3.4）
+                install_crash_handlers();
+                Box::into_raw(Box::new(IkariEngine { engine }))
+            })
             .map_err(|e| match e {
                 EngineError::Config(_) => {
                     error_reply(ErrorCode::BadRequest, "invalid engine config")

@@ -45,11 +45,6 @@ pub(crate) const KIND_SH_ENGINE: &str = "sh_engine";
 pub(crate) const KIND_SH_PREV_EXIT: &str = "sh_prev_exit";
 pub(crate) const KIND_SH_PANIC: &str = "sh_panic";
 
-/// 場所の値に置き換える語（形が外れたとき。行は捨てない。ADR 0051 §5.2）
-pub(crate) const LOC_EXTERNAL: &str = "external";
-/// 場所の最大バイト数（ADR 0051 §5.2）
-pub(crate) const MAX_LOC_BYTES: usize = 96;
-
 const MODES: &[&str] = &["romaji", "kana", "shortcode_en", "shortcode_ja"];
 const STARTS: &[&str] = &["typing", "reconvert"];
 const ENDS: &[&str] = &[
@@ -210,29 +205,10 @@ pub(crate) const SCHEMA: &[KindSpec] = &[
     },
 ];
 
-/// panic の場所の形の検査。`[A-Za-z0-9_/.-]+\.rs:[0-9]+` で 96 バイトまで、`/` で始まらず、`..` を含まない。
-/// 外れたら `LOC_EXTERNAL`（ホームのパスなどを書かないための最後の守り。ADR 0051 §5.3）
+/// panic の場所の形の検査（`runmark::sanitize_location` に一本化。ADR 0051 §5.3）。
+/// 外れたら `external` に置き換える（行は捨てない。ホームのパスなどを書かないための最後の守り）
 pub(crate) fn loc_or_external(loc: &str) -> &str {
-    if is_well_formed_loc(loc) {
-        loc
-    } else {
-        LOC_EXTERNAL
-    }
-}
-
-fn is_well_formed_loc(loc: &str) -> bool {
-    if loc.len() > MAX_LOC_BYTES || loc.starts_with('/') || loc.contains("..") {
-        return false;
-    }
-    let Some((path, line)) = loc.rsplit_once(".rs:") else {
-        return false;
-    };
-    !path.is_empty()
-        && path
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'/' | b'.' | b'-'))
-        && !line.is_empty()
-        && line.bytes().all(|b| b.is_ascii_digit())
+    ikari_runmark::sanitize_location(loc)
 }
 
 /// kind の許可。なければ None（行ごと捨てて `diag_reject` を数える）
@@ -566,11 +542,14 @@ mod tests {
         ] {
             assert_eq!(note(bad), "loc=external", "{bad:?}");
         }
-        let long = format!("{}.rs:1", "a".repeat(MAX_LOC_BYTES));
+        let long = format!("{}.rs:1", "a".repeat(ikari_runmark::MAX_LOCATION_BYTES));
         assert_eq!(note(&long), "loc=external");
         // 上限ちょうどは残る
-        let edge = format!("{}.rs:1", "a".repeat(MAX_LOC_BYTES - ".rs:1".len()));
-        assert_eq!(edge.len(), MAX_LOC_BYTES);
+        let edge = format!(
+            "{}.rs:1",
+            "a".repeat(ikari_runmark::MAX_LOCATION_BYTES - ".rs:1".len())
+        );
+        assert_eq!(edge.len(), ikari_runmark::MAX_LOCATION_BYTES);
         assert_eq!(note(&edge), format!("loc={edge}"));
     }
 

@@ -6,5 +6,9 @@ license.workspace = true
 
 [dependencies]
 
+# シグナルの処理（sigaction、write、raise。ADR 0051 §4.2）。unsafe は src/signal.rs に閉じる
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 tempfile.workspace = true

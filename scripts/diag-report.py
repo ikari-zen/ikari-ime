@@ -10,8 +10,12 @@ Python 3 の標準ライブラリだけ。`python3 -I scripts/diag-report.py` �
   scripts/diag-report.py --tsv DIR                # TSV（節名 TAB 項目 …）
   scripts/diag-report.py --since 2026-10-20 DIR   # UTC の日付で絞る
   scripts/diag-report.py --include-smoke DIR      # smoke のセッションも数える（既定は除く）
+  scripts/diag-report.py --diag-reports ~/Library/Logs/DiagnosticReports DIR
+      # exit=crash の時刻の前後にある ikari のクラッシュレポートの「ファイル名」を並べる。中身は読まない（ADR 0051 §5.4）
   scripts/diag-report.py ~/Library/Application\\ Support/ikari-ime/logs   # 手元のログ（読み取りだけ）
 
+異常終了の行（ADR 0051 §5）: エンジンの `prev_exit exit=clean|term|crash|unknown [sig=N] [up_s=N]` と `panic thread=… loc=…`、
+殻の `sh_prev_exit`（exit/sig/up_s）と `sh_panic`（n/loc/thread）。
 行の形: `{UTCミリ秒} {kind} {所要}us lm={状態} err={種類} k=v k=v …`
 知らない kind とキーは無視する（古い・新しいログが混ざっても止まらない）。
 """
@@ -47,6 +51,21 @@ GAP_LAST = "10 分以上"
 GAP_NONE = "なし"
 APP_UNKNOWN = "(不明)"  # begin_session に結べない行（ログの先頭が欠けた、secure、古い版の行）
 BURST_GAP_MS = 5_000  # この間隔より空いたら別のかたまり
+# 異常終了（ADR 0051）
+EXIT_KINDS = ("clean", "term", "crash", "unknown")
+EXIT_CRASH = "crash"
+EXIT_UNKNOWN = "unknown"
+OWNER_ENGINE, OWNER_SHELL = "エンジン", "殻"
+OWNERS = (OWNER_ENGINE, OWNER_SHELL)
+EXIT_KIND_OWNER = {"prev_exit": OWNER_ENGINE, "sh_prev_exit": OWNER_SHELL}
+PANIC_KIND_OWNER = {"panic": OWNER_ENGINE, "sh_panic": OWNER_SHELL}
+LOC_NONE = "(なし)"
+APP_BEFORE_NONE = "(直前の convert なし)"
+NEAR_MS = 120_000  # exit=crash の行の時刻の前後（ADR 0051 §5.4）。unknown の並びにも同じ幅を使う
+# DiagnosticReports のファイル名。エンジンは IkariEngine-、殻は ikari-。時刻は名前の中のローカル時刻
+REPORT_PREFIXES = (("IkariEngine-", OWNER_ENGINE), ("ikari-", OWNER_SHELL))
+REPORT_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]*-(\d{4}-\d{2}-\d{2}-\d{6})(?:-\d+)?\.ips$")
+REPORT_TIME_FORMAT = "%Y-%m-%d-%H%M%S"
 
 
 class Event:
@@ -483,6 +502,86 @@ def section_app_miss(events):
     return ("アプリ別の convert と miss=context", ("app", "convert", "miss=context", "率", "lm_applied=0", "率"), rows)
 
 
+def section_abnormal_exit(events):
+    """異常終了（ADR 0051）。exit の内訳と日ごと、crash の直前の convert の app=、panic の loc。"""
+    rows = []
+    exits = [(EXIT_KIND_OWNER[e.kind], e) for e in events if e.kind in EXIT_KIND_OWNER]
+    for owner in OWNERS:
+        mine = [e for o, e in exits if o == owner]
+        rows.append((f"{owner}の前回の終わり方の記録", len(mine)))
+        by_exit = collections.Counter(e.kv.get("exit", EXIT_UNKNOWN) for e in mine)
+        for x in EXIT_KINDS:
+            rows.append((f"{owner} exit={x}", by_exit.get(x, 0)))
+        for x in sorted(set(by_exit) - set(EXIT_KINDS)):
+            rows.append((f"{owner} exit={x}（知らない語）", by_exit[x]))
+        sigs = collections.Counter(e.kv["sig"] for e in mine if "sig" in e.kv)
+        for sig, n in sorted(sigs.items(), key=lambda kv: (-kv[1], kv[0])):
+            rows.append((f"{owner} sig={sig}", n))
+        per_day = collections.Counter((day_of(e.ms), e.kv.get("exit", EXIT_UNKNOWN)) for e in mine)
+        for (day, x), n in sorted(per_day.items()):
+            rows.append((f"{owner} {day} exit={x}", n))
+    # crash の直前の convert の app=（その行の時刻より前で最後の convert）
+    convs = [e for e in events if e.kind == "convert"]
+    conv_times = [e.ms for e in convs]
+    for owner in OWNERS:
+        apps = collections.Counter()
+        for o, e in exits:
+            if o != owner or e.kv.get("exit") != EXIT_CRASH:
+                continue
+            i = bisect.bisect_left(conv_times, e.ms)
+            apps[(convs[i - 1].app or APP_UNKNOWN) if i else APP_BEFORE_NONE] += 1
+        for app, n in sorted(apps.items(), key=lambda kv: (-kv[1], kv[0])):
+            rows.append((f"{owner} exit=crash の直前の convert app={app}", n))
+    # エンジンと殻の unknown が近い時刻に並んだ数（launchd がまとめて止めた、など。ADR 0051 §4.1）
+    unk = {o: [e.ms for oo, e in exits if oo == o and e.kv.get("exit") == EXIT_UNKNOWN] for o in OWNERS}
+    near = sum(1 for t in unk[OWNER_ENGINE] if any(abs(t - u) <= NEAR_MS for u in unk[OWNER_SHELL]))
+    rows.append(("エンジンの exit=unknown のうち、殻の exit=unknown が 2 分以内にあるもの", near))
+    # panic の loc（殻の sh_panic は n 回分）
+    for kind, owner in PANIC_KIND_OWNER.items():
+        mine = [e for e in events if e.kind == kind]
+        locs = collections.Counter()
+        for e in mine:
+            locs[e.kv.get("loc", LOC_NONE)] += e.num("n", 1) if kind == "sh_panic" else 1
+        rows.append((f"{owner} {kind} 合計", sum(locs.values())))
+        for loc, n in sorted(locs.items(), key=lambda kv: (-kv[1], kv[0])):
+            rows.append((f"{owner} {kind} loc={loc}", n))
+    return ("異常終了", ("項目", "件数"), rows)
+
+
+def list_crash_reports(directory):
+    """DiagnosticReports のファイル名だけを読む。[(UTC ms, 名前, 所有者)]。ファイルの中身は開かない。"""
+    reports = []
+    for name in sorted(os.listdir(directory)):
+        m = REPORT_NAME.match(name)
+        owner = next((o for prefix, o in REPORT_PREFIXES if name.startswith(prefix)), None)
+        if not m or owner is None:
+            continue
+        try:
+            local = datetime.datetime.strptime(m.group(1), REPORT_TIME_FORMAT)
+        except ValueError:
+            continue
+        reports.append((int(local.timestamp() * 1000), name, owner))  # 名前の時刻はローカル時刻
+    return reports
+
+
+def section_crash_reports(events, reports):
+    """exit=crash の行と、ikari のクラッシュレポートのファイル名を時刻で突き合わせる。"""
+    rows, matched = [], set()
+    for e in events:
+        owner = EXIT_KIND_OWNER.get(e.kind)
+        if owner is None or e.kv.get("exit") != EXIT_CRASH:
+            continue
+        near = [r for r in reports if r[2] == owner and abs(r[0] - e.ms) <= NEAR_MS]
+        matched.update(r[1] for r in near)
+        when = datetime.datetime.fromtimestamp(e.ms // 1000, datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        rows.append((f"{owner} exit=crash sig={e.kv.get('sig', '-')}", when, ", ".join(r[1] for r in near) or "(該当なし)"))
+    unmatched = [r[1] for r in reports if r[1] not in matched]
+    rows.append(("ikari 関連のレポート", len(reports), ""))
+    rows.append(("うち exit=crash に添えるとよいもの", len(matched), ""))
+    rows.append(("うち対応する exit=crash がないもの", len(unmatched), ", ".join(unmatched)))
+    return ("DiagnosticReports の突き合わせ（ファイル名だけ）", ("項目", "UTC 日時 / 件数", "ファイル名"), rows)
+
+
 def section_health(events, malformed, files, info):
     rows = [
         ("読んだファイル", len(files)),
@@ -514,6 +613,8 @@ def build_report(events, malformed, files, info):
         section_trouble(events),
         section_unknown_session(events),
         section_app_miss(events),
+        section_abnormal_exit(events),
+        *([section_crash_reports(events, info["crash_reports"])] if info["crash_reports"] is not None else []),
         perf,
         cache,
         section_health(events, malformed, files, info),
@@ -555,6 +656,7 @@ def main(argv=None):
     ap.add_argument("--tsv", action="store_true", help="Markdown でなく TSV で出す")
     ap.add_argument("--since", help="この日(UTC, YYYY-MM-DD)以降")
     ap.add_argument("--include-smoke", action="store_true", help="smoke のセッションの行も数える（既定は除く）")
+    ap.add_argument("--diag-reports", metavar="DIR", help="DiagnosticReports のディレクトリ。ikari のファイル名だけを読み、exit=crash と突き合わせる")
     ap.add_argument("--until", help="この日(UTC, YYYY-MM-DD)まで（その日を含む）")
     args = ap.parse_args(argv)
 
@@ -583,7 +685,14 @@ def main(argv=None):
         "smoke_sessions": smoke_sessions,
         "smoke_lines": smoke_lines,
         "include_smoke": args.include_smoke,
+        "crash_reports": None,
     }
+    if args.diag_reports:
+        try:
+            info["crash_reports"] = list_crash_reports(args.diag_reports)
+        except OSError as err:
+            print(f"読めません: {err}", file=sys.stderr)
+            return 1
     report = build_report(events, malformed, files, info)
     sys.stdout.write(render_tsv(report) if args.tsv else render_markdown(report))
     return 0

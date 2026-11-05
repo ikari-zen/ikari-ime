@@ -1572,3 +1572,103 @@ fn postal_lookup_sends_the_code_and_decodes_the_reply() {
         vec!["東京都千代田区千代田"]
     );
 }
+
+// ---------------------------------------------------------------- 異常終了の記録（ADR 0051 §5.2）
+
+fn crashed(sig: i32) -> ikari_runmark::PrevExit {
+    ikari_runmark::PrevExit {
+        exit: ikari_runmark::Exit::Crash,
+        sig: Some(sig),
+        up_s: Some(5310),
+    }
+}
+
+fn diag_kinds(conn: &Conn) -> Vec<String> {
+    diags(conn).into_iter().map(|e| e.kind).collect()
+}
+
+#[test]
+fn a_crashed_previous_run_rides_on_the_first_non_secure_event_once() {
+    let h = Harness::new();
+    h.link.set_prev_exit(crashed(11));
+    h.link.diag(episode());
+    h.link.diag(episode());
+    let sent = diags(&h.latest());
+    let k: Vec<_> = sent.iter().map(|e| e.kind.as_str()).collect();
+    assert_eq!(k, ["sh_prev_exit", "sh_episode", "sh_episode"]);
+    assert_eq!(nums(&sent[0]), [("sig", 11), ("up_s", 5310)]);
+    assert_eq!(sent[0].tags.len(), 1);
+    assert_eq!(
+        (sent[0].tags[0].key.as_str(), sent[0].tags[0].value.as_str()),
+        ("exit", "crash")
+    );
+    assert_eq!(sent[0].session_id, 1);
+}
+
+#[test]
+fn prev_exit_is_not_sent_for_a_secure_session() {
+    // secure のセッションの事象は殻が `diag` を呼ばない（NFR-18）ので、相乗りもしない。
+    // secure のセッションを開いて閉じただけでは何も送らず、次の secure でない事象で初めて送る
+    let h = Harness::new();
+    h.link.set_prev_exit(crashed(11));
+    h.link.begin_session(session(1, "com.apple.TextEdit", true));
+    h.link.end_session(1);
+    assert!(diag_kinds(&h.latest()).is_empty());
+    h.link.diag(episode());
+    assert_eq!(diag_kinds(&h.latest()), ["sh_prev_exit", "sh_episode"]);
+}
+
+#[test]
+fn prev_exit_is_carried_over_when_the_send_fails() {
+    let h = Harness::new();
+    h.link.convert(sample_request(), SEC).unwrap();
+    h.link.set_prev_exit(crashed(11));
+    for _ in 0..3 {
+        h.down(DownKind::Interrupted);
+        h.advance(Duration::from_secs(10));
+    }
+    // 休んでいる間は送れない
+    h.link.diag(episode());
+    assert!(diag_kinds(&h.latest()).iter().all(|k| k != "sh_prev_exit"));
+
+    h.advance(SUSPENSION + SEC);
+    h.link.diag(episode());
+    let sent = diag_kinds(&h.latest());
+    assert_eq!(sent.iter().filter(|k| *k == "sh_prev_exit").count(), 1);
+}
+
+#[test]
+fn sh_panic_count_is_reduced_by_what_was_sent() {
+    let h = Harness::new();
+    h.link.note_panic("main", "shell-core/src/a.rs:1");
+    h.link.note_panic("ikari-log", "shell-core/src/b.rs:2");
+    h.link.diag(episode());
+    let sent = diags(&h.latest());
+    let panic = sent.iter().find(|e| e.kind == "sh_panic").unwrap();
+    assert_eq!(nums(panic), [("n", 2)]);
+    let tag = |key: &str| {
+        panic
+            .tags
+            .iter()
+            .find(|t| t.key == key)
+            .map(|t| t.value.as_str())
+    };
+    assert_eq!(tag("loc"), Some("shell-core/src/b.rs:2"));
+    assert_eq!(tag("thread"), Some("other"));
+
+    // 送った分は引かれ、増えた分だけが次に出る。何もなければ出ない
+    h.link.diag(episode());
+    let panic_count = |h: &Harness| {
+        diag_kinds(&h.latest())
+            .iter()
+            .filter(|k| *k == "sh_panic")
+            .count()
+    };
+    assert_eq!(panic_count(&h), 1); // 2 回目は出ない
+    h.link.note_panic("main", "shell-core/src/c.rs:3");
+    h.link.diag(episode());
+    assert_eq!(panic_count(&h), 2);
+    let sent = diags(&h.latest());
+    let last = sent.iter().rfind(|e| e.kind == "sh_panic").unwrap();
+    assert_eq!(nums(last), [("n", 1)]);
+}
