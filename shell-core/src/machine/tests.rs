@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use ikari_proto::v1;
 
+use super::clause_delete::committed_step_holds;
 use super::*;
 use crate::diag::DiagEvent;
 use crate::keymap::Keymap;
@@ -906,4 +907,262 @@ fn reconvertible_selections_follow_section_9_2() {
     assert!(!is_reconvertible(&selection("品\r詞")));
     assert!(!is_reconvertible(&selection("\u{1}\u{2}")));
     assert!(!is_reconvertible(&selection("")));
+}
+
+// ---------------------------------------------------------------- 文節削除の元に戻す（ADR 0053）
+
+fn option() -> Modifiers {
+    Modifiers {
+        option: true,
+        ..Modifiers::NONE
+    }
+}
+
+fn shift_option() -> Modifiers {
+    Modifiers {
+        shift: true,
+        option: true,
+        ..Modifiers::NONE
+    }
+}
+
+fn control() -> Modifiers {
+    Modifiers {
+        control: true,
+        ..Modifiers::NONE
+    }
+}
+
+/// キャレットが `left` の終わりにある周辺テキスト
+fn caret_text(left: &str, right: &str) -> Option<SurroundingText> {
+    Some(SurroundingText {
+        left: left.into(),
+        right: right.into(),
+        document_length: Utf16Len(Utf16Len::of(left).get() + Utf16Len::of(right).get()),
+        caret: Some(Utf16Range {
+            location: Utf16Len::of(left),
+            length: Utf16Len::ZERO,
+        }),
+    })
+}
+
+fn layout_of(segments: &[(&str, &str)]) -> v1::SegmentLayout {
+    v1::SegmentLayout {
+        conversion_id: 31,
+        layout_rev: 0,
+        segments: segments
+            .iter()
+            .map(|(reading, surface)| v1::SegmentInfo {
+                reading: (*reading).into(),
+                surface: (*surface).into(),
+            })
+            .collect(),
+        focused: 0,
+        focused_page: None,
+        engine_micros: 0,
+    }
+}
+
+fn two_clauses() -> v1::SegmentLayout {
+    layout_of(&[("おれは", "俺は"), ("ただしい", "正しい")])
+}
+
+fn committed_step(start: u32, left: &str, right: &str, document_length: Option<u32>) -> UndoStep {
+    UndoStep::Committed {
+        removed: "正しい".into(),
+        start: Utf16Len(start),
+        left: left.into(),
+        right: right.into(),
+        document_length: document_length.map(Utf16Len),
+    }
+}
+
+/// 「俺は正しい」の末尾で `option+backspace`。覚えが 1 段できる
+fn delete_last_clause(h: &mut Harness) {
+    h.text.surrounding = caret_text("俺は正しい", "");
+    *h.engine.reconvert.lock().unwrap() = Some(two_clauses());
+    h.press_with(KeyKind::Backspace, option());
+    assert_eq!(h.machine.clause_undo.len(), 1);
+}
+
+#[test]
+fn a_committed_step_holds_only_while_the_text_is_as_it_was_right_after_the_deletion() {
+    let step = committed_step(2, "俺は", "です", Some(4));
+    let holds = |surrounding: Option<SurroundingText>| {
+        committed_step_holds(&step, &surrounding.expect("surrounding"))
+    };
+    assert!(holds(caret_text("俺は", "です")));
+    // 左右は重なる部分で比べる（文書の端、ホストの切り出し）
+    let mut cut = caret_text("は", "で").unwrap();
+    cut.caret.as_mut().unwrap().location = Utf16Len(2);
+    cut.document_length = Utf16Len(4);
+    assert!(holds(Some(cut)));
+    // キャレットが動いた、選択になった、取れない
+    assert!(!holds(caret_text("俺", "はです")));
+    let mut selected = caret_text("俺は", "です").unwrap();
+    selected.caret.as_mut().unwrap().length = Utf16Len(1);
+    assert!(!holds(Some(selected)));
+    let mut no_caret = caret_text("俺は", "です").unwrap();
+    no_caret.caret = None;
+    assert!(!holds(Some(no_caret)));
+    // 前後の文字が違う
+    assert!(!holds(caret_text("俺も", "です")));
+    assert!(!holds(caret_text("俺は", "だよ")));
+    // 文書の長さが違う。取れていない（0）ときは見ない
+    let mut longer = caret_text("俺は", "です").unwrap();
+    longer.document_length = Utf16Len(9);
+    assert!(!holds(Some(longer)));
+    let mut unknown = caret_text("俺は", "です").unwrap();
+    unknown.document_length = Utf16Len::ZERO;
+    assert!(holds(Some(unknown)));
+    // 消す前の文書の長さが分からなかった段は、長さを見ない
+    let blind = committed_step(2, "俺は", "です", None);
+    let mut other = caret_text("俺は", "です").unwrap();
+    other.document_length = Utf16Len(99);
+    assert!(committed_step_holds(&blind, &other));
+    // 確定後の段でなければ検査には通らない
+    let composing = UndoStep::Composing {
+        kana: String::new(),
+        pending: String::new(),
+        after: (String::new(), String::new()),
+    };
+    assert!(!committed_step_holds(&composing, &other));
+}
+
+#[test]
+fn consecutive_deletions_are_undone_one_step_at_a_time() {
+    let mut h = Harness::new();
+    delete_last_clause(&mut h);
+    h.text.surrounding = caret_text("俺は", "");
+    *h.engine.reconvert.lock().unwrap() = Some(layout_of(&[("おれは", "俺は")]));
+    assert_eq!(
+        h.press_with(KeyKind::Backspace, option()),
+        vec![ShellAction::DeleteText {
+            range: Utf16Range {
+                location: Utf16Len(0),
+                length: Utf16Len(2)
+            }
+        }]
+    );
+    assert_eq!(h.machine.clause_undo.len(), 2);
+    h.text.surrounding = caret_text("", "");
+    assert_eq!(
+        h.press_with(ch("z"), control()),
+        vec![ShellAction::Commit {
+            text: "俺は".into()
+        }]
+    );
+    h.text.surrounding = caret_text("俺は", "");
+    assert_eq!(
+        h.press_with(ch("z"), control()),
+        vec![ShellAction::Commit {
+            text: "正しい".into()
+        }]
+    );
+    assert!(h.machine.clause_undo.is_empty());
+    assert_eq!(
+        h.press_with(ch("z"), control()),
+        vec![ShellAction::PassThrough]
+    );
+    // 書き戻しは学習に送らない
+    assert!(
+        !h.engine
+            .calls()
+            .iter()
+            .any(|call| matches!(call, Call::CommitText(_) | Call::Commit(..)))
+    );
+}
+
+#[test]
+fn a_failed_check_forgets_every_step() {
+    let mut h = Harness::new();
+    delete_last_clause(&mut h);
+    h.text.surrounding = caret_text("俺", "は");
+    assert_eq!(
+        h.press_with(ch("z"), control()),
+        vec![ShellAction::PassThrough]
+    );
+    assert!(h.machine.clause_undo.is_empty());
+}
+
+#[test]
+fn the_memory_is_dropped_by_other_keys_focus_secure_and_settings() {
+    let mut h = Harness::new();
+    delete_last_clause(&mut h);
+    h.press_with(
+        ch("c"),
+        Modifiers {
+            command: true,
+            ..Modifiers::NONE
+        },
+    );
+    assert!(h.machine.clause_undo.is_empty());
+    delete_last_clause(&mut h);
+    h.machine.deactivate();
+    assert!(h.machine.clause_undo.is_empty());
+    delete_last_clause(&mut h);
+    h.machine.activate();
+    assert!(h.machine.clause_undo.is_empty());
+    delete_last_clause(&mut h);
+    h.machine.commit_composition(DiagEnd::CommitComposition);
+    assert!(h.machine.clause_undo.is_empty());
+    delete_last_clause(&mut h);
+    h.machine.set_secure(true);
+    assert!(h.machine.clause_undo.is_empty());
+    h.machine.set_secure(false);
+    delete_last_clause(&mut h);
+    let settings = Arc::new(SettingsSnapshot::default());
+    assert!(h.machine.reconfigure(settings, keymap("macos"), None));
+    assert!(h.machine.clause_undo.is_empty());
+    // 削除のキーとプレビューの中の操作は、覚えを捨てない
+    delete_last_clause(&mut h);
+    h.text.surrounding = caret_text("俺は", "");
+    *h.engine.reconvert.lock().unwrap() = Some(layout_of(&[("おれは", "俺は")]));
+    h.press_with(KeyKind::Backspace, shift_option());
+    h.press(KeyKind::Left);
+    h.press(KeyKind::Escape);
+    assert_eq!(h.machine.clause_undo.len(), 1);
+}
+
+#[test]
+fn english_mode_keys_reach_the_machine_only_for_clause_deletion_and_a_remembered_undo() {
+    let mut h = Harness::new();
+    let reaches = |h: &Harness, key: KeyKind, modifiers: Modifiers| {
+        h.machine.handles_clause_key(&KeyInput {
+            key,
+            modifiers,
+            is_repeat: false,
+            secure: false,
+            layout_text: None,
+        })
+    };
+    assert!(reaches(&h, KeyKind::Backspace, option()));
+    assert!(reaches(&h, KeyKind::Backspace, shift_option()));
+    assert!(!reaches(&h, KeyKind::Backspace, Modifiers::NONE));
+    assert!(!reaches(&h, ch("a"), Modifiers::NONE));
+    // 覚えがなければ ctrl+z は渡さない
+    assert!(!reaches(&h, ch("z"), control()));
+    delete_last_clause(&mut h);
+    assert!(reaches(&h, ch("z"), control()));
+}
+
+#[test]
+fn text_before_the_caret_in_ascii_skips_the_engine() {
+    let mut h = Harness::new();
+    h.text.surrounding = caret_text("今日は meeting ", "");
+    *h.engine.reconvert.lock().unwrap() = Some(layout_of(&[
+        ("きょうは", "今日は"),
+        ("みーてぃんぐ", "meeting"),
+    ]));
+    assert_eq!(
+        h.press_with(KeyKind::Backspace, option()),
+        vec![ShellAction::PassThrough]
+    );
+    assert!(
+        h.engine
+            .calls()
+            .iter()
+            .all(|call| !matches!(call, Call::Reconvert(_)))
+    );
+    assert!(h.machine.clause_undo.is_empty());
 }
