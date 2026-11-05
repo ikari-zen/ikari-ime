@@ -542,6 +542,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ikari-runmark"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+]
+
+[[package]]
 name = "ikari-shell-core"
 version = "0.1.0"
 dependencies = [

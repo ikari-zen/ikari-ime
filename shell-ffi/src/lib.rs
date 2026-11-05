@@ -135,6 +135,7 @@ mod tests {
             "ikari_shell_new",
             "ikari_shell_dispatch",
             "ikari_shell_engine_down",
+            "ikari_shell_note_exit",
             "ikari_shell_free",
             "ikari_shell_buf_copy",
             "ikari_settings_validate",

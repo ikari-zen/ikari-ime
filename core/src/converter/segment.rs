@@ -276,6 +276,7 @@ impl Conversion {
         }
         if let Some(pin) = pin {
             conv.pin_first(pin);
+            conv.rescue_generated_kana();
         }
         conv
     }
