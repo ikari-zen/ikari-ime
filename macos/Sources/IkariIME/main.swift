@@ -32,6 +32,13 @@ guard server != nil else {
 // 設定アプリとのブリッジ（Unix ソケット）を待ち始める。作れなくても入力は止めない
 AppContext.shared.startBridge()
 
+// 正常な終わりを印に残す（ADR 0051。判断は Rust。ここは終了の通知を渡すだけ）
+final class TerminationNotifier: NSObject, NSApplicationDelegate {
+    func applicationWillTerminate(_ notification: Notification) { AppContext.shared.driver.noteExit() }
+}
+
 let application = NSApplication.shared
+let terminationNotifier = TerminationNotifier()
+application.delegate = terminationNotifier
 application.setActivationPolicy(.accessory)
 application.run()

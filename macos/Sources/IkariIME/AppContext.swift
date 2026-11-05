@@ -14,6 +14,8 @@ final class AppContext: @unchecked Sendable {
 
     static let userDirectoryName = "ikari-ime"
     static let settingsFileName = "settings.tsv"
+    /// 診断ログのディレクトリ名（エンジンの `LOG_DIR_NAME` と同じ。ADR 0034）
+    static let logDirectoryName = "logs"
 
     let driver: ShellDriver
     /// 設定アプリとのブリッジ（ADR 0005 §6.3）。`startBridge()` で待ち始める
@@ -40,7 +42,8 @@ final class AppContext: @unchecked Sendable {
             config: .init(
                 shellVersion: shellVersion,
                 settingsPath: directory.appendingPathComponent(Self.settingsFileName).path,
-                resourcesDir: Bundle.main.resourcePath ?? ""),
+                resourcesDir: Bundle.main.resourcePath ?? "",
+                diagDir: directory.appendingPathComponent(Self.logDirectoryName, isDirectory: true).path),
             engine: XPCEngineHost(connections: connections),
             downNotifier: downBox,
             isSecure: { IsSecureEventInputEnabled() })

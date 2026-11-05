@@ -14,13 +14,15 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 use std::ptr;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError, TryLockError};
+use std::sync::{Arc, Mutex, MutexGuard, Once, PoisonError, TryLockError, Weak};
 use std::time::Duration;
 
 use ikari_shell_core::{
     DownKind, EngineLink, EngineTransport, SelectedText, SettingsSource, Shell, ShellAction,
     ShellConfig, SurroundingText, SystemClock, TextAccess, TransportError, TransportHandle,
 };
+
+use ikari_runmark::{PanicSink, RunMark};
 
 use crate::{IkariShellBuf, IkariStr, bytes, convert, guard, write_error};
 
@@ -265,6 +267,45 @@ struct Slot {
     /// 落ちた通知を `shell` の `Mutex` を通らずに届けるため
     engine: Arc<EngineLink>,
     host: Arc<HostTable>,
+    /// 起動中の印（ADR 0051）。`diag_dir` が空なら持たない
+    run_mark: Option<RunMark>,
+}
+
+/// 印のファイル名（診断ログのディレクトリの中。ADR 0051 §3.2）
+const RUN_MARK_FILE: &str = "shell.run";
+
+/// panic の hook の送り先（今の殻のエンジンの口）。hook はプロセスで 1 回だけ入れ、送り先はここで差し替える
+static PANIC_TARGET: Mutex<Weak<EngineLink>> = Mutex::new(Weak::new());
+static INSTALL_PROCESS_HOOKS: Once = Once::new();
+
+fn panic_sink() -> PanicSink {
+    Box::new(|thread, loc| {
+        let target = PANIC_TARGET
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .upgrade();
+        if let Some(engine) = target {
+            engine.note_panic(thread, loc);
+        }
+    })
+}
+
+/// 印を作り、前回の判定をエンジンの口に渡し、シグナルの処理と panic の hook を入れる（ADR 0051 §3.4）。
+/// 診断ログのディレクトリが空なら何もしない（設定アプリなど）。
+fn start_run_mark(diag_dir: &str, engine: &Arc<EngineLink>) -> Option<RunMark> {
+    if diag_dir.is_empty() {
+        return None;
+    }
+    let (mark, prev) = RunMark::begin(&PathBuf::from(diag_dir).join(RUN_MARK_FILE));
+    if let Some(prev) = prev {
+        engine.set_prev_exit(prev);
+    }
+    *PANIC_TARGET.lock().unwrap_or_else(PoisonError::into_inner) = Arc::downgrade(engine);
+    INSTALL_PROCESS_HOOKS.call_once(|| {
+        ikari_runmark::install_signal_handlers();
+        ikari_runmark::install_panic_hook(panic_sink());
+    });
+    Some(mark)
 }
 
 static SHELLS: Mutex<BTreeMap<u64, Arc<Slot>>> = Mutex::new(BTreeMap::new());
@@ -284,7 +325,7 @@ fn lookup(s: *const IkariShell) -> Option<Arc<Slot>> {
     shells().get(&id_of(s)).cloned()
 }
 
-fn config_from(config: &IkariShellConfig) -> Result<ShellConfig, &'static str> {
+fn config_from(config: &IkariShellConfig) -> Result<(ShellConfig, String), &'static str> {
     let text = |s: &IkariStr, what: &'static str| {
         // SAFETY: 借用の文字列（ヘッダの約束）
         std::str::from_utf8(unsafe { bytes(s.ptr, s.len) }).map_err(|_| what)
@@ -292,9 +333,8 @@ fn config_from(config: &IkariShellConfig) -> Result<ShellConfig, &'static str> {
     let shell_version = text(&config.shell_version, "shell_version is not valid UTF-8")?;
     let settings_path = text(&config.settings_path, "settings_path is not valid UTF-8")?;
     let resources_dir = text(&config.resources_dir, "resources_dir is not valid UTF-8")?;
-    // C0: 形だけ確かめる。印とシグナルの処理への配線は R3（ADR 0051 §8）
-    let _diag_dir = text(&config.diag_dir, "diag_dir is not valid UTF-8")?;
-    Ok(ShellConfig {
+    let diag_dir = text(&config.diag_dir, "diag_dir is not valid UTF-8")?;
+    let shell_config = ShellConfig {
         shell_version: shell_version.to_owned(),
         settings: if settings_path.is_empty() {
             SettingsSource::Inline(String::new())
@@ -302,7 +342,8 @@ fn config_from(config: &IkariShellConfig) -> Result<ShellConfig, &'static str> {
             SettingsSource::File(PathBuf::from(settings_path))
         },
         resources_dir: PathBuf::from(resources_dir),
-    })
+    };
+    Ok((shell_config, diag_dir.to_owned()))
 }
 
 fn new_shell(config: *const IkariShellConfig, host: IkariShellHost) -> Result<u64, String> {
@@ -310,17 +351,19 @@ fn new_shell(config: *const IkariShellConfig, host: IkariShellHost) -> Result<u6
     let host = Arc::new(HostTable::new(host)?);
     // SAFETY: NULL か、読める IkariShellConfig（ヘッダの約束）
     let config = unsafe { config.as_ref() }.ok_or("config is NULL")?;
-    let config = config_from(config)?;
+    let (config, diag_dir) = config_from(config)?;
     let shell = Shell::new(
         config,
         Box::new(HostTransport(Arc::clone(&host))),
         Arc::new(SystemClock::new()),
     )
     .map_err(|e| e.to_string())?;
+    let run_mark = start_run_mark(&diag_dir, shell.engine());
     let slot = Arc::new(Slot {
         engine: Arc::clone(shell.engine()),
         shell: Mutex::new(shell),
         host,
+        run_mark,
     });
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     shells().insert(id, slot);
@@ -427,14 +470,18 @@ pub unsafe extern "C" fn ikari_shell_engine_down(s: *mut IkariShell, generation:
     });
 }
 
-/// 殻の正常な終わりを印に残す（ADR 0051）。C0 のスタブ: 何もしない（配線は R3）。
+/// 殻の正常な終わりを印に残す（ADR 0051。`applicationWillTerminate` から 1 回）。印がなければ何もしない。
 ///
 /// # Safety
 /// 引数はどの値でもよい（NULL、解放ずみ、知らない番号は何もしない）。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ikari_shell_note_exit(s: *mut IkariShell) {
     guard((), || {
-        let _ = s;
+        if let Some(slot) = lookup(s)
+            && let Some(mark) = &slot.run_mark
+        {
+            mark.finish_clean();
+        }
     });
 }
 
