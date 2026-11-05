@@ -552,6 +552,7 @@ mod tests {
     }
 
     /// 子を起動して `ready` まで待つ。戻りは子と、`ready` のあとの標準出力の行
+    #[cfg(unix)]
     fn spawn_child(
         mode: &str,
         path: &Path,
@@ -577,6 +578,7 @@ mod tests {
     }
 
     /// 子を起動し、`signal`（`kill -<signal>`。None なら子が自分で落ちる）のあとの次の `begin` の判定を返す
+    #[cfg(unix)]
     fn judge_after_child(mode: &str, signal: Option<&str>) -> PrevExit {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("child.run");
