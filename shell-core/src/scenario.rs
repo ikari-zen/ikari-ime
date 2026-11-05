@@ -165,14 +165,16 @@ impl ScenarioSurrounding {
         let caret = if self.no_caret {
             None
         } else {
-            Some(self.caret.unwrap_or(Utf16Range {
-                location: Utf16Len(
-                    document_length
-                        .get()
-                        .saturating_sub(Utf16Len::of(&self.right).get()),
-                ),
-                length: Utf16Len::ZERO,
-            }))
+            Some(
+                self.caret.unwrap_or(Utf16Range {
+                    location: Utf16Len(
+                        document_length
+                            .get()
+                            .saturating_sub(Utf16Len::of(&self.right).get()),
+                    ),
+                    length: Utf16Len::ZERO,
+                }),
+            )
         };
         Some(SurroundingText {
             left: self.left.clone(),

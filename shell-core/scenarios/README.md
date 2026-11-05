@@ -113,4 +113,4 @@ Swift の替え玉が本物と違うもの（かな入力の合成器が文字�
 | `trailing-n.json` | 末尾の n を「ん」にする（FR-07） | 6 |
 | `shortcode.json` | 日本語のモードの絵文字のショートコード（ADR 0027）。1 件は `rust_only` | 10 |
 | `shell.json` | 殻の判断（セッション、英語のモード、モードの切り替え、メニュー）。全部 `rust_only` | 18 |
-| `clause-delete.json` | 文節ごとの削除（ADR 0050 §9）。先書き。`pending` の印を、レーン A が外す | 22 |
+| `clause-delete.json` | 文節ごとの削除（ADR 0050 §9）。先書き。`pending` の印を、レーン A が外す | 24 |

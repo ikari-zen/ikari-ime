@@ -458,7 +458,9 @@ pub enum ShellAction {
     HideCandidates,
     /// 確定済みの文字列の範囲を消す（ADR 0050 §3.3）。変換中の文字列がないときだけ返す。
     /// macOS は `client.insertText("", replacementRange: range)` を 1 回
-    DeleteText { range: Utf16Range },
+    DeleteText {
+        range: Utf16Range,
+    },
     /// 元の文字列を、`replacing` の範囲を置き換える 1 回の挿入で書き戻す（ADR 0006 §16.3）
     Restore {
         text: String,
