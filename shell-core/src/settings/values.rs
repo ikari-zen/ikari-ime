@@ -1093,12 +1093,13 @@ mod tests {
             ("candidate.previous", "up"),
             ("clause.delete", "option+backspace"),
             ("clause.delete_preview", "shift+option+backspace"),
+            ("clause.undo", "ctrl+z"),
         ] {
             assert_eq!(macos.get(&chord(key)).map(String::as_str), Some(action));
             assert_eq!(ms_ime.get(&chord(key)).map(String::as_str), Some(action));
         }
-        assert_eq!(macos.len(), 18);
-        assert_eq!(ms_ime.len(), 19);
+        assert_eq!(macos.len(), 19);
+        assert_eq!(ms_ime.len(), 20);
         assert!(!macos.contains_key(&chord("ctrl+u")));
         assert!(!ms_ime.contains_key(&chord("ctrl+j")));
     }

@@ -17,3 +17,4 @@ down	candidate.next
 up	candidate.previous
 option+backspace	clause.delete
 shift+option+backspace	clause.delete_preview
+ctrl+z	clause.undo

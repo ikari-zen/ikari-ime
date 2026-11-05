@@ -89,12 +89,15 @@ Swift の定数は `macos/Sources/IkariXPC/Identifiers.swift`（`IkariIdentifier
 | `candidate.previous` | （なし） | `up` | `up` | `up` |
 | `clause.delete` | （なし） | `option+backspace` | `option+backspace` | `option+backspace` |
 | `clause.delete_preview` | （なし） | `shift+option+backspace` | `shift+option+backspace` | `shift+option+backspace` |
+| `clause.undo` | （なし） | `ctrl+z` | `ctrl+z` | `ctrl+z` |
 
 `atok` は ms-ime を土台に、半角英数と再変換だけ ATOK スタイルのキーにしたもの（#62。文節の ←/→ と Shift+←/→ は ATOK と役割が逆だが、ikari の既定のまま）。`ctrl+@` は、コードの上では JIS 配列の @ キー（Shift なし）で一致する（実機は未確認）。US 配列では @ が Shift+2 なので `ctrl+shift+@` になる。両方を同じ操作に割り当てている（ユーザーの配列は US。2026-10-28）。
 
 `candidate.next` / `candidate.previous`（↓/↑）は変換中だけ効き、Space / Shift+Space と同じ（ページの境目、広げる動き、`paging.wrap` も同じ）。文節のモードには入らない。idle は矢印をアプリに渡し、合成中は受け止めて何もしない。Shift+↑↓ は変換中は受け止めて何もしない。
 
 `clause.delete` / `clause.delete_preview`（ADR 0050）は文節ごとの削除。契約コミットの時点では `dispatch` がまだ扱わない（`KeyChord::for_lookup` は BackSpace をまだ引かないので、割り当てがあっても今までどおり素通し・表示を確定して素通しになる。BackSpace を引くのはレーン A）。
+
+`clause.undo`（ADR 0053）は文節削除の「元に戻す」。**削除の直後（ikari が消した覚えがあるとき）だけ受け取る**。覚えがなければ、割り当てがないのと同じで、アプリへ渡す。書き戻しは既存の `Commit`（キャレットへの挿入）で、`ShellAction`・proto・設定の値は変えない。アプリの Cmd+Z は受け取らない。
 
 文節の操作と再変換（下の 5 つ。ADR 0006 §8.1、§16.1-7）は **macos と ms-ime で同じ**で、F キーの割り当てはない。atok は文節の操作だけ同じで、再変換が `ctrl+shift+y`（ATOK の Ctrl+Shift+R は「確定のリピート」で別の操作なので避けた）。ほかの操作と同じく `keymap.<操作>` で上書きでき（`none` で外せる）、設定アプリの画面に自動で並ぶ。
 `segment.*` は変換中に、修飾キーの有無を問わず矢印のキーを割り当てで引く。`reconvert` は idle のとき、Ctrl / Option / Command を伴う文字キーを引く（今の字種変換と同じ場所）。

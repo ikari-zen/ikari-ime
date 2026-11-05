@@ -48,6 +48,7 @@ final class SettingsModel {
         .modeJapanese: "モード: 日本語にする",
         .clauseDelete: "直前の文節を削除",
         .clauseDeletePreview: "削除する文節を見てから削除",
+        .clauseUndo: "文節の削除を元に戻す",
     ]
     static let invalidBundleIDMessage = "Bundle ID には英数字、「.」「-」「_」だけを使えます（例: com.apple.Terminal）"
     static let coreUnavailableMessage = "設定を処理できませんでした。設定アプリを入れ直してください"

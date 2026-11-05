@@ -238,7 +238,7 @@ struct ConversionTab: View {
                     in: SettingsValues.clauseMinCharsRange
                 )
                 Text(
-                    "消す文字がこの数に満たないときは、前の文節まで広げて消します（既定は \(SettingsValues.defaults.clauseMinChars) 文字。\(SettingsValues.clauseMinCharsRange.lowerBound) は下限なし）。キーは「操作ごとのキー」で変えられます。"
+                    "消す文字がこの数に満たないときは、前の文節まで広げて消します（既定は \(SettingsValues.defaults.clauseMinChars) 文字。\(SettingsValues.clauseMinCharsRange.lowerBound) は下限なし）。削除の取り消しは Ctrl+Z（ikari が消した直後だけ。それ以外の取り消しはアプリの Cmd+Z）。キーは「操作ごとのキー」で変えられます。"
                 )
                 .font(.caption).foregroundStyle(.secondary)
             }
