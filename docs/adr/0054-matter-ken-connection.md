@@ -1,6 +1,6 @@
 # ADR 0054: 格助詞「の」の直後の「件」だけを安くする（連接表に「件」専用の左 ID を足す）
 
-- 状態: 提案（2026-11-06。§12 の「ユーザーに聞くこと」が未回答）
+- 状態: 採用（2026-11-06 ユーザー決定。案 B（連接コスト）。§の「ユーザーに聞くこと」3 点はすべて推奨どおり: 「〜の県」が LM なしで 2 位に下がるのを受け入れる、連体詞は掃引だけで既定は入れない、目標は LM なしで 1 位）
 - 日付: 2026-11-06
 - 対象: `dict-builder`（新しいモジュール `connection.rs`、`lib.rs` の組み立ての順、`matrix.rs` の列の追加、`policy/default.tsv` の値の 1 行、`--policy-report` の出力）、`eval/sets/issue210.tsv`（足す）。`dict-format`（grammar.bin の形式）、`core`（ラティス、N-best、Ranker、文脈の解析）、LM、shell-core、Swift は変えない
 - 前提: main = 128aa1b。辞書は SudachiDict Core 20260723（`data/raw/sudachi-20260723/`）。ADR 0001 §3.3（grammar.bin）、ADR 0002 §4（辞書のポリシー）、ADR 0008（ラティスの辺の補正。§8 の案 B5 と案 D）、ADR 0048（プールの大きさ）
