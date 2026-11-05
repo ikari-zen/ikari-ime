@@ -7,6 +7,10 @@
 //! ディスクには触らない（`EngineLog::record_note` はキューに入れるだけ。ADR 0034 §3.1）。
 
 use super::*;
+use std::sync::{Once, Weak};
+
+use ikari_runmark::PrevExit;
+
 use crate::diag_schema::{self, Rejected};
 
 pub(crate) const KIND_DIAG: &str = "diag";
@@ -14,6 +18,8 @@ const KIND_DIAG_REJECT: &str = "diag_reject";
 const KIND_LM_LOAD: &str = "lm_load";
 const KIND_LM_UNLOAD: &str = "lm_unload";
 const KIND_STAT: &str = "stat";
+const KIND_PREV_EXIT: &str = "prev_exit";
+const KIND_PANIC: &str = "panic";
 
 /// `lm_load` の失敗の語
 pub(crate) const ERR_LM_LOAD_FAILED: &str = "lm_load_failed";
@@ -233,6 +239,19 @@ impl Inner {
         self.diag.lm_loaded.store(loaded, Ordering::Release);
     }
 
+    /// 前回の終わり方の行（`Engine::open` のあとの最初の行。ADR 0051 §5.1）。固定の語と数だけ
+    pub(crate) fn note_prev_exit(&self, prev: &PrevExit) {
+        let mut note = format!("exit={}", prev.exit.as_word());
+        if let Some(sig) = prev.sig {
+            note.push_str(&format!(" sig={sig}"));
+        }
+        if let Some(up_s) = prev.up_s {
+            note.push_str(&format!(" up_s={up_s}"));
+        }
+        self.log
+            .record_note(KIND_PREV_EXIT, 0, self.lm_state_name(), None, Some(&note));
+    }
+
     /// `Engine` を閉じるとき、LM が読み込まれていたら `lm_unload reason=shutdown`
     pub(crate) fn note_shutdown(&self) {
         if self.stack().lm.as_ref().is_some_and(|lm| lm.is_loaded()) {
@@ -251,6 +270,68 @@ impl Inner {
             None,
         );
     }
+}
+
+// ---- panic の記録（ADR 0051 §5.1、§5.3）
+
+/// panic の行を書く先（今のエンジンのログ）。エンジンを開き直しても hook は 1 つなので、差し替えられる場所を通す。
+/// 弱い参照にして、エンジンが閉じたあとにログを生かし続けない
+static PANIC_LOG: Mutex<Weak<EngineLog>> = Mutex::new(Weak::new());
+
+/// panic の行の `thread` に書く語（スレッドの名前から決める。一覧の外は `other`）
+const THREAD_MAIN: &str = "main";
+const THREAD_OTHER: &str = "other";
+const THREAD_WORDS: &[(&str, &str)] = &[
+    ("main", THREAD_MAIN),
+    ("ikari-log", "ikari-log"),
+    ("ikari-prefetch", "prefetch"),
+    ("ikari-lookahead", "lookahead"),
+    ("ikari-janitor", "janitor"),
+];
+
+fn thread_word(name: &str) -> &'static str {
+    THREAD_WORDS
+        .iter()
+        .find(|(raw, _)| *raw == name)
+        .map_or(THREAD_OTHER, |(_, word)| word)
+}
+
+/// 今のエンジンのログを panic の行の書き先にする
+pub(crate) fn set_panic_log(log: &Arc<EngineLog>) {
+    *PANIC_LOG.lock().unwrap_or_else(|e| e.into_inner()) = Arc::downgrade(log);
+}
+
+/// panic の行を 1 行書く。キューに入れるだけ（hook の中でディスクに触らない）。
+/// hook は panic の最中に呼ばれるので、ロックは待たない
+fn record_panic(thread: &str, loc: &str) {
+    let Ok(slot) = PANIC_LOG.try_lock() else {
+        return;
+    };
+    if let Some(log) = slot.upgrade() {
+        write_panic_line(&log, thread, loc);
+    }
+}
+
+pub(crate) fn write_panic_line(log: &EngineLog, thread: &str, loc: &str) {
+    let note = format!(
+        "thread={} loc={}",
+        thread_word(thread),
+        diag_schema::loc_or_external(loc)
+    );
+    log.record_note(KIND_PANIC, 0, LM_UNKNOWN, None, Some(&note));
+}
+
+/// panic の行の `lm`（hook は LM の状態を知らない）
+const LM_UNKNOWN: &str = "disabled";
+
+/// 致命的なシグナルの処理と panic の hook を入れる。プロセスの入口（`ikari_engine_open`）から呼ぶ。
+/// 2 回目以降は何もしない（エンジンを開き直しても 1 回だけ）。CLI とテストでは呼ばない
+pub fn install_crash_handlers() {
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        ikari_runmark::install_signal_handlers();
+        ikari_runmark::install_panic_hook(Box::new(record_panic));
+    });
 }
 
 #[cfg(test)]

@@ -477,6 +477,7 @@ dependencies = [
  "ikari-core",
  "ikari-dict-builder",
  "ikari-proto",
+ "ikari-runmark",
  "ikari-stack",
  "jiff",
  "prost",
