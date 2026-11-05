@@ -30,6 +30,8 @@ use jiff::tz::TimeZone;
 
 pub const LOG_DIR_NAME: &str = "logs";
 pub const LOG_FILE_NAME: &str = "engine.log";
+/// 起動中の印（ADR 0051 §3.2）。回した世代の名前（`engine-*`、`engine.log.*`）のどちらにも当たらない
+pub const RUN_MARK_FILE_NAME: &str = "engine.run";
 /// キューに置ける行の数（ADR 0034 §3.1）
 const QUEUE_CAPACITY: usize = 8192;
 /// 書き込みのバッファ（バイト）
@@ -105,6 +107,11 @@ pub struct EngineLog {
 impl EngineLog {
     pub fn disabled() -> EngineLog {
         EngineLog { inner: None }
+    }
+
+    /// 書き込みを始められたか（`disabled` や開けなかったときは false。印はこのときだけ扱う）
+    pub fn is_enabled(&self) -> bool {
+        self.inner.is_some()
     }
 
     pub fn open(data_dir: &Path) -> EngineLog {
@@ -854,5 +861,29 @@ mod tests {
         // 開けないディレクトリでも落ちない（普通のファイルの下は、root でも作れない）
         let file = tempfile::NamedTempFile::new().unwrap();
         EngineLog::open(&file.path().join("ikari-dir")).record("convert", 1, "ready", None);
+    }
+
+    #[test]
+    fn tidy_leaves_the_run_marks_alone() {
+        // 起動中の印（engine.run、shell.run）は、回した世代の後始末の対象ではない
+        let dir = temp_dir("tidy-marks");
+        let logs = dir.join(LOG_DIR_NAME);
+        fs::create_dir_all(&logs).unwrap();
+        fs::write(logs.join(RUN_MARK_FILE_NAME), "v=1 start_ms=1\n").unwrap();
+        fs::write(logs.join("shell.run"), "v=1 start_ms=1\n").unwrap();
+        let log = EngineLog::open(&dir);
+        log.flush_for_test();
+        assert!(!is_rotated_name(RUN_MARK_FILE_NAME));
+        for name in [RUN_MARK_FILE_NAME, "shell.run"] {
+            assert_eq!(
+                fs::read_to_string(logs.join(name)).unwrap(),
+                "v=1 start_ms=1\n",
+                "{name}"
+            );
+        }
+        // 世代として gzip にされたものはない（印の 2 つだけが残る）
+        assert_eq!(rotated(&dir), [RUN_MARK_FILE_NAME, "shell.run"]);
+        drop(log);
+        let _ = fs::remove_dir_all(dir);
     }
 }

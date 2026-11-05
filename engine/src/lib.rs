@@ -50,6 +50,7 @@ use ikari_core::{
 use ikari_proto::SCHEMA_VERSION;
 use ikari_proto::v1 as pb;
 use ikari_proto::v1::{Envelope, ErrorCode, ErrorReply, LmState, envelope};
+use ikari_runmark::RunMark;
 use ikari_stack::{
     LmOverrides, LmStats, ProfileSel, RankerSet, Reuse, Stack, StackError, StackOptions,
     StackPaths, build_stack, build_stack_with,
@@ -63,10 +64,11 @@ use crate::cache::{
 use crate::context_limits::ContextLimits;
 use crate::convert::candidate_kind;
 use crate::data::{DataWatch, SaveState, load_emoji_reply};
-use crate::log::EngineLog;
+use crate::log::{EngineLog, LOG_DIR_NAME, RUN_MARK_FILE_NAME};
 use crate::segments::{LookJob, LookaheadQueue, RealSeam, SegEntry, SegmentSeam, layout_reply};
 use crate::session::Session;
 
+pub use crate::diag::install_crash_handlers;
 pub use crate::lock::{EngineLock, LockError};
 pub use crate::settings::{SETTINGS_FILE_NAME, Settings};
 pub use ikari_proto::v1::EngineConfig;
@@ -105,6 +107,8 @@ const NEVER_UNLOAD_SECS: u64 = 315_360_000;
 pub struct Engine {
     inner: Arc<Inner>,
     workers: Vec<JoinHandle<()>>,
+    /// 起動中の印（ログが有効なときだけ。ADR 0051 §3.4）。`Drop` の最後に `exit=clean` を書く
+    run_mark: Option<RunMark>,
     // 最後に解放する（学習の保存が済んでから、別のエンジンに譲る）
     _lock: Option<EngineLock>,
 }
@@ -259,6 +263,16 @@ impl Engine {
         let log = data_dir
             .as_deref()
             .map_or_else(EngineLog::disabled, EngineLog::open);
+        // ロックを取れたあとの、ログが有効なときだけ、前回の印を読んで作り直す（CLI とテストの
+        // `EngineLog::disabled` では印を作らない。ロックを取れなかったエンジンはここまで来ない）
+        let (run_mark, prev_exit) = match data_dir.as_deref().filter(|_| log.is_enabled()) {
+            Some(dir) => {
+                let path = dir.join(LOG_DIR_NAME).join(RUN_MARK_FILE_NAME);
+                let (mark, prev) = RunMark::begin(&path);
+                (Some(mark), prev)
+            }
+            None => (None, None),
+        };
         let watch = data_dir.as_deref().map(DataWatch::new).map(Mutex::new);
         let emoji = load_emoji_reply(
             data_dir
@@ -296,6 +310,11 @@ impl Engine {
             save_io: Mutex::new(()),
             seam_override,
         });
+        diag::set_panic_log(&inner.log);
+        // 前回の終わり方は、このエンジンの最初の行にする（ワーカーを起こす前に書く）
+        if let Some(prev) = &prev_exit {
+            inner.note_prev_exit(prev);
+        }
         let mut workers = Vec::new();
         for (name, run) in [
             ("ikari-prefetch", Inner::prefetch_loop as fn(&Inner)),
@@ -315,6 +334,7 @@ impl Engine {
         Engine {
             inner,
             workers,
+            run_mark,
             _lock: lock,
         }
     }
@@ -351,6 +371,10 @@ impl Drop for Engine {
         self.inner.note_shutdown();
         // 学習の保存の行まで書いてから、ログのスレッドを止めて残りを flush する
         self.inner.log.shutdown();
+        // 最後に、正常に終わったと印に書く（ここまで来なければ unknown / term / crash のまま）
+        if let Some(mark) = &self.run_mark {
+            mark.finish_clean();
+        }
     }
 }
 

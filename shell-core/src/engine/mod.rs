@@ -27,7 +27,6 @@ mod codec;
 mod counts;
 mod gate;
 
-#[cfg(test)]
 mod crash_record;
 #[cfg(test)]
 mod tests;
@@ -142,6 +141,8 @@ pub struct EngineLink {
     /// `down_events` が増えたら起こす（終了の確認の待ち）
     exited: Condvar,
     clock: Arc<dyn Clock>,
+    /// 前回の判定と panic の数（ADR 0051）。panic の hook から触るので `state` とは別の錠にする
+    crash: Mutex<crash_record::CrashRecord>,
 }
 
 impl EngineLink {
@@ -156,6 +157,7 @@ impl EngineLink {
             }),
             exited: Condvar::new(),
             clock,
+            crash: Mutex::new(crash_record::CrashRecord::default()),
         }
     }
 
@@ -379,10 +381,21 @@ impl EngineLink {
     /// 診断ログの事象（ADR 0034 §2.2）。返事を待たない。secure のセッションでは呼ばない。
     pub fn diag(&self, mut event: v1::DiagEvent) {
         self.post_engine_counts_if_any(event.session_id);
+        self.post_crash_record_if_any(event.session_id);
         // キーを並べ替えて、同じ入力から同じバイト列にする
         event.nums.sort_by(|a, b| a.key.cmp(&b.key));
         event.tags.sort_by(|a, b| a.key.cmp(&b.key));
         self.post(Body::Diag(event));
+    }
+
+    /// 前回の終わり方を覚える（起動のとき 1 回。次の `diag` に `sh_prev_exit` が相乗りする。ADR 0051）
+    pub fn set_prev_exit(&self, prev: ikari_runmark::PrevExit) {
+        lock(&self.crash).set_prev_exit(prev);
+    }
+
+    /// panic を 1 回数える（panic の hook から。どのスレッドからでも呼べる。メッセージは受け取らない）
+    pub fn note_panic(&self, thread: &str, loc: &str) {
+        lock(&self.crash).note_panic(thread, loc);
     }
 
     /// 英語のモードの郵便番号（ADR 0032 §9.1）。`code` は ASCII 数字 7 桁。
@@ -515,6 +528,24 @@ impl EngineLink {
         }
         if self.post(Body::Diag(counts.event(session_id))) {
             lock(&self.state).counts.subtract(&counts);
+        }
+    }
+
+    /// 前回の判定と panic の数があれば送る（ADR 0051 §5.2）。送れなかったら持ち越し、送った分だけ引く
+    fn post_crash_record_if_any(&self, session_id: u64) {
+        let (prev, panics) = {
+            let crash = lock(&self.crash);
+            (crash.prev_exit(), crash.panics())
+        };
+        if let Some(prev) = prev
+            && self.post(Body::Diag(crash_record::prev_exit_event(&prev, session_id)))
+        {
+            lock(&self.crash).prev_exit_sent();
+        }
+        if let Some(panics) = panics
+            && self.post(Body::Diag(crash_record::panic_event(&panics, session_id)))
+        {
+            lock(&self.crash).panics_sent(&panics);
         }
     }
 
