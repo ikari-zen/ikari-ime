@@ -9,5 +9,6 @@ crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 ikari-proto.workspace = true
+ikari-runmark.workspace = true
 ikari-shell-core.workspace = true
 prost.workspace = true

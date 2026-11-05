@@ -66,6 +66,8 @@ final class ShellDriver: @unchecked Sendable {
         var shellVersion: String
         var settingsPath: String
         var resourcesDir: String
+        /// 診断ログのディレクトリ。起動中の印を置く（ADR 0051。判断は Rust）
+        var diagDir: String = ""
     }
 
     /// `PanelShown` を返したあとにまた候補ウィンドウが変わったとき、続けて知らせる回数の上限（実際は 1〜2 回）
@@ -227,6 +229,9 @@ final class ShellDriver: @unchecked Sendable {
         return perform(actions, session: session, access: access, panelReports: panelReports)
     }
 
+    /// 終了の直前に、正常な終わりを印に残す（ADR 0051）。shell がまだなければ何もしない
+    func noteExit() { shell?.noteExit() }
+
     private func shellOrCreate() -> ShellABI? {
         if let shell { return shell }
         let host = ShellHost(
@@ -240,7 +245,7 @@ final class ShellDriver: @unchecked Sendable {
         do {
             let created = try ShellABI(
                 shellVersion: config.shellVersion, settingsPath: config.settingsPath,
-                resourcesDir: config.resourcesDir, host: host)
+                resourcesDir: config.resourcesDir, diagDir: config.diagDir, host: host)
             shell = created
             downNotifier.set(created.downNotifier)
             return created
