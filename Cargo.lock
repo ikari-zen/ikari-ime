@@ -555,6 +555,7 @@ dependencies = [
  "dhat",
  "ikari-input",
  "ikari-proto",
+ "ikari-runmark",
  "prost",
  "serde",
  "serde_json",
@@ -566,6 +567,7 @@ name = "ikari-shell-ffi"
 version = "0.1.0"
 dependencies = [
  "ikari-proto",
+ "ikari-runmark",
  "ikari-shell-core",
  "prost",
 ]
