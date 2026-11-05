@@ -322,6 +322,25 @@ impl Segmented {
         &mut self.whole
     }
 
+    /// 文節 [first, first + count) を取り除く（ADR 0050 §5.3）。残りの文節の候補の列（`lists`）と
+    /// 0 番（`heads`）は保ち、位置は詰め直す。版（`layout.rev`）は 1 上がる（1 文節だけ残っても
+    /// 読み全体の列は使わない）。`whole` は古くなるが、文節のモードの確定は `commit` を使うので読まない。
+    /// 範囲が空、または外にあれば `OutOfRange`、全部を取り除く指定は `Empty`。失敗したら何も変えない
+    pub fn remove(&mut self, first: usize, count: usize) -> Result<(), SegmentError> {
+        let total = self.heads.len();
+        let end = first.checked_add(count).ok_or(SegmentError::OutOfRange)?;
+        if count == 0 || end > total {
+            return Err(SegmentError::OutOfRange);
+        }
+        if count == total {
+            return Err(SegmentError::Empty);
+        }
+        self.heads.drain(first..end);
+        self.lists.drain(first..end);
+        self.layout = layout_of(self.layout.rev.wrapping_add(1), &self.heads);
+        Ok(())
+    }
+
     /// 区切りを変えていない 1 文節の変換は、読み全体の変換の候補の列をそのまま使う（§2.3）
     fn uses_whole_list(&self) -> bool {
         self.origin == SegmentedOrigin::Convert

@@ -1241,3 +1241,148 @@ fn front_rewriter_candidates_come_first_in_order() {
     assert_eq!(list[0].surface, "F1");
     assert_eq!(list[1].surface, "F2");
 }
+
+// ---- Segmented::remove（ADR 0050 §5.3）----
+
+const THREE: &str = "ゆーざーじしょにたんごをとうろくする";
+
+#[test]
+fn remove_takes_the_tail_clause_and_keeps_the_rest() {
+    let conv = converter();
+    let mut seg = segmented(&conv, THREE);
+    let first = page_surfaces(&mut seg, 0, 0);
+    seg.remove(2, 1).unwrap();
+    assert_eq!(
+        spans(&seg),
+        [
+            pair("ゆーざーじしょに", "ユーザー辞書に"),
+            pair("たんごを", "単語を")
+        ]
+    );
+    assert_eq!(seg.layout().rev, 1);
+    assert_eq!(seg.lists.len(), 2);
+    assert_eq!(seg.heads.len(), 2);
+    // 残りの候補の列は変わらない
+    assert_eq!(page_surfaces(&mut seg, 0, 0), first);
+}
+
+#[test]
+fn remove_from_the_middle_and_the_head_recomputes_positions() {
+    let conv = converter();
+    let mut seg = segmented(&conv, THREE);
+    seg.remove(1, 1).unwrap();
+    assert_eq!(
+        spans(&seg),
+        [
+            pair("ゆーざーじしょに", "ユーザー辞書に"),
+            pair("とうろくする", "登録する")
+        ]
+    );
+    let positions: Vec<(usize, usize)> = seg
+        .layout()
+        .spans
+        .iter()
+        .map(|s| (s.start, s.end))
+        .collect();
+    assert_eq!(positions, [(0, 8), (8, 14)]);
+    seg.remove(0, 1).unwrap();
+    assert_eq!(spans(&seg), [pair("とうろくする", "登録する")]);
+    assert_eq!(seg.layout().spans[0].start, 0);
+    assert_eq!(seg.layout().rev, 2);
+}
+
+#[test]
+fn remove_several_clauses_at_once() {
+    let conv = converter();
+    let mut seg = segmented(&conv, THREE);
+    seg.remove(1, 2).unwrap();
+    assert_eq!(spans(&seg), [pair("ゆーざーじしょに", "ユーザー辞書に")]);
+    assert_eq!(seg.layout().rev, 1);
+}
+
+#[test]
+fn remove_keeps_a_built_list_and_builds_the_unbuilt_ones_after_the_removal() {
+    let conv = converter();
+    let mut seg = segmented(&conv, THREE);
+    let tail_before = page_surfaces(&mut seg, 2, 0);
+    assert!(seg.lists[2].is_some());
+    seg.remove(1, 1).unwrap();
+    // 作ってあった列は、位置が詰まってもそのまま
+    assert!(seg.lists[0].is_none());
+    assert_eq!(page_surfaces(&mut seg, 1, 0), tail_before);
+    // 作っていない列は、取り除いたあとの並びで作れる（0 番は表示中の表記）
+    assert_eq!(page_surfaces(&mut seg, 0, 0)[0], "ユーザー辞書に");
+}
+
+#[test]
+fn remove_leaves_a_single_clause_that_no_longer_uses_the_whole_list() {
+    let conv = converter();
+    let mut seg = segmented(&conv, THREE);
+    seg.remove(1, 2).unwrap();
+    // 版が上がっているので、読み全体の列を流用しない
+    let surfaces = page_surfaces(&mut seg, 0, 0);
+    assert_eq!(surfaces[0], "ユーザー辞書に");
+    let commit = seg.commit(&[SegmentChoice::Candidate(0)]).unwrap();
+    assert_eq!(commit.surface, "ユーザー辞書に");
+    assert_eq!(commit.history.len(), 1);
+    assert_eq!(commit.history[0].reading, "ゆーざーじしょに");
+}
+
+#[test]
+fn commit_after_remove_covers_only_the_remaining_clauses() {
+    let conv = converter();
+    let mut seg = segmented(&conv, THREE);
+    seg.remove(2, 1).unwrap();
+    let commit = seg
+        .commit(&[SegmentChoice::Candidate(0), SegmentChoice::Candidate(0)])
+        .unwrap();
+    assert_eq!(commit.surface, "ユーザー辞書に単語を");
+    assert_eq!(commit.history[0].reading, "ゆーざーじしょにたんごを");
+    // 取り除く前の数の選択は範囲外
+    assert_eq!(
+        seg.commit(&vec![SegmentChoice::Candidate(0); 3])
+            .unwrap_err(),
+        SegmentError::OutOfRange
+    );
+}
+
+#[test]
+fn remove_rejects_bad_ranges_and_changes_nothing() {
+    let conv = converter();
+    let mut seg = segmented(&conv, THREE);
+    for (first, count) in [(3, 1), (0, 0), (2, 2), (usize::MAX, 1), (1, usize::MAX)] {
+        assert_eq!(
+            seg.remove(first, count).unwrap_err(),
+            SegmentError::OutOfRange,
+            "{first} {count}"
+        );
+    }
+    // 全部は Empty
+    assert_eq!(seg.remove(0, 3).unwrap_err(), SegmentError::Empty);
+    assert_eq!(seg.layout().spans.len(), 3);
+    assert_eq!(seg.layout().rev, 0);
+    assert_eq!(seg.lists.len(), 3);
+}
+
+#[test]
+fn remove_on_an_empty_or_single_clause_is_empty_or_out_of_range() {
+    let conv = converter();
+    let mut one = segmented(&conv, "ゆーざーじしょに");
+    assert_eq!(one.remove(0, 1).unwrap_err(), SegmentError::Empty);
+    assert_eq!(one.layout().rev, 0);
+    let mut none = segmented(&conv, "");
+    assert_eq!(none.remove(0, 1).unwrap_err(), SegmentError::OutOfRange);
+}
+
+#[test]
+fn remove_after_resize_works_on_the_resized_layout() {
+    let conv = converter();
+    let mut seg = segmented(&conv, THREE);
+    conv.resize(&mut seg, 1, -1, &[SegmentChoice::Candidate(0)], None)
+        .unwrap();
+    let rev = seg.layout().rev;
+    let last = seg.layout().spans.len() - 1;
+    seg.remove(last, 1).unwrap();
+    assert_eq!(seg.layout().rev, rev + 1);
+    assert_eq!(seg.layout().spans.len(), last);
+}
