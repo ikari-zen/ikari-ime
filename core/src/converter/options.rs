@@ -20,13 +20,15 @@ const DATE_ANCHOR_PREFIX: &str = "rewriter";
 const DATE_ANCHOR_KEYS: [&str; 1] = ["date_anchor"];
 /// かな・カタカナの候補のコストの基準にする A* の先頭の件数（ADR 0048 §4。`pool_size` を変えても位置が動かないように固定）
 pub(super) const KANA_COST_BASIS_POOL: usize = 30;
+/// 読みそのままの平仮名・片仮名を引き上げる上限の順位の既定（ADR 0052。ユーザーの要件の値。#207）
+const DEFAULT_KANA_RESCUE_RANK: usize = 30;
 /// 語の予約枠の既定（ADR 0048 §3。0 = 無効。掃引までは今と同じ動き）
 const DEFAULT_WORD_RESERVE: usize = 0;
 /// 最初のプールに必ず足す候補の数（ひらがなとカタカナ。ADR 0048 §7）
 const POOL_FIXED_KANA_CANDIDATES: usize = 2;
 /// 最初のプールの件数を `--ranker-config` で指す接頭辞とキー（`convert.pool_size`、`convert.word_reserve`）
 const POOL_PREFIX: &str = "convert";
-const POOL_KEYS: [&str; 2] = ["pool_size", "word_reserve"];
+const POOL_KEYS: [&str; 3] = ["pool_size", "word_reserve", "kana_rescue_rank"];
 /// LM を待つ時間の既定（ADR 0004 §3.4、ADR 0003 §7.2）。`max(30ms, 読み1文字あたり 6ms)`、上限 300ms
 const DEFAULT_LM_BUDGET_BASE: Duration = Duration::from_millis(30);
 const DEFAULT_LM_BUDGET_PER_CHAR: Duration = Duration::from_millis(6);
@@ -475,6 +477,9 @@ pub struct ConvertOptions {
     pub pool_size: usize,
     /// 語の予約枠の上限（ADR 0048 §3）。0 = 無効
     pub word_reserve: usize,
+    /// 読みそのままのかなを、この順位（1 始まり）より後ろなら引き上げる。0 = 無効（ADR 0052 §3）。
+    /// `--ranker-config` の `convert.kana_rescue_rank`。設定画面には出さない
+    pub kana_rescue_rank: usize,
     /// 2ページ目以降で追加生成する単位。既定 page_size
     pub chunk_size: usize,
     /// 1回の追加生成で A* が展開する上限。既定 20_000（遅延の保護）
@@ -515,7 +520,7 @@ impl ConvertOptions {
         Ok(self)
     }
 
-    /// `convert.pool_size`、`convert.word_reserve` で上書きする。この接頭辞で未知のキーや数でない値ならエラー。
+    /// `convert.pool_size`、`convert.word_reserve`、`convert.kana_rescue_rank` で上書きする。この接頭辞で未知のキーや数でない値ならエラー。
     pub fn with_pool_kv(
         mut self,
         kv: &BTreeMap<String, String>,
@@ -523,6 +528,7 @@ impl ConvertOptions {
         let scope = ScopedKv::new(POOL_PREFIX, &POOL_KEYS, kv)?;
         self.pool_size = scope.get("pool_size", self.pool_size)?;
         self.word_reserve = scope.get("word_reserve", self.word_reserve)?;
+        self.kana_rescue_rank = scope.get("kana_rescue_rank", self.kana_rescue_rank)?;
         Ok(self)
     }
 
@@ -539,6 +545,7 @@ impl Default for ConvertOptions {
             page_size: DEFAULT_PAGE_SIZE,
             pool_size: DEFAULT_POOL_SIZE,
             word_reserve: DEFAULT_WORD_RESERVE,
+            kana_rescue_rank: DEFAULT_KANA_RESCUE_RANK,
             chunk_size: DEFAULT_PAGE_SIZE,
             max_astar_pops: DEFAULT_MAX_ASTAR_POPS,
             rewriter_anchor: DEFAULT_REWRITER_ANCHOR,
