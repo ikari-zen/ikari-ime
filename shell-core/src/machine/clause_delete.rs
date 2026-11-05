@@ -17,6 +17,114 @@ pub(super) struct CommittedPreview {
     units: Vec<Range<usize>>,
     target: usize,
     min: usize,
+    /// 削除の前の文書の長さ（ホストが返した値。0 = 取れていない）。取り消しの検査の予想に使う
+    document_length: Utf16Len,
+}
+
+/// 文節削除の 1 段（ADR 0053 §3.1）。外には出さない。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum UndoStep {
+    /// 確定後。`removed` を `start` に書き戻す
+    Committed {
+        /// 消した文字（表示の文字列そのまま）
+        removed: String,
+        /// 消した範囲の始まり（UTF-16。消したあとのキャレットの予想）
+        start: Utf16Len,
+        /// 消したあとの、`start` の左の文字（切り出した文の中だけ）
+        left: String,
+        /// 消したあとの、`start` の右の文字（同上）
+        right: String,
+        /// 消したあとの文書の長さの予想（消す前が取れたときだけ）
+        document_length: Option<Utf16Len>,
+    },
+    /// 読みの入力中。消す前の合成器の中身に戻す
+    Composing {
+        kana: String,
+        pending: String,
+        /// 消したあとの合成器の中身
+        after: (String, String),
+    },
+    /// 変換中。消す前の変換の読み全体を、読みの入力中として戻す
+    Converting {
+        reading: String,
+        after: ConvertingAfter,
+    },
+}
+
+/// 変換中の削除のあとの状態（取り消しの検査に使う）
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum ConvertingAfter {
+    /// 全部消えて idle になった
+    Idle,
+    /// 文節が残っている
+    Segments {
+        conversion_id: u64,
+        layout_rev: u32,
+        reading: String,
+    },
+}
+
+/// 確定後の段の書き戻しの検査（ADR 0053 §3.2）。キャレットと前後の文字と文書の長さが、消した直後のままか。
+pub(super) fn committed_step_holds(step: &UndoStep, surrounding: &SurroundingText) -> bool {
+    let UndoStep::Committed {
+        start,
+        left,
+        right,
+        document_length,
+        ..
+    } = step
+    else {
+        return false;
+    };
+    let Some(caret) = surrounding.caret else {
+        return false;
+    };
+    if caret.length != Utf16Len::ZERO || caret.location != *start {
+        return false;
+    }
+    // ホストの左右は短いことがある（文書の端、窓の切り出し）。重なる部分で比べる
+    let left_ok = if surrounding.left.len() >= left.len() {
+        surrounding.left.ends_with(left.as_str())
+    } else {
+        left.ends_with(surrounding.left.as_str())
+    };
+    let right_ok = if surrounding.right.len() >= right.len() {
+        surrounding.right.starts_with(right.as_str())
+    } else {
+        right.starts_with(surrounding.right.as_str())
+    };
+    if !left_ok || !right_ok {
+        return false;
+    }
+    match document_length {
+        Some(expected) if surrounding.document_length != Utf16Len::ZERO => {
+            surrounding.document_length == *expected
+        }
+        _ => true,
+    }
+}
+
+impl CommittedPreview {
+    /// 今の対象を消したあとの取り消しの 1 段
+    fn undo_step(&self) -> UndoStep {
+        let range = self.target_range();
+        let removed = self.sentence.slice(&range);
+        let removed_length = Utf16Len::of(&removed);
+        let total = grapheme_count(&self.sentence.text);
+        UndoStep::Committed {
+            start: self.utf16_range().location,
+            left: clause::grapheme_slice(&self.sentence.text, 0, range.start),
+            right: clause::grapheme_slice(&self.sentence.text, range.end, total),
+            document_length: (self.document_length != Utf16Len::ZERO).then(|| {
+                Utf16Len(
+                    self.document_length
+                        .get()
+                        .saturating_sub(removed_length.get()),
+                )
+            }),
+            removed,
+        }
+    }
 }
 
 impl CommittedPreview {
@@ -134,6 +242,10 @@ impl InputStateMachine {
         {
             return None;
         }
+        // 直前が英字なら、アプリの単語の削除に任せる（ADR 0053 §6.3。エンジンを呼ばない）
+        if clause::ends_with_ascii(&surrounding.left) {
+            return None;
+        }
         let sentence = clause::cut_sentence(
             &surrounding.left,
             &surrounding.right,
@@ -184,6 +296,7 @@ impl InputStateMachine {
             units: vec![unit],
             target: 0,
             min,
+            document_length: surrounding.document_length,
         })
     }
 
@@ -196,6 +309,7 @@ impl InputStateMachine {
             self.delete_preview = Some(DeletePreview::Committed(target));
             return vec![marked];
         }
+        self.clause_undo.push(target.undo_step());
         vec![ShellAction::DeleteText {
             range: target.utf16_range(),
         }]
@@ -299,7 +413,7 @@ impl InputStateMachine {
             clause::grapheme_slice(&kana, unit.end, kana_count)
         );
         let kept_pending = if unit.end < total {
-            pending
+            pending.clone()
         } else {
             String::new()
         };
@@ -312,6 +426,17 @@ impl InputStateMachine {
             self.feed(&rest);
             self.feed(&kept_pending);
         }
+        // かな入力の合成器には読みを入れ直せないので、取り消しの段はローマ字入力のときだけ積む
+        if self.settings.input_method == crate::types::InputMethodKind::Romaji {
+            self.clause_undo.push(UndoStep::Composing {
+                kana,
+                pending,
+                after: (
+                    self.composer.kana().to_string(),
+                    self.composer.pending().to_string(),
+                ),
+            });
+        }
         self.refresh_composing()
     }
 
@@ -319,6 +444,7 @@ impl InputStateMachine {
 
     /// 変換中の文節をすべて消して idle に戻る
     fn clear_converting(&mut self, current: &ConvertingState) -> Vec<ShellAction> {
+        self.push_converting_undo(current, ConvertingAfter::Idle);
         if !current.is_fallback {
             self.engine.cancel(current.conversion_id);
         }
@@ -402,6 +528,14 @@ impl InputStateMachine {
             }
         }
         next.sync_focused();
+        self.push_converting_undo(
+            &current,
+            ConvertingAfter::Segments {
+                conversion_id: next.conversion_id,
+                layout_rev: next.layout_rev,
+                reading: next.reading.clone(),
+            },
+        );
         self.mode.use_segment_api = true;
         self.mode.layout_changed = true;
         self.state = InputState::Converting(next.clone());
@@ -471,6 +605,136 @@ impl InputStateMachine {
             ShellAction::SetMarkedText(delete_target_marked(&now)),
             ShellAction::HideCandidates,
         ]
+    }
+
+    // MARK: - 元に戻す（ADR 0053）
+
+    /// 変換中の削除の取り消しの段を積む。再変換とアスキーの変換は、Esc で戻せるので積まない。
+    /// かな入力の合成器には読みを入れ直せないので、ローマ字入力のときだけ積む
+    fn push_converting_undo(&mut self, current: &ConvertingState, after: ConvertingAfter) {
+        if !matches!(current.origin, ConversionOrigin::Composing)
+            || self.settings.input_method != crate::types::InputMethodKind::Romaji
+        {
+            return;
+        }
+        self.clause_undo.push(UndoStep::Converting {
+            reading: current.reading.clone(),
+            after,
+        });
+    }
+
+    /// 取り消しの覚えを捨てる
+    pub fn forget_clause_undo(&mut self) {
+        self.clause_undo.clear();
+    }
+
+    /// `clause.undo` のキー。覚えがない、または状態が消した直後と食い違うときは `None`（割り当てがないのと同じ扱い）。
+    /// 確定後の段で検査に落ちたときは、覚えを全部捨てて `PassThrough`
+    pub(super) fn clause_undo_key(
+        &mut self,
+        text: &mut dyn TextAccess,
+    ) -> Option<Vec<ShellAction>> {
+        let step = self.clause_undo.last()?.clone();
+        let actions = match &step {
+            UndoStep::Committed { removed, .. } => {
+                if self.state != InputState::Idle {
+                    None
+                } else if text
+                    .surrounding()
+                    .is_some_and(|surrounding| committed_step_holds(&step, &surrounding))
+                {
+                    // 学習・確定履歴には送らない（削除と書き戻しは変換の証拠ではない）
+                    Some(vec![ShellAction::Commit {
+                        text: removed.clone(),
+                    }])
+                } else {
+                    self.clause_undo.clear();
+                    return Some(vec![ShellAction::PassThrough]);
+                }
+            }
+            UndoStep::Composing {
+                kana,
+                pending,
+                after,
+            } => self
+                .composing_matches(after)
+                .then(|| self.restore_composing(kana, pending, text)),
+            UndoStep::Converting { reading, after } => self
+                .converting_matches(after)
+                .then(|| self.restore_converting(reading, text)),
+        };
+        match actions {
+            Some(actions) => {
+                self.clause_undo.pop();
+                Some(actions)
+            }
+            None => {
+                self.clause_undo.clear();
+                None
+            }
+        }
+    }
+
+    /// 今の状態が、読みの削除のあと（`after`）のままか
+    fn composing_matches(&self, after: &(String, String)) -> bool {
+        match &self.state {
+            InputState::Idle => after.0.is_empty() && after.1.is_empty(),
+            InputState::Composing { kana, pending } => *kana == after.0 && *pending == after.1,
+            _ => false,
+        }
+    }
+
+    /// 今の状態が、変換中の削除のあとのままか。直前の取り消しで読みの入力中に戻したあとも含む
+    fn converting_matches(&self, after: &ConvertingAfter) -> bool {
+        match (after, &self.state) {
+            (ConvertingAfter::Idle, InputState::Idle) => true,
+            (
+                ConvertingAfter::Segments {
+                    conversion_id,
+                    layout_rev,
+                    ..
+                },
+                InputState::Converting(current),
+            ) => current.conversion_id == *conversion_id && current.layout_rev == *layout_rev,
+            (
+                ConvertingAfter::Segments { reading, .. },
+                InputState::Composing { kana, pending },
+            ) => kana == reading && pending.is_empty(),
+            _ => false,
+        }
+    }
+
+    /// 合成器を `kana` と `pending` に入れ直して、読みの入力中にする
+    fn restore_composing(
+        &mut self,
+        kana: &str,
+        pending: &str,
+        text: &mut dyn TextAccess,
+    ) -> Vec<ShellAction> {
+        self.composer.clear();
+        self.feed(kana);
+        self.feed(pending);
+        self.composing_started(text)
+    }
+
+    /// 変換を取りやめて、その読み全体を読みの入力中にする
+    fn restore_converting(&mut self, reading: &str, text: &mut dyn TextAccess) -> Vec<ShellAction> {
+        let was_converting = match self.converting().cloned() {
+            Some(current) => {
+                if !current.is_fallback {
+                    self.engine.cancel(current.conversion_id);
+                }
+                self.reset_composition(None, None);
+                true
+            }
+            None => false,
+        };
+        let mut actions = Vec::new();
+        if was_converting {
+            actions.push(ShellAction::HideCandidates);
+        }
+        actions.extend(self.restore_composing(reading, "", text));
+        actions
     }
 
     // MARK: - プレビューのモードの中のキー
@@ -564,6 +828,7 @@ impl InputStateMachine {
         match preview {
             DeletePreview::Committed(target) => {
                 self.delete_preview = None;
+                self.clause_undo.push(target.undo_step());
                 vec![ShellAction::Restore {
                     text: String::new(),
                     replacing: target.utf16_range(),

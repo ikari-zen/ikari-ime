@@ -10,6 +10,8 @@ use unicode_segmentation::UnicodeSegmentation;
 use crate::types::{SurroundingText, Utf16Len, Utf16Range};
 
 /// 文の終わりの記号（ADR 0050 §3.3）
+/// 英字の直前の判定で飛ばす空白（改行は含めない。ADR 0053 §6.3）
+const ASCII_BLANKS: [char; 2] = [' ', '\t'];
 const SENTENCE_TERMINATORS: [char; 7] = ['。', '．', '.', '！', '？', '!', '?'];
 /// 文の終わりの記号のあとに続く閉じ括弧。記号と同じ文に含める
 const CLOSING_BRACKETS: [char; 4] = ['」', '』', '）', ')'];
@@ -169,6 +171,15 @@ pub fn left_matches_caret(surrounding: &SurroundingText, caret: Utf16Range) -> b
     let location = caret.location.get();
     left == location
         || (left < location && surrounding.document_length.get() > left.saturating_add(right))
+}
+
+/// キャレットの直前が英字か（ADR 0053 §6.3）。直前から ASCII の空白（改行は含めない）を飛ばした最初の文字が、
+/// ASCII の英数字か記号なら真。そのときの文節削除はアプリの単語の削除に任せる
+pub fn ends_with_ascii(left: &str) -> bool {
+    left.chars()
+        .rev()
+        .find(|c| !ASCII_BLANKS.contains(c))
+        .is_some_and(|c| c.is_ascii_graphic())
 }
 
 pub fn is_denied(bundle_id: &str) -> bool {
@@ -417,5 +428,19 @@ mod tests {
     fn the_deny_list_is_checked_by_bundle_id() {
         assert!(is_denied("com.apple.Terminal"));
         assert!(!is_denied("com.apple.TextEdit"));
+    }
+
+    #[test]
+    fn ascii_before_the_caret_is_detected_across_blanks() {
+        assert!(ends_with_ascii("今日は meeting"));
+        assert!(ends_with_ascii("今日は meeting  "));
+        assert!(ends_with_ascii("a\t"));
+        assert!(ends_with_ascii("見て ("));
+        assert!(!ends_with_ascii("俺は正しい"));
+        assert!(!ends_with_ascii("meeting は"));
+        assert!(!ends_with_ascii("meeting\n"));
+        assert!(!ends_with_ascii("　"));
+        assert!(!ends_with_ascii(""));
+        assert!(!ends_with_ascii("  "));
     }
 }
