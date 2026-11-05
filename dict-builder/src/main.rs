@@ -10,6 +10,7 @@ use ikari_dict_builder::{
     DEFAULT_KMEANS_ITERS, DEFAULT_MUNICIPALITY_CHAIN_COST, DEFAULT_TOWN_COST, Policy, PostalConfig,
     TownConfig, VectorsConfig, build_emoji_file, build_town_lex, build_vectors, build_with,
     read_chive_vocab, verify, verify_vectors,
+    webwords::{self, MIN_DF_FLOOR as WEBWORDS_MIN_DF_FLOOR, WebClass},
 };
 use ikari_dict_format::VECTORS_FILE_NAME;
 
@@ -142,6 +143,11 @@ enum Command {
         #[arg(long, value_name = "FILE", requires = "postal_csv")]
         postal_out: Option<PathBuf>,
     },
+    /// Wikipedia 日本語版から集めた外来語の収集・判定・辞書の行の生成（ADR 0055。issue #113）
+    Webwords {
+        #[command(subcommand)]
+        command: WebwordsCommand,
+    },
     /// chiVe のテキストから vectors.bin を作る
     Vectors {
         /// chiVe の word2vec テキスト
@@ -167,8 +173,188 @@ enum Command {
     },
 }
 
+#[derive(Subcommand, Debug)]
+enum WebwordsCommand {
+    /// pages-articles の本文から片仮名の連なりを数える（tf・df・cue）
+    Collect {
+        /// pages-articles の bz2（分割の全ファイル）
+        #[arg(long, value_name = "FILE", required = true, num_args = 1..)]
+        pages_articles: Vec<PathBuf>,
+        /// 収集の一覧の出力先
+        #[arg(long, value_name = "FILE")]
+        out: PathBuf,
+        /// 出力する df の下限
+        #[arg(long, value_name = "N", default_value_t = WEBWORDS_MIN_DF_FLOOR)]
+        min_df: u32,
+    },
+    /// 収集の一覧に区分（普通名詞・固有名詞・迷う語）を付け、schema=2 の一覧を作る
+    Classify {
+        /// `collect` の出力
+        #[arg(long, value_name = "FILE")]
+        collected: PathBuf,
+        /// jawiki の page の SQL ダンプ
+        #[arg(long, value_name = "FILE")]
+        page_sql: PathBuf,
+        /// jawiki の redirect の SQL ダンプ
+        #[arg(long, value_name = "FILE")]
+        redirect_sql: PathBuf,
+        /// jawiki の page_props の SQL ダンプ
+        #[arg(long, value_name = "FILE")]
+        page_props_sql: PathBuf,
+        /// jawiki の categorylinks の SQL ダンプ
+        #[arg(long, value_name = "FILE")]
+        categorylinks_sql: PathBuf,
+        /// jawiki の linktarget の SQL ダンプ
+        #[arg(long, value_name = "FILE")]
+        linktarget_sql: PathBuf,
+        /// カテゴリの規則表。省略すると同梱の webwords/categories.tsv
+        #[arg(long, value_name = "FILE")]
+        categories: Option<PathBuf>,
+        /// Sudachi（small、core、notcore）と ABR の lex.csv（既知の語の照合。複数指定できる）
+        #[arg(long, value_name = "FILE", required = true)]
+        lex: Vec<PathBuf>,
+        /// 一覧の 1 行目の source（`jawiki-<日付>`）
+        #[arg(long, value_name = "LABEL")]
+        source: String,
+        /// 一覧の 1 行目の sha256（pages-articles の各ファイルの sha256 をつないだものの sha256）
+        #[arg(long, value_name = "HEX")]
+        sha256: String,
+        /// 一覧の 1 行目の articles（数えた記事数）
+        #[arg(long, value_name = "N")]
+        articles: u64,
+        /// 一覧の 1 行目の sudachi（F1 に使った版）
+        #[arg(long, value_name = "LABEL")]
+        sudachi: String,
+        /// 出力する df の下限
+        #[arg(long, value_name = "N", default_value_t = WEBWORDS_MIN_DF_FLOOR)]
+        min_df: u32,
+        /// schema=2 の一覧の出力先
+        #[arg(long, value_name = "FILE")]
+        out: PathBuf,
+        /// レポート（Markdown）の出力先
+        #[arg(long, value_name = "FILE")]
+        report: Option<PathBuf>,
+    },
+    /// schema=2 の一覧から、辞書に足す webwords_lex.csv を作る。できたファイルは `--lex` と `--notcore-lex` に渡す
+    Lex {
+        /// schema=2 の一覧
+        #[arg(long, value_name = "FILE")]
+        list: PathBuf,
+        /// Sudachi（small、core、notcore）と ABR の lex.csv（既知の語の照合と ID の数え方。複数指定できる）
+        #[arg(long, value_name = "FILE", required = true)]
+        lex: Vec<PathBuf>,
+        /// 出力する lex.csv のパス
+        #[arg(long, value_name = "FILE")]
+        out: PathBuf,
+        /// レポート（Markdown）の出力先
+        #[arg(long, value_name = "FILE")]
+        report: Option<PathBuf>,
+        /// df の下限（掃引用。省略すると配る一覧の下限）
+        #[arg(long, value_name = "N")]
+        min_df: Option<u32>,
+        /// 普通名詞のコスト（掃引用。省略すると既定）
+        #[arg(long, value_name = "COST", allow_negative_numbers = true)]
+        cost: Option<i16>,
+        /// 区分ごとの出発点からの差（掃引用。`proper.person=2000` の形。複数指定できる）
+        #[arg(long, value_name = "CLASS=VALUE", value_parser = parse_proper_offset, allow_negative_numbers = true)]
+        proper_offset: Vec<(WebClass, i16)>,
+        /// F5（連結を足すかの規則）を当てない（掃引用）
+        #[arg(long)]
+        no_f5: bool,
+    },
+}
+
+/// `proper.person=2000` を (区分, 値) にする。普通名詞（common）の差は `--cost` で指定するので受けない。
+fn parse_proper_offset(text: &str) -> Result<(WebClass, i16), String> {
+    let (class, value) = text
+        .split_once('=')
+        .ok_or_else(|| format!("`区分=値` の形ではありません: {text}"))?;
+    let class = WebClass::parse(class)
+        .filter(|c| c.is_proper())
+        .ok_or_else(|| format!("区分は proper.person / proper.place / proper.general: {class}"))?;
+    let value = value
+        .parse::<i16>()
+        .map_err(|e| format!("値が整数ではありません: {value} ({e})"))?;
+    Ok((class, value))
+}
+
+fn run_webwords(command: WebwordsCommand) -> Result<(), Box<dyn std::error::Error>> {
+    let rows = match command {
+        WebwordsCommand::Collect {
+            pages_articles,
+            out,
+            min_df,
+        } => webwords::collect(&webwords::CollectConfig {
+            pages_articles,
+            out,
+            min_df,
+        })?,
+        WebwordsCommand::Classify {
+            collected,
+            page_sql,
+            redirect_sql,
+            page_props_sql,
+            categorylinks_sql,
+            linktarget_sql,
+            categories,
+            lex,
+            source,
+            sha256,
+            articles,
+            sudachi,
+            min_df,
+            out,
+            report,
+        } => webwords::classify(&webwords::ClassifyConfig {
+            collected,
+            page_sql,
+            redirect_sql,
+            page_props_sql,
+            categorylinks_sql,
+            linktarget_sql,
+            categories,
+            lex,
+            header: webwords::ListHeader {
+                source,
+                sha256,
+                articles,
+                sudachi,
+                // 規則表の sha256 は classify が埋める
+                rules: String::new(),
+            },
+            min_df,
+            out,
+            report,
+        })?,
+        WebwordsCommand::Lex {
+            list,
+            lex,
+            out,
+            report,
+            min_df,
+            cost,
+            proper_offset,
+            no_f5,
+        } => webwords::lex(&webwords::LexConfig {
+            list,
+            lex,
+            out,
+            report,
+            min_df,
+            cost,
+            proper_offsets: proper_offset,
+            no_f5,
+        })?,
+    };
+    println!("{rows} rows");
+    Ok(())
+}
+
 fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let started = Instant::now();
+    if let Some(Command::Webwords { command }) = args.command {
+        return run_webwords(command);
+    }
     if let Some(Command::Emoji { json, commit, out }) = &args.command {
         let report = build_emoji_file(json, commit, out)?;
         println!("{report}");
@@ -300,5 +486,28 @@ fn main() -> ExitCode {
             eprintln!("error: {e}");
             ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::CommandFactory;
+
+    use super::*;
+
+    #[test]
+    fn cli_definition_is_consistent() {
+        Args::command().debug_assert();
+    }
+
+    #[test]
+    fn proper_offset_accepts_only_proper_classes() {
+        assert_eq!(
+            parse_proper_offset("proper.person=-2000"),
+            Ok((WebClass::ProperPerson, -2000))
+        );
+        assert!(parse_proper_offset("common=1").is_err());
+        assert!(parse_proper_offset("proper.place").is_err());
+        assert!(parse_proper_offset("proper.place=x").is_err());
     }
 }

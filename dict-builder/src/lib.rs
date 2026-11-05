@@ -26,6 +26,7 @@ mod policy;
 mod town;
 mod vectors;
 mod verify;
+pub mod webwords;
 
 pub use conj::{ConjStats, MIN_SUPPORT};
 pub use connection::{ConnectionReport, SideReport};
