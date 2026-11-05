@@ -1,6 +1,6 @@
 # ADR 0051: 前回の異常終了を、次の起動で診断ログに記録する（起動中の印、致命的なシグナルの記録、panic の記録）
 
-- 状態: 提案
+- 状態: 採用（2026-11-05 ユーザー決定。§10 の 3 点はすべて推奨どおり）
 - 日付: 2026-11-05
 - 対象: issue #98。新しい crate `runmark/`（印の書式と判定、シグナルの処理）、`engine/src/lib.rs`・`engine/src/diag.rs`・`engine/src/diag_schema.rs`、`engine-ffi/src/lib.rs`、`shell-core/src/engine/`（`sh_prev_exit` と `sh_panic` の相乗り）、`shell-ffi/src/shell.rs`（設定に `diag_dir`、終了の口）、`macos/Sources/IkariIME/`（`diag_dir` を渡す、終了の口を呼ぶ）、`scripts/diag-report.py`
 - 前提: main = bde8c35。ADR 0034（診断ログ。§2.1 の案 B、§2.3、§4.1 の決まり、§4.2 の `sh_engine`）、ADR 0004 §5.1・§7.4（XPC サービスと `engine.lock`）・§7.5、ADR 0041・0042（判断は Rust）、spec の NFR-18・NFR-19
