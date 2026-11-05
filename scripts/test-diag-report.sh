@@ -27,21 +27,21 @@ actual="$(python3 -I "$REPORT" "$DATA")"
 }
 
 # ファイルを直接渡しても（順序が逆でも）同じ出力になる
-files="$(python3 -I "$REPORT" "$DATA/engine.log" "$DATA/engine-20261025-000000.log.gz")"
+files="$(python3 -I "$REPORT" "$DATA/engine.log" "$DATA/engine-20261028-000000.log" "$DATA/engine-20261025-000000.log.gz")"
 [[ "$files" == "$actual" ]] || die "ファイル指定とディレクトリ指定で出力が違います"
 
 # TSV は行の先頭に節名がつく
 tsv="$(python3 -I "$REPORT" --tsv "$DATA")"
-printf '%s\n' "$tsv" | grep -q '^ログの健全性	読めた行	33$' || die "TSV に期待の行がありません"
+printf '%s\n' "$tsv" | grep -q '^ログの健全性	読めた行	46$' || die "TSV に期待の行がありません"
 
 # 日付の絞り込み（2026-10-27 だけ → 古い世代の行は入らない）
 since="$(python3 -I "$REPORT" --since 2026-10-27 "$DATA")"
-printf '%s\n' "$since" | grep -q '^| 読めた行 | 26 |$' || die "--since の結果が違います"
+printf '%s\n' "$since" | grep -q '^| 読めた行 | 39 |$' || die "--since の結果が違います"
 
 # smoke のセッションは既定で除く（--include-smoke で戻す）
-printf '%s\n' "$actual" | grep -q '^| 除いた smoke の行 | 3 |$' || die "smoke の行を除けていません"
+printf '%s\n' "$actual" | grep -q '^| 除いた smoke の行 | 4 |$' || die "smoke の行を除けていません"
 smoke="$(python3 -I "$REPORT" --include-smoke "$DATA")"
-printf '%s\n' "$smoke" | grep -q '^| smoke の行（除かない） | 3 |$' || die "--include-smoke の結果が違います"
+printf '%s\n' "$smoke" | grep -q '^| smoke の行（除かない） | 4 |$' || die "--include-smoke の結果が違います"
 printf '%s\n' "$smoke" | grep -q '^| pick=5 | 1 | 33.3% |$' || die "--include-smoke で smoke の合成が入っていません"
 printf '%s\n' "$actual" | grep -q '^| pick=5 | 0 | 0.0% |$' || die "smoke の合成が既定で入っています"
 
@@ -121,5 +121,39 @@ mixout="$(python3 -I "$REPORT" "$smk")"
 # smoke のセッション自身の 1 行だけが smoke。利用者のセッションの行（app= のないものを含む）は除かない
 printf '%s\n' "$mixout" | grep -qxF '| 除いた smoke の行 | 1 |' || die "利用者のアプリの begin_session がある epoch を smoke として除いています"
 printf '%s\n' "$mixout" | grep -qxF '| miss=none | 1 | 100.0% |' || die "利用者の epoch の miss=none が数えられていません"
+
+# 異常終了（ADR 0051）: exit の内訳、crash の直前の app=、panic の loc、DiagnosticReports のファイル名との突き合わせ
+for row in \
+  '| エンジン exit=crash | 1 |' \
+  '| エンジン exit=unknown | 1 |' \
+  '| 殻 exit=crash | 1 |' \
+  '| エンジン 2026-10-28 exit=crash | 1 |' \
+  '| エンジン exit=crash の直前の convert app=com.example.Editor | 1 |' \
+  '| 殻 exit=crash の直前の convert app=com.example.Terminal | 1 |' \
+  '| エンジンの exit=unknown のうち、殻の exit=unknown が 2 分以内にあるもの | 1 |' \
+  '| エンジン panic loc=engine/src/lib.rs:120 | 2 |' \
+  '| 殻 sh_panic loc=shell-core/src/engine/mod.rs:40 | 2 |' \
+  '| 殻 sh_panic loc=external | 1 |'; do
+  printf '%s\n' "$actual" | grep -qxF "$row" || die "異常終了の集計に期待の行がありません: $row"
+done
+printf '%s\n' "$actual" | grep -q 'DiagnosticReports' && die "--diag-reports なしで突き合わせの節が出ています"
+
+# ファイル名の時刻はローカル時刻なので、TZ を固定する。中身は読まないので、空のファイルでよい
+rep="$(mktemp -d)"
+trap 'rm -rf "$noapp" "$fill" "$appd" "$smk" "$rep"' EXIT
+: > "$rep/IkariEngine-2026-10-28-000130.ips"
+: > "$rep/ikari-2026-10-29-000100.ips"
+: > "$rep/ikari-2026-10-29-120000.ips"
+: > "$rep/IkariEngine-2026-10-28-000130-1.txt"
+: > "$rep/Other-2026-10-28-000130.ips"
+repout="$(TZ=UTC python3 -I "$REPORT" --diag-reports "$rep" "$DATA")"
+for row in \
+  '| エンジン exit=crash sig=11 | 2026-10-28 00:01:00 | IkariEngine-2026-10-28-000130.ips |' \
+  '| 殻 exit=crash sig=11 | 2026-10-29 00:00:00 | ikari-2026-10-29-000100.ips |' \
+  '| ikari 関連のレポート | 3 |  |' \
+  '| うち exit=crash に添えるとよいもの | 2 |  |' \
+  '| うち対応する exit=crash がないもの | 1 | ikari-2026-10-29-120000.ips |'; do
+  printf '%s\n' "$repout" | grep -qxF "$row" || die "レポートの突き合わせに期待の行がありません: $row"
+done
 
 log "diag-report のテスト: OK"
