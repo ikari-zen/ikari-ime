@@ -41,11 +41,15 @@ pub enum KeymapAction {
     ModeEnglish,
     /// 日本語のモードにする
     ModeJapanese,
+    /// 直前の文節をすぐ消す（ADR 0050）。既定は `option+backspace`
+    ClauseDelete,
+    /// 削除の対象をハイライトするモードに入る（ADR 0050）。既定は `shift+option+backspace`
+    ClauseDeletePreview,
 }
 
 impl KeymapAction {
     /// 設定アプリの画面と `settings.tsv` の並び（Swift の `allCases` と同じ順）。
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 17] = [
         Self::ToHiragana,
         Self::ToFullwidthKatakana,
         Self::ToHalfwidthKatakana,
@@ -61,6 +65,8 @@ impl KeymapAction {
         Self::ModeToggle,
         Self::ModeEnglish,
         Self::ModeJapanese,
+        Self::ClauseDelete,
+        Self::ClauseDeletePreview,
     ];
 
     /// TSV と設定のキーに使う名前（Swift の `rawValue`）。
@@ -81,6 +87,8 @@ impl KeymapAction {
             Self::ModeToggle => "mode.toggle",
             Self::ModeEnglish => "mode.english",
             Self::ModeJapanese => "mode.japanese",
+            Self::ClauseDelete => "clause.delete",
+            Self::ClauseDeletePreview => "clause.delete_preview",
         }
     }
 

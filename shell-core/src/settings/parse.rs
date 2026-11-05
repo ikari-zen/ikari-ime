@@ -104,6 +104,13 @@ fn apply_line(
             }
             _ => Some(InvalidValue),
         },
+        KEY_CLAUSE_MIN_CHARS => match value.parse::<u32>() {
+            Ok(n) if (CLAUSE_MIN_CHARS_MIN..=CLAUSE_MIN_CHARS_MAX).contains(&n) => {
+                settings.clause_min_chars = n;
+                None
+            }
+            _ => Some(InvalidValue),
+        },
         KEY_PAGING_SIZE => match value.parse::<u32>() {
             Ok(size) if (PAGE_SIZE_MIN..=PAGE_SIZE_MAX).contains(&size) => {
                 settings.page_size = size;
@@ -203,7 +210,8 @@ pub fn is_known_key(key: &str) -> bool {
         | KEY_POSTAL_TE_PREFIX
         | KEY_UNICODE_NOTATION
         | KEY_DATE_WEEKDAY_DATES
-        | KEY_CANDIDATE_HIDE_WHEN_CONFIDENT => true,
+        | KEY_CANDIDATE_HIDE_WHEN_CONFIDENT
+        | KEY_CLAUSE_MIN_CHARS => true,
         _ => key
             .strip_prefix(KEY_KEYMAP_PREFIX)
             .is_some_and(is_keymap_action),
@@ -310,6 +318,7 @@ pub fn effective_entries(settings: &SettingsSnapshot) -> Vec<(String, String)> {
                 KEY_CANDIDATE_HIDE_WHEN_CONFIDENT,
                 switch_value(settings.candidate_hide_when_confident).into(),
             ),
+            (KEY_CLAUSE_MIN_CHARS, settings.clause_min_chars.to_string()),
         ]
         .map(|(key, value)| (key.to_string(), value)),
     );
@@ -573,6 +582,7 @@ mod tests {
             "unicode.notation=off".into(),
             "date.weekday_dates=off".into(),
             "candidate.hide_when_confident=on".into(),
+            "clause.min_chars=3".into(),
         ];
         assert_eq!(entries, expected);
     }

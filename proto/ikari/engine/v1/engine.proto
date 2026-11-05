@@ -46,6 +46,9 @@ message Envelope {
     ImportData import_data = 49;           ImportReply import_reply = 50;
     ProfileGet get_profile = 51;           ProfileReply profile_reply = 52;
     ProfileSet set_profile = 53;           // 返事は ProfileReply（変更後）
+
+    // ---- 文節ごとの削除（ADR 0050 §5.3。追加だけなので schema_version は 1 のまま）----
+    RemoveSegments remove_segments = 54;   // 返事は SegmentLayout
   }
 }
 
@@ -100,6 +103,9 @@ message SegmentPageReply { uint32 segment = 1; uint32 page_index = 2; repeated C
                            bool lm_applied = 5; uint32 engine_micros = 6; }
 message ResizeSegment { uint64 conversion_id = 1; uint32 layout_rev = 2; uint32 segment = 3; sint32 delta = 4;
                         repeated SegmentChoice left = 5; }
+// 変換中の文節 [first, first + count) を取り除く（ADR 0050 §5.3）。返事は SegmentLayout（layout_rev を 1 進める。
+// focused は first − 1、first が 0 なら 0）。全部を取り除く指定は BAD_REQUEST
+message RemoveSegments { uint64 conversion_id = 1; uint32 layout_rev = 2; uint32 first = 3; uint32 count = 4; }
 message CommitSegments { uint64 conversion_id = 1; uint32 layout_rev = 2; repeated SegmentChoice choices = 3; }
 message Reconvert { uint64 session_id = 1; string surface = 2; SurroundingText context = 3; uint32 page_size = 4; }
 

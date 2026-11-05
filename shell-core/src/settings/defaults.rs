@@ -24,6 +24,7 @@ pub const KEY_POSTAL_TE_PREFIX: &str = "postal.te_prefix";
 pub const KEY_UNICODE_NOTATION: &str = "unicode.notation";
 pub const KEY_DATE_WEEKDAY_DATES: &str = "date.weekday_dates";
 pub const KEY_CANDIDATE_HIDE_WHEN_CONFIDENT: &str = "candidate.hide_when_confident";
+pub const KEY_CLAUSE_MIN_CHARS: &str = "clause.min_chars";
 
 // ---- 値の書き方
 pub const VALUE_ON: &str = "on";
@@ -57,6 +58,12 @@ pub const DEFAULT_DATE_WEEKDAY_DATES: bool = false;
 /// 2026-10-28 ユーザー決定（#69）
 pub const DEFAULT_CANDIDATE_HIDE_WHEN_CONFIDENT: bool = true;
 
+/// `clause.min_chars` の範囲。1 = 下限なし（ADR 0050 §5.1。2026-11-05 ユーザー決定）
+pub const CLAUSE_MIN_CHARS_MIN: u32 = 1;
+pub const CLAUSE_MIN_CHARS_MAX: u32 = 10;
+/// `clause.min_chars` の既定。文節ごとの削除で、消す文字がこの数に満たなければ前の文節まで広げる（ADR 0050。ユーザー決定）
+pub const DEFAULT_CLAUSE_MIN_CHARS: u32 = 3;
+
 /// `emoji.shortcode_exclude` の既定（ADR 0027 §8.1 Q17）。ターミナル: Terminal、iTerm2、WezTerm、Ghostty
 pub const DEFAULT_EMOJI_SHORTCODE_EXCLUDE: [&str; 4] = [
     "com.apple.Terminal",
@@ -66,7 +73,7 @@ pub const DEFAULT_EMOJI_SHORTCODE_EXCLUDE: [&str; 4] = [
 ];
 
 /// 割り当てられる操作の名前（`keymap.<操作>` と keymap の TSV の操作）。並びは `effective_entries` と画面の順
-pub const KEYMAP_ACTIONS: [&str; 15] = [
+pub const KEYMAP_ACTIONS: [&str; 17] = [
     "convert.hiragana",
     "convert.fullwidth_katakana",
     "convert.halfwidth_katakana",
@@ -82,6 +89,8 @@ pub const KEYMAP_ACTIONS: [&str; 15] = [
     "mode.toggle",
     "mode.english",
     "mode.japanese",
+    "clause.delete",
+    "clause.delete_preview",
 ];
 
 pub fn is_keymap_action(name: &str) -> bool {
@@ -120,6 +129,7 @@ pub fn default_snapshot() -> SettingsSnapshot {
         unicode_notation: DEFAULT_UNICODE_NOTATION,
         date_weekday_dates: DEFAULT_DATE_WEEKDAY_DATES,
         candidate_hide_when_confident: DEFAULT_CANDIDATE_HIDE_WHEN_CONFIDENT,
+        clause_min_chars: DEFAULT_CLAUSE_MIN_CHARS,
     }
 }
 
