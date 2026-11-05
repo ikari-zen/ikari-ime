@@ -32,7 +32,7 @@ fn collect_is_registered_and_reads_the_given_files() {
 }
 
 #[test]
-fn classify_is_registered_and_not_implemented() {
+fn classify_is_registered_and_fails_on_missing_input() {
     let (ok, stderr) = run(&[
         "webwords",
         "classify",
@@ -62,7 +62,9 @@ fn classify_is_registered_and_not_implemented() {
         "o.tsv",
     ]);
     assert!(!ok);
-    assert!(stderr.contains("未実装"), "{stderr}");
+    // 実装済み: 入力のファイルがなければ入出力の誤りになる
+    assert!(!stderr.contains("未実装"), "{stderr}");
+    assert!(stderr.contains("l.csv"), "{stderr}");
 }
 
 #[test]
