@@ -10,8 +10,8 @@ i210-senjitsu-s	単独	issue210,ken-matter			せんじつのけん	先日の件	
 i210-kaigi-c	文脈	issue210,ken-matter		お世話になっております。	かいぎのけん	会議の件	文脈つき（メールの書き出し）	test	issue210
 i210-senjitsu-c	文脈	issue210,ken-matter		お世話になっております。	せんじつのけん	先日の件	文脈つき	test	issue210
 i210-renraku-c	文脈	issue210,ken-matter		先ほどはありがとうございました。	ごれんらくのけん	ご連絡の件	文脈つき	dev	issue210
-i210-kono-s	単独	issue210,ken-matter			このけんについて	この件について	指示語 + 件（元から 1 位のはず。悪化の見張り）	dev	issue210
-i210-ano-s	単独	issue210,ken-matter			あのけんは	あの件は	指示語 + 件	dev	issue210
+i210-kono-s	単独	issue210,ken-matter			このけんについて	この件について	指示語 + 件（LM なしでは基準で圏外。連体詞の値 matter_ken_after_rentai の掃引で見る）	dev	issue210
+i210-ano-s	単独	issue210,ken-matter			あのけんは	あの件は	指示語 + 件（連体詞の掃引で見る）	dev	issue210
 i210-honken-s	単独	issue210,ken-guard			ほんけん	本県	県が正しい（本県）。件の補正で悪化させない	dev	issue210
 i210-kennai-s	単独	issue210,ken-guard			けんない	県内	県内	dev	issue210
 i210-kencho-s	単独	issue210,ken-guard			けんちょう	県庁	県庁	dev	issue210
@@ -28,7 +28,7 @@ i210-nokenkou-s	単独	issue210,ken-guard			のけんこう	の健康	件 + 高�
 i210-nokenshou-s	単独	issue210,ken-guard			のけんしょう	の検証	件 + 小などに崩れないか	test	issue210
 i210-nokensuu-s	単独	issue210,ken-guard			のけんすう	の件数	件数は 1 語（件 + 数に分かれても表記は同じ）	test	issue210
 i210-tonari-s	単独	issue210,ken-pref			となりのけん	隣の県	ADR 0054 §7-1 の代償。LM なしでは件が 1 位になる想定。県は 2 位以内か	dev	issue210
-i210-hoka-s	単独	issue210,ken-pref			ほかのけん	他の県	代償の見張り（表記は公用文では「ほか」の場合もある。期待は暫定）	test	issue210
+i210-hoka-s	単独	issue210,ken-pref			ほかのけん	ほかの県	代償の見張り（公用文の書き表し方では「ほか」は仮名書き）	test	issue210
 i210-maeuri-s	単独	issue210,ken-pref			まえうりのけん	前売りの券	の + 券	dev	issue210
 i210-yuusha-s	単独	issue210,ken-pref			ゆうしゃのけん	勇者の剣	の + 剣	dev	issue210
 i210-kinou-ctx-s	文脈	issue210,ken-matter		昨日の	けん	件	左文脈が「の」で終わる。確定してから打つ場合	dev	issue210

@@ -113,3 +113,10 @@ honorific_go_kanji	1500
 # 当たるのは 26 行。広げると（助数詞可能に絞らない 500 行）、カタカナの未知語の分割が崩れる（ファイナリゼーション が ふぁい也ぜーション に負ける）。
 # 値は掃引で決めた（2000〜5000 は同じ結果で、全セットの 1 位の悪化 0。下限は 2 つの経路の差 1429）。平坦な範囲の中ほどの 3000。eval/reports/short-katakana-90.md
 short_katakana_counter	3000
+
+# 連接表の補正（ADR 0054。#210）。述語ではなく、辞書を作るときに連接表の 1 マスを下げる値（dict-builder/src/connection.rs）。
+# 格助詞「の」の直後の「件」（ケン）を δ 安くする（昨日の件、会議の件）。単語コストでは「けん」単独の県を壊さずに直せない。
+# 0 なら何もしない（grammar.bin は変わらない）。δ は T（その辞書での閾値。--policy-report に出る）を超える必要がある。
+# 値は掃引で決める（eval/reports/ken-connection-210-2026-11-06.md）。連体詞（この件）の値は既定 0
+matter_ken_after_no	0
+matter_ken_after_rentai	0
