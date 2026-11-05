@@ -87,6 +87,10 @@ struct Args {
     #[arg(long, value_name = "FILE")]
     policy_report: Option<PathBuf>,
 
+    /// 連接表の補正の δ が閾値 T 以下でも失敗にしない（掃引だけに使う。ADR 0054 §5.1）
+    #[arg(long, conflicts_with = "verify")]
+    allow_weak_connection: bool,
+
     /// ビルドせず、辞書ディレクトリの全エントリを検証する（vectors.bin があればそれも）
     #[arg(long, value_name = "DIR")]
     verify: Option<PathBuf>,
@@ -259,6 +263,7 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let mut opts = BuildOptions {
         notcore_lex: args.notcore_lex.clone(),
         chain_lex: args.chain_lex.clone(),
+        allow_weak_connection: args.allow_weak_connection,
         ..BuildOptions::default()
     };
     if let Some(path) = &args.policy {
@@ -281,6 +286,7 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
             .policy
             .to_markdown(&opts.policy, opts.chive_vocab.as_ref().map(|v| v.len()));
         md.push_str(&report.notcore_markdown());
+        md.push_str(&report.connection_markdown());
         std::fs::write(path, md).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
     }
     eprintln!("built in {:.2?}", started.elapsed());

@@ -44,6 +44,19 @@ pub const HONORIFIC_GO_KANJI: &str = "honorific_go_kanji";
 pub const SHORT_KATAKANA_COUNTER: &str = "short_katakana_counter";
 pub const PERSON_NAME_KANJI: &str = "person_name_kanji";
 
+/// 連接表の補正の値（述語ではないので `PREDICATES` には入れない。ADR 0054）。
+/// 格助詞「の」の直後の「件」を δ 安くする。0 なら何もしない
+pub const MATTER_KEN_AFTER_NO: &str = "matter_ken_after_no";
+/// 連体詞（この、その、あの、どの）の直後の「件」を δ 安くする。0 なら何もしない
+pub const MATTER_KEN_AFTER_RENTAI: &str = "matter_ken_after_rentai";
+
+/// 連接表の補正の値（ADR 0054）。どちらも 0 が「何もしない」
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ConnectionDeltas {
+    pub matter_ken_after_no: i32,
+    pub matter_ken_after_rentai: i32,
+}
+
 /// 述語の一覧。添字が `Verdict::hit_mask` のビット位置。
 pub const PREDICATES: [&str; 26] = [
     ASCII_LOWER,
@@ -213,6 +226,8 @@ const PENALTY_BIN_FLOORS: [i32; 5] = [1, 1000, 2000, 3000, 5000];
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Policy {
     effects: [Option<i32>; PREDICATES.len()],
+    /// 連接表の補正の値（ADR 0054）
+    connection: ConnectionDeltas,
     /// 異字同訓の表。`kun_*` の述語があるときだけ使う（同梱の表）
     kun: KunTable,
 }
@@ -473,6 +488,8 @@ impl Policy {
     /// `述語<TAB>値` の行からなるテキストを読む。`#` で始まる行と空行は無視する。
     pub fn parse(text: &str) -> Result<Self, String> {
         let mut effects = [None; PREDICATES.len()];
+        let mut connection = ConnectionDeltas::default();
+        let mut connection_seen = [false; 2];
         for (i, line) in text.lines().enumerate() {
             let lineno = i + 1;
             let line = line.trim();
@@ -483,6 +500,29 @@ impl Policy {
                 .split_once('\t')
                 .ok_or_else(|| format!("line {lineno}: expected `predicate<TAB>value`"))?;
             let (name, value) = (name.trim(), value.trim());
+            if let Some(slot) = [MATTER_KEN_AFTER_NO, MATTER_KEN_AFTER_RENTAI]
+                .iter()
+                .position(|k| *k == name)
+            {
+                if connection_seen[slot] {
+                    return Err(format!("line {lineno}: `{name}` is defined twice"));
+                }
+                connection_seen[slot] = true;
+                let delta: i32 = value
+                    .parse()
+                    .map_err(|_| format!("line {lineno}: value `{value}` is not an integer"))?;
+                if !(0..=MAX_ADD).contains(&delta) {
+                    return Err(format!(
+                        "line {lineno}: value {delta} is outside 0..={MAX_ADD}"
+                    ));
+                }
+                if slot == 0 {
+                    connection.matter_ken_after_no = delta;
+                } else {
+                    connection.matter_ken_after_rentai = delta;
+                }
+                continue;
+            }
             let index = PREDICATES
                 .iter()
                 .position(|p| *p == name)
@@ -504,6 +544,7 @@ impl Policy {
         }
         Ok(Self {
             effects,
+            connection,
             kun: KunTable::builtin(),
         })
     }
@@ -513,8 +554,14 @@ impl Policy {
         // 同梱のファイルは単体テストで検証している
         Self::parse(DEFAULT_POLICY_TEXT).unwrap_or(Self {
             effects: [None; PREDICATES.len()],
+            connection: ConnectionDeltas::default(),
             kun: KunTable::builtin(),
         })
+    }
+
+    /// 連接表の補正の値（ADR 0054）
+    pub fn connection(&self) -> ConnectionDeltas {
+        self.connection
     }
 
     pub fn effect(&self, predicate: &str) -> Option<i32> {
@@ -568,6 +615,18 @@ impl Policy {
         for (name, effect) in PREDICATES.iter().zip(self.effects) {
             if let Some(v) = effect {
                 let _ = writeln!(out, "{name}\t{v}");
+            }
+        }
+        // 0 は何もしない（書かないのと同じ）ので、書かない。0 のままなら policy= の値が変わらない
+        for (name, delta) in [
+            (MATTER_KEN_AFTER_NO, self.connection.matter_ken_after_no),
+            (
+                MATTER_KEN_AFTER_RENTAI,
+                self.connection.matter_ken_after_rentai,
+            ),
+        ] {
+            if delta != 0 {
+                let _ = writeln!(out, "{name}\t{delta}");
             }
         }
         out

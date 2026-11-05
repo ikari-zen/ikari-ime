@@ -24,6 +24,37 @@ fn input_error(path: &Path, line: usize, message: impl Into<String>) -> BuildErr
     }
 }
 
+impl Matrix {
+    /// 左 ID の列を 1 つ足し、`source_left` の列をそのまま写す。足した左 ID（= 元の `next_left_size`）を返す。
+    /// 左 ID が `u16` に収まらなければ `None`（ADR 0054 §2.1-3）。
+    pub fn push_left_column_copy(&mut self, source_left: u16) -> Option<u16> {
+        let new_left = self.next_left_size;
+        let new_size = new_left.checked_add(1)?;
+        if source_left >= new_left {
+            return None;
+        }
+        let width = usize::from(self.prev_right_size);
+        let start = usize::from(source_left) * width;
+        self.costs.extend_from_within(start..start + width);
+        self.next_left_size = new_size;
+        Some(new_left)
+    }
+
+    fn index(&self, prev_right: u16, next_left: u16) -> usize {
+        usize::from(next_left) * usize::from(self.prev_right_size) + usize::from(prev_right)
+    }
+
+    /// 連接コスト（`prev_right` → `next_left`）
+    pub fn cost(&self, prev_right: u16, next_left: u16) -> i16 {
+        self.costs[self.index(prev_right, next_left)]
+    }
+
+    pub fn set_cost(&mut self, prev_right: u16, next_left: u16, cost: i16) {
+        let index = self.index(prev_right, next_left);
+        self.costs[index] = cost;
+    }
+}
+
 pub fn read_matrix(path: &Path) -> Result<Matrix, BuildError> {
     let mut reader = open_reader(path)?;
     let mut line = String::new();
@@ -154,6 +185,20 @@ mod tests {
         assert_eq!((m.prev_right_size, m.next_left_size), (2, 3));
         // costs[next_left * 2 + prev_right]
         assert_eq!(m.costs, vec![1, 2, 3, 4, 5, 6]);
+    }
+
+    #[test]
+    fn push_left_column_copy_appends_a_copy_of_the_column() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut m = read_matrix(&write(&dir, OK_2X3)).unwrap();
+        assert_eq!(m.push_left_column_copy(1), Some(3));
+        assert_eq!((m.prev_right_size, m.next_left_size), (2, 4));
+        assert_eq!(m.costs, vec![1, 2, 3, 4, 5, 6, 3, 4]);
+        assert_eq!(m.cost(1, 3), 4);
+        m.set_cost(0, 3, -7);
+        assert_eq!(m.cost(0, 3), -7);
+        assert_eq!(m.cost(0, 1), 3, "the source column is untouched");
+        assert_eq!(m.push_left_column_copy(4), None, "no such source column");
     }
 
     #[test]

@@ -16,6 +16,7 @@ use ikari_dict_format::{
 };
 
 mod conj;
+mod connection;
 mod decompose;
 mod emoji;
 mod kun;
@@ -27,11 +28,13 @@ mod vectors;
 mod verify;
 
 pub use conj::{ConjStats, MIN_SUPPORT};
+pub use connection::{ConnectionReport, SideReport};
 pub use emoji::{EmojiError, EmojiReport, build_emoji_file, build_emoji_table};
 pub use kun::{KUN_TABLE_TEXT, KunInfo, KunNotation, KunTable};
 pub use policy::{
-    ChiveVocab, DEFAULT_POLICY_TEXT, HomophoneInfo, NotcoreInfo, PREDICATES, Policy, PolicyRow,
-    PolicyStats, Verdict, is_homophone_peer, is_kanji_peer, is_kanji_place_peer, is_noun_peer,
+    ChiveVocab, ConnectionDeltas, DEFAULT_POLICY_TEXT, HomophoneInfo, NotcoreInfo, PREDICATES,
+    Policy, PolicyRow, PolicyStats, Verdict, is_homophone_peer, is_kanji_peer, is_kanji_place_peer,
+    is_noun_peer,
 };
 pub use town::{
     ChainConfig, DEFAULT_CHAIN_COST, DEFAULT_MUNICIPALITY_CHAIN_COST, DEFAULT_TOWN_COST,
@@ -86,6 +89,8 @@ pub struct BuildReport {
     pub policy_fingerprint: u64,
     pub conj_rules: usize,
     pub conj_stats: ConjStats,
+    /// 連接表の補正（ADR 0054）。δ がどちらも 0 なら `None`
+    pub connection: Option<ConnectionReport>,
     pub grammar_bytes: u64,
     pub dict_bytes: u64,
 }
@@ -114,6 +119,14 @@ impl BuildReport {
             out.push_str(&format!("- 入れなかった行（`{reason}`）: {count}\n"));
         }
         out
+    }
+
+    /// 連接表の補正のレポート（Markdown）。補正しなかったときは空。
+    pub fn connection_markdown(&self) -> String {
+        self.connection
+            .as_ref()
+            .map(ConnectionReport::to_markdown)
+            .unwrap_or_default()
     }
 }
 
@@ -155,6 +168,11 @@ impl fmt::Display for BuildReport {
             self.conj_stats.skipped_unusable,
             self.conj_stats.dropped_pairs
         )?;
+        if let Some(connection) = &self.connection {
+            for (key, value) in connection.meta_lines() {
+                writeln!(f, "{key}: {value}")?;
+            }
+        }
         writeln!(f, "grammar.bin: {} bytes", self.grammar_bytes)?;
         write!(f, "system.dict: {} bytes", self.dict_bytes)
     }
@@ -268,6 +286,8 @@ pub struct BuildOptions {
     pub notcore_lex: Vec<PathBuf>,
     /// 住所の連なりの lex.csv（notcore と同じ扱いで、同じ行の Core にも勝つ。ADR 0030 §12）。`notcore_lex` のあとに読む
     pub chain_lex: Vec<PathBuf>,
+    /// 連接表の補正の δ が閾値 T 以下でもビルドを失敗にしない（掃引用。ADR 0054 §5.1。既定は偽）
+    pub allow_weak_connection: bool,
 }
 
 impl Default for BuildOptions {
@@ -278,6 +298,7 @@ impl Default for BuildOptions {
             chive_vocab_label: None,
             notcore_lex: Vec::new(),
             chain_lex: Vec::new(),
+            allow_weak_connection: false,
         }
     }
 }
@@ -642,7 +663,7 @@ pub fn build_with(cfg: &BuildConfig, opts: &BuildOptions) -> Result<BuildReport,
         ));
     }
 
-    let matrix = matrix::read_matrix(&cfg.matrix)?;
+    let mut matrix = matrix::read_matrix(&cfg.matrix)?;
     let mut acc = lex::LexAccumulator::new(matrix.prev_right_size, matrix.next_left_size);
     for path in &cfg.lex {
         acc.add_file(path)?;
@@ -653,7 +674,7 @@ pub fn build_with(cfg: &BuildConfig, opts: &BuildOptions) -> Result<BuildReport,
     for path in &opts.chain_lex {
         acc.add_priority_notcore_file(path)?;
     }
-    let lexicon = acc.finish();
+    let mut lexicon = acc.finish();
 
     // 未知語のパラメータ: 指定した品詞とその代表左右ID
     let unk_index = lexicon
@@ -668,7 +689,10 @@ pub fn build_with(cfg: &BuildConfig, opts: &BuildOptions) -> Result<BuildReport,
         })?;
     let unk_pos_id = u16::try_from(unk_index)
         .map_err(|_| BuildError::Config("too many parts of speech".into()))?;
-    let unk = &lexicon.pos[unk_index];
+    let (unk_left_id, unk_right_id) = {
+        let unk = &lexicon.pos[unk_index];
+        (unk.rep_left_id, unk.rep_right_id)
+    };
 
     // ポリシー（ime_penalty）と、品詞ごとの集計
     let mut policy_stats = PolicyStats::default();
@@ -749,6 +773,15 @@ pub fn build_with(cfg: &BuildConfig, opts: &BuildOptions) -> Result<BuildReport,
         }
     }
 
+    // 連接表の補正（ADR 0054）。品詞の統計（代表の左右ID）を数えたあと、辞書の行とポリシーの判定が済んでから行う
+    let connection = connection::apply(
+        &mut lexicon,
+        &penalties,
+        &mut matrix,
+        opts.policy.connection(),
+        !opts.allow_weak_connection,
+    )?;
+
     // 活用規則
     let (conj_rules, conj_stats) = conj::derive(&lexicon.inflect, &lexicon.pos_final);
     let conj_records: Vec<ConjRecord<'_>> = conj_rules
@@ -789,8 +822,8 @@ pub fn build_with(cfg: &BuildConfig, opts: &BuildOptions) -> Result<BuildReport,
         prev_right_size: matrix.prev_right_size,
         next_left_size: matrix.next_left_size,
         bos_eos_id: BOS_EOS_ID,
-        unk_left_id: unk.rep_left_id,
-        unk_right_id: unk.rep_right_id,
+        unk_left_id,
+        unk_right_id,
         unk_pos_id,
         unk_cost: cfg.unk_cost,
         matrix: &matrix.costs,
@@ -837,6 +870,7 @@ pub fn build_with(cfg: &BuildConfig, opts: &BuildOptions) -> Result<BuildReport,
         policy_fingerprint: opts.policy.fingerprint(),
         conj_rules: conj_rules.len(),
         conj_stats,
+        connection,
         grammar_bytes: 0,
         dict_bytes: 0,
     };
@@ -925,6 +959,11 @@ fn make_meta(cfg: &BuildConfig, opts: &BuildOptions, report: &BuildReport) -> St
     }
     for (reason, count) in &report.skipped {
         line(&format!("skipped.{reason}"), count);
+    }
+    if let Some(connection) = &report.connection {
+        for (key, value) in connection.meta_lines() {
+            line(&key, &value);
+        }
     }
     meta
 }

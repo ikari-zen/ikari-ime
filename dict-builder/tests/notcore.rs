@@ -245,6 +245,7 @@ fn new_words_skip_lemma_rank_and_get_extension_peer_only_beside_common_core_word
         chive_vocab_label: Some("test".into()),
         notcore_lex: vec![notcore],
         chain_lex: Vec::new(),
+        ..BuildOptions::default()
     };
     let report = build_with(&config(tmp.path(), vec![core], "out"), &opts).unwrap();
     let out = tmp.path().join("out");
