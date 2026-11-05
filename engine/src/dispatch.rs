@@ -50,6 +50,7 @@ pub(crate) fn request_kind(body: &envelope::Body) -> &'static str {
         envelope::Body::EmojiTable(_) => "emoji_table",
         envelope::Body::PostalLookup(_) => "postal_lookup",
         envelope::Body::Diag(_) => diag::KIND_DIAG,
+        envelope::Body::RemoveSegments(_) => "remove_segments",
         _ => "other",
     }
 }
@@ -74,6 +75,7 @@ fn request_conversion(body: &envelope::Body) -> Option<u64> {
         envelope::Body::Cancel(r) => Some(r.conversion_id),
         envelope::Body::SegmentPage(r) => Some(r.conversion_id),
         envelope::Body::ResizeSegment(r) => Some(r.conversion_id),
+        envelope::Body::RemoveSegments(r) => Some(r.conversion_id),
         envelope::Body::CommitSegments(r) => Some(r.conversion_id),
         _ => None,
     }
@@ -237,6 +239,8 @@ impl Inner {
             // 文節の編集と再変換（ADR 0006。`segments.rs`）
             envelope::Body::SegmentPage(p) => self.segment_page(p),
             envelope::Body::ResizeSegment(r) => self.resize_segment(r),
+            // 文節ごとの削除（ADR 0050 §5.3）。契約の時点では受け口だけ（BAD_REQUEST）
+            envelope::Body::RemoveSegments(r) => self.remove_segments(r),
             envelope::Body::Reconvert(r) => self.reconvert(r),
             // 管理の要求（ADR 0005 §8）
             envelope::Body::ListUserDict(_)

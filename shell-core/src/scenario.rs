@@ -348,6 +348,10 @@ pub struct Scenario {
     /// Swift の実行器は飛ばして数える。L-A2 で足した）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rust_only: Option<String>,
+    /// まだ通らない理由。印があるシナリオは、形の検査だけをして、照合を飛ばす（先書きの契約。実装するレーンが印を外す。
+    /// ADR 0050 §9）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending: Option<String>,
     #[serde(default)]
     pub setup: Setup,
     pub steps: Vec<Step>,
@@ -430,6 +434,7 @@ pub const ENGINE_REQUEST_TYPES: &[&str] = &[
     "shutdown",
     "segment_page",
     "resize_segment",
+    "remove_segments",
     "commit_segments",
     "reconvert",
     "postal_lookup",

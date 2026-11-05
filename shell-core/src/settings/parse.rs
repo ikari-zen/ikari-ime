@@ -711,6 +711,21 @@ mod tests {
     }
 
     #[test]
+    fn clause_min_chars_defaults_to_3_and_accepts_1_to_10() {
+        assert_eq!(parse("").snapshot.clause_min_chars, 3);
+        for (value, expected) in [("1", 1), ("10", 10)] {
+            let parsed = parse(&format!("clause.min_chars\t{value}"));
+            assert_eq!(parsed.snapshot.clause_min_chars, expected);
+            assert!(parsed.issues.is_empty());
+        }
+        for value in ["0", "11", "-1", "x", ""] {
+            let parsed = parse(&format!("clause.min_chars\t{value}"));
+            assert_eq!(parsed.snapshot.clause_min_chars, 3, "{value}");
+            assert_eq!(parsed.issues.len(), 1, "{value}");
+        }
+    }
+
+    #[test]
     fn emoji_shortcode_exclude_parses_like_the_shared_list() {
         let parsed = parse("emoji.shortcode_exclude\tcom.x.y,com.z.w\n");
         assert_eq!(

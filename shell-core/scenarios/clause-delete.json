@@ -1,0 +1,1021 @@
+{
+  "description": "文節ごとの削除（ADR 0050 §9）。契約コミットで先書きしたもの。pending の印は、実装するレーン A が期待を確定して外す。clause.delete = none の 1 件は今も通る",
+  "scenarios": [
+    {
+      "name": "idle: deletes the last clause before the caret",
+      "pending": "ADR 0050 の契約コミットで先書き。dispatch が clause.delete をまだ扱わない。レーン A が実装時に期待を確定して外す",
+      "setup": {
+        "surrounding": {
+          "left": "俺は正しい",
+          "right": ""
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "type": "delete_text",
+              "range": {
+                "location": 2,
+                "length": 3
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "idle: deletes the first clause at the start of the sentence even when shorter than the minimum",
+      "pending": "ADR 0050 の契約コミットで先書き。dispatch が clause.delete をまだ扱わない。レーン A が実装時に期待を確定して外す",
+      "setup": {
+        "surrounding": {
+          "left": "俺は",
+          "right": "正しい"
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "type": "delete_text",
+              "range": {
+                "location": 0,
+                "length": 2
+              }
+            }
+          ],
+          "note": "文頭の例外（ADR 0050 §4）"
+        }
+      ]
+    },
+    {
+      "name": "idle: extends to the previous clause when shorter than the minimum characters",
+      "pending": "ADR 0050 の契約コミットで先書き。dispatch が clause.delete をまだ扱わない。レーン A が実装時に期待を確定して外す",
+      "setup": {
+        "surrounding": {
+          "left": "今日は雨が",
+          "right": "降る"
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "きょうは",
+                "surface": "今日は"
+              },
+              {
+                "reading": "あめが",
+                "surface": "雨が"
+              },
+              {
+                "reading": "ふる",
+                "surface": "降る"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "type": "delete_text",
+              "range": {
+                "location": 0,
+                "length": 5
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "idle: min_chars 1 deletes just the clause",
+      "pending": "ADR 0050 の契約コミットで先書き。dispatch が clause.delete をまだ扱わない。レーン A が実装時に期待を確定して外す",
+      "setup": {
+        "surrounding": {
+          "left": "今日は雨が",
+          "right": "降る"
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "きょうは",
+                "surface": "今日は"
+              },
+              {
+                "reading": "あめが",
+                "surface": "雨が"
+              },
+              {
+                "reading": "ふる",
+                "surface": "降る"
+              }
+            ],
+            "focused": 0
+          }
+        },
+        "settings": [
+          "clause.min_chars\t1"
+        ]
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "type": "delete_text",
+              "range": {
+                "location": 3,
+                "length": 2
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "idle: in the middle of a clause deletes up to the caret",
+      "pending": "ADR 0050 の契約コミットで先書き。dispatch が clause.delete をまだ扱わない。レーン A が実装時に期待を確定して外す",
+      "setup": {
+        "surrounding": {
+          "left": "正し",
+          "right": "い"
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "type": "delete_text",
+              "range": {
+                "location": 0,
+                "length": 2
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "idle: deletes a trailing punctuation with its clause",
+      "pending": "ADR 0050 の契約コミットで先書き。dispatch が clause.delete をまだ扱わない。レーン A が実装時に期待を確定して外す",
+      "setup": {
+        "surrounding": {
+          "left": "お願いしました。",
+          "right": ""
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おねがいし",
+                "surface": "お願いし"
+              },
+              {
+                "reading": "ました。",
+                "surface": "ました。"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "type": "delete_text",
+              "range": {
+                "location": 4,
+                "length": 4
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "idle: passes through when a selection exists",
+      "pending": "ADR 0050 の契約コミットで先書き。dispatch が clause.delete をまだ扱わない。レーン A が実装時に期待を確定して外す",
+      "setup": {
+        "surrounding": {
+          "left": "俺は正しい",
+          "right": "",
+          "caret": {
+            "location": 5,
+            "length": 2
+          }
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "idle: passes through when there is no surrounding text",
+      "pending": "ADR 0050 の契約コミットで先書き。dispatch が clause.delete をまだ扱わない。レーン A が実装時に期待を確定して外す",
+      "setup": {
+        "surrounding": {
+          "available": false
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "idle: passes through when there is no caret",
+      "pending": "ADR 0050 の契約コミットで先書き。dispatch が clause.delete をまだ扱わない。レーン A が実装時に期待を確定して外す",
+      "setup": {
+        "surrounding": {
+          "left": "俺は正しい",
+          "right": "",
+          "no_caret": true
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "idle: passes through in an app on the deny list",
+      "pending": "ADR 0050 の契約コミットで先書き。dispatch が clause.delete をまだ扱わない。レーン A が実装時に期待を確定して外す",
+      "setup": {
+        "surrounding": {
+          "left": "俺は正しい",
+          "right": ""
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        },
+        "client": {
+          "bundle_id": "com.apple.Terminal"
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ],
+          "note": "拒否リストの中身はスパイク S1 の結果で確定する。ここは仮の例"
+        }
+      ]
+    },
+    {
+      "name": "idle: passes through in a secure field",
+      "pending": "ADR 0050 の契約コミットで先書き。dispatch が clause.delete をまだ扱わない。レーン A が実装時に期待を確定して外す",
+      "setup": {
+        "surrounding": {
+          "left": "俺は正しい",
+          "right": ""
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        },
+        "client": {
+          "secure": true
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "idle: passes through when reconversion cannot read the sentence",
+      "pending": "ADR 0050 の契約コミットで先書き。dispatch が clause.delete をまだ扱わない。レーン A が実装時に期待を確定して外す",
+      "setup": {
+        "surrounding": {
+          "left": "abc",
+          "right": ""
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ],
+          "note": "Reconvert が Empty（全部が読めない）"
+        }
+      ]
+    },
+    {
+      "name": "idle: passes through when the engine times out",
+      "pending": "ADR 0050 の契約コミットで先書き。dispatch が clause.delete をまだ扱わない。レーン A が実装時に期待を確定して外す",
+      "setup": {
+        "surrounding": {
+          "left": "俺は正しい",
+          "right": ""
+        },
+        "engine": {
+          "failures": [
+            {
+              "request": "reconvert",
+              "nth": 1,
+              "error": "timeout"
+            }
+          ]
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "idle: option+backspace passes through when clause.delete is none",
+      "setup": {
+        "settings": [
+          "keymap.clause.delete\tnone"
+        ],
+        "surrounding": {
+          "left": "俺は正しい"
+        }
+      },
+      "steps": [
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "type": "pass_through"
+            }
+          ],
+          "engine": []
+        }
+      ]
+    },
+    {
+      "name": "idle: clause.delete can be rebound to another key",
+      "pending": "ADR 0050 の契約コミットで先書き。dispatch が clause.delete をまだ扱わない。レーン A が実装時に期待を確定して外す",
+      "setup": {
+        "settings": [
+          "keymap.clause.delete\tctrl+w"
+        ],
+        "surrounding": {
+          "left": "俺は正しい"
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 90,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "ctrl+w",
+          "expect": [
+            {
+              "type": "delete_text",
+              "range": {
+                "location": 2,
+                "length": 3
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "composing: deletes the last unit of the reading",
+      "pending": "ADR 0050 の契約コミットで先書き。dispatch が clause.delete をまだ扱わない。レーン A が実装時に期待を確定して外す",
+      "setup": {
+        "engine": {
+          "pages": [
+            {
+              "conversion_id": 91,
+              "page_index": 0,
+              "has_next": false,
+              "candidates": [
+                {
+                  "surface": "今日は雨が降る"
+                }
+              ],
+              "layout": {
+                "conversion_id": 91,
+                "layout_rev": 0,
+                "segments": [
+                  {
+                    "reading": "きょうは",
+                    "surface": "今日は"
+                  },
+                  {
+                    "reading": "あめが",
+                    "surface": "雨が"
+                  },
+                  {
+                    "reading": "ふる",
+                    "surface": "降る"
+                  }
+                ],
+                "focused": 0,
+                "focused_page": {
+                  "candidates": [
+                    {
+                      "surface": "今日は"
+                    }
+                  ],
+                  "has_next": false
+                }
+              }
+            }
+          ]
+        }
+      },
+      "steps": [
+        {
+          "type_text": "kyouhaamegafuru"
+        },
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "type": "set_marked_text",
+              "text": "きょうは"
+            }
+          ],
+          "note": "ふる(2) は最小文字数に満たないので あめがふる まで。残りが 1 単位なら idle へ（期待は暫定）"
+        }
+      ]
+    },
+    {
+      "name": "composing: consumes the key when the engine times out",
+      "pending": "ADR 0050 の契約コミットで先書き。dispatch が clause.delete をまだ扱わない。レーン A が実装時に期待を確定して外す",
+      "setup": {
+        "engine": {
+          "failures": [
+            {
+              "request": "convert",
+              "nth": 1,
+              "error": "timeout"
+            }
+          ]
+        }
+      },
+      "steps": [
+        {
+          "type_text": "kyouhaamegafuru"
+        },
+        {
+          "press": "option+backspace",
+          "expect": [
+            {
+              "type": "consume"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "converting whole: deletes the trailing unit and enters clause mode",
+      "pending": "ADR 0050 の契約コミットで先書き。dispatch が clause.delete をまだ扱わない。レーン A が実装時に期待を確定して外す",
+      "setup": {
+        "engine": {
+          "pages": [
+            {
+              "conversion_id": 93,
+              "page_index": 0,
+              "has_next": false,
+              "candidates": [
+                {
+                  "surface": "今日は雨が降る"
+                }
+              ],
+              "layout": {
+                "conversion_id": 93,
+                "layout_rev": 0,
+                "segments": [
+                  {
+                    "reading": "きょうは",
+                    "surface": "今日は"
+                  },
+                  {
+                    "reading": "あめが",
+                    "surface": "雨が"
+                  },
+                  {
+                    "reading": "ふる",
+                    "surface": "降る"
+                  }
+                ],
+                "focused": 0,
+                "focused_page": {
+                  "candidates": [
+                    {
+                      "surface": "今日は"
+                    }
+                  ],
+                  "has_next": false
+                }
+              }
+            }
+          ]
+        }
+      },
+      "steps": [
+        {
+          "type_text": "kyouhaamegafuru"
+        },
+        {
+          "press": "space"
+        },
+        {
+          "press": "option+backspace",
+          "engine": [
+            {
+              "type": "remove_segments",
+              "conversion_id": 93,
+              "first": 1,
+              "count": 2
+            }
+          ],
+          "note": "末尾の単位（あめが降る相当）を RemoveSegments。期待の動作はレーン A が確定"
+        }
+      ]
+    },
+    {
+      "name": "converting clauses: deletes the focused clause without widening",
+      "pending": "ADR 0050 の契約コミットで先書き。dispatch が clause.delete をまだ扱わない。レーン A が実装時に期待を確定して外す",
+      "setup": {
+        "engine": {
+          "pages": [
+            {
+              "conversion_id": 93,
+              "page_index": 0,
+              "has_next": false,
+              "candidates": [
+                {
+                  "surface": "今日は雨が降る"
+                }
+              ],
+              "layout": {
+                "conversion_id": 93,
+                "layout_rev": 0,
+                "segments": [
+                  {
+                    "reading": "きょうは",
+                    "surface": "今日は"
+                  },
+                  {
+                    "reading": "あめが",
+                    "surface": "雨が"
+                  },
+                  {
+                    "reading": "ふる",
+                    "surface": "降る"
+                  }
+                ],
+                "focused": 0,
+                "focused_page": {
+                  "candidates": [
+                    {
+                      "surface": "今日は"
+                    }
+                  ],
+                  "has_next": false
+                }
+              }
+            }
+          ]
+        }
+      },
+      "steps": [
+        {
+          "type_text": "kyouhaamegafuru"
+        },
+        {
+          "press": "space"
+        },
+        {
+          "press": "left"
+        },
+        {
+          "press": "option+backspace",
+          "engine": [
+            {
+              "type": "remove_segments",
+              "conversion_id": 93,
+              "first": 1,
+              "count": 1
+            }
+          ],
+          "note": "雨が(2 文字)を最小文字数で広げずに消す。残りの選択は保つ"
+        }
+      ]
+    },
+    {
+      "name": "preview after commit: arrows move the target and backspace deletes it",
+      "pending": "ADR 0050 の契約コミットで先書き。dispatch が clause.delete をまだ扱わない。レーン A が実装時に期待を確定して外す",
+      "setup": {
+        "surrounding": {
+          "left": "俺は正しい"
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 94,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "shift+option+backspace",
+          "note": "idle で入る。delete_target 付きの set_marked_text（replacement_range あり）"
+        },
+        {
+          "press": "left"
+        },
+        {
+          "press": "right"
+        },
+        {
+          "press": "backspace",
+          "note": "対象を Restore{text:''} で消す"
+        }
+      ]
+    },
+    {
+      "name": "preview after commit: esc restores the original text",
+      "pending": "ADR 0050 の契約コミットで先書き。dispatch が clause.delete をまだ扱わない。レーン A が実装時に期待を確定して外す",
+      "setup": {
+        "surrounding": {
+          "left": "俺は正しい"
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 94,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "shift+option+backspace"
+        },
+        {
+          "press": "escape",
+          "note": "Restore（元の表記）"
+        }
+      ]
+    },
+    {
+      "name": "preview after commit: a character key restores then starts composing",
+      "pending": "ADR 0050 の契約コミットで先書き。dispatch が clause.delete をまだ扱わない。レーン A が実装時に期待を確定して外す",
+      "setup": {
+        "surrounding": {
+          "left": "俺は正しい"
+        },
+        "engine": {
+          "reconvert": {
+            "conversion_id": 94,
+            "layout_rev": 0,
+            "segments": [
+              {
+                "reading": "おれは",
+                "surface": "俺は"
+              },
+              {
+                "reading": "ただしい",
+                "surface": "正しい"
+              }
+            ],
+            "focused": 0
+          }
+        }
+      },
+      "steps": [
+        {
+          "press": "shift+option+backspace"
+        },
+        {
+          "press": "a",
+          "note": "元に戻してから合成を始める"
+        }
+      ]
+    },
+    {
+      "name": "preview while composing: marks the target and backspace deletes it",
+      "pending": "ADR 0050 の契約コミットで先書き。dispatch が clause.delete をまだ扱わない。レーン A が実装時に期待を確定して外す",
+      "setup": {
+        "engine": {
+          "pages": [
+            {
+              "conversion_id": 91,
+              "page_index": 0,
+              "has_next": false,
+              "candidates": [
+                {
+                  "surface": "今日は雨が降る"
+                }
+              ],
+              "layout": {
+                "conversion_id": 91,
+                "layout_rev": 0,
+                "segments": [
+                  {
+                    "reading": "きょうは",
+                    "surface": "今日は"
+                  },
+                  {
+                    "reading": "あめが",
+                    "surface": "雨が"
+                  },
+                  {
+                    "reading": "ふる",
+                    "surface": "降る"
+                  }
+                ],
+                "focused": 0,
+                "focused_page": {
+                  "candidates": [
+                    {
+                      "surface": "今日は"
+                    }
+                  ],
+                  "has_next": false
+                }
+              }
+            }
+          ]
+        }
+      },
+      "steps": [
+        {
+          "type_text": "kyouhaamegafuru"
+        },
+        {
+          "press": "shift+option+backspace",
+          "note": "delete_target 付きの set_marked_text"
+        },
+        {
+          "press": "backspace"
+        }
+      ]
+    },
+    {
+      "name": "preview while converting: marks the focused clause and backspace deletes it",
+      "pending": "ADR 0050 の契約コミットで先書き。dispatch が clause.delete をまだ扱わない。レーン A が実装時に期待を確定して外す",
+      "setup": {
+        "engine": {
+          "pages": [
+            {
+              "conversion_id": 93,
+              "page_index": 0,
+              "has_next": false,
+              "candidates": [
+                {
+                  "surface": "今日は雨が降る"
+                }
+              ],
+              "layout": {
+                "conversion_id": 93,
+                "layout_rev": 0,
+                "segments": [
+                  {
+                    "reading": "きょうは",
+                    "surface": "今日は"
+                  },
+                  {
+                    "reading": "あめが",
+                    "surface": "雨が"
+                  },
+                  {
+                    "reading": "ふる",
+                    "surface": "降る"
+                  }
+                ],
+                "focused": 0,
+                "focused_page": {
+                  "candidates": [
+                    {
+                      "surface": "今日は"
+                    }
+                  ],
+                  "has_next": false
+                }
+              }
+            }
+          ]
+        }
+      },
+      "steps": [
+        {
+          "type_text": "kyouhaamegafuru"
+        },
+        {
+          "press": "space"
+        },
+        {
+          "press": "shift+option+backspace",
+          "note": "delete_target 付き"
+        },
+        {
+          "press": "backspace"
+        }
+      ]
+    }
+  ]
+}

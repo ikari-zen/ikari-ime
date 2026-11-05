@@ -160,3 +160,17 @@ fn resize_rejects_bad_requests() {
     // 失敗しても変換は壊れない
     assert_eq!(resize(&e, id, 0, 0, -1, vec![]).layout_rev, 1);
 }
+
+/// `RemoveSegments` の受け口は契約の時点ではスタブ（ADR 0050 §5.3）。中身を入れるレーンがこのテストを置き換える
+#[test]
+fn remove_segments_is_a_stub_that_answers_bad_request() {
+    let (e, seam, _mock) = seg_engine();
+    let r = two_segments(&e, &seam);
+    let body = envelope::Body::RemoveSegments(pb::RemoveSegments {
+        conversion_id: r.conversion_id,
+        layout_rev: 0,
+        first: 1,
+        count: 1,
+    });
+    assert_eq!(error_code(&send(&e, body)), ErrorCode::BadRequest);
+}

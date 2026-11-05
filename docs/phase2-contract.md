@@ -57,6 +57,7 @@ Swift の定数は `macos/Sources/IkariXPC/Identifiers.swift`（`IkariIdentifier
 | `engine.lm_deadline_ms` | ミリ秒（50〜2000。範囲外は丸める。暫定） | `300` | エンジン | 先行計算で LM に待てる締め切り（`LmBudget.max`）。`Engine::open` のときだけ読む（変えたらエンジンを起こし直す）。不正な値は既定 |
 | `engine.convert_wait_ms` | ミリ秒（0〜200。`0` = 待たない。範囲外は丸める。暫定） | `30` | エンジン | Space で先行計算の完了を待つ上限。`Engine::open` のときだけ読む（変えたらエンジンを起こし直す）。不正な値は既定 |
 | `dict.pack_it` | `on` / `off` | `on` | エンジン | 同梱の IT の語彙集（`core/assets/packs/it.tsv`。ADR 0012 §4）を使う。変更は次のエンジン起動から。設定画面にはまだ項目がない |
+| `clause.min_chars` | `1`〜`10` | `3` | 殻 | 文節ごとの削除（`clause.delete`）で、消す文字がこの数に満たなければ前の文節まで広げる。`1` = 下限なし（ADR 0050 §4） |
 | `postal.japanese` | `on` / `off` | `on` | エンジン | 住所 ↔ 郵便番号の候補（`PostalRewriter`。ADR 0032 §2〜5）。`postal.tsv` がなければ何も出ない |
 | `postal.english` | `on` / `off` | `off` | 殻 | 英語のモードで郵便番号の候補を出す（ADR 0032 §9。段階 3。エンジンの `Settings` も値は読む） |
 | `postal.te_prefix` | `on` / `off` | `off` | エンジン・殻 | `て` + 郵便番号 → 〒つきの候補（ADR 0032 §8）。日本語・英語の両方に効く。設定画面にはまだ項目がない |
@@ -86,10 +87,14 @@ Swift の定数は `macos/Sources/IkariXPC/Identifiers.swift`（`IkariIdentifier
 | `reconvert` | （なし） | `ctrl+shift+r` | `ctrl+shift+r` | `ctrl+shift+y` |
 | `candidate.next` | （なし） | `down` | `down` | `down` |
 | `candidate.previous` | （なし） | `up` | `up` | `up` |
+| `clause.delete` | （なし） | `option+backspace` | `option+backspace` | `option+backspace` |
+| `clause.delete_preview` | （なし） | `shift+option+backspace` | `shift+option+backspace` | `shift+option+backspace` |
 
 `atok` は ms-ime を土台に、半角英数と再変換だけ ATOK スタイルのキーにしたもの（#62。文節の ←/→ と Shift+←/→ は ATOK と役割が逆だが、ikari の既定のまま）。`ctrl+@` は、コードの上では JIS 配列の @ キー（Shift なし）で一致する（実機は未確認）。US 配列では @ が Shift+2 なので `ctrl+shift+@` になる。両方を同じ操作に割り当てている（ユーザーの配列は US。2026-10-28）。
 
 `candidate.next` / `candidate.previous`（↓/↑）は変換中だけ効き、Space / Shift+Space と同じ（ページの境目、広げる動き、`paging.wrap` も同じ）。文節のモードには入らない。idle は矢印をアプリに渡し、合成中は受け止めて何もしない。Shift+↑↓ は変換中は受け止めて何もしない。
+
+`clause.delete` / `clause.delete_preview`（ADR 0050）は文節ごとの削除。契約コミットの時点では `dispatch` がまだ扱わない（`KeyChord::for_lookup` は BackSpace をまだ引かないので、割り当てがあっても今までどおり素通し・表示を確定して素通しになる。BackSpace を引くのはレーン A）。
 
 文節の操作と再変換（下の 5 つ。ADR 0006 §8.1、§16.1-7）は **macos と ms-ime で同じ**で、F キーの割り当てはない。atok は文節の操作だけ同じで、再変換が `ctrl+shift+y`（ATOK の Ctrl+Shift+R は「確定のリピート」で別の操作なので避けた）。ほかの操作と同じく `keymap.<操作>` で上書きでき（`none` で外せる）、設定アプリの画面に自動で並ぶ。
 `segment.*` は変換中に、修飾キーの有無を問わず矢印のキーを割り当てで引く。`reconvert` は idle のとき、Ctrl / Option / Command を伴う文字キーを引く（今の字種変換と同じ場所）。
@@ -139,6 +144,7 @@ ADR 0004 §6.3 の表のとおり。ページ送りは、Space が次の候補�
 
 ### 6.1 engine.proto（`schema_version` は 1 のまま）
 - `Envelope.body`: `segment_page` 24 / `segment_page_reply` 25 / `resize_segment` 26 / `segment_layout` 27（`ResizeSegment` と `Reconvert` の返事）/ `commit_segments` 28（返事は `Ack`）/ `reconvert` 29（返事は `SegmentLayout`）。
+- `Envelope.body`: `remove_segments` 54（文節ごとの削除。ADR 0050 §5.3。返事は `SegmentLayout`）。契約コミットの時点では、エンジンは `BAD_REQUEST` を返す。
 - `ConvertReply.layout`（7）: 新しいエンジンは常に入れる（`focused = 0`）。ない（古いエンジン）なら殻は 1 文節として扱う。`candidates` は今までどおり読み全体の候補の 1 ページ目。
 - `CandidateKind.LITERAL`（再変換で読めなかった部分）、`ErrorCode.STALE_LAYOUT`（`layout_rev` が古い）。
 - 上限（超えたら `BAD_REQUEST`）: `SegmentChoice` の数は読みの文字数（256）まで、`literal` は 256 文字まで、`Reconvert.surface` は 64 文字まで。ログに読みと表記を書かない。

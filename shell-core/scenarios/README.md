@@ -21,6 +21,7 @@
       "name": "ファイルの中で一意の名前",
       "from": "移した元のテスト（ファイル名 型名.関数名）",
       "rust_only": "（省略可）Rust の実行器だけで流す理由",
+      "pending": "（省略可）まだ通らない理由。形の検査だけして照合を飛ばす。実装するレーンが外す",
       "setup": { "settings": ["paging.size\t2"] },
       "steps": [
         {"type_text": "hinsi"},
@@ -76,7 +77,7 @@
 `ShellAction` の書き方は `types.rs` の serde の形（`{"type": "set_marked_text", "text": "ひんし", "highlighted_length": 3}`、`{"type": "commit", "text": "品詞"}` など）。既定値の欄（`highlighted_length: 0`、`underlined: true`、候補の `kind: "dictionary"` など）は省く。
 
 ### エンジンへの要求の書き方
-`type` は `engine.proto` の `Envelope.body` の欄の名前（`prefetch`、`convert`、`page`、`commit`、`commit_text`、`cancel`、`segment_page`、`resize_segment`、`commit_segments`、`reconvert`、`shutdown`、`postal_lookup`、`hello`、`begin_session`、`end_session`、管理の中継は `relay`）。欄の名前も `engine.proto` に合わせる（`reading`、`page_size`、`conversion_id`、`candidate_index`、`context: {left, right, available}` など）。ほかに `timeout_ms`（返事を待つ要求の待ちの上限）を比べられる。
+`type` は `engine.proto` の `Envelope.body` の欄の名前（`prefetch`、`convert`、`page`、`commit`、`commit_text`、`cancel`、`segment_page`、`resize_segment`、`remove_segments`、`commit_segments`、`reconvert`、`shutdown`、`postal_lookup`、`hello`、`begin_session`、`end_session`、管理の中継は `relay`）。欄の名前も `engine.proto` に合わせる（`reading`、`page_size`、`conversion_id`、`candidate_index`、`context: {left, right, available}` など）。ほかに `timeout_ms`（返事を待つ要求の待ちの上限）を比べられる。
 - `session_id` と `context_rev` は実行器ごとに値が違うので、シナリオに書かない。
 - `diag` と `emoji_table` は比べない（片道・非同期で、順が決まらない）。`prefetch` は `page_size` を持たない（`engine.proto` に合わせる）。
 
@@ -112,3 +113,4 @@ Swift の替え玉が本物と違うもの（かな入力の合成器が文字�
 | `trailing-n.json` | 末尾の n を「ん」にする（FR-07） | 6 |
 | `shortcode.json` | 日本語のモードの絵文字のショートコード（ADR 0027）。1 件は `rust_only` | 10 |
 | `shell.json` | 殻の判断（セッション、英語のモード、モードの切り替え、メニュー）。全部 `rust_only` | 18 |
+| `clause-delete.json` | 文節ごとの削除（ADR 0050 §9）。先書き。`pending` の印を、レーン A が外す | 22 |
