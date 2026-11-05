@@ -27,6 +27,11 @@ readonly POSTAL_TABLE_FILE="postal.tsv"
 # ABR から作る地名の lex.csv（辞書のビルドの中間ファイル。data/build/ の下）
 readonly ABR_TOWN_LEX_FILE="town_lex.csv"
 readonly ABR_CHAIN_LEX_FILE="chain_lex.csv"
+# Wikipedia 日本語版から集めた外来語の一覧（ADR 0055。CC BY-SA 4.0）。辞書に語を足す任意の入力。data/raw/ からの相対パス。
+# URL（GitHub の Release の資産。xz）と sha256 が空の間は、取得もビルドへの組み込みもしない（一覧を Release に置いたら埋める）
+readonly WEBWORDS_LIST_PATH="webwords/webwords.tsv"
+readonly WEBWORDS_LIST_URL=""
+readonly WEBWORDS_LIST_SHA256=""
 readonly DICT_POLICY="dict-builder/policy/chive.tsv"
 readonly APP_SUPPORT_DIR="$HOME/Library/Application Support/ikari-ime"
 
