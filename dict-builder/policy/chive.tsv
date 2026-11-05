@@ -116,7 +116,9 @@ short_katakana_counter	3000
 
 # 連接表の補正（ADR 0054。#210）。述語ではなく、辞書を作るときに連接表の 1 マスを下げる値（dict-builder/src/connection.rs）。
 # 格助詞「の」の直後の「件」（ケン）を δ 安くする（昨日の件、会議の件）。単語コストでは「けん」単独の県を壊さずに直せない。
-# 0 なら何もしない（grammar.bin は変わらない）。δ は T（その辞書での閾値。--policy-report に出る）を超える必要がある。
-# 値は掃引で決める（eval/reports/ken-connection-210-2026-11-06.md）。連体詞（この件）の値は既定 0
-matter_ken_after_no	0
+# 0 なら何もしない（grammar.bin は変わらない）。δ は T（その辞書での閾値。--policy-report に出る。今の辞書は 8252）を超える必要がある。
+# 8500 = T + 248。掃引（eval/reports/ken-connection-210-2026-11-06.md）で、8253〜9000 は全セットの 1 位の悪化が同じ（LM なし 3、LM あり 0）、
+# 8500 で左文脈つきの 2 件も LM なしで 1 位になる（8400 までは 2 位）。9500 から見張りが崩れ始める（の + けん で始まる別の語）。
+# 連体詞（この件）の値は既定 0（ユーザーに聞く。ADR 0054 §12-2）
+matter_ken_after_no	8500
 matter_ken_after_rentai	0

@@ -2,7 +2,7 @@
 # 「件」の連接補正の掃引（ADR 0054 §5、§6.3）。辞書を更新したとき（Sudachi は 3〜4 か月に 1 回）のやり直しにも使う。
 #
 #   eval/scripts/ken-sweep.sh --work <scratch> --data <data> --variants "0:0 4000:0 8500:0 8500:9000" [--lm <gguf>] [--jobs 3]
-#   eval/scripts/ken-sweep.sh --work <scratch> --data <data> --variants "..." --only build|eval
+#   eval/scripts/ken-sweep.sh --work <scratch> --data <data> --variants "..." --only build|run
 #
 # 変種 = `<matter_ken_after_no>:<matter_ken_after_rentai>`。`0:0` が基準（補正なし。grammar.bin は今と同じ）。
 # 手順（辞書の更新のたび）:
@@ -113,7 +113,7 @@ eval_variant() {
   done
 }
 
-if [[ "$ONLY" != eval ]]; then
+if [[ "$ONLY" != run ]]; then
   export -f build_variant variant_name
   export WORK DATA ROOT BUILDER SUDACHI CHIVE
   printf '%s\n' $VARIANTS | xargs -P "$JOBS" -I{} bash -c 'build_variant {}'
