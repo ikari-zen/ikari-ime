@@ -522,4 +522,4 @@
 
 ## 補足（2026-11-06）
 
-- 訂正（[ADR 0054](0054-web-words-classify-and-build.md) §9）: §0.3 の表と §7 案C の「jawiki-kana-kanji-dict の生成物は MIT」は誤り。リポジトリのライセンスの表示は CC BY-SA へのリンク。案C を採らなかった判断は変わらない。
+- 訂正（[ADR 0055](0055-web-words-classify-and-build.md) §9）: §0.3 の表と §7 案C の「jawiki-kana-kanji-dict の生成物は MIT」は誤り。リポジトリのライセンスの表示は CC BY-SA へのリンク。案C を採らなかった判断は変わらない。
