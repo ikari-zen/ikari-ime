@@ -13,7 +13,9 @@ impl Inner {
     pub(crate) fn prefetch_loop(&self) {
         while let Some(job) = self.queue.next() {
             let entry = Arc::clone(&job.entry);
-            if catch_unwind(AssertUnwindSafe(|| self.run_job(job))).is_err() {
+            let ran = catch_unwind(AssertUnwindSafe(|| self.run_job(job)));
+            self.queue.finish();
+            if ran.is_err() {
                 entry.abandon();
             }
         }
