@@ -337,6 +337,29 @@ fn convert_log_has_gap_and_confident_without_text() {
 }
 
 #[test]
+fn convert_log_has_rlen_and_qlen_as_numbers_only() {
+    let (e, dir) = logged_engine(0, LmBudget::default(), "log-rlen");
+    begin(&e, 1, false);
+    convert(&e, 1, READING, 0);
+    let line = last_convert_line(&e, &dir);
+    let value = |key: &str| {
+        line.split_whitespace()
+            .find_map(|t| t.strip_prefix(key))
+            .and_then(|v| v.parse::<usize>().ok())
+    };
+    assert_eq!(value("rlen="), Some(READING.chars().count()), "{line}");
+    assert!(value("qlen=").is_some(), "{line}");
+    assert!(!line.contains(READING), "{line}");
+    // 秘密の入力は読みの長さを書かない
+    begin(&e, 2, true);
+    send(&e, convert_req(2, READING, 3, 0));
+    let line = last_convert_line(&e, &dir);
+    assert!(!line.contains("rlen="), "{line}");
+    assert!(line.contains("qlen="), "{line}");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn confident_threshold_boundaries() {
     use crate::convert::{CONFIDENT_GAP_WITH_LM, CONFIDENT_GAP_WITHOUT_LM, is_confident};
     assert!(is_confident(CONFIDENT_GAP_WITHOUT_LM, false));

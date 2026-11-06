@@ -1,12 +1,14 @@
 1793145600000 lm_unload 0us lm=ready err=- reason=shutdown
-1793145601000 convert 50us lm=ready err=- segments=1 cache=hit lm_applied=1 app=com.example.Editor
+1793145601000 convert 50us lm=ready err=- segments=1 cache=hit lm_applied=1 app=com.example.Editor rlen=4 qlen=0
+1793145601100 convert 90us lm=ready err=- segments=2 cache=miss lm_applied=0 miss=reading app=com.example.Editor rlen=20 qlen=2
+1793145601200 convert 80us lm=ready err=- segments=1 cache=wait_miss lm_applied=0 app=com.example.Editor rlen=4 qlen=1
 1793145660000 prev_exit 0us lm=ready err=- exit=crash sig=11 up_s=5310
 1793145660500 panic 0us lm=ready err=- thread=main loc=engine/src/lib.rs:120
 1793145661000 sh_prev_exit 0us lm=ready err=- exit=unknown
 1793145661500 prev_exit 0us lm=ready err=- exit=unknown
 1793145662000 sh_panic 0us lm=ready err=- n=2 loc=shell-core/src/engine/mod.rs:40 thread=other
 1793145663000 sh_panic 0us lm=ready err=- n=1 loc=external thread=main
-1793231999000 convert 50us lm=ready err=- segments=1 cache=hit lm_applied=1 app=com.example.Terminal
+1793231999000 convert 50us lm=ready err=- segments=1 cache=hit lm_applied=1 app=com.example.Terminal rlen=20 qlen=0
 1793232000000 sh_prev_exit 0us lm=ready err=- exit=crash sig=11 up_s=100
 1793232001000 prev_exit 0us lm=ready err=- exit=term sig=15 up_s=30
 1793232002000 prev_exit 0us lm=ready err=- exit=clean up_s=3600

@@ -483,6 +483,29 @@ def section_perf(events):
     return perf, ("cache と LM", ("項目", "件数", "率など"), r2)
 
 
+RLEN_CAP = 16  # これ以上の読みの長さは 1 行にまとめる
+QLEN_CAP = 3  # 同上（先行計算の待ち行列の長さ）
+
+
+def section_rlen_qlen(events):
+    """読みの長さ（rlen）別と先行計算の待ち行列の長さ（qlen）別の LM なし割合（#159）。古い行（rlen・qlen なし）は数えない。"""
+    conv = [e for e in events if e.kind == "convert" and e.err == "-"]
+    rows = []
+
+    def add(label, group):
+        no_lm = sum(1 for e in group if e.kv.get("lm_applied") == "0")
+        rows.append((label, len(group), no_lm, pct(no_lm, len(group))))
+
+    for key, cap in (("rlen", RLEN_CAP), ("qlen", QLEN_CAP)):
+        groups = collections.defaultdict(list)
+        for e in conv:
+            if key in e.kv:
+                groups[min(e.num(key), cap)].append(e)
+        for n, group in sorted(groups.items()):
+            add(f"{key}={n}{'+' if n == cap else ''}", group)
+    return ("読みの長さ・待ち行列の長さ別の LM なし割合", ("項目", "convert", "lm_applied=0", "率"), rows)
+
+
 def section_app_miss(events):
     """アプリ別の convert 件数と miss=context の割合（#109）。app は行の app=、なければ session= で begin_session の app= に結ぶ。"""
     per = collections.defaultdict(lambda: [0, 0, 0])  # app -> [convert, miss=context, lm_applied=0]
@@ -613,6 +636,7 @@ def build_report(events, malformed, files, info):
         section_trouble(events),
         section_unknown_session(events),
         section_app_miss(events),
+        section_rlen_qlen(events),
         section_abnormal_exit(events),
         *([section_crash_reports(events, info["crash_reports"])] if info["crash_reports"] is not None else []),
         perf,

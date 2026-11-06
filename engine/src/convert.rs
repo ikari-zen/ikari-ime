@@ -204,6 +204,8 @@ impl Inner {
     /// 返事と、ログの注記（キャッシュの使われ方と LM の有無。固定の語だけ）を返す
     pub(crate) fn convert(&self, c: pb::Convert) -> Result<(envelope::Body, Option<String>), Fail> {
         let started = Instant::now();
+        // 変換の時点で終わっていない先行計算の数（数だけ。#159）
+        let qlen = self.queue.pending();
         check_reading(&c.reading)?;
         if c.page_size > MAX_PAGE_SIZE {
             return Err(Fail::bad("page_size out of range"));
@@ -354,6 +356,12 @@ impl Inner {
             note.push(' ');
             note.push_str(&fill);
         }
+        // 読みの長さ（文字数）と先行計算の待ち行列の長さ。数だけで、読みは書かない（#159）。
+        // secure は読みの長さも書かない（NFR-18）
+        if !secure {
+            note.push_str(&format!(" rlen={}", c.reading.chars().count()));
+        }
+        note.push_str(&format!(" qlen={qlen}"));
         // アプリ別の偏りを行単位で見られるように（ADR 0034 §9-1。2026-10-30）。secure は書かない
         if let Some(app) = self.app_note(c.session_id) {
             note.push(' ');

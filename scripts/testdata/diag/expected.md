@@ -82,7 +82,7 @@
 | panel=client | 1 |
 | panel=last_known | 2 |
 | panel=none | 1 |
-| convert/prefetch の ctx=0 | 1 (20.0%) |
+| convert/prefetch の ctx=0 | 1 (14.3%) |
 | sh_engine timeout 合計 | 2 |
 | sh_engine interrupted 合計 | 0 |
 | sh_engine invalidated 合計 | 0 |
@@ -128,8 +128,18 @@
 | app | convert | miss=context | 率 | lm_applied=0 | 率 |
 |---|---|---|---|---|---|
 | (不明) | 3 | 1 | 33.3% | 1 | 33.3% |
-| com.example.Editor | 1 | 0 | 0.0% | 0 | 0.0% |
+| com.example.Editor | 3 | 0 | 0.0% | 2 | 66.7% |
 | com.example.Terminal | 1 | 0 | 0.0% | 0 | 0.0% |
+
+## 読みの長さ・待ち行列の長さ別の LM なし割合
+
+| 項目 | convert | lm_applied=0 | 率 |
+|---|---|---|---|
+| rlen=4 | 2 | 1 | 50.0% |
+| rlen=16+ | 2 | 1 | 50.0% |
+| qlen=0 | 2 | 0 | 0.0% |
+| qlen=1 | 1 | 1 | 100.0% |
+| qlen=2 | 1 | 1 | 100.0% |
 
 ## 異常終了
 
@@ -167,9 +177,10 @@
 
 | 項目 | 件数 | p50 | p95 | p99 |
 |---|---|---|---|---|
-| convert（全体） | 5 | 50 | 5200 | 5200 |
+| convert（全体） | 7 | 60 | 5200 | 5200 |
 | convert cache=hit lm_applied=1 | 4 | 50 | 60 | 60 |
-| convert cache=miss lm_applied=0 | 1 | 5200 | 5200 | 5200 |
+| convert cache=miss lm_applied=0 | 2 | 90 | 5200 | 5200 |
+| convert cache=wait_miss lm_applied=0 | 1 | 80 | 80 | 80 |
 | segment_page | 0 | - | - | - |
 | page | 0 | - | - | - |
 | prefetch_done | 1 | 25000 | 25000 | 25000 |
@@ -179,12 +190,14 @@
 
 | 項目 | 件数 | 率など |
 |---|---|---|
-| convert 件数 | 5 |  |
-| cache=hit | 4 | 80.0% |
-| cache=miss | 1 | 20.0% |
-| lm_applied=1 | 4 | 80.0% |
-| miss=context | 1 | 20.0% |
-| LM なし（lm_applied=0） | 1 | 20.0% |
+| convert 件数 | 7 |  |
+| cache=hit | 4 | 57.1% |
+| cache=miss | 2 | 28.6% |
+| cache=wait_miss | 1 | 14.3% |
+| lm_applied=1 | 4 | 57.1% |
+| miss=context | 1 | 14.3% |
+| miss=reading | 1 | 14.3% |
+| LM なし（lm_applied=0） | 3 | 42.9% |
 | by=content | 0 | 0.0% |
 | fill のある convert | 0 | 0.0% |
 | fill_eq=1 | 0 | - |
@@ -201,7 +214,7 @@
 | 項目 | 値 |
 |---|---|
 | 読んだファイル | 3 |
-| 読めた行 | 46 |
+| 読めた行 | 48 |
 | 形の違う行（欠け） | 1 |
 | log_dropped 合計 | 5 |
 | diag_reject 合計 | 2 |
@@ -212,5 +225,5 @@
 | 期間(UTC) | 2026-10-26 〜 2026-10-29 |
 | 行数 2026-10-26 | 7 |
 | 行数 2026-10-27 | 23 |
-| 行数 2026-10-28 | 8 |
+| 行数 2026-10-28 | 10 |
 | 行数 2026-10-29 | 4 |

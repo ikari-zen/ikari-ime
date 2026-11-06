@@ -423,6 +423,8 @@ struct QueueState {
     jobs: HashMap<u64, Job>,
     seq: u64,
     closed: bool,
+    /// ワーカーが処理中の依頼の数（`next` で取り出してから `finish` まで）
+    running: usize,
 }
 
 /// 先行計算の待ち行列。古い依頼は捨て、ワーカーは最後に出された依頼から処理する。
@@ -452,6 +454,18 @@ impl PrefetchQueue {
         lock(&self.state).jobs.remove(&session).map(|j| j.entry)
     }
 
+    /// まだ終わっていない依頼の数（待っているもの + 処理中のもの）。診断ログの `qlen=` 用。
+    pub fn pending(&self) -> usize {
+        let state = lock(&self.state);
+        state.jobs.len() + state.running
+    }
+
+    /// `next` で取り出した依頼の処理が終わったことを知らせる。
+    pub fn finish(&self) {
+        let mut state = lock(&self.state);
+        state.running = state.running.saturating_sub(1);
+    }
+
     pub fn clear(&self) -> Vec<Arc<CacheEntry>> {
         lock(&self.state)
             .jobs
@@ -473,6 +487,7 @@ impl PrefetchQueue {
                 .max_by_key(|(_, j)| j.seq)
                 .map(|(session, _)| *session);
             if let Some(session) = newest {
+                state.running += 1;
                 return state.jobs.remove(&session);
             }
             state = self.wake.wait(state).unwrap_or_else(|e| e.into_inner());
@@ -605,6 +620,19 @@ mod tests {
         assert!(Arc::ptr_eq(&replaced, &first));
         let job = queue.next().unwrap();
         assert!(Arc::ptr_eq(&job.entry, &second));
+    }
+
+    #[test]
+    fn queue_pending_counts_waiting_and_running_jobs() {
+        let queue = PrefetchQueue::default();
+        assert_eq!(queue.pending(), 0);
+        queue.submit(CacheEntry::new(key(1, "あ", 1)), Context::new());
+        queue.submit(CacheEntry::new(key(2, "い", 1)), Context::new());
+        assert_eq!(queue.pending(), 2);
+        let _job = queue.next().unwrap();
+        assert_eq!(queue.pending(), 2, "処理中も数える");
+        queue.finish();
+        assert_eq!(queue.pending(), 1);
     }
 
     #[test]
