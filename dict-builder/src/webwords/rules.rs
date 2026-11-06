@@ -1,10 +1,12 @@
 //! カテゴリの規則表 `dict-builder/webwords/categories.tsv` の読み込みと照合の型（ADR 0055 §2.3）。
 //!
 //! 列は `型の種類（完全一致 / 末尾 / 先頭 / 正規表現）<TAB>型<TAB>区分`。区分は `人名`、`地名`、`固有名詞一般`、`普通名詞`。
-//! `#` で始まる行と空行は読み飛ばす。`正規表現` は依存（regex）を足すかをレーン B が決めるまで、読み込みの誤りにする。
+//! `#` で始まる行と空行は読み飛ばす。`正規表現` は regex クレートで、カテゴリの名前のどこかに当たれば一致（両端は `^` `$` で固定する）。
 //!
 //! 保守用のカテゴリ（スタブ、Wikidata、ページ、記事、マジックリンクなど）は、照合の前に外す
 //! （[`is_maintenance_category`]。どの規則にも当てない）。
+
+use regex::Regex;
 
 use super::{WebClass, WebwordsError};
 
@@ -29,15 +31,27 @@ pub enum RuleKind {
     Suffix,
     /// 先頭
     Prefix,
+    /// 正規表現（regex クレート。名前のどこかに当たれば一致）
+    Regex,
 }
 
 /// 1 行の規則。区分の `WebClass::Common` が表の「普通名詞」
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct Rule {
     pub kind: RuleKind,
     pub pattern: String,
     pub class: WebClass,
+    /// `kind` が `Regex` のときのコンパイル済み（`pattern` から作る。比較には使わない）
+    regex: Option<Regex>,
 }
+
+impl PartialEq for Rule {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind && self.pattern == other.pattern && self.class == other.class
+    }
+}
+
+impl Eq for Rule {}
 
 impl Rule {
     pub fn matches(&self, category: &str) -> bool {
@@ -45,6 +59,7 @@ impl Rule {
             RuleKind::Exact => category == self.pattern,
             RuleKind::Suffix => category.ends_with(&self.pattern),
             RuleKind::Prefix => category.starts_with(&self.pattern),
+            RuleKind::Regex => self.regex.as_ref().is_some_and(|re| re.is_match(category)),
         }
     }
 }
@@ -75,7 +90,7 @@ impl RuleTable {
                 "完全一致" => RuleKind::Exact,
                 "末尾" => RuleKind::Suffix,
                 "先頭" => RuleKind::Prefix,
-                "正規表現" => return Err(at("正規表現は未対応です".into())),
+                "正規表現" => RuleKind::Regex,
                 other => return Err(at(format!("型の種類が不正です: {other}"))),
             };
             let class = match class {
@@ -85,10 +100,19 @@ impl RuleTable {
                 "普通名詞" => WebClass::Common,
                 other => return Err(at(format!("区分が不正です: {other}"))),
             };
+            let regex = if kind == RuleKind::Regex {
+                Some(
+                    Regex::new(pattern)
+                        .map_err(|error| at(format!("正規表現が不正です: {error}")))?,
+                )
+            } else {
+                None
+            };
             rules.push(Rule {
                 kind,
                 pattern: pattern.to_owned(),
                 class,
+                regex,
             });
         }
         Ok(Self { rules })
@@ -135,6 +159,25 @@ mod tests {
         assert_eq!(t.classes_of("フランスの行政区画"), [WebClass::ProperPlace]);
         assert_eq!(t.classes_of("イタリアのコムーネ"), [WebClass::ProperPlace]);
         assert_eq!(t.classes_of("生没年不詳"), [WebClass::ProperPerson]);
+    }
+
+    #[test]
+    fn family_and_genus_rules_do_not_hit_surgery_or_metal() {
+        let t = table();
+        assert_eq!(t.classes_of("ネコ科"), [WebClass::ProperGeneral]);
+        assert_eq!(t.classes_of("ユリ属"), [WebClass::ProperGeneral]);
+        assert_eq!(t.classes_of("ウイルス亜科"), [WebClass::ProperGeneral]);
+        for name in ["外科", "金属", "アルカリ金属", "付属", "診療科"] {
+            assert!(t.classes_of(name).is_empty(), "{name}");
+        }
+    }
+
+    #[test]
+    fn regex_rows_are_parsed_and_bad_ones_rejected() {
+        let t = RuleTable::parse("正規表現\t^ab+$\t人名\n").unwrap();
+        assert_eq!(t.classes_of("abbb"), [WebClass::ProperPerson]);
+        assert!(t.classes_of("xabbb").is_empty());
+        assert!(RuleTable::parse("正規表現\t(\t人名").is_err());
     }
 
     #[test]
