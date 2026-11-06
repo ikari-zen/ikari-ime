@@ -14,8 +14,21 @@ use super::{WebClass, WebwordsError};
 pub const DEFAULT_CATEGORIES_TEXT: &str = include_str!("../../webwords/categories.tsv");
 
 /// カテゴリの名前にこれらを含むものは保守用で、照合から外す（記事の内容の分類ではない）
-pub const MAINTENANCE_CATEGORY_MARKERS: [&str; 5] =
-    ["スタブ", "Wikidata", "ページ", "記事", "マジックリンク"];
+pub const MAINTENANCE_CATEGORY_MARKERS: [&str; 11] = [
+    "スタブ",
+    "Wikidata",
+    "ページ",
+    "記事",
+    "マジックリンク",
+    // 2026-11-06 の調査で見つかった漏れ（ADR 0055 §2.3 の追記）。日本語の「ウィキデータ」表記、
+    // Webarchive のテンプレート、翻訳・更新・書きかけ・参照方法の保守用
+    "ウィキデータ",
+    "Webarchive",
+    "参照方法",
+    "翻訳直後",
+    "情報の更新が必要とされている項目",
+    "書きかけの節のある項目",
+];
 
 pub fn is_maintenance_category(name: &str) -> bool {
     MAINTENANCE_CATEGORY_MARKERS
@@ -190,6 +203,13 @@ mod tests {
             "出典を必要とするページ",
             "存命人物の記事",
             "ISBNマジックリンクを使用しているページ",
+            "ウィキデータにある座標",
+            "ウィキデータと異なる公式ウェブサイト",
+            "Webarchiveテンプレートのウェイバックリンク",
+            "参照方法",
+            "翻訳直後",
+            "情報の更新が必要とされている項目/2021年1月-6月",
+            "書きかけの節のある項目",
         ] {
             assert!(is_maintenance_category(name), "{name}");
             assert!(t.classes_of(name).is_empty(), "{name}");
@@ -202,6 +222,42 @@ mod tests {
                 rule.pattern
             );
         }
+    }
+
+    #[test]
+    fn it_types_are_exact_and_do_not_widen_to_other_fields() {
+        let t = table();
+        // IT のカテゴリ名は完全一致で普通名詞に当たる
+        for name in [
+            "プログラミング",
+            "コンパイラ",
+            "自動メモリ管理",
+            "並行性",
+            "コンピュータ・ネットワーク・セキュリティ",
+            "ユーザインタフェース技術",
+            "サーバ",
+        ] {
+            assert_eq!(t.classes_of(name), [WebClass::Common], "{name}");
+        }
+        // 広い末尾・先頭一致は入れない。IT 以外や、ゲーム・製品・サービスのカテゴリには当たらない
+        for name in [
+            "プログラミング言語",
+            "サーバ製品",
+            "コンピュータゲーム",
+            "日本で開発されたコンピュータゲーム",
+            "Androidのソフトウェア",
+            "インターネット・ミーム",
+            "車の技術用語",
+            "ソフトウェア",
+        ] {
+            assert!(t.classes_of(name).is_empty(), "{name}");
+        }
+        // 固有名詞の区分と同時に当たれば、行 9 の「迷う」になる（呼び出し側が区分の数で判断する）
+        let classes = ["プログラミング", "日本の企業"]
+            .iter()
+            .flat_map(|name| t.classes_of(name))
+            .collect::<Vec<_>>();
+        assert!(classes.contains(&WebClass::Common) && classes.contains(&WebClass::ProperGeneral));
     }
 
     #[test]
