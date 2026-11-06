@@ -9,13 +9,18 @@
 //! 2. `cargo xtask webwords build --dump <YYYYMMDD> --work <fetch の作業ディレクトリ> --out <出力先>`
 //!    `dict-builder webwords collect`、`classify` を流し、`webwords-<日付>.tsv`、`webwords-<日付>-report.md`、
 //!    `xz -9e` で圧縮した `webwords-<日付>.tsv.xz` を出力先に作る。最後に xz の sha256 を出す。
+//!    （手順 2 のあと `measure` で Release の手前まで測れる。全体の手順は docs/webwords-update.md）
 //! 3. メンテナーが、レポートを確かめ（理由ごとの件数、抜き取り。ADR 0055 §4.1・§6）、`webwords-<日付>.tsv.xz` を GitHub の Release
-//!    （タグ `webwords-<日付>`。ADR 0033 の型）に資産として置く。
+//!    （タグ `webwords-<日付>`。ADR 0033 の型）に資産として置く（`publish --yes`。なければ dry-run）。
+//!    手順 4 も `publish --yes` が行う。
 //! 4. `scripts/lib.sh` の `WEBWORDS_LIST_URL` に資産の URL を、`WEBWORDS_LIST_SHA256` に手順 2 が出した xz の sha256 を入れる。
 //!    `THIRD_PARTY_NOTICES.md` のダンプの日付を直す。`scripts/fetch-data.sh --only webwords` で取れることを確かめる。
 //! 5. 作業用のディレクトリを消す（本文と SQL ダンプは配らない。sha256 は一覧のヘッダとレポートに残る）。
 //!
 //! pages-articles の sha256: manifest の pages-articles の各ファイルの sha256（16 進）を、ファイル名の順につないだ文字列の sha256。
+
+mod measure;
+mod publish;
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -88,6 +93,39 @@ enum Action {
         #[arg(long, value_name = "DIR")]
         data: Option<PathBuf>,
     },
+    /// Release の手前まで: 一覧（なければ build）→ 承認済みの既定の値での測り直し → 比較の表 → 抜き取り 30 語 → まとめ。悪化があれば非 0 で終わる
+    Measure {
+        /// ダンプの日付
+        #[arg(long, value_name = "YYYYMMDD")]
+        dump: String,
+        /// `fetch` の作業用ディレクトリ
+        #[arg(long, value_name = "DIR")]
+        work: PathBuf,
+        /// 出力先ディレクトリ（`build` の出力、評価の scratch、sample.tsv、measure-<日付>.md。実機の data やユーザーデータの下は不可）
+        #[arg(long, value_name = "DIR")]
+        out: PathBuf,
+        /// LM（zenz の gguf）。渡すと LM ありも測る（時間がかかる）
+        #[arg(long, value_name = "GGUF")]
+        lm: Option<PathBuf>,
+        /// 抜き取りの seed（既定は固定の値）
+        #[arg(long, default_value_t = measure::DEFAULT_SEED)]
+        seed: u64,
+        /// data のディレクトリ（既定はリポジトリの data/）
+        #[arg(long, value_name = "DIR")]
+        data: Option<PathBuf>,
+    },
+    /// Release の作成と、固定（scripts/lib.sh、THIRD_PARTY_NOTICES.md）の書き換え。`--yes` がなければ、やる予定を表示して終わる
+    Publish {
+        /// ダンプの日付
+        #[arg(long, value_name = "YYYYMMDD")]
+        dump: String,
+        /// `build` / `measure` の出力先
+        #[arg(long, value_name = "DIR")]
+        out: PathBuf,
+        /// 実行する（なければ dry-run）。Release の前に、ユーザーに聞く
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 pub fn run(args: Args) -> Result<(), XtaskError> {
@@ -99,6 +137,26 @@ pub fn run(args: Args) -> Result<(), XtaskError> {
             out,
             data,
         } => run_build(&dump, &work, &out, data),
+        Action::Measure {
+            dump,
+            work,
+            out,
+            lm,
+            seed,
+            data,
+        } => measure::run_measure(measure::Options {
+            date: dump,
+            work,
+            out,
+            lm,
+            seed,
+            data,
+        }),
+        Action::Publish { dump, out, yes } => publish::run_publish(publish::Options {
+            date: dump,
+            out,
+            yes,
+        }),
     };
     result.map_err(|failure| XtaskError(failure.message))
 }
@@ -578,7 +636,7 @@ fn run_build(
     println!("資産（Release に置く）: {}", xz.display());
     println!("WEBWORDS_LIST_SHA256={xz_sha}");
     println!(
-        "次の手順は xtask/src/webwords.rs の冒頭の 3〜5（Release に置く操作はメンテナーが行う）"
+        "次の手順は docs/webwords-update.md（measure で測り、人が読み、ユーザーに聞いてから publish）"
     );
     Ok(())
 }
@@ -623,6 +681,23 @@ mod tests {
         ])
         .unwrap();
         assert!(matches!(build.args.command, Action::Build { .. }));
+    }
+
+    #[test]
+    fn measure_and_publish_parse() {
+        let m = Cli::try_parse_from([
+            "x", "measure", "--dump", "20270201", "--work", "/w", "--out", "/o",
+        ])
+        .unwrap();
+        assert!(matches!(
+            m.args.command,
+            Action::Measure { lm: None, seed, .. } if seed == measure::DEFAULT_SEED
+        ));
+        let p = Cli::try_parse_from(["x", "publish", "--dump", "20270201", "--out", "/o"]).unwrap();
+        assert!(matches!(p.args.command, Action::Publish { yes: false, .. }));
+        let p = Cli::try_parse_from(["x", "publish", "--dump", "20270201", "--out", "/o", "--yes"])
+            .unwrap();
+        assert!(matches!(p.args.command, Action::Publish { yes: true, .. }));
     }
 
     #[test]
