@@ -1,0 +1,28 @@
+# Wikipedia 日本語版から集めた外来語（ADR 0055、#113）の評価セット。公開の語だけ。辞書にない普通名詞（一覧にある = 入る、迷う = 入らない）と、辞書にある語の守り。期待はユーザーの確認待ち
+# kind: 外来語(一覧にある) = 記事がなく固有名詞の目印もない語（schema=2 の一覧の common）。外来語(一覧にない) = 記事があり分類が取れず入らない語（入らなくてよい側の観測）。外来語(守り) = 辞書にある語（足した語で崩れてはいけない）
+# split は FNV-1a64(id) % 5 == 0 なら test、それ以外は dev。調整は dev だけで行う。
+id	kind	tags	profile	context	reading	expected	note	split	source
+ww-ver-01	外来語(一覧にある)	webwords,common			ばーじょにんぐ	バージョニング	辞書にない語（PoC で 32 位 → 1 位。ADR 0055）。一覧にある（記事なし）	test	agent-113
+ww-ver-02	外来語(一覧にある)	webwords,common		APIの	ばーじょにんぐ	バージョニング	同。文脈つき	dev	agent-113
+ww-shard-01	外来語(一覧にある)	webwords,common			しゃーでぃんぐ	シャーディング	辞書にない語。一覧にある（記事なし。df 6）	dev	agent-113
+ww-shard-02	外来語(一覧にある)	webwords,common		データベースの	しゃーでぃんぐ	シャーディング	同。文脈つき	dev	agent-113
+ww-obs-01	外来語(一覧にある)	webwords,common			おぶざーばびりてぃ	オブザーバビリティ	辞書にない語。一覧にある（記事なし。df 18）	dev	agent-113
+ww-obs-02	外来語(一覧にある)	webwords,common		システムの	おぶざーばびりてぃ	オブザーバビリティ	同。文脈つき	dev	agent-113
+ww-thr-01	外来語(一覧にある)	webwords,common			すろっとりんぐ	スロットリング	辞書にない語。一覧にある（記事なし。df 9）	dev	agent-113
+ww-thr-02	外来語(一覧にある)	webwords,common		APIの	すろっとりんぐ	スロットリング	同。文脈つき	dev	agent-113
+ww-priv-01	外来語(一覧にある)	webwords,common		モータースポーツの	ぷらいべーたー	プライベーター	辞書にない語。一覧にある（記事なし。df 489）	test	agent-113
+ww-lb-01	外来語(一覧にない)	webwords,dropped		サーバーの	ろーどばらんしんぐ	ロードバランシング	辞書にない語。記事があり分類が取れない（迷う）ので入らない。入らなくてよい側の例	dev	agent-113
+ww-trans-01	外来語(一覧にない)	webwords,dropped		TypeScriptを	とらんすぱいる	トランスパイル	同（迷う）	dev	agent-113
+ww-gami-01	外来語(一覧にない)	webwords,dropped		学習の	げーみふぃけーしょん	ゲーミフィケーション	同（迷う）	test	agent-113
+ww-ss-01	外来語(一覧にない)	webwords,dropped			すまーとすぴーかー	スマートスピーカー	同（迷う）	dev	agent-113
+ww-cj-01	外来語(一覧にない)	webwords,dropped		マーケティングの	かすたまーじゃーにー	カスタマージャーニー	同（迷う）	dev	agent-113
+ww-dm-01	外来語(一覧にない)	webwords,dropped		アプリの	だーくもーど	ダークモード	同（迷う）	dev	agent-113
+ww-pd-01	外来語(一覧にない)	webwords,dropped		著作権が切れて	ぱぶりっくどめいん	パブリックドメイン	同（迷う）	dev	agent-113
+ww-rei-01	外来語(一覧にない)	webwords,dropped		名盤の	りいしゅー	リイシュー	同（迷う）	test	agent-113
+ww-g-01	外来語(守り)	webwords,guard			まいくろさーびす	マイクロサービス	辞書にある語（Core）。足した語に崩されない	test	agent-113
+ww-g-02	外来語(守り)	webwords,guard			だっしゅぼーど	ダッシュボード	辞書にある語。同	dev	agent-113
+ww-g-03	外来語(守り)	webwords,guard		動画の	すとりーみんぐ	ストリーミング	辞書にある語。同	dev	agent-113
+ww-g-04	外来語(守り)	webwords,guard			ろぎんぐ	ロギング	辞書にある語。同	dev	agent-113
+ww-g-05	外来語(守り)	webwords,guard		ソフトの	ばーじょん	バージョン	辞書にある語。バージョニングの追加で崩れない	dev	agent-113
+ww-g-06	外来語(守り)	webwords,guard		Dockerの	こんてな	コンテナ	辞書にある語。同	dev	agent-113
+ww-g-07	外来語(守り)	webwords,guard			ばーじょんあっぷ	バージョンアップ	辞書にある語。同	dev	agent-113

@@ -18,11 +18,11 @@ mkdir -p "$OUT"
 for set in eval/sets/*.tsv; do
   name=$(basename "$set" .tsv)
   [ "$name" = segments ] && continue
-  # ONLY="a b c" を渡すと、その名前のセットだけ流す（LM ありは重いので）
+  # ONLY="a b c ajimee" を渡すと、その名前のセット（と ajimee）だけ流す（LM ありは重いので）
   if [ -n "${ONLY:-}" ] && [[ " $ONLY " != *" $name "* ]]; then continue; fi
   "$BIN" --dict "$DICT" --ranker full ${EXTRA[@]+"${EXTRA[@]}"} --set "$set" --out-cases "$OUT/$name.tsv" > "$OUT/$name.md" 2>&1 || echo "warn: $name failed"
 done
-if [ -z "${ONLY:-}" ] && [ -f data/raw/ajimee/evaluation_items.json ]; then
+if { [ -z "${ONLY:-}" ] || [[ " $ONLY " == *" ajimee "* ]]; } && [ -f data/raw/ajimee/evaluation_items.json ]; then
   "$BIN" --dict "$DICT" --ranker full ${EXTRA[@]+"${EXTRA[@]}"} --set data/raw/ajimee/evaluation_items.json --set-format ajimee --out-cases "$OUT/ajimee.tsv" > "$OUT/ajimee.md" 2>&1 || echo "warn: ajimee failed"
 fi
 # LM の時間切れ（0 でなければ無効）
