@@ -131,7 +131,7 @@ do_branches() {
         fi ;;
       review)
         if [[ "$FORCE_UNMERGED" -eq 1 ]] && printf '%s\n' "${INCLUDES[@]+"${INCLUDES[@]}"}" | grep -qxF "$b"; then
-          emit delete "$b" "$REASON（--force-unmerged --include で指定）"
+          emit delete "$b" "${REASON}（--force-unmerged --include で指定）"
           if [[ "$APPLY" -eq 1 ]]; then
             if g branch -D "$b" >/dev/null; then DELETED=$((DELETED + 1)); else FAILED=$((FAILED + 1)); warn "$b を消せなかった"; fi
           fi
@@ -145,7 +145,7 @@ do_branches() {
 
 # ---- リモートのブランチ ----
 do_remote() {
-  section "リモートのブランチ（$REMOTE_NAME）"
+  section "リモートのブランチ（${REMOTE_NAME}）"
   local ref b
   while IFS= read -r ref; do
     b="${ref#"$REMOTE_NAME"/}"
@@ -184,7 +184,7 @@ do_worktrees() {
     if [[ "$flags" == *L* ]]; then emit keep "$path" "ロックされている"; continue; fi
     if [[ "$flags" == *P* ]]; then emit keep "$path" "場所がない（git worktree prune で消える）"; continue; fi
     if [[ -z "$branch" ]]; then emit keep "$path" "ブランチがない（detached）"; continue; fi
-    if [[ -n "$(git -C "$path" status --porcelain 2>/dev/null)" ]]; then emit keep "$path" "変更が残っている（$branch）"; continue; fi
+    if [[ -n "$(git -C "$path" status --porcelain 2>/dev/null)" ]]; then emit keep "$path" "変更が残っている（${branch}）"; continue; fi
     decide_local "$branch"
     if [[ "$DECISION" == delete ]]; then
       emit delete "$path" "$branch: $REASON、作業ツリーはきれい（$(human_size "$path")）"
@@ -213,7 +213,7 @@ remove_path() { # 対象 理由。REPO_DIR の下だけ消す
     "$REPO_DIR"/target|"$REPO_DIR"/target/*|"$REPO_DIR"/eval/*|"$REPO_DIR"/scratch/*) ;;
     *) die "対象外のパスは消せません: $path" ;;
   esac
-  emit delete "${path#"$REPO_DIR"/}" "$reason（$(human_size "$path")）"
+  emit delete "${path#"$REPO_DIR"/}" "${reason}（$(human_size "$path")）"
   if [[ "$APPLY" -eq 1 ]]; then
     if rm -rf "$path"; then DELETED=$((DELETED + 1)); else FAILED=$((FAILED + 1)); warn "$path を消せなかった"; fi
   fi
