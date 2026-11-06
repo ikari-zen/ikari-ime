@@ -35,13 +35,14 @@ pub struct LexConfig {
     pub no_f5: bool,
 }
 
-/// 普通名詞のコストの既定（暫定）。PoC の候補 13000〜17000（守る群が動かない範囲。ADR 0055 §0.1）の中央付近。
-/// 掃引（ADR 0055 §4.2）で決めるまでの仮の値で、ユーザーの確認のあとで置き換える。
+/// 普通名詞のコストの基準の既定（ADR 0055 §4.5。2026-11-06 ユーザー承認）。
+/// 掃引（eval/reports/webwords-sweep-2026-11-06.md）で、14000 以上は守る群の悪化が 0、13000 以下は 1 件以上落ちた。
+/// 1000 の余裕を取って 15000。実際のコストは [`COST_TIERS`] の差を足した 17000 / 14000 / 11000。
 pub const DEFAULT_COMMON_COST: i16 = 15000;
 
-/// df の段ごとのコストの差（基準のコストからの差。暫定。PoC の 17000 / 14000 / 11000 の型 = 基準 15000 に対して +2000 / -1000 / -4000）。
+/// df の段ごとのコストの差（基準のコストからの差。基準 15000 に対して +2000 / -1000 / -4000 = 17000 / 14000 / 11000。ADR 0055 §4.5）。
 /// `(その段の df の下限, 差)` を df の下限の昇順に並べる。df がその下限以上の語のうち、最も高い段の差を使う。
-/// df が大きいほどよく使われる語とみなして安くする。値は掃引で決める。
+/// df が大きいほどよく使われる語とみなして安くする。
 const COST_TIERS: [(u32, i32); 3] = [(0, 2000), (20, -1000), (100, -4000)];
 
 /// 形の規則（ADR 0039 §2.3 F3）: 表記の字数の下限（掃引の軸。PoC の既定は 3）
@@ -236,7 +237,7 @@ fn segmentable(surface: &str, parts: &HashSet<String>) -> bool {
     reachable[n]
 }
 
-/// df から決める普通名詞のコスト（ADR 0055 §4.2 の段 1。暫定の式）。`base` を基準に [`COST_TIERS`] の差を足す。
+/// df から決める普通名詞のコスト（ADR 0055 §4.2 の段 1）。`base` を基準に [`COST_TIERS`] の差を足す。
 fn common_cost(df: u64, base: i16) -> i16 {
     let delta = COST_TIERS
         .iter()
@@ -400,7 +401,7 @@ fn render_report(
         header.source, header.sha256, header.articles, header.sudachi, header.rules
     ));
     out.push_str(&format!(
-        "- 引数: df の下限 {min_df}、普通名詞のコストの基準 {base_cost}（暫定。段は df に応じて {:?} の差）、F5 {}\n",
+        "- 引数: df の下限 {min_df}、普通名詞のコストの基準 {base_cost}（段は df に応じて {:?} の差）、F5 {}\n",
         COST_TIERS.map(|(floor, delta)| (floor, delta)),
         if config.no_f5 { "なし" } else { "あり" }
     ));
@@ -564,7 +565,7 @@ mod tests {
         );
         let report = fs::read_to_string(fixture.dir.path().join("report.md")).unwrap();
         assert!(report.contains("| common | 5144 | 5144 |"));
-        assert!(report.contains("暫定"));
+        assert!(report.contains("df の下限 5、普通名詞のコストの基準 15000"));
     }
 
     #[test]
