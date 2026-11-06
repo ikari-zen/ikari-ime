@@ -11,6 +11,7 @@ ADR が根拠として参照しているレポートは、リンクを壊さな�
 
 | ファイル | 日付 | 区分 | 何の数値か | 今のコードで再現できるか |
 | --- | --- | --- | --- | --- |
+| [webwords-sweep-2026-11-06.md](webwords-sweep-2026-11-06.md) | 2026-11-06 | 保留（ADR 0055 段 1。値はユーザーの確認待ち） | Wikipedia 日本語版の外来語（普通名詞）の掃引。df の下限 {5, 10, 20} × 基準コスト {9000, 11000〜17000} の 24 点で、全セット + AJIMEE の 1 位の悪化、leave-one-out と guard、ばーじょにんぐ の順位、辞書の大きさ。df5 の 14000〜16000 の LM あり、phr。値は決めていない | 再現できる（§7 の手順。`eval/scripts/webwords_*`。ダンプと一覧は scratch） |
 | [shell-perf/](shell-perf/README.md)（[baseline.json](shell-perf/baseline.json)） | 2026-10-30 | 現行の基準 | Rust 移行の前（Swift 版の殻）の性能の基準値（ADR 0041 §6.3 の P1 キー 1 回、P3 殻の起動、P4 メモリ、P5 エンジンとコアの性能）。各指標は 5 回の中央値と最小・最大、計測した SHA・機械・OS・負荷つき。許す幅は未決 | 再現できる（`cargo xtask perf shell --impl swift`、`perf engine`。手順は README） |
 | [profile/](profile/README.md) | 2026-10-31 | 現行の基準 | プロファイラの導入（#149）のスパイクの結果（samply、dhat、cargo flamegraph）と、殻のキー 1 回の CPU プロファイル・ヒープ確保の最初の記録（道具の動作確認。負荷平均 4〜6.6 の中で測った。基準値ではない） | 再現できる（`cargo xtask perf profile`、`cargo xtask perf alloc`。profile は samply が要る） |
 | [issue185-set-2026-11-04.md](issue185-set-2026-11-04.md) | 2026-11-04 | 現行の基準 | issue185.tsv（17 件）の LM なし（full、学習なし）の順位。ADR 0048 の掃引の基準。LM ありは未測定 | 再現できる（レポート冒頭のコマンド） |
