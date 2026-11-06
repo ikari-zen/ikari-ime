@@ -32,11 +32,11 @@ files="$(python3 -I "$REPORT" "$DATA/engine.log" "$DATA/engine-20261028-000000.l
 
 # TSV は行の先頭に節名がつく
 tsv="$(python3 -I "$REPORT" --tsv "$DATA")"
-printf '%s\n' "$tsv" | grep -q '^ログの健全性	読めた行	46$' || die "TSV に期待の行がありません"
+printf '%s\n' "$tsv" | grep -q '^ログの健全性	読めた行	48$' || die "TSV に期待の行がありません"
 
 # 日付の絞り込み（2026-10-27 だけ → 古い世代の行は入らない）
 since="$(python3 -I "$REPORT" --since 2026-10-27 "$DATA")"
-printf '%s\n' "$since" | grep -q '^| 読めた行 | 39 |$' || die "--since の結果が違います"
+printf '%s\n' "$since" | grep -q '^| 読めた行 | 41 |$' || die "--since の結果が違います"
 
 # smoke のセッションは既定で除く（--include-smoke で戻す）
 printf '%s\n' "$actual" | grep -q '^| 除いた smoke の行 | 4 |$' || die "smoke の行を除けていません"
