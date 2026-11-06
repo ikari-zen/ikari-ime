@@ -15,7 +15,6 @@ pub struct LibConsts {
 }
 
 /// 外来語の一覧の取得元（`scripts/lib.sh` の `WEBWORDS_LIST_*`）
-#[allow(dead_code, reason = "レーン D（ADR 0055 §7）が fetch と dict で使う")]
 #[derive(Debug, PartialEq, Eq)]
 pub struct WebwordsList {
     /// data/raw/ からの相対パス（展開後）
@@ -89,7 +88,6 @@ impl LibConsts {
     }
 
     /// 外来語の一覧（ADR 0055）の置き場所と取得元。URL か sha256 が空なら `None`（取得しない・辞書に組み込まない）。
-    #[allow(dead_code, reason = "レーン D（ADR 0055 §7）が fetch と dict で使う")]
     pub fn webwords_list(&self) -> Result<Option<WebwordsList>, XtaskError> {
         let url = self.get("WEBWORDS_LIST_URL")?;
         let sha256 = self.get("WEBWORDS_LIST_SHA256")?;
