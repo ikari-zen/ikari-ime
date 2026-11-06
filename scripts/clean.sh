@@ -187,7 +187,7 @@ do_worktrees() {
     if [[ -n "$(git -C "$path" status --porcelain 2>/dev/null)" ]]; then emit keep "$path" "変更が残っている（${branch}）"; continue; fi
     decide_local "$branch"
     if [[ "$DECISION" == delete ]]; then
-      emit delete "$path" "$branch: $REASON、作業ツリーはきれい（$(human_size "$path")）"
+      emit delete "$path" "$branch: ${REASON}、作業ツリーはきれい（$(human_size "$path")）"
       if [[ "$APPLY" -eq 1 ]]; then
         if g worktree remove "$path" >/dev/null 2>&1; then DELETED=$((DELETED + 1)); else FAILED=$((FAILED + 1)); warn "$path を消せなかった"; fi
       fi
