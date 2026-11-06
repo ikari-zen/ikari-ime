@@ -10,7 +10,7 @@ ikari-ime の macOS 版。InputMethodKit の殻（`ikari.app`、Swift）と、�
 
 ## ビルドとインストール
 
-手順は [README の「インストール」](../README.md#インストール) が唯一の場所です（辞書の用意から、`scripts/setup.sh` の 1 コマンドまで）。
+手順は [README の「インストール」](../README.md#5-インストールソースからのビルド) が唯一の場所です（辞書の用意から、`scripts/setup.sh` の 1 コマンドまで）。
 ここには、このディレクトリのスクリプトが何をするかだけを書きます。引数は各スクリプトの `--help` が正です。
 
 - `build.sh`、`install.sh`、`smoke.sh` が出力先を共有する。出力は `target/macos/<release|debug>-<team|adhoc>/ikari.app`。
