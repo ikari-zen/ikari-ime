@@ -247,9 +247,9 @@ fn extract_xz(archive: &Path, out: &Path) -> Result<(), Failure> {
 
 /// 外来語の一覧の取得の結果
 #[derive(Debug, PartialEq, Eq)]
-enum Placed {
+enum Outcome {
     Valid,
-    Placed,
+    Done,
     Missing,
 }
 
@@ -262,24 +262,24 @@ fn place_webwords(
     check_only: bool,
     transfer: Transfer<'_>,
     extract: &dyn Fn(&Path, &Path) -> Result<(), Failure>,
-) -> Result<Placed, Failure> {
+) -> Result<Outcome, Failure> {
     let out = raw.join(&list.path);
     let mut archive_name = out.file_name().unwrap_or_default().to_os_string();
     archive_name.push(WEBWORDS_ARCHIVE_SUFFIX);
     let archive = out.with_file_name(archive_name);
     let archive_valid = has_valid(&archive, &list.sha256);
     if archive_valid && out.is_file() {
-        return Ok(Placed::Valid);
+        return Ok(Outcome::Valid);
     }
     if check_only {
-        return Ok(Placed::Missing);
+        return Ok(Outcome::Missing);
     }
     if !archive_valid {
         download_with(&list.url, &archive, &list.sha256, transfer)?;
     }
     log(&format!("展開: {}", archive.display()));
     extract(&archive, &out)?;
-    Ok(Placed::Placed)
+    Ok(Outcome::Done)
 }
 
 fn extract_tar_gz(tar: &Path, dir: &Path) -> Result<(), Failure> {
@@ -491,9 +491,9 @@ impl Fetcher<'_> {
         };
         let out = self.raw.join(&list.path);
         match place_webwords(&list, &self.raw, self.check_only, &curl, &extract_xz)? {
-            Placed::Valid => Self::ok(&out),
-            Placed::Placed => println!("extracted  {}", out.display()),
-            Placed::Missing => self.report_missing(&out),
+            Outcome::Valid => Self::ok(&out),
+            Outcome::Done => println!("extracted  {}", out.display()),
+            Outcome::Missing => self.report_missing(&out),
         }
         Ok(())
     }
@@ -700,13 +700,13 @@ mod tests {
             &fake_extract,
         )
         .unwrap();
-        assert_eq!(placed, Placed::Placed);
+        assert_eq!(placed, Outcome::Done);
         assert!(dir.path().join("webwords/webwords.tsv").is_file());
         assert!(dir.path().join("webwords/webwords.tsv.xz").is_file());
         // 2 回目は何もしない（取得の手段を呼ばない）
         let again =
             place_webwords(&list, dir.path(), false, &never_transfer, &fake_extract).unwrap();
-        assert_eq!(again, Placed::Valid);
+        assert_eq!(again, Outcome::Valid);
     }
 
     #[test]
@@ -732,7 +732,7 @@ mod tests {
         let list = webwords_list("https://x/w.xz", ABC_SHA256);
         let placed =
             place_webwords(&list, dir.path(), true, &never_transfer, &fake_extract).unwrap();
-        assert_eq!(placed, Placed::Missing);
+        assert_eq!(placed, Outcome::Missing);
     }
 
     #[test]
