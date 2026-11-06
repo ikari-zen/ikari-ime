@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# ADR 0039 PoC: eval/sets/*.tsv の全部（segments.tsv を除く）と AJIMEE を、辞書を替えて流す（捨てるスクリプト。snapshot.sh が流さないセットも含める）。
+# ADR 0055 §4（PoC の ADR 0039 から引き継ぐ）: eval/sets/*.tsv の全部（segments.tsv を除く）と AJIMEE を、辞書を替えて流す（snapshot.sh が流さないセットも含める）。
 #   webwords_allsets.sh <辞書ディレクトリ> <出力ディレクトリ> [<LM の gguf>]
 # 出力: <出力>/eval/<セット名>.tsv（--out-cases）。webwords_compare.py で 2 つの出力を比べる。
-# LM を渡すと --lm-budget-ms 2000 --lm-deadline-ms 2000（snapshot.sh と同じ）。LM つきのバイナリは target/snapshot-bin に作られているものを使う。
+# LM を渡すと --lm-budget-ms 2000 --lm-deadline-ms 2000（snapshot.sh と同じ。環境変数 LM_DEADLINE_MS で変える。時間切れの数が基準と候補で揺れるときに大きくして流し直す）。LM つきのバイナリは target/snapshot-bin に作られているものを使う。
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 DICT=$1
@@ -12,7 +12,7 @@ BIN=target/release/ikari-eval
 EXTRA=()
 if [ -n "$LM" ]; then
   BIN=target/snapshot-bin/release/ikari-eval
-  EXTRA=(--lm "$LM" --lm-budget-ms 2000 --lm-deadline-ms 2000)
+  EXTRA=(--lm "$LM" --lm-budget-ms "${LM_DEADLINE_MS:-2000}" --lm-deadline-ms "${LM_DEADLINE_MS:-2000}")
 fi
 mkdir -p "$OUT"
 for set in eval/sets/*.tsv; do
