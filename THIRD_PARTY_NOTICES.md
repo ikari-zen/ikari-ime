@@ -36,6 +36,13 @@
 - **加工**: 「アドレス・ベース・レジストリ 町字・郵便番号変換表」（デジタル庁。元は日本郵便の郵便番号データ）をもとに ikari-ime が加工して作成した。国や日本郵便が作成した未加工のデータではない。変換表の各行を町字マスターと (lg_code, machiaza_id) で結び、大字・町名に畳み（丁目と小字の違いは消える）、上の町字マスターと同じ方法で読みを付け、都道府県つき・郡つき、都道府県や郡を省いた形ごとに住所の表記と読み、郵便番号を並べた表（`postal.tsv`）にしている。廃止された町字の行は使わない。町名に畳めない行（表記に数字を含む町など）は表に入れない（ADR 0032）
 - **使用方法**: `scripts/fetch-data.sh --only postal` で `data/raw/abr/` に置き、dict-builder の `town` が `postal.tsv` を作る。`postal.tsv` は `~/Library/Application Support/ikari-ime/dict/` に置かれる（バンドルには含めない）。変換表本体は同梱しない
 
+### Wikipedia 日本語版（外来語の語と出現頻度の一覧）
+
+- **ライセンス**: クリエイティブ・コモンズ 表示-継承 4.0 国際（CC BY-SA 4.0）。https://creativecommons.org/licenses/by-sa/4.0/deed.ja
+- **出典**: ウィキペディア日本語版（https://ja.wikipedia.org/）の執筆者。データベースダンプ jawiki-<日付>（pages-articles、page、redirect、page_props、categorylinks、linktarget。https://dumps.wikimedia.org/jawiki/<日付>/）。各記事の執筆者は、各記事の履歴を参照
+- **加工**: ikari-ime が、上のダンプの記事の本文から片仮名の連なりを取り出し、語ごとの出現回数と出現した記事の数を数え、記事の有無とカテゴリから普通名詞と固有名詞（人名・地名・一般）の別を付け、辞書にある語と迷う語を除いた一覧（`webwords-<日付>.tsv`）を作成した。一覧が含むのは、語（表記）、出現回数、記事の数、区分だけである。記事の本文、文、記事の名前、カテゴリの名前は含まない
+- **使用方法**: 一覧は ikari-ime の GitHub の Release に、CC BY-SA 4.0 の表示つきで置く。`scripts/fetch-data.sh --only webwords` で `data/raw/webwords/` に置き、dict-builder の `webwords lex` が利用者の手元で辞書（`system.dict`）に語を加える。Wikipedia の本文は同梱しない。辞書は `~/Library/Application Support/ikari-ime/dict/` に置かれる（バンドルには含めない）
+
 ### emoji-data（iamcal/emoji-data）
 
 - **ライセンス**: MIT License
@@ -111,6 +118,13 @@ SOFTWARE.
 - **バージョン**: 0.2
 - **用途**: Rewriter（日付や時刻の展開）の現在時刻の取得
 - **リポジトリ**: https://github.com/BurntSushi/jiff
+
+### bzip2 / flate2 / regex / sha2
+
+- **ライセンス**: bzip2、flate2、regex、sha2 はいずれも MIT or Apache-2.0。bzip2 が内部で使う libbz2-rs-sys（bzip2 の Rust 実装）は bzip2-1.0.6 ライセンス（BSD 系）
+- **バージョン**: bzip2 0.6（libbz2-rs-sys 0.2）、flate2 1、regex 1、sha2 0.10
+- **用途**: 辞書の元データを作る道具（dict-builder の `webwords`）が、Wikipedia のダンプ（bz2、gzip）を読み、本文から語を取り出し、入力の sha256 を取る。bzip2、regex、sha2 は製品のバイナリ（アプリ、エンジン）には含まれない。flate2 はエンジンのログの gzip 圧縮にも使う
+- **リポジトリ**: https://github.com/trifectatechfoundation/bzip2-rs 、https://github.com/trifectatechfoundation/libbz2-rs-sys 、https://github.com/rust-lang/flate2-rs 、https://github.com/rust-lang/regex 、https://github.com/RustCrypto/hashes
 
 ### prost / prost-build / protox
 

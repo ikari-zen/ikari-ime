@@ -1,7 +1,7 @@
 #!/bin/bash
 # 辞書とモデルの元データを data/raw/ に取得する（開発の道具。製品は通信しない: NFR-17）。
 #
-#   scripts/fetch-data.sh [--data <data のディレクトリ>] [--only sudachi|chive|zenz|ajimee|emoji|abr|postal]... [--check]
+#   scripts/fetch-data.sh [--data <data のディレクトリ>] [--only sudachi|chive|zenz|ajimee|emoji|abr|postal|webwords]... [--check]
 #
 #   --data   出力先（既定: このリポジトリの data/）。data/raw/ の下に置く
 #   --only   指定したものだけ取得する（複数指定できる。既定はすべて）
@@ -30,6 +30,9 @@
 #                    https://www.arcgis.com/sharing/rest/content/items/<項目 id>/data（認証なし。6.4MB、展開後 59MB、UTF-8、CRLF、14 列）
 #            ライセンス: ABR の利用規約（PDL1.0）。元は日本郵便の郵便番号データ（版は展開した metadata.txt）。THIRD_PARTY_NOTICES.md
 #            配布元は月 1 回ほど更新される（版番号はない）。sha256 が合わなければ捨てるので、更新されたら下の表を測り直して直す
+#   webwords Wikipedia 日本語版から集めた外来語の一覧（xz。展開して data/raw/webwords/webwords.tsv に置く。ADR 0055）。辞書に外来語を足す元
+#            配布元: ikari-ime の GitHub の Release（URL と sha256 は scripts/lib.sh の WEBWORDS_LIST_*。空の間は何も取得しない）
+#            出典とライセンス: ウィキペディア日本語版（https://ja.wikipedia.org/）の執筆者。CC BY-SA 4.0。語・出現回数・記事の数・区分だけを含む（THIRD_PARTY_NOTICES.md）
 #   ajimee   AJIMEE-Bench の評価データ（eval/scripts/fetch_ajimee.sh を呼ぶ）。CC BY-SA 3.0
 # ライセンスの確認は人が行う（spec）。ここは確認済みの配布元だけを固定する。
 #
