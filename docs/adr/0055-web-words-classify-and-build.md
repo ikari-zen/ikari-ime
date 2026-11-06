@@ -155,6 +155,7 @@
 ## 5. データの取得と生成のパイプライン
 
 ### 5.1 メンテナー（ikari-ime の作者、将来は CI）
+実際に流す手順（`measure` と `publish` を含む）は [webwords-update.md](../webwords-update.md)。
 1. `cargo xtask webwords fetch --dump <日付>`: dumps.wikimedia.org から pages-articles（分割の全ファイル）と SQL ダンプ（§2.1）を、空の作業用ディレクトリに取る。sha1 を dumpstatus.json と照合し、sha256 を記録する。`data/raw` には置かない。
 2. `dict-builder webwords collect`: 本文から連なりを数える（0039 §2.2。PoC の追加の条件「題が一覧で終わる記事と曖昧さ回避を除く」を採る）。
 3. `dict-builder webwords classify`: §2.2 の行 0〜9 を当て、区分を付ける。迷う・既知・形の語は出力しない。df は配る下限（掃引の最小 = 5）より小さい語を出さない。理由ごとの件数と §4.1 の代理の測定をレポートに出す。
