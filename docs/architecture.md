@@ -61,7 +61,7 @@ IkariEngine.xpc（同梱の XPC サービス。App Sandbox、ネットワーク�
 - `ikari-smoke`（`IkariSmoke`）: バンドルの中から XPC 経由で E2E を流す。`macos/scripts/smoke.sh`。
 - 識別子と署名要件は [phase2-contract.md](phase2-contract.md)。Bundle ID `io.github.ikari-zen.inputmethod.ikari`、チームID（`lib.sh` の `TEAM_ID`）。
 - 設計は [0004](adr/0004-phase2-macos.md)。設定アプリ（IkariSettings）と管理のメッセージは [0005](adr/0005-macos-settings-and-indicator.md)（実装済み。ブリッジと上限は [phase2-contract.md §5](phase2-contract.md)）。
-- ビルドとインストールの手順は [README](../README.md#インストール)、バンドルの内部は [macos/README.md](../macos/README.md)。
+- ビルドとインストールの手順は [README](../README.md#5-インストールソースからのビルド)、バンドルの内部は [macos/README.md](../macos/README.md)。
 
 ### 入力モードと入力ソース（ADR 0026 §5、B44）
 - ikari は入力ソースを 2 つ持つ（`ikari.Info.plist` の `ComponentInputModeDict`）。**日本語**（辞書のキーと `TISInputSourceID` が `io.github.ikari-zen.inputmethod.ikari.Japanese`。`tsInputModeJISKeyboardShortcutKey = 1` = かなキー）と、**英語**（辞書のキーが macOS の標準の `com.apple.inputmethod.Roman`、`TISInputSourceID` が `io.github.ikari-zen.inputmethod.ikari.English`、`JISKeyboardShortcutKey = 3` = 英数キー、`tsInputModeDefaultStateKey = true`）。英数キーが ikari の英語に行くのは、この標準のキーによる（S-A の T1）。ABC は残す。

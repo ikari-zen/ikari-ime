@@ -4,7 +4,9 @@ ikari-ime は、文脈に応じて同音異義語を選び分ける日本語の�
 「ひんし」と打ったとき、前後の文から「瀕死」ではなく「品詞」を選ぶ、といった誤変換を減らすことが目的です。
 短く確定しながら書くことを前提にしていて、確定した語が次の変換の手がかりになります。
 
-このリポジトリはソースだけを公開しています。**ビルド済みのアプリは配っていません。** 使うには、Mac でソースからビルドしてください。
+このリポジトリはソースを公開しています。**ビルド済みのアプリは、まだ配っていません。** 使うには、Mac でソースからビルドしてください。
+
+0.x の版から、未署名のビルド済み macOS 版を GitHub Releases で配る予定です（最初の公開は 0.1.0 の予定。[ロードマップ](docs/roadmap.md)）。公開のときに、未署名のアプリを開く手順を足します（未確認のため、まだ書いていません）。
 
 ## 1. ikari とは
 
@@ -50,11 +52,17 @@ ikari-ime は、文脈に応じて同音異義語を選び分ける日本語の�
 | 必要なもの | 内容 |
 | --- | --- |
 | macOS | Apple Silicon の Mac（`aarch64-apple-darwin`） |
-| Xcode 27 とそのコマンドライン | Swift 6.4（SwiftPM、codesign、xcodebuild を使います） |
+| Xcode 27 とそのコマンドライン | Swift 6.4（SwiftPM、codesign、xcodebuild を使います）。`xcodebuild` は Xcode 本体に入っているので、コマンドラインツールだけでは足りません |
 | Rust | `rustup` で入れます。`aarch64-apple-darwin` 向けに作ります |
-| cmake | **既定の構成（`make setup`。LM あり）では必要です**（`brew install cmake`。llama.cpp をビルドするため）。LM を使わないなら不要です。`make setup-lm-off` を使います |
-| ディスク | 空きが数 GB 必要です（元データが約 3 GB。ビルドの生成物を含みます） |
-| 通信 | 初回の元データの取得、Cargo と Swift の依存パッケージの取得だけです（IME 本体は通信しません。[プライバシー](#7-プライバシー)） |
+| cmake | **既定の構成（`make setup`。LM あり）では必要です**（`brew install cmake`。Homebrew が要ります。llama.cpp をビルドするため）。LM を使わないなら不要です。`make setup-lm-off` を使います |
+| ディスク | 数 GB の空きを用意してください。`setup.sh` は空きが 1 GB 未満だと止まります。作者の `data/` は評価用のデータを含めて約 3 GB です。辞書の生成物は `data/build/dict/` に作り、前の版を `dict.prev/` に 1 世代残します |
+| 通信 | 初回の元データの取得、Cargo と Swift の依存パッケージの取得（SwiftProtobuf は GitHub から）、Homebrew と rustup の導入だけです（IME 本体は通信しません。[プライバシー](#7-プライバシー)） |
+
+#### かかる時間と容量の目安
+
+- **元データの取得**: 回線しだいです。chiVe の圧縮ファイルが約 594MB、zenz のモデル（Q5_K_M）が約 74MB です（[ADR 0002](docs/adr/0002-phase1-architecture.md)）。SudachiDict も取ります。
+- **辞書のビルド**: 約 30 秒です（[ADR 0030](docs/adr/0030-abr-town-vocabulary.md) の測定で 26〜29 秒。元データの取得は含みません）。
+- **アプリのビルド**: 初回は Rust と Swift のビルドに時間がかかります。時間は測っていません。
 
 ### 署名
 
@@ -94,7 +102,7 @@ flowchart LR
 5. アプリのビルドと `~/Library/Input Methods` への入れ替え
 6. smoke（アプリの動作確認）
 
-2 回目以降は、入力が同じ段を飛ばします。辞書は、元データの sha256 が前回と同じなら作り直しません。
+2 回目以降は、取得は正しいファイルがあれば何もしません。辞書は、入力（元データとポリシー）の sha256 が前回と同じなら作り直しません。データの配置は、内容が同じファイルを飛ばします。アプリは毎回ビルドします。
 
 smoke は、インストールしたアプリに変換や学習の試験を流します。次の点に注意してください。
 
@@ -137,22 +145,34 @@ smoke は、インストールしたアプリに変換や学習の試験を流�
 
 1. アプリを入れる（`make setup` か `make install`）。
 2. システム設定 → キーボード → 入力ソース → 編集 → ＋ → 日本語 → 「ikari」を追加する。
-3. 一覧に出ないときは、ログアウトしてログインし直す。または `macos/scripts/install.sh --register` を実行する。
+3. 一覧に出ないときは、ログアウトしてログインし直す。または `macos/scripts/install.sh --signing adhoc --register` を実行する（ビルドした署名の方式に合わせる。`--register` を付けても、アプリは入れ替えられます）。
 4. （任意）キャレットの位置が取れないアプリで使うなら、プライバシーとセキュリティ → アクセシビリティで ikari を許可する。
+
+### アンインストール
+
+スクリプトはありません。次の手順を手で行います。
+
+1. 入力ソースから ikari を外す（システム設定 → キーボード → 入力ソース → 編集 → 「ikari」を選んで「−」）。メニューの名前は macOS の版で変わることがあります。
+2. ikari を使っていたアプリを閉じ、ログアウトしてログインし直す。
+3. アプリを消す: `rm -rf "$HOME/Library/Input Methods/ikari.app"`
+4. 学習とユーザー辞書を残すかを決める。`~/Library/Application Support/ikari-ime/` には、学習（`learning.tsv`）、ユーザー辞書（`user_dict.tsv`）、辞書とモデル（`dict/`、`models/`）、ログ（`logs/`）、バックアップが入っています。消すときは、先に設定アプリ「ikari 設定」の「学習とデータ」からエクスポートしてください。消すなら `rm -rf "$HOME/Library/Application Support/ikari-ime"` を使います（`IKARI_USER_DIR` で場所を変えていたら、その場所です）。
+5. （任意）エンジンのサンドボックス用のコンテナを消す: `~/Library/Containers/io.github.ikari-zen.inputmethod.ikari.engine`。Finder の「フォルダへ移動」から開いて消します（`IKARI_ID_PREFIX` を変えていたら、その頭に合わせます）。
+6. （任意）アクセシビリティで許可していたなら、一覧から ikari を消す。
+7. （任意）ビルドの生成物を消すなら、リポジトリで `make clean` を流す。`data/` は、要らなければ手で消します。
 
 ### 自分の名前で作る
 
 アプリのバンドル ID の頭と、チーム ID は、既定では作者のものです。自分の名前で作るときは、環境変数で指定します。
 
 - `IKARI_ID_PREFIX`: バンドル ID の頭（既定は `io.github.ikari-zen`）。`io.github.<自分の名前>` のように指定します。英数字、`.`、`-` だけが使えます。
-- `TEAM_ID`: 自分の Apple Developer チーム ID（team 署名のとき）。
+- `TEAM_ID`: 自分の Apple Developer チーム ID（team 署名のとき。英大文字と数字の 10 文字）。
 
 ```sh
 IKARI_ID_PREFIX=io.github.<名前> TEAM_ID=<自分のチームID> make setup SIGNING=team
 ```
 
-この指定を付けると、ビルドで生成する `Identity.swift` の中身が変わります。作業ツリーが変わるので、そのままコミットしないでください。
-また、テストの期待値は既定の値を直接書いているため、上書きしたときは一部のテスト（署名の条件の文字列など）が合わなくなります。
+この指定を付けると、ビルドで生成する `macos/Sources/IkariXPC/Identity.swift` の中身が変わります。このファイルは `.gitignore` の対象ではないので、そのままコミットしないでください。
+`scripts/check.sh` は、このファイルが既定の値から作ったものと同じかを検査するため、上書きしたままの作業ツリーでは失敗します。既定の値に戻すには、環境変数を付けずに `macos/scripts/gen-identity.sh` を流します。
 
 ### 辞書とモデルは再配布していません
 
@@ -160,15 +180,17 @@ IKARI_ID_PREFIX=io.github.<名前> TEAM_ID=<自分のチームID> make setup SIG
 `scripts/fetch-data.sh` が配布元から取得し、sha256 を確かめます。配布元と取得の方法は、スクリプトの先頭に書いてあります。
 
 ```sh
-scripts/fetch-data.sh --check    # 通信せずに、足りないものを確かめる
-scripts/fetch-data.sh            # 足りないものを取得する
+scripts/fetch-data.sh --only sudachi --only chive --only zenz --check   # 通信せずに、足りないものを確かめる
+scripts/fetch-data.sh --only sudachi --only chive --only zenz           # 足りないものを取得する
 ```
+
+`--only` を付けないと、評価用の AJIMEE（使わなくてよいもの）も取ります。LM を使わない構成では `--only zenz` を外します。地名の町字マスターと郵便番号の表（任意）は `--only abr --only postal` で取れます。`scripts/setup.sh --fetch` は、この 3 つと、abr と postal をまとめて取ります。
 
 各段は単独でも呼べます。引数の細かい仕様は各スクリプトの `--help` が正です。
 
 | 段 | コマンド |
 | --- | --- |
-| 元データの取得 | `scripts/fetch-data.sh`（`--check` で通信せずに確認） |
+| 元データの取得 | `scripts/fetch-data.sh --only sudachi --only chive --only zenz`（`--check` で通信せずに確認） |
 | 辞書のビルド（`data/build/dict/`） | `scripts/build-dict.sh` |
 | 辞書とモデルを `~/Library/Application Support/ikari-ime/` へ | `scripts/install-data.sh` |
 | アプリのビルドと署名 | `macos/scripts/build.sh --signing team\|adhoc` |
@@ -193,6 +215,8 @@ scripts/check.sh              # 文書のリンク、fmt、clippy、cargo test�
 scripts/check.sh --lm         # LM つき（cmake が要ります）
 scripts/check.sh --real       # 実データを使うテスト（辞書とモデルが要ります）
 ```
+
+`scripts/check.sh --real` は、`data/raw/kanakanji-edge/kanakanji-edge-33m-Q8_0.gguf` も要ります。このファイルは取得の道具がまだ取らないため、手で置いてください。
 
 ## 6. AI にソースを読ませるとき
 

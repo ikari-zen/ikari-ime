@@ -163,7 +163,7 @@ ikari-ime は次の機能を作らない（[要件定義書](ikari-ime_spec.md) 
 
 | 環境 | 状態 | 補足 |
 | --- | --- | --- |
-| macOS（Apple Silicon） | 実装済み | Xcode 27 / Swift 6.4、Rust（`aarch64-apple-darwin`）。LM を使うときは cmake も要る。手順は [README](../README.md#インストール) |
+| macOS（Apple Silicon） | 実装済み | Xcode 27 / Swift 6.4、Rust（`aarch64-apple-darwin`）。LM を使うときは cmake も要る。手順は [README](../README.md#5-インストールソースからのビルド) |
 | Windows（TSF）、Linux（Fcitx5） | 予定 | spec「OS 別の実装メモ」。macOS の後の段階 |
 | iOS、Android | 予定 | 別のプロジェクトとして作る（spec「スコープとロードマップ」） |
 
