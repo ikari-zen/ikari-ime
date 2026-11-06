@@ -7,7 +7,8 @@ pub const LIST_MAGIC: &str = "#ikari-webwords";
 pub const LIST_SCHEMA: u32 = 2;
 pub const LICENSE: &str = "CC-BY-SA-4.0";
 pub const ATTRIBUTION: &str = "Wikipedia 日本語版の執筆者（https://ja.wikipedia.org/）";
-/// 配る一覧に出す df の下限（掃引の最小。ADR 0055 §5.1 の 3）
+/// 配る一覧に出す df の下限と、辞書に足すときの既定の下限（ADR 0055 §4.5。2026-11-06 ユーザー承認）。
+/// 10 では しゃーでぃんぐ（df 6）が、20 では ばーじょにんぐ（df 16）も入らない
 pub const MIN_DF_FLOOR: u32 = 5;
 
 /// 一覧に出る区分（ADR 0055 §2.2 の入れ方）。
