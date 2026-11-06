@@ -5,6 +5,7 @@
 //! 絵文字の表（emoji.tsv）と住所・郵便番号の表（postal.tsv）は、辞書の入力・BUILD_INFO には含めず、辞書が最新でも毎回作る。
 //! 定数（ファイル名、バージョン）は `scripts/lib.sh` から読む（二重管理しない）。
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -17,6 +18,9 @@ const BUILD_INFO_FORMAT: &str = "format=1";
 const OUTPUT_PREFIX: &str = "output.";
 const BUILDER_PACKAGE: &str = "ikari-dict-builder";
 const UNSET_COST: &str = "default";
+/// 外来語の固有名詞の区分（`--webwords-proper-offset` の左辺。dict-builder の `webwords lex` と同じ）
+const WEBWORDS_PROPER_CLASSES: [&str; 3] = ["proper.person", "proper.place", "proper.general"];
+const WEBWORDS_REPORT_FILE: &str = "webwords-report.md";
 
 /// 辞書（grammar.bin、system.dict、vectors.bin）を data/raw/ から data/build/dict/ に作る（SudachiDict Full: small + core + notcore。ADR 0012 §11.3）
 #[derive(Debug, clap::Args)]
@@ -42,34 +46,125 @@ pub struct Args {
     /// ポリシーのファイル（掃引用。省略すると dict-builder/policy/chive.tsv）
     #[arg(long)]
     policy: Option<PathBuf>,
-    /// 外来語の一覧（ADR 0055）を使わない（掃引・比較用。今は一覧を使わないので何も変わらない）
-    #[arg(long)]
+    /// 外来語の一覧（ADR 0055）を使わない（掃引・比較用。一覧がないときと同じ辞書になる）
+    #[arg(
+        long,
+        conflicts_with_all = ["webwords_min_df", "webwords_cost", "webwords_proper_offset"]
+    )]
     no_webwords: bool,
-    /// 外来語の df の下限（掃引用。ADR 0055 §5.3。中身は未実装で、指定するとエラー）
-    #[arg(long)]
+    /// 外来語の df の下限（掃引用。ADR 0055 §5.3。省略すると配る一覧の下限）
+    #[arg(long, value_name = "N")]
     webwords_min_df: Option<String>,
-    /// 外来語（普通名詞）のコスト（掃引用。未実装で、指定するとエラー）
-    #[arg(long)]
+    /// 外来語（普通名詞）のコスト（掃引用。省略すると dict-builder の既定）
+    #[arg(long, value_name = "COST", allow_hyphen_values = true)]
     webwords_cost: Option<String>,
-    /// 外来語の固有名詞の出発点からの差（掃引用。`<区分>=<値>`。複数指定できる。未実装で、指定するとエラー）
-    #[arg(long, value_name = "CLASS=VALUE")]
+    /// 外来語の固有名詞の出発点からの差（掃引用。`<区分>=<値>`。区分は proper.person / proper.place / proper.general。複数指定できる）
+    #[arg(long, value_name = "CLASS=VALUE", allow_hyphen_values = true)]
     webwords_proper_offset: Vec<String>,
 }
 
 impl Args {
-    /// 外来語の掃引用の引数は、受け口だけで中身がない（ADR 0055 §7 の契約のコミット。レーン D が実装する）。
-    /// 黙って無視しないように、指定されたらエラーにする。`--no-webwords` は一覧を使わない今と同じ動きなので受け付ける
+    /// 外来語の掃引用の引数の形を確かめる（dict-builder に渡す前に、ビルドの途中ではなく最初に止める）
     fn check_webwords_args(&self) -> Result<(), Failure> {
-        let given = self.webwords_min_df.is_some()
-            || self.webwords_cost.is_some()
-            || !self.webwords_proper_offset.is_empty();
-        if given {
-            return Err(Failure::new(
-                "--webwords-* は未実装です（ADR 0055 §7 のレーン D）",
-            ));
+        if let Some(value) = &self.webwords_min_df {
+            value.parse::<u32>().map_err(|e| {
+                Failure::new(format!(
+                    "--webwords-min-df が整数ではありません: {value} ({e})"
+                ))
+            })?;
+        }
+        if let Some(value) = &self.webwords_cost {
+            value.parse::<i16>().map_err(|e| {
+                Failure::new(format!(
+                    "--webwords-cost が整数ではありません: {value} ({e})"
+                ))
+            })?;
+        }
+        for offset in &self.webwords_proper_offset {
+            parse_proper_offset(offset)?;
         }
         Ok(())
     }
+
+    /// 外来語の掃引用の引数が 1 つでも指定されたか
+    fn webwords_overrides_given(&self) -> bool {
+        self.webwords_min_df.is_some()
+            || self.webwords_cost.is_some()
+            || !self.webwords_proper_offset.is_empty()
+    }
+}
+
+/// `proper.person=2000` を (区分, 値) にする。区分は固有名詞の 3 つだけ（普通名詞の差は `--webwords-cost`）
+fn parse_proper_offset(text: &str) -> Result<(&'static str, i16), Failure> {
+    let (class, value) = text.split_once('=').ok_or_else(|| {
+        Failure::new(format!(
+            "--webwords-proper-offset は `区分=値` の形です: {text}"
+        ))
+    })?;
+    let class = WEBWORDS_PROPER_CLASSES
+        .iter()
+        .find(|known| **known == class)
+        .ok_or_else(|| {
+            Failure::new(format!(
+                "--webwords-proper-offset の区分は {} のどれかです: {class}",
+                WEBWORDS_PROPER_CLASSES.join(" / ")
+            ))
+        })?;
+    let value = value.parse::<i16>().map_err(|e| {
+        Failure::new(format!(
+            "--webwords-proper-offset の値が整数ではありません: {value} ({e})"
+        ))
+    })?;
+    Ok((class, value))
+}
+
+/// BUILD_INFO に書く外来語の値（一覧を組み込むときだけ書く。一覧がなければ 1 行も増えない）
+fn webwords_info_lines(args: &Args) -> Vec<String> {
+    let value = |v: &Option<String>| v.clone().unwrap_or_else(|| UNSET_COST.to_owned());
+    let mut lines = vec![
+        format!("webwords.min-df={}", value(&args.webwords_min_df)),
+        format!("webwords.cost={}", value(&args.webwords_cost)),
+    ];
+    for offset in &args.webwords_proper_offset {
+        if let Ok((class, value)) = parse_proper_offset(offset) {
+            lines.push(format!("webwords.proper-offset.{class}={value}"));
+        }
+    }
+    lines
+}
+
+/// `ikari-dict-builder webwords lex` の引数（ADR 0055 §5.3 の 2）。`lex` は Sudachi の 3 つと ABR の lex.csv
+fn webwords_lex_args(
+    list: &Path,
+    lex: &[PathBuf],
+    out: &Path,
+    report: &Path,
+    args: &Args,
+) -> Vec<OsString> {
+    let mut v: Vec<OsString> = vec![
+        "webwords".into(),
+        "lex".into(),
+        "--list".into(),
+        list.into(),
+    ];
+    for path in lex {
+        v.push("--lex".into());
+        v.push(path.into());
+    }
+    v.push("--out".into());
+    v.push(out.into());
+    v.push("--report".into());
+    v.push(report.into());
+    if let Some(min_df) = &args.webwords_min_df {
+        v.extend(["--min-df".into(), min_df.into()]);
+    }
+    if let Some(cost) = &args.webwords_cost {
+        v.extend(["--cost".into(), cost.into()]);
+    }
+    for offset in &args.webwords_proper_offset {
+        v.extend(["--proper-offset".into(), offset.into()]);
+    }
+    v
 }
 
 pub fn run_command(args: Args) -> Result<(), Failure> {
@@ -98,6 +193,8 @@ struct Builder<'a> {
     inputs: Vec<PathBuf>,
     abr_csv: PathBuf,
     use_abr: bool,
+    /// 組み込む外来語の一覧（なければ、または `--no-webwords` なら None。今と同じ辞書を作る）
+    webwords_list: Option<PathBuf>,
 }
 
 /// 失敗したら途中の dict.new を消す。
@@ -154,6 +251,26 @@ impl<'a> Builder<'a> {
                 abr_csv.display()
             ));
         }
+        let list = raw.join(get("WEBWORDS_LIST_PATH")?);
+        let webwords_list = if args.no_webwords {
+            log("--no-webwords なので、外来語の一覧は足しません");
+            None
+        } else if list.is_file() {
+            inputs.push(list.clone());
+            Some(list)
+        } else {
+            if args.webwords_overrides_given() {
+                return Err(Failure::new(format!(
+                    "--webwords-* を指定しましたが、外来語の一覧 {} がありません（scripts/fetch-data.sh --only webwords）",
+                    list.display()
+                )));
+            }
+            log(&format!(
+                "外来語の一覧がないので、外来語は足しません（{}。scripts/fetch-data.sh --only webwords で取得できます）",
+                list.display()
+            ));
+            None
+        };
         for input in &inputs {
             if !input.is_file() {
                 return Err(Failure::new(format!(
@@ -178,6 +295,7 @@ impl<'a> Builder<'a> {
             inputs,
             abr_csv,
             use_abr,
+            webwords_list,
         })
     }
 
@@ -232,6 +350,9 @@ impl<'a> Builder<'a> {
                     cost(&self.args.chain_municipality_cost)
                 ));
             }
+        }
+        if self.webwords_list.is_some() {
+            lines.extend(webwords_info_lines(&self.args));
         }
         let policy_sha = sha256_file(&self.policy)
             .map_err(|e| Failure::new(format!("{}: {e}", self.policy.display())))?;
@@ -425,6 +546,26 @@ impl<'a> Builder<'a> {
             }
         }
 
+        if let Some(list) = &self.webwords_list {
+            // 一覧を F1 などでもう一度当てるので、Sudachi と ABR の lex.csv を渡す（ABR の町名と同じ位置に足す）
+            let webwords_lex = self.build.join(self.get("WEBWORDS_LEX_FILE")?);
+            log(&format!(
+                "外来語の一覧から lex.csv を作る -> {}",
+                webwords_lex.display()
+            ));
+            let mut command = self.builder_cmd();
+            command.args(webwords_lex_args(
+                list,
+                &lex,
+                &webwords_lex,
+                &self.build.join(WEBWORDS_REPORT_FILE),
+                &self.args,
+            ));
+            exec(&mut command)?;
+            lex.push(webwords_lex.clone());
+            notcore.push(("--notcore-lex", webwords_lex));
+        }
+
         log(&format!("辞書を作る -> {}", new.display()));
         let mut command = self.builder_cmd();
         command
@@ -510,4 +651,189 @@ impl<'a> Builder<'a> {
 fn mk(path: &Path) -> Result<(), Failure> {
     std::fs::create_dir_all(path)
         .map_err(|e| Failure::new(format!("{} を作れません: {e}", path.display())))
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::*;
+
+    #[derive(Debug, Parser)]
+    struct Cli {
+        #[command(flatten)]
+        args: Args,
+    }
+
+    fn parse(extra: &[&str]) -> Args {
+        let mut argv = vec!["x"];
+        argv.extend_from_slice(extra);
+        Cli::try_parse_from(argv).unwrap().args
+    }
+
+    fn strings(args: Vec<OsString>) -> Vec<String> {
+        args.into_iter()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    /// 入力がそろった data のディレクトリ（中身はダミー。dict-builder は呼ばない）
+    fn fake_data(with_list: bool) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let consts = LibConsts::load(&repo_root()).unwrap();
+        let raw = dir.path().join("raw");
+        let sudachi = raw.join(consts.get("SUDACHI_DIR_NAME").unwrap());
+        let chive_name = consts.get("CHIVE_NAME").unwrap();
+        let chive = raw.join("chive").join(chive_name);
+        std::fs::create_dir_all(&sudachi).unwrap();
+        std::fs::create_dir_all(&chive).unwrap();
+        for name in [
+            "small_lex.csv",
+            "core_lex.csv",
+            "notcore_lex.csv",
+            "matrix.def",
+        ] {
+            std::fs::write(sudachi.join(name), name).unwrap();
+        }
+        std::fs::write(chive.join(format!("{chive_name}.txt")), "chive").unwrap();
+        if with_list {
+            let list = raw.join(consts.get("WEBWORDS_LIST_PATH").unwrap());
+            std::fs::create_dir_all(list.parent().unwrap()).unwrap();
+            std::fs::write(list, "#ikari-webwords\tschema=2\n").unwrap();
+        }
+        dir
+    }
+
+    fn input_info(data: &Path, extra: &[&str]) -> Result<String, Failure> {
+        let root = repo_root();
+        let consts = LibConsts::load(&root).unwrap();
+        let data_arg = data.to_string_lossy().into_owned();
+        let mut argv = vec!["--data", data_arg.as_str()];
+        argv.extend_from_slice(extra);
+        Builder::new(&root, &consts, parse(&argv))?.input_info()
+    }
+
+    #[test]
+    fn without_list_build_info_has_no_webwords_lines() {
+        let data = fake_data(false);
+        let info = input_info(data.path(), &[]).unwrap();
+        assert!(!info.contains("webwords"), "{info}");
+    }
+
+    #[test]
+    fn no_webwords_gives_the_same_build_info_as_no_list() {
+        let without = input_info(fake_data(false).path(), &[]).unwrap();
+        let data = fake_data(true);
+        let disabled = input_info(data.path(), &["--no-webwords"]).unwrap();
+        assert_eq!(without, disabled);
+        let enabled = input_info(data.path(), &[]).unwrap();
+        assert_ne!(without, enabled);
+    }
+
+    #[test]
+    fn with_list_build_info_has_sha256_and_values() {
+        let data = fake_data(true);
+        let info = input_info(
+            data.path(),
+            &[
+                "--webwords-min-df",
+                "10",
+                "--webwords-cost",
+                "13000",
+                "--webwords-proper-offset",
+                "proper.person=-500",
+            ],
+        )
+        .unwrap();
+        assert!(info.contains("input.webwords.tsv="), "{info}");
+        assert!(info.contains("webwords.min-df=10"), "{info}");
+        assert!(info.contains("webwords.cost=13000"), "{info}");
+        assert!(
+            info.contains("webwords.proper-offset.proper.person=-500"),
+            "{info}"
+        );
+        let defaults = input_info(data.path(), &[]).unwrap();
+        assert!(defaults.contains("webwords.min-df=default"), "{defaults}");
+        assert!(defaults.contains("webwords.cost=default"), "{defaults}");
+    }
+
+    #[test]
+    fn overrides_without_list_are_an_error() {
+        let data = fake_data(false);
+        let err = input_info(data.path(), &["--webwords-cost", "13000"]).unwrap_err();
+        assert!(err.message.contains("外来語の一覧"), "{err}");
+    }
+
+    #[test]
+    fn no_webwords_conflicts_with_overrides() {
+        let result = Cli::try_parse_from(["x", "--no-webwords", "--webwords-cost", "1"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn lex_args_follow_the_dict_builder_contract() {
+        let args = parse(&[]);
+        let got = strings(webwords_lex_args(
+            Path::new("l.tsv"),
+            &[PathBuf::from("a.csv"), PathBuf::from("town.csv")],
+            Path::new("o.csv"),
+            Path::new("r.md"),
+            &args,
+        ));
+        assert_eq!(
+            got,
+            [
+                "webwords", "lex", "--list", "l.tsv", "--lex", "a.csv", "--lex", "town.csv",
+                "--out", "o.csv", "--report", "r.md"
+            ]
+        );
+    }
+
+    #[test]
+    fn lex_args_pass_sweep_overrides() {
+        let args = parse(&[
+            "--webwords-min-df",
+            "10",
+            "--webwords-cost",
+            "-100",
+            "--webwords-proper-offset",
+            "proper.place=2000",
+            "--webwords-proper-offset",
+            "proper.general=-2000",
+        ]);
+        args.check_webwords_args().unwrap();
+        let got = strings(webwords_lex_args(
+            Path::new("l"),
+            &[],
+            Path::new("o"),
+            Path::new("r"),
+            &args,
+        ));
+        assert_eq!(
+            got[8..],
+            [
+                "--min-df",
+                "10",
+                "--cost",
+                "-100",
+                "--proper-offset",
+                "proper.place=2000",
+                "--proper-offset",
+                "proper.general=-2000"
+            ]
+        );
+    }
+
+    #[test]
+    fn invalid_sweep_values_are_rejected() {
+        for bad in [
+            ["--webwords-min-df", "x"],
+            ["--webwords-cost", "1.5"],
+            ["--webwords-proper-offset", "common=1"],
+            ["--webwords-proper-offset", "proper.place"],
+            ["--webwords-proper-offset", "proper.place=x"],
+        ] {
+            assert!(parse(&bad).check_webwords_args().is_err(), "{bad:?}");
+        }
+    }
 }

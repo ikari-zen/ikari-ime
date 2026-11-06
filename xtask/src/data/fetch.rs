@@ -12,6 +12,8 @@
 //! - abr: デジタル庁 ABR の町字マスター mt_town_all.csv（zip。ADR 0030）。公共データ利用規約（PDL1.0）。
 //!   配布元は日付で更新される（版番号はない）。sha256 が合わなければ捨てるので、更新されたら ADR 0030 の手順で測り直して下の表を直す
 //! - postal: ABR の町字・郵便番号変換表 abr_post_code.csv（zip。ADR 0032 §7）。配布元は月 1 回ほど更新される。同上
+//! - webwords: Wikipedia 日本語版から集めた外来語の一覧（xz。ADR 0055）。GitHub の Release の資産。CC BY-SA 4.0。
+//!   URL と sha256（xz の資産の sha256）は `scripts/lib.sh` の `WEBWORDS_LIST_*`。空の間は何も取得しない（一覧がなくても辞書は作れる）
 //! - ajimee: AJIMEE-Bench の評価データ（コミット固定）。CC BY-SA 3.0。リポジトリには入れない
 //!
 //! ダウンロードは一時ファイルに書き、sha256 を確かめてから置く。すでに正しいファイルがあれば何もしない。
@@ -20,7 +22,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use super::consts::LibConsts;
+use super::consts::{LibConsts, WebwordsList};
 use super::non_empty;
 use super::run::{Failure, log, repo_root, run as exec, succeeds_quietly};
 use super::sha256::sha256_file;
@@ -70,9 +72,11 @@ const AJIMEE_LICENSE_FILE: &str = "LICENSE.txt";
 const AJIMEE_REQUIRED_KEYS: [&str; 2] = ["input", "expected_output"];
 
 const CURL_RETRY: &str = "3";
-const GROUPS: [&str; 7] = [
-    "sudachi", "chive", "zenz", "ajimee", "emoji", "abr", "postal",
+const GROUPS: [&str; 8] = [
+    "sudachi", "chive", "zenz", "ajimee", "emoji", "abr", "postal", "webwords",
 ];
+/// 外来語の一覧の資産（xz）の拡張子。展開後のファイル名の後ろに付けて置く
+const WEBWORDS_ARCHIVE_SUFFIX: &str = ".xz";
 
 /// 辞書とモデルの元データを data/raw/ に取得する
 #[derive(Debug, clap::Args)]
@@ -80,7 +84,7 @@ pub struct Args {
     /// 出力先（既定: このリポジトリの data/）。data/raw/ の下に置く
     #[arg(long)]
     data: Option<PathBuf>,
-    /// 指定したものだけ取得する（複数指定できる。既定はすべて）。sudachi / chive / zenz / ajimee / emoji / abr / postal
+    /// 指定したものだけ取得する（複数指定できる。既定はすべて）。sudachi / chive / zenz / ajimee / emoji / abr / postal / webwords
     #[arg(long)]
     only: Vec<String>,
     /// 通信せず、あるべきファイルがあり sha256 が合っているかだけを確かめる（足りなければ終了コード 1）
@@ -135,15 +139,28 @@ fn has_valid(path: &Path, sha256: &str) -> bool {
     path.is_file() && sha256_file(path).is_ok_and(|got| got == sha256)
 }
 
+/// 取得の手段（URL と出力先を受け取る。本番は curl。テストは差し替える）
+pub(crate) type Transfer<'a> = &'a dyn Fn(&str, &Path) -> Result<(), Failure>;
+
 /// 一時ファイルに落とし、sha256 を確かめてから置く。
 fn download(url: &str, dest: &Path, want: &str) -> Result<(), Failure> {
+    download_with(url, dest, want, &curl)
+}
+
+/// `download` の取得の手段を差し替えられる形。sha256 が合わなければ一時ファイルを消し、`dest` には何も置かない。
+fn download_with(
+    url: &str,
+    dest: &Path,
+    want: &str,
+    transfer: Transfer<'_>,
+) -> Result<(), Failure> {
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| Failure::new(format!("{} を作れません: {e}", parent.display())))?;
     }
     let tmp = tmp_path(dest);
     log(&format!("ダウンロード: {url}"));
-    let result = curl(url, &tmp).and_then(|()| {
+    let result = transfer(url, &tmp).and_then(|()| {
         let got = sha256_file(&tmp)
             .map_err(|e| Failure::new(format!("{} を読めません: {e}", tmp.display())))?;
         if got == want {
@@ -164,13 +181,13 @@ fn download(url: &str, dest: &Path, want: &str) -> Result<(), Failure> {
     })
 }
 
-fn tmp_path(dest: &Path) -> PathBuf {
+pub(crate) fn tmp_path(dest: &Path) -> PathBuf {
     let mut name = dest.file_name().unwrap_or_default().to_os_string();
     name.push(format!(".tmp.{}", std::process::id()));
     dest.with_file_name(name)
 }
 
-fn curl(url: &str, out: &Path) -> Result<(), Failure> {
+pub(crate) fn curl(url: &str, out: &Path) -> Result<(), Failure> {
     let mut command = Command::new("curl");
     command
         .args([
@@ -205,6 +222,64 @@ fn extract_zip(zip: &Path, dir: &Path) -> Result<(), Failure> {
     } else {
         exec(Command::new("tar").arg("-xf").arg(zip).arg("-C").arg(dir))
     }
+}
+
+/// xz を展開する（`xz -dc`。標準出力を一時ファイルに受けてから置く）
+fn extract_xz(archive: &Path, out: &Path) -> Result<(), Failure> {
+    let tmp = tmp_path(out);
+    let file = std::fs::File::create(&tmp)
+        .map_err(|e| Failure::new(format!("{} を作れません: {e}", tmp.display())))?;
+    let result = exec(
+        Command::new("xz")
+            .arg("-dc")
+            .arg(archive)
+            .stdout(std::process::Stdio::from(file)),
+    )
+    .and_then(|()| {
+        std::fs::rename(&tmp, out)
+            .map_err(|e| Failure::new(format!("{} に置けません: {e}", out.display())))
+    });
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
+}
+
+/// 外来語の一覧の取得の結果
+#[derive(Debug, PartialEq, Eq)]
+enum Outcome {
+    Valid,
+    Done,
+    Missing,
+}
+
+/// 一覧（xz）を取り、sha256 を確かめ、展開して `data/raw/<path>` に置く（ADR 0055 §5.3）。
+/// xz の資産は展開後のファイルの隣（`<path>.xz`）に残す。資産が正しく、展開後のファイルもあれば何もしない。
+/// 資産を取り直したときは、展開後のファイルも作り直す。`check_only` のときは通信せず、足りなければ `Missing`。
+fn place_webwords(
+    list: &WebwordsList,
+    raw: &Path,
+    check_only: bool,
+    transfer: Transfer<'_>,
+    extract: &dyn Fn(&Path, &Path) -> Result<(), Failure>,
+) -> Result<Outcome, Failure> {
+    let out = raw.join(&list.path);
+    let mut archive_name = out.file_name().unwrap_or_default().to_os_string();
+    archive_name.push(WEBWORDS_ARCHIVE_SUFFIX);
+    let archive = out.with_file_name(archive_name);
+    let archive_valid = has_valid(&archive, &list.sha256);
+    if archive_valid && out.is_file() {
+        return Ok(Outcome::Valid);
+    }
+    if check_only {
+        return Ok(Outcome::Missing);
+    }
+    if !archive_valid {
+        download_with(&list.url, &archive, &list.sha256, transfer)?;
+    }
+    log(&format!("展開: {}", archive.display()));
+    extract(&archive, &out)?;
+    Ok(Outcome::Done)
 }
 
 fn extract_tar_gz(tar: &Path, dir: &Path) -> Result<(), Failure> {
@@ -243,6 +318,9 @@ impl Fetcher<'_> {
         }
         if self.wanted("postal") {
             self.fetch_postal()?;
+        }
+        if self.wanted("webwords") {
+            self.fetch_webwords()?;
         }
         if self.wanted("ajimee") {
             self.fetch_ajimee()?;
@@ -399,6 +477,27 @@ impl Fetcher<'_> {
         )
     }
 
+    /// 外来語の一覧（ADR 0055）。URL・sha256 が空なら取得しない（一覧がなくても辞書は作れる）
+    fn fetch_webwords(&mut self) -> Result<(), Failure> {
+        let Some(list) = self
+            .consts
+            .webwords_list()
+            .map_err(|e| Failure::new(e.to_string()))?
+        else {
+            log(
+                "外来語の一覧は取得しません（scripts/lib.sh の WEBWORDS_LIST_URL・WEBWORDS_LIST_SHA256 が空）",
+            );
+            return Ok(());
+        };
+        let out = self.raw.join(&list.path);
+        match place_webwords(&list, &self.raw, self.check_only, &curl, &extract_xz)? {
+            Outcome::Valid => Self::ok(&out),
+            Outcome::Done => println!("extracted  {}", out.display()),
+            Outcome::Missing => self.report_missing(&out),
+        }
+        Ok(())
+    }
+
     fn fetch_ajimee(&mut self) -> Result<(), Failure> {
         let dir = self
             .ajimee_dir
@@ -543,6 +642,115 @@ mod tests {
         };
         fetcher.run_groups().unwrap();
         assert!(fetcher.missing);
+        assert!(!dir.path().join("raw").exists());
+    }
+
+    const ABC_SHA256: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+
+    fn webwords_list(url: &str, sha256: &str) -> WebwordsList {
+        WebwordsList {
+            path: "webwords/webwords.tsv".to_owned(),
+            url: url.to_owned(),
+            sha256: sha256.to_owned(),
+        }
+    }
+
+    /// 取得の手段の代わり: 決まった中身を書く（通信しない）
+    fn fake_transfer(body: &'static str) -> impl Fn(&str, &Path) -> Result<(), Failure> {
+        move |_url, out| std::fs::write(out, body).map_err(|e| Failure::new(e.to_string()))
+    }
+
+    fn fake_extract(archive: &Path, out: &Path) -> Result<(), Failure> {
+        std::fs::copy(archive, out)
+            .map(|_| ())
+            .map_err(|e| Failure::new(e.to_string()))
+    }
+
+    fn never_transfer(_: &str, _: &Path) -> Result<(), Failure> {
+        panic!("通信しない")
+    }
+
+    #[test]
+    fn download_with_places_file_when_sha256_matches() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("a.xz");
+        download_with("https://x/a.xz", &dest, ABC_SHA256, &fake_transfer("abc")).unwrap();
+        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "abc");
+    }
+
+    #[test]
+    fn download_with_rejects_sha256_mismatch_and_leaves_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("a.xz");
+        let err =
+            download_with("https://x/a.xz", &dest, ABC_SHA256, &fake_transfer("abd")).unwrap_err();
+        assert!(err.message.contains("sha256 が一致しません"), "{err}");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn place_webwords_downloads_verifies_and_extracts() {
+        let dir = tempfile::tempdir().unwrap();
+        let list = webwords_list("https://x/w.xz", ABC_SHA256);
+        let placed = place_webwords(
+            &list,
+            dir.path(),
+            false,
+            &fake_transfer("abc"),
+            &fake_extract,
+        )
+        .unwrap();
+        assert_eq!(placed, Outcome::Done);
+        assert!(dir.path().join("webwords/webwords.tsv").is_file());
+        assert!(dir.path().join("webwords/webwords.tsv.xz").is_file());
+        // 2 回目は何もしない（取得の手段を呼ばない）
+        let again =
+            place_webwords(&list, dir.path(), false, &never_transfer, &fake_extract).unwrap();
+        assert_eq!(again, Outcome::Valid);
+    }
+
+    #[test]
+    fn place_webwords_sha256_mismatch_is_error_and_places_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let list = webwords_list("https://x/w.xz", ABC_SHA256);
+        let err = place_webwords(
+            &list,
+            dir.path(),
+            false,
+            &fake_transfer("zzz"),
+            &fake_extract,
+        )
+        .unwrap_err();
+        assert!(err.message.contains("sha256 が一致しません"), "{err}");
+        assert!(!dir.path().join("webwords/webwords.tsv").exists());
+        assert!(!dir.path().join("webwords/webwords.tsv.xz").exists());
+    }
+
+    #[test]
+    fn place_webwords_check_mode_does_not_transfer() {
+        let dir = tempfile::tempdir().unwrap();
+        let list = webwords_list("https://x/w.xz", ABC_SHA256);
+        let placed =
+            place_webwords(&list, dir.path(), true, &never_transfer, &fake_extract).unwrap();
+        assert_eq!(placed, Outcome::Missing);
+    }
+
+    #[test]
+    fn webwords_group_is_skipped_while_url_is_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let consts = LibConsts::parse(
+            "readonly WEBWORDS_LIST_PATH=\"webwords/w.tsv\"\nreadonly WEBWORDS_LIST_URL=\"\"\nreadonly WEBWORDS_LIST_SHA256=\"\"\n",
+        );
+        let mut fetcher = Fetcher {
+            raw: dir.path().join("raw"),
+            consts: &consts,
+            only: vec!["webwords".to_owned()],
+            check_only: false,
+            ajimee_dir: None,
+            missing: false,
+        };
+        fetcher.fetch_webwords().unwrap();
+        assert!(!fetcher.missing);
         assert!(!dir.path().join("raw").exists());
     }
 
