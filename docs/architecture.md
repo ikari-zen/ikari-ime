@@ -105,6 +105,7 @@ IkariEngine.xpc（同梱の XPC サービス。App Sandbox、ネットワーク�
 | `scripts/check.sh` | コミットの前に流す門（fmt、clippy、test、`swift test`、文書のリンク。`--lm` `--real` `--perf` `--eval`） |
 | `macos/scripts/{build,install,smoke}.sh` | バンドルのビルド、署名、配置、E2E。macOS 固有 |
 | `eval/scripts/snapshot.sh` | 振る舞いが変わっていないことの確認（リファクタの前後の比較） |
+| `cargo xtask webwords fetch\|build\|measure\|publish` | 外来語の一覧の作り直し（約 3〜4 か月ごと。手順は [webwords-update.md](webwords-update.md)） |
 
 ## 5. どの ADR が何を決めたか
 
