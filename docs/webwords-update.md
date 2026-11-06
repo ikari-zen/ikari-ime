@@ -29,7 +29,9 @@ dumps.wikimedia.org から 1 ファイルずつ取り、sha1 を照合し、sha2
 cargo xtask webwords measure --dump "$DUMP" --work "$WORK" --out "$OUT" --lm <zenz の gguf>
 ```
 
-- `$OUT` に一覧がなければ `build` を流す（collect → classify → xz）。あれば再利用する。
+- `$OUT` に一覧がなければ `build` を流す（collect → classify → xz）。あれば再利用する（**同じ `$OUT` を渡したときだけ**。別の出力先では作り直す）。
+- `$WORK/manifest.tsv`（`fetch` が書く）が**必ず要る**。一覧が既にあっても、`fetch` を流さずに `measure` だけ流す経路はない。manifest を手で作らない（sha256 の記録になるため）。
+- 評価の辞書を作るために、リポジトリの `data/raw/` が要る。新しい worktree には `data/` がないので、`--data <本体のリポジトリの data>`（読むだけ）を渡すか、`scripts/fetch-data.sh` で worktree に取る。実機の辞書とユーザーデータは読まない・書かない。
 - 評価用の scratch（`$OUT/scratch`）に、基準（外来語なし）と、承認済みの既定の値の辞書を作り、全セットと AJIMEE を流して比べる。`--lm` を渡すと LM あり（時間切れの上限 2000ms）も測る。
 - 出力: `$OUT/measure-$DUMP.md`（比較の表、辞書の増加量、追加した行数）、`$OUT/sample.tsv`（抜き取り 30 語。common で df が 5〜6。seed は既定で固定なので、同じ一覧からは同じ語が出る）。
 - **悪化が 1 件でもあれば終了コードが非 0 になり、最後に大きく表示する。** その場合は Release に進まない。
