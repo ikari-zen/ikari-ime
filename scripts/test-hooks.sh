@@ -67,7 +67,7 @@ run_guard() {
 expect() { # expect <期待する終了コード> <名前> <コマンド>
   local want="$1" name="$2" cmd="$3" got=0
   run_guard "$cmd" || got=$?
-  [[ "$got" -eq "$want" ]] || fail "guard: $name（期待 $want、実際 $got）: $(cat "$TMP/guard.err")"
+  [[ "$got" -eq "$want" ]] || fail "guard: ${name}（期待 ${want}、実際 ${got}）: $(cat "$TMP/guard.err")"
 }
 
 export FAKE_GH_SHA="$HEAD_SHA"
@@ -109,9 +109,9 @@ expect 2 "コマンド内の環境変数では回避できない" "IKARI_ALLOW_U
 
 # 入力の異常: JSON でない、command がない
 got=0; printf 'not json' | PATH="$FAKE_BIN:$PATH" "$GUARD" 2>/dev/null || got=$?
-[[ "$got" -eq 0 ]] || fail "guard: JSON でない入力は通す（期待 0、実際 $got）"
+[[ "$got" -eq 0 ]] || fail "guard: JSON でない入力は通す（期待 0、実際 ${got}）"
 got=0; printf '{"tool_name":"Bash","tool_input":{}}' | PATH="$FAKE_BIN:$PATH" "$GUARD" 2>/dev/null || got=$?
-[[ "$got" -eq 0 ]] || fail "guard: command のない入力は通す（期待 0、実際 $got）"
+[[ "$got" -eq 0 ]] || fail "guard: command のない入力は通す（期待 0、実際 ${got}）"
 
 # ---- fmt-rust.sh
 run_fmt() { # run_fmt <file_path>
