@@ -39,7 +39,7 @@
 ### Wikipedia 日本語版（外来語の語と出現頻度の一覧）
 
 - **ライセンス**: クリエイティブ・コモンズ 表示-継承 4.0 国際（CC BY-SA 4.0）。https://creativecommons.org/licenses/by-sa/4.0/deed.ja
-- **出典**: ウィキペディア日本語版（https://ja.wikipedia.org/）の執筆者。データベースダンプ jawiki-<日付>（pages-articles、page、redirect、page_props、categorylinks、linktarget。https://dumps.wikimedia.org/jawiki/<日付>/）。各記事の執筆者は、各記事の履歴を参照
+- **出典**: ウィキペディア日本語版（https://ja.wikipedia.org/）の執筆者。データベースダンプ jawiki-20261101（pages-articles、page、redirect、page_props、categorylinks、linktarget。https://dumps.wikimedia.org/jawiki/20261101/）。各記事の執筆者は、各記事の履歴を参照
 - **加工**: ikari-ime が、上のダンプの記事の本文から片仮名の連なりを取り出し、語ごとの出現回数と出現した記事の数を数え、記事の有無とカテゴリから普通名詞と固有名詞（人名・地名・一般）の別を付け、辞書にある語と迷う語を除いた一覧（`webwords-<日付>.tsv`）を作成した。一覧が含むのは、語（表記）、出現回数、記事の数、区分だけである。記事の本文、文、記事の名前、カテゴリの名前は含まない
 - **使用方法**: 一覧は ikari-ime の GitHub の Release に、CC BY-SA 4.0 の表示つきで置く。`scripts/fetch-data.sh --only webwords` で `data/raw/webwords/` に置き、dict-builder の `webwords lex` が利用者の手元で辞書（`system.dict`）に語を加える。Wikipedia の本文は同梱しない。辞書は `~/Library/Application Support/ikari-ime/dict/` に置かれる（バンドルには含めない）
 
