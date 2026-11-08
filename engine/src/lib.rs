@@ -27,6 +27,7 @@ mod lock;
 mod log;
 #[cfg(test)]
 mod mock_seam;
+mod rss;
 mod segments;
 mod session;
 #[cfg(test)]
