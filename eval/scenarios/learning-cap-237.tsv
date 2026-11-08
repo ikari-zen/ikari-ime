@@ -1,0 +1,20 @@
+# learning-cap-237: 何回も選んだ候補は、学習の加点の上限（max_total）で止まらずに 1 位に届く（ADR 0057、#237）。
+# 「社長 + じき」は、学習なしでは 次期 が 2 位。上限が 6000 のときは 10 回選んでも 1 位に届かなかった（9000 で届く）。
+# 実行: ikari-eval --ranker full --scenario eval/scenarios/learning-cap-237.tsv（LM なしで確かめた値。要 data/build/dict）
+#
+# 参考（このファイルには入れない。今の既定では届かない）: 文脈「エレクトリカル」、読み「ぽれーしょん」の ポレーション は
+# 基底のコストの差が約 9400 あり、加点の最大（特徴量の重みの合計 × base_bonus × share）の約 8900 を超えるので、
+# 何回選んでも 3 位のまま。届かせるには base_bonus を上げる必要がある（ADR 0057 の掃引）。
+step	context	reading	surface	expect
+probe	社長	じき	次期	not-top1
+commit	社長	じき	次期
+commit	社長	じき	次期
+commit	社長	じき	次期
+commit	社長	じき	次期
+commit	社長	じき	次期
+commit	社長	じき	次期
+commit	社長	じき	次期
+commit	社長	じき	次期
+commit	社長	じき	次期
+commit	社長	じき	次期
+probe	社長	じき	次期	top1

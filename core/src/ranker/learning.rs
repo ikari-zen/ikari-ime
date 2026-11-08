@@ -33,6 +33,11 @@ const DEFAULT_BACKOFF_WEIGHT: f32 = 1.0;
 /// 役割が違う対抗と競うときの word の係数の既定。1.0 は弱めない（ADR 0044 §16。掃引で決めた値）
 const DEFAULT_WORD_ROLE_MISMATCH_FACTOR: f32 = 0.25;
 
+/// phrase の加点と word の加点それぞれの上限の既定（ADR 0057。6000 から上げた）。
+/// 特徴量の重みの合計（最大およそ 3.5）× `base_bonus`（3000）で share が 1 に近づいたときの加点が
+/// 約 9000 なので、これより上は効かない（掃引で 8000 から先は同じ結果）
+const DEFAULT_MAX_TOTAL: i32 = 9000;
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct LearningConfig {
     /// `Σ_f w_f * share * base_bonus`
@@ -46,7 +51,7 @@ pub struct LearningConfig {
     /// phrase の加点には効かない
     pub word_role_mismatch_factor: f32,
     pub half_life_days: u32,
-    /// 1候補あたり、phrase の加点と word の加点それぞれの上限（ADR 0013 F2）
+    /// 1候補あたり、phrase の加点と word の加点それぞれの上限（ADR 0013 F2 で分けた。値は ADR 0057）
     pub max_total: i32,
     /// `Unconditional`（文脈によらない、その読みでの選択の割合）の重み
     pub unconditional_weight: f32,
@@ -69,7 +74,7 @@ impl Default for LearningConfig {
             word_factor: 0.5,
             word_role_mismatch_factor: DEFAULT_WORD_ROLE_MISMATCH_FACTOR,
             half_life_days: 90,
-            max_total: 6000,
+            max_total: DEFAULT_MAX_TOTAL,
             unconditional_weight: UNCONDITIONAL_WEIGHT,
             unconditional_backoff_weight: DEFAULT_BACKOFF_WEIGHT,
             today: None,
@@ -773,6 +778,26 @@ mod tests {
         };
         let free = ranker.context_free_bonus(&input, &pool(&f)).unwrap();
         assert!(free[1] > 0);
+    }
+
+    #[test]
+    fn default_cap_lets_many_commits_exceed_the_former_cap() {
+        // ADR 0057: 同じ文脈で何度も選んだ候補の加点が、以前の上限（6000）で止まらない
+        let f = fixture();
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_with_work_commits(&f, &dir, 30);
+        let former = LearningConfig {
+            max_total: 6000,
+            ..cfg()
+        };
+        let analysis = work_context(&f);
+        let old = learned_bonus(&store, &f, former, &analysis);
+        let now = learned_bonus(&store, &f, cfg(), &analysis);
+        assert!(
+            now > old,
+            "既定の上限 {now} が以前の上限での加点 {old} を超えること"
+        );
+        assert!(now <= 2 * LearningConfig::default().max_total);
     }
 
     #[test]
