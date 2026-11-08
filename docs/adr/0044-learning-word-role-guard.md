@@ -10,7 +10,7 @@
 ---
 
 ## 0. 現状の把握
-- word の加点は、候補のセグメントごとに `share × word_factor(0.5) × base_bonus(3000)`、上限 `max_total`（6000）を phrase と別にかける（`core/src/ranker/learning.rs` の `bonuses`）。加点を受けるのは、(a) 内容語（`pos.rs` の `is_content_word`）で、(b) 候補の間で同じ読みの表記が 2 通り以上ある（`variants`。読みの文字列で束ねる）セグメント。
+- word の加点は、候補のセグメントごとに `share × word_factor(0.5) × base_bonus(3000)`、上限 `max_total`（6000。2026-11-09 に 9000 へ上げた。ADR 0057）を phrase と別にかける（`core/src/ranker/learning.rs` の `bonuses`）。加点を受けるのは、(a) 内容語（`pos.rs` の `is_content_word`）で、(b) 候補の間で同じ読みの表記が 2 通り以上ある（`variants`。読みの文字列で束ねる）セグメント。
 - 記録側は、複数文節の確定から、内容語のセグメントだけを word として記録する（`core/src/user/learning.rs` の `is_recordable_word`）。
 - 「ツールを使用」を 1 回確定すると、使用 に word の加点 750 が付き、辞書コストの差（約 375）を覆して、LM なしで かんさつしよう → 観察使用、けんしょうしよう → 検証使用 になる。「これ以降」の確定で いこう → 以降 になる（§3.3 で再現）。
 
