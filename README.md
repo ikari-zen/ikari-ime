@@ -286,7 +286,7 @@ ikari-ime のコードは [Apache License 2.0](LICENSE) です。著作者は「
 
 - SudachiDict、chiVe: Apache License 2.0
 - 町字マスター、郵便番号の変換表（デジタル庁）: 公共データ利用規約（PDL1.0）。ikari が加工して辞書に使い、データ自体は配りません
-- zenz: Hugging Face のモデルページで Apache-2.0 と表示されています（2026-10-26 に確認）。モデルファイルは配りません
+- zenz: Hugging Face のモデルページで CC BY-SA 4.0 と表示されています（2026-11-09 に確認。2026-10-26 には Apache-2.0 でした）。モデルファイルは配りません
 - Rust と Swift の依存パッケージ: 各パッケージのライセンス（MIT、Apache-2.0 など）
 
 ## 10. 貢献の方針
