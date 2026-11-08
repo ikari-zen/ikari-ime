@@ -143,7 +143,7 @@ SOFTWARE.
 
 ### zenz-v3.2 small
 
-- **ライセンス**: Apache-2.0（Hugging Face のモデルページ https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf の表示とモデルカードによる。2026-10-26 に確認）。モデルのページには、元になったモデルや学習データのライセンスの記載がない
+- **ライセンス**: CC BY-SA 4.0（Hugging Face のモデルページ https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf の表示とモデルカードの `license: cc-by-sa-4.0` による。2026-11-09 に確認。2026-10-26 には Apache-2.0 と書いていたが、現在の表示は CC BY-SA 4.0 で、最終更新は 2026-11-07）。ikari はモデルを配らず、利用者が取得する。モデルを配る場合は、表示（作者、ライセンス、変更の有無）と同じ条件での提供（ShareAlike）の及ぶ範囲を、先に確かめる（#242）。モデルのページには、元になったモデルや学習データのライセンスの記載がない
 - **用途**: 候補の再ランキング（既定の唯一の LM）。モデルファイルはバンドルに含めず、`scripts/install-data.sh` が `~/Library/Application Support/ikari-ime/models/` に置く
 
 ### kanakanji-edge
