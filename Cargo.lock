@@ -541,6 +541,7 @@ dependencies = [
  "ikari-runmark",
  "ikari-stack",
  "jiff",
+ "libc",
  "prost",
  "tempfile",
 ]

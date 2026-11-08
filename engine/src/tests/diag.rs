@@ -348,12 +348,16 @@ fn lm_load_unload_and_stat_lines() {
     let stats = lines_of(&e, &dir, "stat");
     assert_eq!(stats.len(), 1, "{stats:?}");
     assert!(stats[0].contains("sessions=1"), "{}", stats[0]);
-    // `ps` が使える環境なら RSS は数値
-    if let Some(rss) = stats[0]
+    // macOS では RSS が必ず数値で出る（#238: `ps` が Sandbox で動かず出ていなかった）
+    let rss = stats[0]
         .split_whitespace()
-        .find_map(|t| t.strip_prefix("rss_kb="))
-    {
-        assert!(rss.parse::<u64>().is_ok_and(|kb| kb > 0), "{}", stats[0]);
+        .find_map(|t| t.strip_prefix("rss_kb="));
+    if cfg!(target_os = "macos") {
+        assert!(
+            rss.is_some_and(|v| v.parse::<u64>().is_ok_and(|kb| kb > 0)),
+            "{}",
+            stats[0]
+        );
     }
     // 要求がなければ、間隔が経っても書かない
     e.inner.tick_diag(later + STAT_INTERVAL * 2);
