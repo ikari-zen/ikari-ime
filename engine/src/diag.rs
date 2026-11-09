@@ -124,19 +124,6 @@ pub(crate) fn rewriter_note<'a>(
     (!names.is_empty()).then(|| format!("rw={}", names.join(",")))
 }
 
-/// 常駐エンジンの RSS（KB）。取れなければ None。
-/// 見回りのスレッドからだけ呼ぶ（外部コマンド `ps` を起動するので、変換の経路では呼ばない）
-fn rss_kb() -> Option<u64> {
-    let out = std::process::Command::new("ps")
-        .args(["-o", "rss=", "-p", &std::process::id().to_string()])
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    String::from_utf8_lossy(&out.stdout).trim().parse().ok()
-}
-
 impl Inner {
     /// 殻からの `DiagEvent`。返事は常に Ack（殻は待たない）。
     /// secure は何も書かずに捨てる（`diag_reject` も書かない。NFR-18）。セッションがなければ
@@ -217,7 +204,7 @@ impl Inner {
             *last = (now, requests);
         }
         let sessions = lock_mutex(&self.sessions).len();
-        let note = match rss_kb() {
+        let note = match crate::rss::rss_kb() {
             Some(rss) => format!("rss_kb={rss} sessions={sessions}"),
             None => format!("sessions={sessions}"),
         };

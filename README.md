@@ -184,6 +184,8 @@ scripts/fetch-data.sh --only sudachi --only chive --only zenz --check   # 通信
 scripts/fetch-data.sh --only sudachi --only chive --only zenz           # 足りないものを取得する
 ```
 
+認証つきのプロキシの下では、`https_proxy` などの環境変数を設定して流します（取得は curl です）。手順と、確かめたこと・未確認のことは [docs/proxy-download.md](docs/proxy-download.md) にあります。
+
 `--only` を付けないと、評価用の AJIMEE（使わなくてよいもの）も取ります。LM を使わない構成では `--only zenz` を外します。地名の町字マスターと郵便番号の表（任意）は `--only abr --only postal` で取れます。`scripts/setup.sh --fetch` は、この 3 つと、abr と postal をまとめて取ります。
 
 各段は単独でも呼べます。引数の細かい仕様は各スクリプトの `--help` が正です。
@@ -241,6 +243,7 @@ AI にビルドや入れ替えを任せるときは、次の点を確かめて�
 - **通信するのは、取得の段階だけです。** 元データの取得（`--fetch`）、Cargo と Swift の依存パッケージの取得、初回のビルドです。
 - **学習の記録とユーザー辞書は、自分の Mac に置きます。** 場所は `~/Library/Application Support/ikari-ime/` です。設定アプリで、エクスポート、インポート、リセットができます。
 - **ログに入力の中身は書きません。** エンジンのログには、時刻と種類、処理にかかった時間などを書きます。読みや候補、文脈は書きません。
+- **ログの保持は 180 日、合計 100MB までです。** どちらか先に来た方で、古い順に消します（回した古い分は gzip で残ります）。場所は `~/Library/Application Support/ikari-ime/logs/` です。いつでも手で消せます。
 - **パスワード欄（secure 入力欄）では、文脈も学習も使いません。** 英語のモードでも、secure な入力欄では何も記録しません。
 
 ## 8. リポジトリ構成
@@ -285,7 +288,7 @@ ikari-ime のコードは [Apache License 2.0](LICENSE) です。著作者は「
 
 - SudachiDict、chiVe: Apache License 2.0
 - 町字マスター、郵便番号の変換表（デジタル庁）: 公共データ利用規約（PDL1.0）。ikari が加工して辞書に使い、データ自体は配りません
-- zenz: Hugging Face のモデルページで Apache-2.0 と表示されています（2026-10-26 に確認）。モデルファイルは配りません
+- zenz: Hugging Face のモデルページで CC BY-SA 4.0 と表示されています（2026-11-09 に確認。2026-10-26 には Apache-2.0 でした）。モデルファイルは配りません
 - Rust と Swift の依存パッケージ: 各パッケージのライセンス（MIT、Apache-2.0 など）
 
 ## 10. 貢献の方針
