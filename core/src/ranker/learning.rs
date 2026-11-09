@@ -1164,13 +1164,11 @@ mod tests {
         kv.insert("learning.recent_window_secs".to_string(), "120".to_string());
         let c = LearningConfig::from_kv(&kv).unwrap();
         assert_eq!((c.recent_bonus, c.recent_window_secs), (1000, 120));
-        for bad in ["-1"] {
-            kv.insert("learning.recent_bonus".to_string(), bad.to_string());
-            assert_eq!(
-                LearningConfig::from_kv(&kv).unwrap_err().key,
-                "learning.recent_bonus"
-            );
-        }
+        kv.insert("learning.recent_bonus".to_string(), "-1".to_string());
+        assert_eq!(
+            LearningConfig::from_kv(&kv).unwrap_err().key,
+            "learning.recent_bonus"
+        );
     }
 
     #[test]
