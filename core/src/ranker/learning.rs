@@ -3,7 +3,7 @@
 //! 現在の文脈から作った特徴量 f ごとに、その特徴量の下での選択の割合
 //! `share = n(読み, f, 候補) / (N(読み, f) + prior_count)` を求め、`Σ_f w_f × share × base_bonus` を加点する。
 //! n と N は層の重み（usage 1.0 / initial 0.4）と経過日数の減衰（半減期 90 日）をかけた回数。
-//! `prior_count`（既定 1.0）は、観測が少ないうちは share を 1 にしないための平滑化で、
+//! `prior_count`（既定 1.5。ADR 0057。1.0 から上げた）は、観測が少ないうちは share を 1 にしないための平滑化で、
 //! ADR 0002 §8.4 の `n/N` からの小さな逸脱（これがないと層の重みと減衰が share に効かない）。
 //! 「最後に選んだものを 1 位にする」学習ではない。`Unconditional` の重みは低い（0.2）ので、別の文脈
 //! （`Prev`、`Bag`、`Topic` が一致しない）での選択はほとんど効かない。ただし、今の文脈の特徴量に
@@ -30,13 +30,19 @@ pub const CONFIG_KEY_PREFIX: &str = "learning.";
 /// back-off のときの `Unconditional` の重みの既定（ADR 0013 §9 Q2）
 const DEFAULT_BACKOFF_WEIGHT: f32 = 1.0;
 
-/// 役割が違う対抗と競うときの word の係数の既定。1.0 は弱めない（ADR 0044 §16。掃引で決めた値）
-const DEFAULT_WORD_ROLE_MISMATCH_FACTOR: f32 = 0.25;
+/// 役割が違う対抗と競うときの word の係数の既定。1.0 は弱めない（ADR 0044 §16。0.25 から ADR 0057 で 0.1 に下げた）
+const DEFAULT_WORD_ROLE_MISMATCH_FACTOR: f32 = 0.1;
 
 /// phrase の加点と word の加点それぞれの上限の既定（ADR 0057。6000 から上げた）。
-/// 特徴量の重みの合計（最大およそ 3.5）× `base_bonus`（3000）で share が 1 に近づいたときの加点が
-/// 約 9000 なので、これより上は効かない（掃引で 8000 から先は同じ結果）
-const DEFAULT_MAX_TOTAL: i32 = 9000;
+/// 特徴量の重みの合計（最大およそ 3.5）× `base_bonus` で share が 1 に近づいたときの加点に届く手前で、
+/// これより上げても結果が変わらない値（`base_bonus` 5000 の掃引で 10500 から先は同じ）
+const DEFAULT_MAX_TOTAL: i32 = 10500;
+
+/// 1 回の確定で付く加点の大きさの既定（ADR 0057。3000 から上げた。「ぽれーしょん」の例が 3 回で 1 位になる）
+const DEFAULT_BASE_BONUS: i32 = 5000;
+
+/// `share = n / (N + prior_count)` の平滑化の既定（ADR 0057。1.0 から上げた）
+const DEFAULT_PRIOR_COUNT: f32 = 1.5;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LearningConfig {
@@ -68,7 +74,7 @@ pub struct LearningConfig {
 impl Default for LearningConfig {
     fn default() -> Self {
         Self {
-            base_bonus: 3000,
+            base_bonus: DEFAULT_BASE_BONUS,
             usage_weight: 1.0,
             initial_weight: 0.4,
             word_factor: 0.5,
@@ -78,7 +84,7 @@ impl Default for LearningConfig {
             unconditional_weight: UNCONDITIONAL_WEIGHT,
             unconditional_backoff_weight: DEFAULT_BACKOFF_WEIGHT,
             today: None,
-            prior_count: 1.0,
+            prior_count: DEFAULT_PRIOR_COUNT,
         }
     }
 }
@@ -801,6 +807,37 @@ mod tests {
     }
 
     #[test]
+    fn learned_surface_is_forgotten_by_decay_and_a_newer_choice() {
+        // ADR 0057: 加点を上げても、経過日数の減衰（半減期）で忘れる。何日もあとに別の表記を使い続けたら元に戻る
+        let f = fixture();
+        let dir = tempfile::tempdir().unwrap();
+        let store = open_store(&dir, &f);
+        let p = pool(&f);
+        let ctx = work_context(&f);
+        // 始めて知った（ベースは 初めて知った より 2000 不利）を 3 回選ぶ
+        for _ in 0..3 {
+            store.record(&commit(&p[1], work_context(&f)), None, TODAY);
+        }
+        let at = |day: u32| LearningConfig {
+            today: Some(day),
+            ..cfg()
+        };
+        let top_at = |day: u32| {
+            let ranker = LearningRanker::new(Arc::clone(&store), None, at(day));
+            top(&rank(&ranker, &f, &ctx, false, pool(&f))).to_string()
+        };
+        assert_eq!(top_at(TODAY), "始めて知った", "3 回選んだら 1 位");
+        // 十分な日数（半減期 90 日の 8 倍）がたてば、加点が減衰して元の順位に戻る
+        let later = TODAY + 8 * LearningConfig::default().half_life_days;
+        assert_eq!(top_at(later), "初めて知った", "忘れる");
+        // あとから別の表記（初めて知った）を使い続けたら、新しい記録が優先される
+        for _ in 0..3 {
+            store.record(&commit(&p[0], work_context(&f)), None, later);
+        }
+        assert_eq!(top_at(later), "初めて知った");
+    }
+
+    #[test]
     fn cap_is_applied_to_phrase_and_word_separately() {
         // F2: 上限は phrase と word に別々にかかる（合計は 2 倍まで）
         let f = fixture();
@@ -1029,6 +1066,8 @@ mod tests {
             TODAY,
             LearningConfig {
                 max_total: 500,
+                // 役割の係数（既定 0.1）で word の加点が上限より小さくならないようにする
+                word_role_mismatch_factor: 1.0,
                 ..LearningConfig::default()
             },
         );
@@ -1119,7 +1158,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = store_with_work_commits(&f, &dir, 3);
         let ctx = work_context(&f);
-        assert_eq!(LearningConfig::default().word_role_mismatch_factor, 0.25);
+        assert_eq!(LearningConfig::default().word_role_mismatch_factor, 0.1);
         let base = learned_bonus(&store, &f, cfg(), &ctx);
         assert!(base > 0);
         assert_eq!(learned_bonus(&store, &f, mismatch_cfg(1.0), &ctx), base);
