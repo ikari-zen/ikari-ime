@@ -104,7 +104,9 @@ mod tests {
             .collect();
         assert_eq!(
             names,
-            ["check", "dict", "data", "eval", "perf", "cov", "webwords"]
+            [
+                "check", "dict", "data", "eval", "perf", "cov", "licenses", "webwords"
+            ]
         );
     }
 }
