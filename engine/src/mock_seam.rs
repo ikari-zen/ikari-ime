@@ -337,6 +337,9 @@ impl SegConv for MockSeg {
                 reading: self.whole.reading().to_owned(),
                 candidate,
                 analysis: Arc::clone(&template.analysis),
+                explicit: choices
+                    .iter()
+                    .any(|c| matches!(c, SegmentChoice::Candidate(j) if *j != 0)),
             });
         }
         if !single {
@@ -352,6 +355,7 @@ impl SegConv for MockSeg {
                             *j,
                         ),
                         analysis: Arc::clone(&template.analysis),
+                        explicit: true,
                     });
                 }
             }

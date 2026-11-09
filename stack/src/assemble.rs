@@ -260,9 +260,12 @@ pub(super) fn assemble_with(
     }
     if full && let Some(store) = &learning {
         let wanted = eval || opts.always_learning_ranker || !store.is_empty();
+        let learn_cfg =
+            LearningConfig::from_kv(&other_kv).map_err(|e| config_err("learning", e))?;
+        // 記録の重み（1 位以外を選んだ確定を強く、1 位のままの確定を弱く。ADR 0057）。
+        // ranker を足さないとき（記録が空）も、これからの確定の記録に効かせる
+        store.set_record_policy(learn_cfg.record_policy());
         if wanted {
-            let learn_cfg =
-                LearningConfig::from_kv(&other_kv).map_err(|e| config_err("learning", e))?;
             rankers.push(Arc::new(LearningRanker::new(
                 Arc::clone(store),
                 vectors.clone(),

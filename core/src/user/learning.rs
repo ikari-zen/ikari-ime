@@ -125,8 +125,30 @@ struct Stat {
 
 type Rows = BTreeMap<Key, Stat>;
 
+/// 確定を記録するときの重み（ADR 0057）。ファイルの形式は変えず、`count` を何回分増やすかだけを決める。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RecordPolicy {
+    /// 1 位以外を選んだ確定（人間の意図が明らか）の回数の重み
+    pub explicit_weight: u32,
+    /// 1 位のまま確定したもの（慌てて確定したかもしれない）の回数の重み。0 なら記録しない
+    pub top_weight: u32,
+    /// 1 位の確定で、記録がすでにあるときに `last_day` だけを更新する（`top_weight` が 0 のときの忘却の起点）
+    pub top_refresh: bool,
+}
+
+impl Default for RecordPolicy {
+    fn default() -> Self {
+        Self {
+            explicit_weight: 4,
+            top_weight: 1,
+            top_refresh: true,
+        }
+    }
+}
+
 /// 学習の記録。メモリに全件を持ち、`save` で TSV に書く（一時ファイル + rename）。
 pub struct LearningStore {
+    policy: RwLock<RecordPolicy>,
     path: PathBuf,
     salt: u64,
     rows: RwLock<Rows>,
@@ -142,6 +164,7 @@ impl LearningStore {
             None => (new_salt(), Rows::new()),
         };
         Ok(Self {
+            policy: RwLock::new(RecordPolicy::default()),
             path: path.to_path_buf(),
             salt,
             rows: RwLock::new(rows),
@@ -166,6 +189,16 @@ impl LearningStore {
         self.grammar.get().map(|g| &**g)
     }
 
+    /// 記録の重み（既定は `RecordPolicy::default`）。
+    pub fn record_policy(&self) -> RecordPolicy {
+        *self.policy.read().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// 記録の重みを変える（設定から。`stack` が組み立てのときに呼ぶ）。
+    pub fn set_record_policy(&self, policy: RecordPolicy) {
+        *self.policy.write().unwrap_or_else(|e| e.into_inner()) = policy;
+    }
+
     /// 確定を `usage` 層に記録する。secure の確定は `Conversion::commit` が None を返すので、ここには来ない。
     pub fn record(&self, ev: &CommitEvent, vectors: Option<&dyn WordVectors>, today: u32) {
         let feats = extract_named(&ev.analysis, self.grammar(), vectors, self.salt);
@@ -174,6 +207,15 @@ impl LearningStore {
             return;
         }
         let cand = &ev.candidate;
+        let policy = self.record_policy();
+        let (weight, refresh) = if ev.explicit {
+            (policy.explicit_weight, false)
+        } else {
+            (policy.top_weight, policy.top_refresh)
+        };
+        if weight == 0 && !refresh {
+            return;
+        }
         let mut rows = self.write();
 
         let (surface_key, segments_text) = match cand.origin {
@@ -200,6 +242,8 @@ impl LearningStore {
                     },
                     &segments_text,
                     today,
+                    weight,
+                    refresh,
                 );
             }
         }
@@ -231,6 +275,8 @@ impl LearningStore {
                         },
                         &text,
                         today,
+                        weight,
+                        refresh,
                     );
                 }
             }
@@ -285,6 +331,8 @@ impl LearningStore {
                 },
                 &text,
                 today,
+                1,
+                false,
             );
         }
     }
@@ -416,13 +464,21 @@ fn segment_text(s: &SegmentKey) -> String {
     [s.surface.as_str(), s.reading.as_str(), s.pos_name.as_str()].join(SEGMENT_FIELD_SEPARATOR)
 }
 
-fn bump(rows: &mut Rows, key: Key, segments: &str, today: u32) {
+/// `weight` 回分の確定を数える。`weight` が 0 のときは回数を増やさず、`refresh` なら既にある行の
+/// `last_day` だけを更新する（忘却の起点を新しくする。行は作らない）
+fn bump(rows: &mut Rows, key: Key, segments: &str, today: u32, weight: u32, refresh: bool) {
+    if weight == 0 {
+        if refresh && let Some(stat) = rows.get_mut(&key) {
+            stat.last_day = stat.last_day.max(today);
+        }
+        return;
+    }
     let stat = rows.entry(key).or_insert_with(|| Stat {
         segments: segments.to_string(),
         count: 0,
         last_day: today,
     });
-    stat.count = stat.count.saturating_add(1);
+    stat.count = stat.count.saturating_add(weight);
     stat.last_day = stat.last_day.max(today);
 }
 
@@ -610,6 +666,7 @@ mod tests {
                 origin: CandidateOrigin::Dictionary,
             },
             analysis: Arc::new(ctx),
+            explicit: true,
         }
     }
 
@@ -678,9 +735,64 @@ mod tests {
         store.record(&ev, None, 12);
         let hits = store.lookup("ひんし");
         assert!(!hits.is_empty());
-        assert!(hits.iter().all(|h| h.count == 2 && h.last_day == 12));
+        let w = store.record_policy().explicit_weight;
+        assert!(hits.iter().all(|h| h.count == 2 * w && h.last_day == 12));
         assert!(hits.iter().all(|h| h.unit == Unit::Phrase));
         assert!(hits.iter().all(|h| h.layer == Layer::Usage));
+    }
+
+    #[test]
+    fn top_choice_adds_no_count_but_refreshes_last_day() {
+        // ADR 0057: 1 位のままの確定は回数を増やさない。すでにある記録の last_day だけを更新する
+        let (_d, store) = open_tmp();
+        // 1 位の確定を 0 回扱いにする設定（既定は弱い重み 1。ADR 0057）
+        store.set_record_policy(RecordPolicy {
+            top_weight: 0,
+            ..store.record_policy()
+        });
+        let mut ev = commit("ひんし", vec![seg("品詞", "ひんし", true)], tech());
+        // 記録がないうちの 1 位の確定は何も作らない
+        ev.explicit = false;
+        store.record(&ev, None, 10);
+        assert!(store.is_empty());
+        // 1 位以外を選んだ確定は、重みの分だけ数える
+        ev.explicit = true;
+        store.record(&ev, None, 10);
+        let w = store.record_policy().explicit_weight;
+        assert!(
+            store
+                .lookup("ひんし")
+                .iter()
+                .all(|h| h.count == w && h.last_day == 10)
+        );
+        // 1 位の確定: 回数はそのまま、last_day だけ新しくなる
+        ev.explicit = false;
+        store.record(&ev, None, 50);
+        assert!(
+            store
+                .lookup("ひんし")
+                .iter()
+                .all(|h| h.count == w && h.last_day == 50)
+        );
+        // 更新をやめる設定なら last_day も動かない
+        store.set_record_policy(RecordPolicy {
+            top_refresh: false,
+            ..store.record_policy()
+        });
+        store.record(&ev, None, 90);
+        assert!(store.lookup("ひんし").iter().all(|h| h.last_day == 50));
+        // 1 位の確定に重みを付ければ数える
+        store.set_record_policy(RecordPolicy {
+            top_weight: 1,
+            ..store.record_policy()
+        });
+        store.record(&ev, None, 90);
+        assert!(
+            store
+                .lookup("ひんし")
+                .iter()
+                .all(|h| h.count == w + 1 && h.last_day == 90)
+        );
     }
 
     #[test]

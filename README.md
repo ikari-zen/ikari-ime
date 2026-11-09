@@ -184,6 +184,8 @@ scripts/fetch-data.sh --only sudachi --only chive --only zenz --check   # 通信
 scripts/fetch-data.sh --only sudachi --only chive --only zenz           # 足りないものを取得する
 ```
 
+認証つきのプロキシの下では、`https_proxy` などの環境変数を設定して流します（取得は curl です）。手順と、確かめたこと・未確認のことは [docs/proxy-download.md](docs/proxy-download.md) にあります。
+
 `--only` を付けないと、評価用の AJIMEE（使わなくてよいもの）も取ります。LM を使わない構成では `--only zenz` を外します。地名の町字マスターと郵便番号の表（任意）は `--only abr --only postal` で取れます。`scripts/setup.sh --fetch` は、この 3 つと、abr と postal をまとめて取ります。
 
 各段は単独でも呼べます。引数の細かい仕様は各スクリプトの `--help` が正です。
