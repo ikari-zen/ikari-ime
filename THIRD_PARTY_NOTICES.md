@@ -213,69 +213,42 @@ SOFTWARE.
 
 ## Rust依存クレート
 
-### fst
+配るバイナリ（ikari.app に入る Rust の成果物 `ikari-engine-ffi`、`ikari-shell-ffi`）が静的に含む依存クレートのライセンスと著作権表示は、[THIRD_PARTY_LICENSES_RUST.md](THIRD_PARTY_LICENSES_RUST.md) にまとめてあります。cargo-about で機械的に作った一覧で（`cargo xtask licenses`。設定は [about.toml](about.toml)）、許可しているライセンス（Apache-2.0、MIT、Unicode-3.0）以外が入ると作れません。設定アプリの「ライセンス」画面には、このファイルのあとに続けて出ます。
 
-- **ライセンス**: Unlicense or MIT
-- **バージョン**: 0.4.7
-- **用途**: 索引データ構造（有限状態トランスデューサー）
-- **リポジトリ**: https://github.com/BurntSushi/fst
-
-### memmap2
-
-- **ライセンス**: MIT or Apache-2.0
-- **バージョン**: 0.9
-- **用途**: メモリ効率的なファイルマッピングによる辞書の読み込み
-- **リポジトリ**: https://github.com/RazrFalcon/memmap2-rs
-
-### clap
-
-- **ライセンス**: MIT or Apache-2.0
-- **バージョン**: 4.6（derive feature）
-- **用途**: コマンドラインオプションの解析（CLI、dict-builder、eval用）
-- **リポジトリ**: https://github.com/clap-rs/clap
-
-### tempfile
-
-- **ライセンス**: MIT or Apache-2.0
-- **バージョン**: 3
-- **用途**: テスト時の一時ディレクトリ・ファイル管理（dev-dependency）
-- **リポジトリ**: https://github.com/Stebalien/tempfile
-
-### serde / serde_json
-
-- **ライセンス**: MIT or Apache-2.0
-- **バージョン**: serde 1.0、serde_json 1.0
-- **用途**: 取り込みファイル（JSONL）の読み込み（import crate）
-- **リポジトリ**: https://github.com/serde-rs/serde 、https://github.com/serde-rs/json
-
-### jiff
-
-- **ライセンス**: Unlicense or MIT
-- **バージョン**: 0.2
-- **用途**: Rewriter（日付や時刻の展開）の現在時刻の取得
-- **リポジトリ**: https://github.com/BurntSushi/jiff
-
-### bzip2 / flate2 / regex / sha2
-
-- **ライセンス**: bzip2、flate2、regex、sha2 はいずれも MIT or Apache-2.0。bzip2 が内部で使う libbz2-rs-sys（bzip2 の Rust 実装）は bzip2-1.0.6 ライセンス（BSD 系）
-- **バージョン**: bzip2 0.6（libbz2-rs-sys 0.2）、flate2 1、regex 1、sha2 0.10
-- **用途**: 辞書の元データを作る道具（dict-builder の `webwords`）が、Wikipedia のダンプ（bz2、gzip）を読み、本文から語を取り出し、入力の sha256 を取る。bzip2、regex、sha2 は製品のバイナリ（アプリ、エンジン）には含まれない。flate2 はエンジンのログの gzip 圧縮にも使う
-- **リポジトリ**: https://github.com/trifectatechfoundation/bzip2-rs 、https://github.com/trifectatechfoundation/libbz2-rs-sys 、https://github.com/rust-lang/flate2-rs 、https://github.com/rust-lang/regex 、https://github.com/RustCrypto/hashes
-
-### prost / prost-build / protox
-
-- **ライセンス**: prost、prost-build は Apache-2.0。protox は MIT or Apache-2.0
-- **バージョン**: 0.14（prost、prost-build）、0.10（protox）
-- **用途**: 殻とエンジンの間のメッセージ（protobuf）の Rust 側の符号化。`.proto` のコンパイルはビルド時に protox で行う（`protoc` は不要）
-- **リポジトリ**: https://github.com/tokio-rs/prost 、https://github.com/andrewhickman/protox
+辞書を作る道具（dict-builder の `webwords` が使う bzip2、regex、sha2 など）、評価、CLI、xtask は、配るバイナリに含まれないので、一覧に入れていません。
 
 ## 言語モデルと推論エンジン（フェーズ2のエンジンが使用）
 
 ### llama.cpp
 
 - **ライセンス**: MIT（Copyright (c) 2023-2026 The ggml authors）
-- **用途**: 言語モデルの推論。Rust クレート `llama-cpp-2` / `llama-cpp-sys-2`（0.1.159。MIT or Apache-2.0）経由で、エンジン（`IkariEngine.xpc`）の静的ライブラリに含まれる。Metal のシェーダは埋め込みで、ネットワークは使わない
+- **用途**: 言語モデルの推論。Rust クレート `llama-cpp-2` / `llama-cpp-sys-2`（0.1.160。MIT or Apache-2.0）経由で、エンジン（`IkariEngine.xpc`）の静的ライブラリに含まれる。Metal のシェーダは埋め込みで、ネットワークは使わない
 - **リポジトリ**: https://github.com/ggml-org/llama.cpp
+- **許諾文（全文。llama-cpp-sys-2 に入っている llama.cpp の `LICENSE`）**:
+
+```text
+MIT License
+
+Copyright (c) 2023-2026 The ggml authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ### zenz-v3.2 small
 
@@ -292,7 +265,9 @@ SOFTWARE.
 ### swift-protobuf
 
 - **ライセンス**: Apache License 2.0
-- **バージョン**: 1.38.x
+- **バージョン**: 1.39.0（`macos/Package.resolved`）
+- **著作権**: Apple Inc. and the Swift Project authors
+- **許諾文**: Apache License 2.0 の全文は [THIRD_PARTY_LICENSES_RUST.md](THIRD_PARTY_LICENSES_RUST.md) の Apache-2.0 の項（同じ条文）と [LICENSE](LICENSE) にある
 - **用途**: 殻とエンジンの間のメッセージ（protobuf）の符号化
 - **リポジトリ**: https://github.com/apple/swift-protobuf
 
@@ -303,4 +278,4 @@ ikari-ime のコードは Apache License 2.0 です（[LICENSE](LICENSE)、[NOTI
 
 ## ライセンス確認
 
-各クレートのライセンスは、[Cargo.lock](Cargo.lock) および Rust クレートレジストリで確認できます。
+Rust 依存の一覧は、[Cargo.lock](Cargo.lock) が変わったあとに `cargo xtask licenses` で作り直します（cargo-about が要る: `cargo install cargo-about --locked --features cli`）。最新かどうかは `cargo xtask licenses --check` で確かめられ、`scripts/check.sh` も流します（cargo-about がなければ飛ばして警告します）。
