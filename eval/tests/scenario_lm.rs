@@ -56,10 +56,6 @@ fn run_scenario_with(scenario: &str, extra: &[&str]) {
         .args(extra)
         .arg("--scenario")
         .arg(&file);
-    if let Some(config) = config {
-        cmd.arg("--ranker-config")
-            .arg(workspace_root().join("eval/scenarios").join(config));
-    }
     let out = cmd.output().expect("run ikari-eval");
     let stdout = String::from_utf8_lossy(&out.stdout);
     eprintln!("{stdout}");
@@ -118,9 +114,5 @@ fn c182_carryover_puts_the_history_into_the_left_context_with_the_lm() {
 #[test]
 #[ignore = "requires the real dictionary and a zenz GGUF model (IKARI_DICT_DIR, IKARI_ZENZ_MODEL)"]
 fn issue177_recent_choice_wins_within_the_window_with_the_lm() {
-    let conf = workspace_root().join("eval/scenarios/issue177-recent.conf");
-    run_scenario_with(
-        "issue177-recent.tsv",
-        &["--ranker-config", conf.to_str().unwrap()],
-    );
+    run_scenario("issue177-recent.tsv");
 }

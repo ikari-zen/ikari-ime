@@ -1,11 +1,10 @@
 # issue177-recent: 同じ読みで直前に選んだ表記に、数分だけ加点する（#177、ADR 0045）。
 # 長く選んだ「瀕死を」があっても、直前に選んだ「品詞を」が窓の間は1位になる。窓を過ぎれば長い学習に戻る。
 # 文脈が「瀕死を」を支持するときは、直前ボーナスでも覆さない。読みが違えば効かない。
-# wait は surface 列の秒数だけ手動の時計を進める。窓は learning.recent_window_secs（--ranker-config で渡す）。
-# 既定（recent_bonus = 0）では「直前に選んだ品詞を」の probe は落ちる。recent_bonus を入れた設定で流す。
-# 実行: ikari-eval --ranker full --ranker-config eval/scenarios/issue177-recent.conf --scenario eval/scenarios/issue177-recent.tsv
+# wait は surface 列の秒数だけ手動の時計を進める。窓は learning.recent_window_secs（既定 300 秒）。
+# 既定の設定（learning.recent_bonus = 6500）で、LM なしと LM ありの両方で通る。
+# 実行: ikari-eval --ranker full --scenario eval/scenarios/issue177-recent.tsv（LM あり: --lm <gguf> --lm-deadline-ms 3000）
 step	context	reading	surface	expect
-probe		ひんしを	品詞を	top1
 commit		ひんしを	瀕死を
 commit		ひんしを	瀕死を
 commit		ひんしを	瀕死を

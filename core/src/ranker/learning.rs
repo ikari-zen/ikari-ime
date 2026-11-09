@@ -28,7 +28,10 @@ use crate::vectors::WordVectors;
 /// `from_kv` が見るキーの接頭辞（ranker-config は Ranker をまたいで共有されるため、他のキーは無視する）
 pub const CONFIG_KEY_PREFIX: &str = "learning.";
 
-/// 直前ボーナスの窓の既定（秒）。`recent_bonus` が 0 の間は効かない。値は掃引で決める（ADR 0045 §7）
+/// 直前ボーナスの大きさの既定。LM ありで、15 回選んだ表記に直前の 1 回の別の表記が勝つ最小の値に余裕を足した
+/// （5900 で負け、6000 で勝つ。6500 は余裕約 8%。ADR 0045 §6）
+const DEFAULT_RECENT_BONUS: i32 = 6500;
+/// 直前ボーナスが直線に 0 まで減る窓の既定（秒）。分単位の窓（ADR 0045 §6）
 const DEFAULT_RECENT_WINDOW_SECS: u32 = 300;
 
 const MILLIS_PER_SEC: u64 = 1000;
@@ -87,7 +90,7 @@ pub struct LearningConfig {
     /// 1 位の確定で、すでにある記録の `last_day` だけを更新する（`top_weight` が 0 のとき）
     pub top_refresh: bool,
     /// 同じ読みで直前に選んだ表記への加点の大きさ（ADR 0045）。0 なら加点しない（今と同じ）。
-    /// `0..=max_total`。文脈に依らない加点として LearningGuard が止める
+    /// `0` 以上（`max_total` を超える分は切る）。文脈に依らない加点として LearningGuard が止める
     pub recent_bonus: i32,
     /// 直前ボーナスが直線に 0 まで減る窓（秒）。`recent_bonus` が 0 の間は効かない
     pub recent_window_secs: u32,
@@ -110,7 +113,7 @@ impl Default for LearningConfig {
             explicit_weight: DEFAULT_EXPLICIT_WEIGHT,
             top_weight: DEFAULT_TOP_WEIGHT,
             top_refresh: DEFAULT_TOP_REFRESH,
-            recent_bonus: 0,
+            recent_bonus: DEFAULT_RECENT_BONUS,
             recent_window_secs: DEFAULT_RECENT_WINDOW_SECS,
         }
     }
@@ -171,10 +174,10 @@ impl LearningConfig {
                 _ => return Err(config_error(key, "未知のキーです")),
             }
         }
-        if cfg.recent_bonus < 0 || cfg.recent_bonus > cfg.max_total {
+        if cfg.recent_bonus < 0 {
             return Err(config_error(
                 "learning.recent_bonus",
-                format!("0 以上 max_total（{}）以下にしてください", cfg.max_total),
+                "0 以上にしてください（0 で直前ボーナスなし）",
             ));
         }
         Ok(cfg)
@@ -210,8 +213,10 @@ fn recent_bonus(cfg: &LearningConfig, age_ms: u64) -> i64 {
     if cfg.recent_bonus <= 0 || age_ms >= window_ms {
         return 0;
     }
+    // 直前の 1 回が、長い学習で積める最大（max_total）より強くならないようにする
+    let top = cfg.recent_bonus.min(cfg.max_total.max(0));
     let left = 1.0 - age_ms as f64 / window_ms as f64;
-    (f64::from(cfg.recent_bonus) * left).round() as i64
+    (f64::from(top) * left).round() as i64
 }
 
 pub struct LearningRanker {
@@ -724,6 +729,8 @@ mod tests {
             today: Some(TODAY),
             // 既存のテストは役割の違いを見ない動きを確かめる。既定の係数は別のテストで見る
             word_role_mismatch_factor: 1.0,
+            // 既存のテストは直前の選択を見ない動きを確かめる。直前ボーナスは recent_cfg で見る
+            recent_bonus: 0,
             ..LearningConfig::default()
         }
     }
@@ -1041,6 +1048,12 @@ mod tests {
         assert_eq!(recent_bonus(&c, 999_999), 0);
         assert_eq!(recent_bonus(&recent_cfg(0, 100), 0), 0);
         assert_eq!(recent_bonus(&recent_cfg(2000, 0), 0), 0);
+        // max_total を超える分は切る
+        let capped = LearningConfig {
+            max_total: 500,
+            ..recent_cfg(9000, 100)
+        };
+        assert_eq!(recent_bonus(&capped, 0), 500);
     }
 
     #[test]
@@ -1080,7 +1093,8 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         assert_eq!(scores(&ra), scores(&rb));
-        assert_eq!(LearningConfig::default().recent_bonus, 0);
+        assert_eq!(cfg().recent_bonus, 0);
+        assert_eq!(LearningConfig::default().recent_bonus, DEFAULT_RECENT_BONUS);
     }
 
     #[test]
@@ -1150,7 +1164,7 @@ mod tests {
         kv.insert("learning.recent_window_secs".to_string(), "120".to_string());
         let c = LearningConfig::from_kv(&kv).unwrap();
         assert_eq!((c.recent_bonus, c.recent_window_secs), (1000, 120));
-        for bad in ["-1", "6001"] {
+        for bad in ["-1"] {
             kv.insert("learning.recent_bonus".to_string(), bad.to_string());
             assert_eq!(
                 LearningConfig::from_kv(&kv).unwrap_err().key,
@@ -1336,6 +1350,7 @@ mod tests {
                 max_total: 500,
                 // 役割の係数（既定 0.1）で word の加点が上限より小さくならないようにする
                 word_role_mismatch_factor: 1.0,
+                recent_bonus: 0,
                 ..LearningConfig::default()
             },
         );
