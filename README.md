@@ -55,14 +55,36 @@ ikari-ime は、文脈に応じて同音異義語を選び分ける日本語の�
 | Xcode 27 とそのコマンドライン | Swift 6.4（SwiftPM、codesign、xcodebuild を使います）。`xcodebuild` は Xcode 本体に入っているので、コマンドラインツールだけでは足りません |
 | Rust | `rustup` で入れます。`aarch64-apple-darwin` 向けに作ります |
 | cmake | **既定の構成（`make setup`。LM あり）では必要です**（`brew install cmake`。Homebrew が要ります。llama.cpp をビルドするため）。LM を使わないなら不要です。`make setup-lm-off` を使います |
-| ディスク | 数 GB の空きを用意してください。`setup.sh` は空きが 1 GB 未満だと止まります。作者の `data/` は評価用のデータを含めて約 3 GB です。辞書の生成物は `data/build/dict/` に作り、前の版を `dict.prev/` に 1 世代残します |
+| ディスク | 約 8〜9GB の空きを用意してください（下の「かかる時間と容量の目安」）。`setup.sh` は空きが 1 GB 未満だと止まりますが、これは最低限の目安で、実際はもっと要ります。辞書の生成物は `data/build/dict/` に作り、前の版を `dict.prev/` に 1 世代残します |
 | 通信 | 初回の元データの取得、Cargo と Swift の依存パッケージの取得（SwiftProtobuf は GitHub から）、Homebrew と rustup の導入だけです（IME 本体は通信しません。[プライバシー](#7-プライバシー)） |
+
+#### 確かめた環境と、確かめていないこと
+
+次の環境で、新しいクローンから「ビルドと検証だけ」の手順（下の節）を通しました（2026-11-10）。
+
+- Apple Silicon の Mac、Xcode 27.2、Swift 6.4.2、Rust 1.99.1、cmake 導入済み。通信は 1 回目で成功しました。
+
+次のことは**確かめていません**（未確認）。
+
+- Xcode が古い（27 より前）場合の動き。
+- cmake がない状態で LM ありの構成を作ったときのエラーの出方（`scripts/setup.sh` は、cmake がなければ案内を出して止まる作りです）。
+- Rust と Homebrew が入っていない Mac で、導入から始める手順。
+- Intel の Mac。
 
 #### かかる時間と容量の目安
 
-- **元データの取得**: 回線しだいです。chiVe の圧縮ファイルが約 594MB、zenz のモデル（Q5_K_M）が約 74MB です（[ADR 0002](docs/adr/0002-phase1-architecture.md)）。SudachiDict も取ります。
-- **辞書のビルド**: 約 30 秒です（[ADR 0030](docs/adr/0030-abr-town-vocabulary.md) の測定で 26〜29 秒。元データの取得は含みません）。
-- **アプリのビルド**: 初回は Rust と Swift のビルドに時間がかかります。時間は測っていません。
+上の環境（M 系の Mac）での実測です。通信の速さによって変わります。
+
+| 段 | 時間 |
+| --- | --- |
+| クローン | 約 3 秒 |
+| 元データの取得（SudachiDict、chiVe、zenz） | 1 分 13 秒 |
+| 辞書のビルド | 36 秒 |
+| アプリのビルド（`make build`。初回、`--release`） | 1 分 35 秒 |
+| 検証（`scripts/check.sh`） | 1 分 32 秒 |
+
+- **ディスク**: 合計で約 8〜9GB です。このうち `data/` が約 3.7GB（元データ 3.1GB と辞書）で、残りは Rust と Swift のビルドの生成物です。
+- **通信量**: chiVe の圧縮ファイルが約 594MB、zenz のモデル（Q5_K_M）が約 74MB です（[ADR 0002](docs/adr/0002-phase1-architecture.md)）。SudachiDict も取ります。
 
 ### 署名
 
@@ -76,7 +98,26 @@ macOS の入力メソッドは、署名されたアプリとして入ります�
 作者個人の証明書とチーム ID は、他の人の Mac では使えません。そのため、team 署名を使うには自分の証明書と ID を指定します。
 証明書がなければ adhoc を使ってください。
 
-### 1 コマンドで通す
+### ビルドと検証だけ（入れ替えない）
+
+まず動くかを確かめたい人向けです。**アプリを `~/Library/Input Methods` に入れず、`~/Library/Application Support/ikari-ime/`（学習やユーザー辞書の置き場）にも触れません。** ikari を使っている最中の Mac でも流せます。順番に流してください。
+
+```sh
+git clone <リポジトリの URL>
+cd ikari-ime
+scripts/fetch-data.sh --only sudachi --only chive --only zenz   # 1. 元データの取得（通信します）
+scripts/build-dict.sh                                           # 2. 辞書のビルド（data/build/dict/）
+macos/scripts/build.sh --signing adhoc --release                # 3. アプリのビルド（target/macos/release-adhoc/ikari.app）
+scripts/check.sh                                                # 4. 検証（fmt、clippy、テスト、文書のリンク）
+```
+
+3 は `make build` でも同じです。4 のあと、`CHECK_EXIT=0` と出れば成功です。LM を使わないなら、1 から `--only zenz` を外し、3 に `--no-lm` を付けます（cmake が要りません）。
+
+注意: `make setup` や `scripts/setup.sh`（`--no-install` を付けたときも）は、データの配置の段で `~/Library/Application Support/ikari-ime/` に辞書とモデルを書き込みます。それを避けたいときは、上の手順を使ってください。
+
+### 1 コマンドで通す（入れ替えまで行う）
+
+自分の Mac に入れて使うときの手順です。`~/Library/Input Methods` にアプリを入れ替え、最後に smoke を流します。ikari を使っている最中だと smoke が止まるので、ABC などに切り替えてから流してください。
 
 ```sh
 git clone <リポジトリの URL>
@@ -95,12 +136,12 @@ flowchart LR
     E --> F[5 smoke]
 ```
 
-1. 前提の確認（コマンド、ディスクの空き、証明書）
-2. 元データの取得（SudachiDict、chiVe、zenz。`--fetch` のときだけ通信します）
-3. 辞書のビルド（`data/build/dict/` に作ります）
-4. データの配置（`~/Library/Application Support/ikari-ime/` へ）
-5. アプリのビルドと `~/Library/Input Methods` への入れ替え
-6. smoke（アプリの動作確認）
+0. 前提の確認（コマンド、ディスクの空き、証明書）
+1. 元データの取得（SudachiDict、chiVe、zenz。`--fetch` のときだけ通信します）
+2. 辞書のビルド（`data/build/dict/` に作ります）
+3. データの配置（`~/Library/Application Support/ikari-ime/` へ）
+4. アプリのビルドと `~/Library/Input Methods` への入れ替え
+5. smoke（アプリの動作確認）
 
 2 回目以降は、取得は正しいファイルがあれば何もしません。辞書は、入力（元データとポリシー）の sha256 が前回と同じなら作り直しません。データの配置は、内容が同じファイルを飛ばします。アプリは毎回ビルドします。
 
@@ -120,7 +161,7 @@ smoke は、インストールしたアプリに変換や学習の試験を流�
 | `--rebuild-dict` | 入力が前回と同じでも辞書を作り直す |
 | `--skip-app` | アプリのビルドと入れ替え（と smoke）を飛ばす |
 | `--skip-smoke` | smoke を飛ばす |
-| `--no-install` | アプリを入れ替えない。ビルドまでを行い、install と smoke は実行するコマンドを表示するだけにする |
+| `--no-install` | アプリを入れ替えない。ビルドまでを行い、install と smoke は実行するコマンドを表示するだけにする（データの配置の段は実行するので、`~/Library/Application Support/ikari-ime/` には書き込みます） |
 
 ### make の入口
 
@@ -188,22 +229,25 @@ scripts/fetch-data.sh --only sudachi --only chive --only zenz           # 足り
 
 `--only` を付けないと、評価用の AJIMEE（使わなくてよいもの）も取ります。LM を使わない構成では `--only zenz` を外します。地名の町字マスターと郵便番号の表（任意）は `--only abr --only postal` で取れます。`scripts/setup.sh --fetch` は、この 3 つと、abr と postal をまとめて取ります。
 
-各段は単独でも呼べます。引数の細かい仕様は各スクリプトの `--help` が正です。
+各段は単独でも呼べます。引数の細かい仕様は各スクリプトの `--help` が正です。次の順に流します。
 
-| 段 | コマンド |
-| --- | --- |
-| 元データの取得 | `scripts/fetch-data.sh --only sudachi --only chive --only zenz`（`--check` で通信せずに確認） |
-| 辞書のビルド（`data/build/dict/`） | `scripts/build-dict.sh` |
-| 辞書とモデルを `~/Library/Application Support/ikari-ime/` へ | `scripts/install-data.sh` |
-| アプリのビルドと署名 | `macos/scripts/build.sh --signing team\|adhoc` |
-| `~/Library/Input Methods` へ入れ替え | `macos/scripts/install.sh --signing team\|adhoc` |
-| 動作確認（XPC 経由） | `macos/scripts/smoke.sh --signing team\|adhoc --installed` |
+| 順 | 段 | コマンド |
+| --- | --- | --- |
+| 1 | 元データの取得 | `scripts/fetch-data.sh --only sudachi --only chive --only zenz`（`--check` で通信せずに確認） |
+| 2 | 辞書のビルド（`data/build/dict/`） | `scripts/build-dict.sh` |
+| 3 | アプリのビルドと署名 | `macos/scripts/build.sh --signing team\|adhoc`（`--release` で最適化したビルド） |
+| 4 | 検証 | `scripts/check.sh` |
+| 5 | 辞書とモデルを `~/Library/Application Support/ikari-ime/` へ（実機を使うとき） | `scripts/install-data.sh` |
+| 6 | `~/Library/Input Methods` へ入れ替え（実機を使うとき） | `macos/scripts/install.sh --signing team\|adhoc` |
+| 7 | 動作確認（XPC 経由。実機を使うとき） | `macos/scripts/smoke.sh --signing team\|adhoc --installed` |
+
+1〜4 が「ビルドと検証だけ」の手順です。5〜7 は、自分の Mac に入れるときだけ流します。
 
 出力は `target/macos/<release|debug>-<team|adhoc>/ikari.app` です。
 
 ### CLI で試す、テストする
 
-アプリを入れなくても、コマンド `ikari` で変換を試せます。
+アプリを入れなくても、コマンド `ikari` で変換を試せます。次の例は LM を使わない構成で、1 つ目の例では「ひんし」の 1 位が「品詞」になります（確認済み）。
 
 ```bash
 cargo run --release -p ikari-cli -- --dict data/build/dict ひんし -n 10
@@ -223,9 +267,9 @@ scripts/check.sh --real       # 実データを使うテスト（辞書とモデ
 ## 6. AI にソースを読ませるとき
 
 このリポジトリは、AI（Claude Code など）にソースを読ませて、自分でビルドして使う使い方を想定しています。
-次の順に読ませると、構成と判断の理由がつかめます。文書は日本語です。
+このリポジトリの方針と構成は、CLAUDE.md と docs/ にあります。次の順に読ませると、構成と判断の理由がつかめます。文書は日本語です。
 
-1. [CLAUDE.md](CLAUDE.md): エージェント向けの指示です。「守る決定」（方針、変換の原則、表記の既定、英語のモード）と、よく使うコマンドが書いてあります。作者の運用（Issue、PR、エージェントの役割）も書いてあるので、そこは読み飛ばしてかまいません。
+1. [CLAUDE.md](CLAUDE.md): エージェント向けの指示です。「守る決定」（方針、変換の原則、表記の既定、英語のモード）と、よく使うコマンドが書いてあります。作者が AI エージェントのチームで開発を進めるための運用（Issue、PR、エージェントの役割、実機に触れるときの約束）も含みます。自分の環境で AI に使わせるときは、その部分が自分の運用と合うかを確かめてください。
 2. [docs/architecture.md](docs/architecture.md): 今の構成の地図です。crate、プロセス、データの置き場所、スクリプトが書いてあります。
 3. [docs/adr/README.md](docs/adr/README.md): 設計の判断の索引です。判断の理由は各 ADR にあります。
 4. [docs/ikari-ime_spec.md](docs/ikari-ime_spec.md): 要件定義書です。「基本原則」から読むと、方針が分かります。
