@@ -1,11 +1,9 @@
-# learning-cap-237-pore: 何回も選んだ候補は、基底のコストの差が大きくても 3 回で 1 位に届く（ADR 0057、#237）。
+# learning-cap-237-pore: 1 位以外を選ぶと、同じ文脈では 1 回で 1 位になる。1 位のまま確定しても学習は強まらない（ADR 0057、#237）。
 # 左文脈「エレクトリカル」、読み「ぽれーしょん」。基底は ぽレーション 19002、ポレーション 約 28400（差 約 9400）。
 # 学習なしでは 3 位。空のユーザーデータで始まり、実機の学習は使わない。
 # 実行: ikari-eval --ranker full --scenario eval/scenarios/learning-cap-237-pore.tsv（LM なしで確かめた値。要 data/build/dict）
 step	context	reading	surface	expect
 probe	エレクトリカル	ぽれーしょん	ポレーション	not-top1
 commit	エレクトリカル	ぽれーしょん	ポレーション	
-commit	エレクトリカル	ぽれーしょん	ポレーション	
-probe	エレクトリカル	ぽれーしょん	ポレーション	not-top1
-commit	エレクトリカル	ぽれーしょん	ポレーション	
 probe	エレクトリカル	ぽれーしょん	ポレーション	top1
+probe	エレクトリカル	ぽれーしょん	ぽレーション	not-top1

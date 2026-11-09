@@ -51,7 +51,7 @@ ikari-ime が今できること、まだできないこと、それぞれを決�
 
 | 機能 | 状態 | ADR | 補足 |
 | --- | --- | --- | --- |
-| 文脈つきの学習（読み＋左文脈 → 選んだ語） | 実装済み | [0013](adr/0013-learning-without-context.md)、[0002](adr/0002-phase1-architecture.md) | 「最後に選んだ語を 1 位にする」だけの学習はしない |
+| 文脈つきの学習（読み＋左文脈 → 選んだ語） | 実装済み | [0013](adr/0013-learning-without-context.md)、[0002](adr/0002-phase1-architecture.md)、[0057](adr/0057-learning-cap-human-over-lm.md) | 「最後に選んだ語を 1 位にする」だけの学習はしない。1 位以外を選んだ確定は強く（4 回分。同じ文脈なら 1 回で 1 位）、1 位のままの確定は弱く（1 回分）。忘却は半減期 90 日 |
 | 別の文脈での選択で、既存の学習を消さない | 実装済み | [0013](adr/0013-learning-without-context.md) | 文脈が記録にないときの効き方も 0013 で決めた |
 | 学習のリセットとバックアップ | 実装済み | [0005](adr/0005-macos-settings-and-indicator.md) | リセットの前に、エンジンが自動でバックアップを書く |
 | エクスポート／インポート（ユーザー辞書、学習データ） | 実装済み | [0002](adr/0002-phase1-architecture.md)、[0005](adr/0005-macos-settings-and-indicator.md) | インポートは既存データを上書きする（マージしない）。実行の前に件数を確かめる |

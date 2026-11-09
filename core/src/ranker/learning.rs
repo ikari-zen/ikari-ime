@@ -3,7 +3,7 @@
 //! 現在の文脈から作った特徴量 f ごとに、その特徴量の下での選択の割合
 //! `share = n(読み, f, 候補) / (N(読み, f) + prior_count)` を求め、`Σ_f w_f × share × base_bonus` を加点する。
 //! n と N は層の重み（usage 1.0 / initial 0.4）と経過日数の減衰（半減期 90 日）をかけた回数。
-//! `prior_count`（既定 1.5。ADR 0057。1.0 から上げた）は、観測が少ないうちは share を 1 にしないための平滑化で、
+//! `prior_count`（既定 1.0）は、観測が少ないうちは share を 1 にしないための平滑化で、
 //! ADR 0002 §8.4 の `n/N` からの小さな逸脱（これがないと層の重みと減衰が share に効かない）。
 //! 「最後に選んだものを 1 位にする」学習ではない。`Unconditional` の重みは低い（0.2）ので、別の文脈
 //! （`Prev`、`Bag`、`Topic` が一致しない）での選択はほとんど効かない。ただし、今の文脈の特徴量に
@@ -19,8 +19,8 @@ use crate::candidate::{Candidate, CandidateOrigin};
 use crate::pos::{is_content_word, same_word_role};
 use crate::user::features::UNCONDITIONAL_WEIGHT;
 use crate::user::{
-    FeatureKind, Layer, LearningRecord, LearningStore, Unit, extract_named, rewriter_key,
-    today_unix_day,
+    FeatureKind, Layer, LearningRecord, LearningStore, RecordPolicy, Unit, extract_named,
+    rewriter_key, today_unix_day,
 };
 use crate::vectors::WordVectors;
 
@@ -39,10 +39,15 @@ const DEFAULT_WORD_ROLE_MISMATCH_FACTOR: f32 = 0.1;
 const DEFAULT_MAX_TOTAL: i32 = 10500;
 
 /// 1 回の確定で付く加点の大きさの既定（ADR 0057。3000 から上げた。「ぽれーしょん」の例が 3 回で 1 位になる）
-const DEFAULT_BASE_BONUS: i32 = 5000;
+const DEFAULT_BASE_BONUS: i32 = 4000;
 
-/// `share = n / (N + prior_count)` の平滑化の既定（ADR 0057。1.0 から上げた）
-const DEFAULT_PRIOR_COUNT: f32 = 1.5;
+/// `share = n / (N + prior_count)` の平滑化の既定
+const DEFAULT_PRIOR_COUNT: f32 = 1.0;
+
+/// 記録の重みの既定（ADR 0057）
+const DEFAULT_EXPLICIT_WEIGHT: u32 = 4;
+const DEFAULT_TOP_WEIGHT: u32 = 1;
+const DEFAULT_TOP_REFRESH: bool = true;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LearningConfig {
@@ -69,6 +74,12 @@ pub struct LearningConfig {
     /// `share = n / (N + prior_count)` の平滑化。観測が少ないほど、層の重みと経過日数による減衰が
     /// 加点の強さに効く（比だけにすると、1 通りしか選ばれていない記録は減衰しても share が 1 のままになる）
     pub prior_count: f32,
+    /// 1 位以外を選んだ確定の回数の重み（記録のとき。ADR 0057）
+    pub explicit_weight: u32,
+    /// 1 位のまま確定したものの回数の重み。0 なら増やさない
+    pub top_weight: u32,
+    /// 1 位の確定で、すでにある記録の `last_day` だけを更新する（`top_weight` が 0 のとき）
+    pub top_refresh: bool,
 }
 
 impl Default for LearningConfig {
@@ -85,6 +96,9 @@ impl Default for LearningConfig {
             unconditional_backoff_weight: DEFAULT_BACKOFF_WEIGHT,
             today: None,
             prior_count: DEFAULT_PRIOR_COUNT,
+            explicit_weight: DEFAULT_EXPLICIT_WEIGHT,
+            top_weight: DEFAULT_TOP_WEIGHT,
+            top_refresh: DEFAULT_TOP_REFRESH,
         }
     }
 }
@@ -132,6 +146,9 @@ impl LearningConfig {
                 "max_total" => cfg.max_total = parse_value(key, value)?,
                 "today" => cfg.today = Some(parse_value(key, value)?),
                 "prior_count" => cfg.prior_count = parse_value(key, value)?,
+                "explicit_weight" => cfg.explicit_weight = parse_value(key, value)?,
+                "top_weight" => cfg.top_weight = parse_value(key, value)?,
+                "top_refresh" => cfg.top_refresh = parse_value(key, value)?,
                 "unconditional_weight" => cfg.unconditional_weight = parse_value(key, value)?,
                 "unconditional_backoff_weight" => {
                     cfg.unconditional_backoff_weight = parse_value(key, value)?;
@@ -140,6 +157,15 @@ impl LearningConfig {
             }
         }
         Ok(cfg)
+    }
+
+    /// 記録（`LearningStore::record`）に渡す重み
+    pub fn record_policy(&self) -> RecordPolicy {
+        RecordPolicy {
+            explicit_weight: self.explicit_weight,
+            top_weight: self.top_weight,
+            top_refresh: self.top_refresh,
+        }
     }
 
     fn layer_weight(&self, layer: Layer) -> f32 {
@@ -619,6 +645,7 @@ mod tests {
             reading: READING.to_string(),
             candidate: c.clone(),
             analysis: Arc::new(ctx),
+            explicit: true,
         }
     }
 
@@ -835,6 +862,50 @@ mod tests {
             store.record(&commit(&p[0], work_context(&f)), None, later);
         }
         assert_eq!(top_at(later), "初めて知った");
+    }
+
+    #[test]
+    fn top_choices_keep_a_learned_surface_from_being_forgotten() {
+        // ADR 0057: 1 位のまま確定した記録は回数を増やさないが、忘却の起点（last_day）は新しくする。
+        // いつも 1 位で確定している候補（学習で 1 位に上がったもの）が、更新されずに減衰して落ちないようにする
+        let f = fixture();
+        let p = pool(&f);
+        let ctx = work_context(&f);
+        let run = |refresh: bool| {
+            let dir = tempfile::tempdir().unwrap();
+            let store = open_store(&dir, &f);
+            // 1 位の確定は回数を増やさない設定（0 回扱い）で、忘却の起点の更新だけを比べる
+            store.set_record_policy(RecordPolicy {
+                top_weight: 0,
+                top_refresh: refresh,
+                ..store.record_policy()
+            });
+            // 1 位以外を 1 回選ぶ（同じ文脈で 1 位になる）
+            store.record(&commit(&p[1], work_context(&f)), None, TODAY);
+            let at = |day: u32| LearningConfig {
+                today: Some(day),
+                ..cfg()
+            };
+            let top_at = |day: u32| {
+                let ranker = LearningRanker::new(Arc::clone(&store), None, at(day));
+                top(&rank(&ranker, &f, &ctx, false, pool(&f))).to_string()
+            };
+            assert_eq!(top_at(TODAY), "始めて知った", "1 回の選択で 1 位");
+            // そのあと 1 位のまま確定し続ける（80 日ごと）
+            let half = LearningConfig::default().half_life_days;
+            for k in 1..=9 {
+                let mut ev = commit(&p[1], work_context(&f));
+                ev.explicit = false;
+                store.record(&ev, None, TODAY + k * (half - 10));
+            }
+            top_at(TODAY + 9 * (half - 10) + half / 2)
+        };
+        assert_eq!(
+            run(true),
+            "始めて知った",
+            "確定のたびに忘却の起点が新しくなる"
+        );
+        assert_eq!(run(false), "初めて知った", "更新しなければ減衰して元に戻る");
     }
 
     #[test]

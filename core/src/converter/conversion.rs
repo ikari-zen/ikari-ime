@@ -136,6 +136,7 @@ impl Conversion {
             reading: self.lattice.key().to_owned(),
             candidate,
             analysis: Arc::clone(&self.analysis),
+            explicit: index != 0,
         })
     }
 
@@ -517,6 +518,9 @@ pub struct CommitEvent {
     pub reading: String,
     pub candidate: Candidate,
     pub analysis: Arc<AnalyzedContext>,
+    /// 人間が 1 位（0 番）以外を選んだ確定か（ADR 0057）。1 位のまま確定したものは意図が弱い
+    /// （慌てて確定したかもしれない）ので、学習の重みを弱める。選んだ候補が 1 位だったときは false
+    pub explicit: bool,
 }
 
 pub struct Page<'a> {
