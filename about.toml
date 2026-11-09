@@ -1,0 +1,8 @@
+# cargo-about の設定（`cargo xtask licenses`。xtask/src/licenses.rs）。issue #242
+# 配るバイナリ（ikari.app の Rust の成果物）の依存のライセンス一覧を作る。
+# accepted にないライセンスが入ると失敗する（足すときは、内容を読んで、配れる条件かを確かめてから）。
+accepted = ["Apache-2.0", "MIT", "Unicode-3.0"]
+targets = ["aarch64-apple-darwin"]
+# build.rs だけが使うもの（bindgen など）とテストだけのものは、成果物に入らない
+ignore-build-dependencies = true
+ignore-dev-dependencies = true

@@ -170,7 +170,9 @@ assemble_settings_app() {
   [[ -f "$icon" ]] || die "$icon がありません（swift macos/tools/make-app-icon.swift で作る）"
   cp "$icon" "$resources/AppIcon.icns"
   [[ -f "$IKARI_ROOT/THIRD_PARTY_NOTICES.md" ]] || die "THIRD_PARTY_NOTICES.md がありません"
-  cp "$IKARI_ROOT/THIRD_PARTY_NOTICES.md" "$resources/THIRD_PARTY_NOTICES.md"
+  # 「ライセンス」画面は THIRD_PARTY_NOTICES を 1 つ表示するので、Rust 依存の一覧（cargo xtask licenses の生成物）を後ろにつないで置く（#242）
+  [[ -f "$IKARI_ROOT/THIRD_PARTY_LICENSES_RUST.md" ]] || die "THIRD_PARTY_LICENSES_RUST.md がありません（cargo xtask licenses）"
+  { cat "$IKARI_ROOT/THIRD_PARTY_NOTICES.md"; printf "\n\n"; cat "$IKARI_ROOT/THIRD_PARTY_LICENSES_RUST.md"; } > "$resources/THIRD_PARTY_NOTICES.md"
   [[ -d "$IKARI_MACOS_DIR/Resources/keymap" ]] || die "macos/Resources/keymap がありません"
   cp -R "$IKARI_MACOS_DIR/Resources/keymap" "$resources/keymap"
 }

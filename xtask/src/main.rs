@@ -17,6 +17,7 @@ mod cov;
 mod data;
 mod dict;
 mod eval;
+mod licenses;
 mod perf;
 mod webwords;
 
@@ -45,6 +46,8 @@ enum Command {
     Perf(perf::Args),
     /// テストの行カバレッジの測定（cargo-llvm-cov が要る。issue #158）
     Cov(cov::Args),
+    /// 配るバイナリの Rust 依存のライセンス一覧（THIRD_PARTY_LICENSES_RUST.md）を作る（cargo-about が要る。issue #242）
+    Licenses(licenses::Args),
     /// Wikipedia 日本語版のダンプから外来語の一覧を作る（メンテナー用。ADR 0055 §5.1。issue #113）
     Webwords(webwords::Args),
 }
@@ -70,6 +73,7 @@ fn main() -> ExitCode {
         Command::Eval(args) => eval::run(args),
         Command::Perf(args) => perf::run(args),
         Command::Cov(args) => cov::run(args),
+        Command::Licenses(args) => licenses::run(args),
         Command::Webwords(args) => webwords::run(args),
     };
     match result {
@@ -100,7 +104,9 @@ mod tests {
             .collect();
         assert_eq!(
             names,
-            ["check", "dict", "data", "eval", "perf", "cov", "webwords"]
+            [
+                "check", "dict", "data", "eval", "perf", "cov", "licenses", "webwords"
+            ]
         );
     }
 }
