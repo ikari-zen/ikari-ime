@@ -482,6 +482,10 @@ impl Segmented {
             .any(|c| matches!(c, SegmentChoice::Literal(_)))
             || chosen.iter().any(is_literal);
         let mut events = Vec::new();
+        // 人間が 1 位以外を選んだ文節があるか（ADR 0057。1 位のままの確定は学習の重みを弱める）
+        let any_changed = choices
+            .iter()
+            .any(|c| matches!(c, SegmentChoice::Candidate(index) if *index != 0));
         if chosen.len() == 1 {
             // 1 文節は今の `Conversion::commit` と同じ記録（Rewriter の候補も書式で覚える）
             if !has_literal {
@@ -489,6 +493,7 @@ impl Segmented {
                     reading: reading.to_owned(),
                     candidate: chosen[0].clone(),
                     analysis: Arc::clone(&self.whole.analysis),
+                    explicit: any_changed,
                 });
             }
             return events;
@@ -507,6 +512,7 @@ impl Segmented {
                 reading: reading.to_owned(),
                 candidate,
                 analysis: Arc::clone(&self.whole.analysis),
+                explicit: any_changed,
             });
         }
         // 変えた文節。左文脈は、確定する左の文節の語
@@ -520,6 +526,7 @@ impl Segmented {
                     reading: span_reading.clone(),
                     candidate: candidate.clone(),
                     analysis,
+                    explicit: true,
                 });
             }
             left_words.extend(candidate.segments.iter().cloned());
