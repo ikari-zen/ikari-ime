@@ -10,6 +10,7 @@ ikari-ime の今の構成を 1 か所にまとめた地図。判断の理由は�
 | crate | 責務 | 主な決定 |
 | --- | --- | --- |
 | `dict-format` | バイナリ辞書の形式（`grammar.bin`、`system.dict`、`vectors.bin`）の定義、検証、読みの正規化。IO を持たない | [0001 §3](adr/0001-phase0-architecture.md)、[0002 §3](adr/0002-phase1-architecture.md) |
+| `resource` | リソース（辞書・表・モデル）の束の契約（`ikari-resource`）。manifest の型と読み書き、束の検証（大きさ、sha256、形式の版、既知のモデル、古い版、パスの脱出）、既知のモデルの sha256 の表、入れ替えの journal の型。IO は束の読み取りだけ。まだエンジン・xtask からは使っていない（#246-2 で配線） | [0058 §4〜§7](adr/0058-offline-resource-install.md) |
 | `dict-builder` | SudachiDict の CSV と chiVe から辞書を作る。ポリシー（`policy/*.tsv`）でコストを調整する。異字同訓の表（`policy/kun.tsv`）で動詞・形容詞の表記を並べる。`town` サブコマンドが ABR の町字マスターから地名の語彙（`town_lex.csv`）と、住所の連なり（都道府県 + 郡 + 市区 + 町名。`chain_lex.csv`。同じ行の Core にも勝つ。[0030 §12](adr/0030-abr-town-vocabulary.md)）を作る | [0001 §8](adr/0001-phase0-architecture.md)、[0002 §4](adr/0002-phase1-architecture.md)、[0009](adr/0009-verb-notation.md)、[0030](adr/0030-abr-town-vocabulary.md) |
 | `input` | ローマ字、JIS かな、字種変換。辞書に依存しない純粋な処理（殻がリンクする） | [0004 §3.3](adr/0004-phase2-macos.md) |
 | `core` | 辞書引き、ラティスと Viterbi、Ranker（cost、左文脈（連接と複合語。[0007](adr/0007-left-context-compound.md)）、文書内キャッシュ、かなの表記、学習、プロファイル、話題）と Guard、`Converter`、文節の編集と再変換（`Segmented`、`Converter::segment` / `resize` / `reconvert`。区切りの規則は `pos::{ClauseWord, clause_starts, joins_following_noun}`、解析は `ContextAnalyzer::analyze_text`、読みの逆引きは `Dictionary::warm_reading_index`、辞書のページの先読みは `Dictionary::prefault`。[契約 §6](phase2-contract.md)）、LM が規則 S の守った1位を覆したら戻す段（`CompositeRanker` の最後の段。判定は `lattice::has_noun_suru_edge`。[0024](adr/0024-lm-keeps-rule-s.md)）、英字が1位のときのカタカナの繰り上げ（`ranker/english_first.rs` が置き換えた候補を作り、`CompositeRanker` の最後の段が1位にする。置き換えた候補の追加は `Conversion::build_first_pool`。[0020](adr/0020-english-spelling-first-candidate.md)）、読みそのままの平仮名・片仮名の救済（最初のプールを rank したあと、30 位より後ろなら 30 位へ。`conversion::rescue_reading_kana`、文節のモードは `pin_first` のあとにも。`convert.kana_rescue_rank`、0 で無効。[0052](adr/0052-reading-kana-rescue.md)）、ユーザーデータ（`user/`） | [0001 §4](adr/0001-phase0-architecture.md)、[0002](adr/0002-phase1-architecture.md)、[0003](adr/0003-topic-ranker-decision.md)、[0020](adr/0020-english-spelling-first-candidate.md)、[0024](adr/0024-lm-keeps-rule-s.md) |
@@ -28,6 +29,7 @@ ikari-ime の今の構成を 1 か所にまとめた地図。判断の理由は�
 
 ```
 dict-format ← dict-builder
+dict-format ← resource
 dict-format, input ← core ← lm（optional: llama-cpp-2）
 core, lm（optional）← stack ← engine ← engine-ffi（staticlib）
 core, dict-format ← import

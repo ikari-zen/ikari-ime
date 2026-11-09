@@ -238,7 +238,7 @@ inbox/
 
 ### 12.2 段階（1 タスク 1 ブランチ。issue は task-keeper が切る）
 - **S0. スパイク（捨てるコード。実機）**: Sandbox の中のエンジンで、(1) inbox → `dict.new/` の rename、`dict` のディレクトリの rename、ハードリンク、(2) mmap 中のディレクトリの rename のあとも変換が続くか、(3) Finder で 700MB をコピーしたときに、大きさが先に確保されるか、(4) 700MB の sha256 と試しの組み立ての時間、2 つの Stack が並ぶときのメモリ。結果をこの ADR に追記する。→ 新しい issue
-- **#246-1 契約**: 新しい crate の manifest の型、検証の結果の型、journal の形、`inbox/status.json` の形、エンジンの「前の版に戻す」の要求（proto）。モデルの sha256 の表を移す。→ #246 の子の issue
+- **#246-1 契約**（#255 済み。型の名前は末尾の付録）: 新しい crate の manifest の型、検証の結果の型、journal の形、`inbox/status.json` の形、エンジンの「前の版に戻す」の要求（proto）。モデルの sha256 の表を移す。→ #246 の子の issue
 - **#246-2 エンジン**: 見回り、取り込みのスレッド、入れ替え、起動時の回復、初めての導入、`model.is_file()` の見直し。→ #246
 - **#246-3 設定アプリ**: 状態の表示、「取り込み用のフォルダを開く」、「前の版に戻す」。→ 新しい issue
 - **#247 export**: `cargo xtask data export`。手順の文書（`docs/` に隔離環境の手順。README からリンク）。→ #247
@@ -280,3 +280,20 @@ inbox/
 - ADR 0004 §2・§8、ADR 0005 §6.2・§8.3、ADR 0033 §4.2・§6・§7、ADR 0042
 - spec「辞書の更新」、NFR-17、NFR-33、NFR-38
 - `docs/proxy-download.md`
+
+## 付録. 実装した型の対応表（#246-1、#255。crate `ikari-resource`）
+
+| ADR の語 | 実装 |
+| --- | --- |
+| manifest（§5.1） | `Manifest`（`schema`、`created: Created`、`origin: Origin`、`release`、`components`、`signature`）。`Manifest::{from_json, to_json, read, write, freshness_of}`。`MANIFEST_SCHEMA = 1`、`MANIFEST_FILE_NAME` |
+| 部品、`kind` | `Component`（`kind: ComponentKind`（Dict / Table / Model）、`format`、`files: Vec<FileEntry>`、`builder`・`sources`（中身は見ない））。`FileEntry { name, size, sha256 }` |
+| `created`（§6.3） | `Created`（UTC `YYYY-MM-DDTHH:MM:SSZ` だけ。文字列の順が時刻の順） |
+| 検証（§6.1 の 1〜3） | `verify_bundle(dir, &VerifyOptions) -> VerifiedBundle`。`VerifyOptions { formats: SupportedFormats, known_models, installed }`（`Default` あり）。`SupportedFormats::current()`（dict は `dict-format` の `FORMAT_VERSION`、表・モデルは `TABLE_FORMAT_VERSION` = 1） |
+| 古い束・同じ版（§6.3） | `Freshness`（Newer / Same / Older）。Older は `ResourceError::Stale` で拒み、Same は `VerifiedBundle.freshness` に出す |
+| 拒む理由 | `ResourceError`（`ManifestMissing`、`ManifestMalformed`、`UnknownSchema`、`UnknownKind`、`UnsafePath`、`Symlink`、`NotRegularFile`、`MissingFile`、`Truncated`、`SizeMismatch`、`Sha256Mismatch`、`UnlistedFile`、`FormatMismatch`、`IncompleteDict`、`UnknownModel`、`Stale`、`Io`） |
+| 既知のモデルの表（§5.2） | `KNOWN_MODELS: &[KnownModel { file_name, sha256 }]`、`ZENZ_SMALL_FILE_NAME`、`ZENZ_SMALL_SHA256`。xtask の `SHA_ZENZ_SMALL` と engine の `MODEL_FILE_NAME` との一致は、crate のテストが見る（xtask は今回変えていない。xtask が表から読む形への切り替えは #246-2 以降） |
+| sha256 | `sha256_file`、`sha256_reader`（8KB のバッファのストリーム） |
+| journal（§7.2、§7.4） | `Journal { schema, component, op: JournalOp (Install / Rollback), stage: JournalStage, bundle }`。`JournalStage`（Swapping、PrevRemoved、CurrentMovedToPrev、NewInPlace、ManifestWritten）。`Journal::{new, save, load, clear, path_in}`、`JOURNAL_FILE_NAME` |
+
+- 未実装（#246-2 以降）: 試しの組み立て・表の全行の検査・ディスクの余り（§6.1 の 4・5）、`inbox/status.json` の型、「前の版に戻す」の proto、揃った条件（§4.3 の 3）、入れ替え本体。
+- manifest の未知のフィールドは読み飛ばす（未知の `schema`・`kind` は拒む）。ADR 本文に指定がなかったための最小の選択。
