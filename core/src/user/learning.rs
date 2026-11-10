@@ -180,12 +180,15 @@ impl LearningStore {
         })
     }
 
-    /// `open` と同じで、ファイルが読めない・不正なときは、そのファイルを `<名前>.bad`（あれば `.bad.1`、`.2` …）へ
+    /// `open` と同じで、ファイルの中身が不正なとき（列、値、重複、UTF-8）は、そのファイルを `<名前>.bad`（あれば `.bad.1`、`.2` …）へ
     /// 移し（rename。中身も権限も変えない）、空の学習で開く。壊れた学習ファイルで日本語が打てなくなるのを避けるため。
-    /// 移した先を 2 つ目の値で返す（正常なら None）。移せなかったときは、元のエラーを返して何も変えない（データを失わない側）。
+    /// 移した先を 2 つ目の値で返す（正常なら None）。移せなかったとき、読み取りの失敗、`Schema` の不一致（新しい版の形式）は、元のエラーを返して何も変えない（データを失わない側）。
     pub fn open_or_quarantine(path: &Path) -> Result<(Self, Option<PathBuf>), UserDataError> {
         match Self::open(path) {
             Ok(store) => Ok((store, None)),
+            // 退避するのは「内容が不正」だけ。読み取りの失敗（権限、I/O、ディレクトリ）と、
+            // 新しい版が書いた形式（Schema。ダウングレード）は、触らずエラーで止める
+            Err(err) if !is_corrupt_content(&err) => Err(err),
             Err(err) => {
                 let moved = quarantine(path).map_err(|_| err)?;
                 Ok((Self::open(path)?, Some(moved)))
@@ -563,6 +566,15 @@ fn serialize(salt: u64, rows: &Rows) -> String {
         ));
     }
     out
+}
+
+/// ファイルの中身が不正か（退避してよいエラー）。`read_to_string` が `InvalidData` を返すのは UTF-8 が不正なときだけ
+fn is_corrupt_content(err: &UserDataError) -> bool {
+    match err {
+        UserDataError::Parse { .. } | UserDataError::Invalid(_) => true,
+        UserDataError::Io(e) => e.kind() == std::io::ErrorKind::InvalidData,
+        UserDataError::Schema { .. } => false,
+    }
 }
 
 /// 退避先の拡張子（`learning.tsv` → `learning.tsv.bad`）
@@ -1093,6 +1105,45 @@ mod tests {
         assert!(moved.is_none());
         assert_eq!(std::fs::read(&p).unwrap(), before);
         assert!(!dir.path().join("learning.tsv.bad").exists());
+    }
+
+    #[test]
+    fn schema_mismatch_is_not_moved() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("learning.tsv");
+        let text = "#ikari-learning\tschema=9\tsalt=00000000000000ff\n";
+        std::fs::write(&p, text).unwrap();
+        let err = LearningStore::open_or_quarantine(&p).err().unwrap();
+        assert!(matches!(err, UserDataError::Schema { found: 9, .. }));
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), text);
+        assert!(!dir.path().join("learning.tsv.bad").exists());
+    }
+
+    #[test]
+    fn read_failures_are_not_moved() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        // ディレクトリが learning.tsv の位置にある
+        let p = dir.path().join("learning.tsv");
+        std::fs::create_dir(&p).unwrap();
+        assert!(matches!(
+            LearningStore::open_or_quarantine(&p),
+            Err(UserDataError::Io(_))
+        ));
+        assert!(p.is_dir());
+        std::fs::remove_dir(&p).unwrap();
+        // 読めない権限（root は権限を無視するので、読めてしまうときは確かめない）
+        std::fs::write(&p, b"broken\n").unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::read(&p).is_err() {
+            assert!(matches!(
+                LearningStore::open_or_quarantine(&p),
+                Err(UserDataError::Io(_))
+            ));
+            assert!(p.exists());
+            assert!(!dir.path().join("learning.tsv.bad").exists());
+        }
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600)).unwrap();
     }
 
     #[test]
