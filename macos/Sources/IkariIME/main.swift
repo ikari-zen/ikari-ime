@@ -24,8 +24,7 @@ guard let bundleIdentifier = Bundle.main.bundleIdentifier else {
 
 // サーバを生存させておく（解放されると接続を受けられなくなる）
 let server = IMKServer(name: IkariIdentifiers.inputMethodConnection, bundleIdentifier: bundleIdentifier)
-guard server != nil else {
-    FileHandle.standardError.write(Data("ikari: failed to start IMKServer\n".utf8))
+guard ServerStartup.checkServer(server, reporter: SystemStartupFailureReporter()) else {
     exit(EXIT_FAILURE)
 }
 
