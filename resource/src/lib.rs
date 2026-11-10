@@ -22,8 +22,11 @@ pub use manifest::{
     Component, ComponentKind, Created, FileEntry, Freshness, MANIFEST_FILE_NAME, MANIFEST_SCHEMA,
     Manifest, Origin,
 };
-pub use models::{KNOWN_MODELS, KnownModel, ZENZ_SMALL_FILE_NAME, ZENZ_SMALL_SHA256};
+pub use models::{
+    KNOWN_MODELS, KnownModel, ZENZ_SMALL_FILE_NAME, ZENZ_SMALL_SHA256, ZENZ_SMALL_SIZE,
+};
 pub use sha256::{sha256_file, sha256_reader};
 pub use verify::{
     SupportedFormats, TABLE_FORMAT_VERSION, VerifiedBundle, VerifyOptions, verify_bundle,
+    verify_model_file,
 };

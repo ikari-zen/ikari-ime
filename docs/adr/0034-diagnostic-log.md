@@ -172,6 +172,7 @@ message DiagTag { string key = 1; string value = 2; }
 | `convert`、`prefetch` に `ctx=0` | 周辺テキストが `available = false` のときだけ足す（`ctx_change` は番号が変わったときしか出ないので、回数はここで数える） | 3 |
 | `lm_load` | 所要（us）、`err`（失敗なら種類）。読み込みが終わったとき | 5 |
 | `lm_unload` | `reason=idle` `settings` `shutdown` | 5 |
+| `lm_reject` | `file=<モデルのファイル名>`、`reason=unknown_name` `size` `sha256` `unreadable`。起動時、モデルが既知の表（名前、大きさ、sha256）と合わず LM なしで起動したとき（#270）。ファイル名はエンジンの固定の定数で、外部由来の文字列は書かない（NFR-19） | 5 |
 | `stat` | `rss_kb=`、`sessions=`。前回の `stat` から要求があったときだけ、10 分ごと（見回りのスレッド） | 5 |
 | `log_dropped` | `n=`（キューが満杯で捨てた行の数） | 健全性 |
 | `diag_reject` | `n=`（許可リストで捨てた値・行の数）。1 分ごとにまとめて | 健全性 |

@@ -9,6 +9,8 @@
 pub struct KnownModel {
     pub file_name: &'static str,
     pub sha256: &'static str,
+    /// ファイルの大きさ（バイト）。sha256 を取る前に、安く弾くために使う
+    pub size: u64,
 }
 
 /// zenz-v3.2 small の入れる名前（`engine` の `MODEL_FILE_NAME` と同じ）
@@ -17,10 +19,14 @@ pub const ZENZ_SMALL_FILE_NAME: &str = "zenz-v3.2-small-Q5_K_M.gguf";
 pub const ZENZ_SMALL_SHA256: &str =
     "29c223d4c23327b80fd13ebb5ab2555057a46317997d5da391584ffbef0db673";
 
+/// 配布元のファイルの大きさ（バイト）
+pub const ZENZ_SMALL_SIZE: u64 = 73_871_936;
+
 /// 今アプリが受けるモデル。モデルを足す・替えるときは ADR で実測してから（CLAUDE.md）
 pub const KNOWN_MODELS: &[KnownModel] = &[KnownModel {
     file_name: ZENZ_SMALL_FILE_NAME,
     sha256: ZENZ_SMALL_SHA256,
+    size: ZENZ_SMALL_SIZE,
 }];
 
 #[cfg(test)]

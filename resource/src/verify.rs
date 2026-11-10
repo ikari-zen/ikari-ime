@@ -5,7 +5,7 @@
 //! 形式の版は `SupportedFormats` で渡す（この crate は辞書の中身を読まない）。
 
 use std::collections::{BTreeMap, HashSet};
-use std::fs;
+use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 
 use ikari_dict_format::{
@@ -17,7 +17,7 @@ use crate::manifest::{
     Component, ComponentKind, Freshness, MANIFEST_FILE_NAME, Manifest, check_file_name,
 };
 use crate::models::{KNOWN_MODELS, KnownModel};
-use crate::sha256::sha256_file;
+use crate::sha256::{sha256_file, sha256_reader};
 
 /// 表（postal、emoji）とモデルの形式の版
 pub const TABLE_FORMAT_VERSION: u32 = 1;
@@ -257,6 +257,54 @@ fn check_digests(dir: &Path, manifest: &Manifest) -> Result<(), ResourceError> {
                 actual,
             });
         }
+    }
+    Ok(())
+}
+
+/// 置いてあるモデル 1 件（`models/` の GGUF）を、読む前に照合する。
+///
+/// 表（`known`）にある名前で、大きさ、sha256 の順に合うものだけを通す（大きさで先に弾く）。
+/// 開いたハンドルで大きさも sha256 も見る。
+pub fn verify_model_file(
+    path: &Path,
+    file_name: &str,
+    known: &[KnownModel],
+) -> Result<(), ResourceError> {
+    let Some(model) = known.iter().find(|m| m.file_name == file_name) else {
+        return Err(ResourceError::UnknownModel {
+            name: file_name.to_owned(),
+            sha256: String::new(),
+        });
+    };
+    let file = File::open(path).map_err(|e| ResourceError::io(path, e))?;
+    let meta = file.metadata().map_err(|e| ResourceError::io(path, e))?;
+    if !meta.is_file() {
+        return Err(ResourceError::NotRegularFile {
+            name: file_name.to_owned(),
+        });
+    }
+    let actual = meta.len();
+    if actual < model.size {
+        return Err(ResourceError::Truncated {
+            name: file_name.to_owned(),
+            expected: model.size,
+            actual,
+        });
+    }
+    if actual > model.size {
+        return Err(ResourceError::SizeMismatch {
+            name: file_name.to_owned(),
+            expected: model.size,
+            actual,
+        });
+    }
+    let digest = sha256_reader(file).map_err(|e| ResourceError::io(path, e))?;
+    if digest != model.sha256 {
+        return Err(ResourceError::Sha256Mismatch {
+            name: file_name.to_owned(),
+            expected: model.sha256.to_owned(),
+            actual: digest,
+        });
     }
     Ok(())
 }
