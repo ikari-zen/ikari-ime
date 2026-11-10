@@ -77,6 +77,7 @@ fn known(models: &mut Vec<KnownModel>) {
     models.push(KnownModel {
         file_name: MODEL_NAME,
         sha256: Box::leak(sha256_reader(MODEL_BYTES).unwrap().into_boxed_str()),
+        size: MODEL_BYTES.len() as u64,
     });
 }
 
@@ -373,4 +374,66 @@ fn older_bundle_is_rejected_and_same_is_reported() {
     };
     let v = verify_bundle(dir.path(), &opts).unwrap();
     assert_eq!(v.freshness["postal"], Freshness::Newer);
+}
+
+// ---- verify_model_file（models/ の単体の照合） ----
+
+fn model_file(content: &[u8]) -> (tempfile::TempDir, std::path::PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(MODEL_NAME);
+    fs::write(&path, content).unwrap();
+    (dir, path)
+}
+
+fn known_table() -> Vec<KnownModel> {
+    let mut models = Vec::new();
+    known(&mut models);
+    models
+}
+
+#[test]
+fn model_file_with_known_name_size_and_sha256_passes() {
+    let (_d, path) = model_file(MODEL_BYTES);
+    assert!(ikari_resource::verify_model_file(&path, MODEL_NAME, &known_table()).is_ok());
+}
+
+#[test]
+fn model_file_with_other_content_of_same_size_is_a_sha256_mismatch() {
+    let mut bytes = MODEL_BYTES.to_vec();
+    bytes[0] ^= 0xff;
+    let (_d, path) = model_file(&bytes);
+    assert!(matches!(
+        ikari_resource::verify_model_file(&path, MODEL_NAME, &known_table()),
+        Err(ResourceError::Sha256Mismatch { .. })
+    ));
+}
+
+#[test]
+fn model_file_of_unexpected_size_is_rejected_by_size() {
+    let (_d, path) = model_file(&MODEL_BYTES[1..]);
+    assert!(matches!(
+        ikari_resource::verify_model_file(&path, MODEL_NAME, &known_table()),
+        Err(ResourceError::Truncated { .. })
+    ));
+    let mut longer = MODEL_BYTES.to_vec();
+    longer.push(0);
+    let (_d2, path2) = model_file(&longer);
+    assert!(matches!(
+        ikari_resource::verify_model_file(&path2, MODEL_NAME, &known_table()),
+        Err(ResourceError::SizeMismatch { .. })
+    ));
+}
+
+#[test]
+fn model_file_with_unknown_name_or_missing_is_rejected() {
+    let (_d, path) = model_file(MODEL_BYTES);
+    assert!(matches!(
+        ikari_resource::verify_model_file(&path, "other.gguf", &known_table()),
+        Err(ResourceError::UnknownModel { .. })
+    ));
+    let gone = path.with_file_name("nothing");
+    assert!(matches!(
+        ikari_resource::verify_model_file(&gone, MODEL_NAME, &known_table()),
+        Err(ResourceError::Io { .. })
+    ));
 }

@@ -12,6 +12,7 @@ use std::sync::{Once, Weak};
 use ikari_runmark::PrevExit;
 
 use crate::diag_schema::{self, Rejected};
+use crate::model_check::ModelReject;
 
 pub(crate) const KIND_DIAG: &str = "diag";
 const KIND_DIAG_REJECT: &str = "diag_reject";
@@ -21,8 +22,12 @@ const KIND_STAT: &str = "stat";
 const KIND_PREV_EXIT: &str = "prev_exit";
 const KIND_PANIC: &str = "panic";
 
+const KIND_LM_REJECT: &str = "lm_reject";
+
 /// `lm_load` の失敗の語
 pub(crate) const ERR_LM_LOAD_FAILED: &str = "lm_load_failed";
+/// `lm_reject` の語（読む前の照合に通らなかった）
+const ERR_LM_REJECTED: &str = "lm_model_rejected";
 
 /// `lm_unload` の理由（ADR 0034 §4.3）
 #[derive(Clone, Copy)]
@@ -169,6 +174,18 @@ impl Inner {
         };
         self.log
             .record_note(KIND_DIAG_REJECT, 0, self.lm_state_name(), None, Some(&note));
+    }
+
+    /// `lm_reject file=<モデルの名前> reason=<語>`。読む前の照合に通らず、LM なしで起動したとき
+    pub(crate) fn record_lm_reject(&self, file_name: &str, reason: ModelReject) {
+        let note = format!("file={file_name} reason={}", reason.as_word());
+        self.log.record_note(
+            KIND_LM_REJECT,
+            0,
+            self.lm_state_name(),
+            Some(ERR_LM_REJECTED),
+            Some(&note),
+        );
     }
 
     pub(crate) fn record_lm_unload(&self, reason: UnloadReason) {

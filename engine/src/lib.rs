@@ -27,6 +27,7 @@ mod lock;
 mod log;
 #[cfg(test)]
 mod mock_seam;
+mod model_check;
 mod rss;
 mod segments;
 mod session;
@@ -205,7 +206,13 @@ impl Engine {
 
         let lock = EngineLock::acquire(&data_dir).map_err(|e| EngineError::Open(e.to_string()))?;
         let model = data_dir.join(MODELS_DIR_NAME).join(MODEL_FILE_NAME);
-        let lm_model = (lm_requested && cfg!(feature = "lm") && model.is_file()).then_some(model);
+        // 読む前に、既知のモデルの表と照合する。通らなければ LM なしで起動する（理由はログに書く）
+        let (lm_model, model_reject) = model_check::select_lm_model(
+            lm_requested && cfg!(feature = "lm"),
+            &model,
+            MODEL_FILE_NAME,
+            ikari_resource::KNOWN_MODELS,
+        );
         let paths = StackPaths {
             dict_dir: UserDir::new(&data_dir).dict_dir(),
             user_dir: Some(data_dir.clone()),
@@ -231,7 +238,7 @@ impl Engine {
         };
         let stack = build_stack(&paths, &opts).map_err(|e| EngineError::Open(e.to_string()))?;
         let rebuild: StackBuilder = Box::new(move |reuse| build_stack_with(&paths, &opts, reuse));
-        Ok(Engine::from_parts(EngineParts {
+        let engine = Engine::from_parts(EngineParts {
             stack,
             rebuild: Some(rebuild),
             data_dir: Some(data_dir),
@@ -239,7 +246,11 @@ impl Engine {
             lm_budget,
             convert_wait: settings.convert_wait_or_default(),
             lock: Some(lock),
-        }))
+        });
+        if let Some(reason) = model_reject {
+            engine.inner.record_lm_reject(MODEL_FILE_NAME, reason);
+        }
+        Ok(engine)
     }
 
     /// 組み立て済みの部品から作る。スレッドを起動し、LM があれば warm_up を始める。
