@@ -63,8 +63,14 @@ pub(crate) fn select_lm_model(
     file_name: &str,
     known: &[KnownModel],
 ) -> (Option<PathBuf>, Option<ModelReject>) {
-    if !lm_wanted || !model.is_file() {
+    if !lm_wanted {
         return (None, None);
     }
-    vet_model(model.to_owned(), file_name, known)
+    // 開く前に種類を見る（FIFO などを open して止まらない）。なければ黙る。あるのに普通のファイルでなければ拒む
+    match std::fs::metadata(model) {
+        Ok(meta) if meta.is_file() => vet_model(model.to_owned(), file_name, known),
+        Ok(_) => (None, Some(ModelReject::Unreadable)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (None, None),
+        Err(_) => (None, Some(ModelReject::Unreadable)),
+    }
 }

@@ -207,12 +207,14 @@ impl Engine {
         let lock = EngineLock::acquire(&data_dir).map_err(|e| EngineError::Open(e.to_string()))?;
         let model = data_dir.join(MODELS_DIR_NAME).join(MODEL_FILE_NAME);
         // 読む前に、既知のモデルの表と照合する。通らなければ LM なしで起動する（理由はログに書く）
+        // （LM のないビルドでも照合して記録する。読むのは LM のあるビルドだけ）
         let (lm_model, model_reject) = model_check::select_lm_model(
-            lm_requested && cfg!(feature = "lm"),
+            lm_requested,
             &model,
             MODEL_FILE_NAME,
             ikari_resource::KNOWN_MODELS,
         );
+        let lm_model = lm_model.filter(|_| cfg!(feature = "lm"));
         let paths = StackPaths {
             dict_dir: UserDir::new(&data_dir).dict_dir(),
             user_dir: Some(data_dir.clone()),
