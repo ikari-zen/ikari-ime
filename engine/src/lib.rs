@@ -181,6 +181,8 @@ pub fn stack_options(idle_unload_secs: u32, budget: LmBudget) -> StackOptions {
         },
         // セッションの途中で学習が増えるので、空でも LearningRanker を入れる
         always_learning_ranker: true,
+        // 壊れた学習ファイルで日本語が打てなくなるのを避ける（#271）
+        quarantine_learning: true,
         ..StackOptions::default()
     }
 }

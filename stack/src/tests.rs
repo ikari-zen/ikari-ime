@@ -203,7 +203,18 @@ fn runtime_quarantines_a_broken_learning_file_and_starts_empty() {
         ..Default::default()
     };
     let (d, g) = mock();
-    let stack = assemble(StackInputs::new(d, g), &paths, &StackOptions::default()).unwrap();
+    let off = assemble(
+        StackInputs::new(d.clone(), g.clone()),
+        &paths,
+        &StackOptions::default(),
+    );
+    assert!(off.is_err(), "not moved unless asked");
+    assert!(tsv.exists());
+    let opts = StackOptions {
+        quarantine_learning: true,
+        ..Default::default()
+    };
+    let stack = assemble(StackInputs::new(d, g), &paths, &opts).unwrap();
     assert_eq!(
         stack.meta.learning_quarantined.as_deref(),
         Some(dir.join("learning.tsv.bad").as_path())

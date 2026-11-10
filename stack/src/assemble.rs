@@ -231,8 +231,8 @@ pub(super) fn assemble_with(
                 let path = ud.learning_tsv();
                 let wrap = |e| open_err(format!("{}: {e}", path.display()));
                 // 実行時は、壊れた学習ファイルを退避して空で始める（日本語が打てなくなるのを避ける）。
-                // eval は利用者のファイルを動かさない
-                let store = if opts.mode == AssemblyMode::Runtime {
+                // CLI と eval は利用者のファイルを動かさない
+                let store = if opts.mode == AssemblyMode::Runtime && opts.quarantine_learning {
                     let (store, moved) = LearningStore::open_or_quarantine(&path).map_err(wrap)?;
                     if let Some(moved) = moved {
                         warnings.push(format!(
