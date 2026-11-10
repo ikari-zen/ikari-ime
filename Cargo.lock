@@ -605,6 +605,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ikari-resource"
+version = "0.1.0"
+dependencies = [
+ "ikari-dict-format",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
 name = "ikari-runmark"
 version = "0.1.0"
 dependencies = [
