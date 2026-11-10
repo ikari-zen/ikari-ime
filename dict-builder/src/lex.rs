@@ -813,6 +813,25 @@ mod tests {
     }
 
     #[test]
+    fn only_chain_rows_may_have_digits_in_the_reading() {
+        let noun = "名詞,普通名詞,一般,*,*";
+        let mut a = acc();
+        add(&mut a, &row("a", 1, 1, 1, noun, "ア")).unwrap();
+        // notcore（Sudachi の行、ウェブ語彙）の数字を含む読みは、これまでどおり入れない
+        add_notcore(&mut a, &row("北1条", 1, 1, 1, noun, "キタ1ジョウ")).unwrap();
+        a.adding_notcore = true;
+        a.adding_priority = true;
+        add(&mut a, &row("北1条", 1, 1, 1, noun, "キタ1ジョウ")).unwrap();
+        add(&mut a, &row("北１条", 1, 1, 1, noun, "キタ１ジョウ")).unwrap(); // 全角の数字は連なりでも入れない
+        a.adding_notcore = false;
+        a.adding_priority = false;
+        let lex = a.finish();
+        assert_eq!(lex.skipped.get(SKIP_READING_NOT_INDEXABLE), Some(&2));
+        let kept: Vec<&str> = lex.rows.iter().map(|(r, _)| r.reading.as_str()).collect();
+        assert_eq!(kept, ["あ", "きた1じょう"]);
+    }
+
+    #[test]
     fn notcore_duplicates_lose_to_core_even_when_cheaper() {
         let noun = "名詞,普通名詞,一般,*,*";
         let mut a = acc();
