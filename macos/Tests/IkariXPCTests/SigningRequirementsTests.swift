@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import IkariXPC
@@ -27,7 +28,6 @@ import Testing
             SigningRequirements.settingsApp(mode: .team)
                 == "identifier \"io.github.ikari-zen.inputmethod.ikari.settings\" and anchor apple generic and certificate leaf[subject.OU] = \"L9Z8SK775X\""
         )
-        #expect(SigningRequirements.settingsApp(mode: .adhoc) == "identifier \"io.github.ikari-zen.inputmethod.ikari.settings\"")
     }
 
     @Test func bridgeShellRequirementPinsTheShellIdentifierAndTheTeam() {
@@ -35,6 +35,27 @@ import Testing
             SigningRequirements.bridgeShell(mode: .team)
                 == "identifier \"io.github.ikari-zen.inputmethod.ikari\" and anchor apple generic and certificate leaf[subject.OU] = \"L9Z8SK775X\""
         )
-        #expect(SigningRequirements.bridgeShell(mode: .adhoc) == "identifier \"io.github.ikari-zen.inputmethod.ikari\"")
+    }
+
+    @Test func adhocBridgeRequirementsPinTheCodeHash() {
+        let hash = Data([0x00, 0xab, 0xff])
+        #expect(
+            SigningRequirements.settingsApp(mode: .adhoc, cdhash: hash)
+                == "identifier \"io.github.ikari-zen.inputmethod.ikari.settings\" and cdhash H\"00abff\"")
+        #expect(
+            SigningRequirements.bridgeShell(mode: .adhoc, cdhash: hash)
+                == "identifier \"io.github.ikari-zen.inputmethod.ikari\" and cdhash H\"00abff\"")
+    }
+
+    @Test func adhocBridgeRequirementsNeedACodeHash() {
+        #expect(SigningRequirements.settingsApp(mode: .adhoc) == nil)
+        #expect(SigningRequirements.bridgeShell(mode: .adhoc) == nil)
+        #expect(SigningRequirements.settingsApp(mode: .adhoc, cdhash: Data()) == nil)
+    }
+
+    @Test func teamBridgeRequirementsIgnoreTheCodeHash() {
+        #expect(
+            SigningRequirements.settingsApp(mode: .team, cdhash: Data([1]))
+                == SigningRequirements.settingsApp(mode: .team))
     }
 }

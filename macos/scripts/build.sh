@@ -306,9 +306,13 @@ verify_settings_app() {
   echo "settings entitlements: app-sandbox=none, network=none, hardened-runtime=on"
 
   local requirement
-  requirement="$("$APP/Contents/MacOS/ikari-smoke" --print-requirement settings "$SIGNING")"
+  # ad-hoc の要件は cdhash を含む（#269）。同じバンドルから読んだ値で組み立てる
+  requirement="$("$APP/Contents/MacOS/ikari-smoke" --print-requirement settings "$SIGNING" "$SETTINGS")"
   codesign --verify -R="$requirement" "$SETTINGS" || die "設定アプリが署名要件を満たしません: $requirement"
-  echo "signing requirement satisfied (settings)"
+  local bridge_shell_req
+  bridge_shell_req="$("$APP/Contents/MacOS/ikari-smoke" --print-requirement bridge-shell "$SIGNING" "$APP")"
+  codesign --verify -R="$bridge_shell_req" "$APP" || die "殻（ブリッジの相手）が署名要件を満たしません: $bridge_shell_req"
+  echo "signing requirement satisfied (settings, bridge shell)"
 
   # 外側の署名の封印に含まれる（差し替えられたら ikari.app の検証が通らなくなる）
   grep -q "Helpers/$SETTINGS_APP_NAME" "$APP/Contents/_CodeSignature/CodeResources" \

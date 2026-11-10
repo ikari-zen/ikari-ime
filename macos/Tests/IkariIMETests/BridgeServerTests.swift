@@ -428,8 +428,11 @@ private struct Rig {
         let id = (info as? [String: Any])?["identifier"] as? String ?? "none"
         #expect(BridgeServer.peerSatisfies(requirement: "identifier \"\(id)\"", descriptor: accepted))
         #expect(!BridgeServer.peerSatisfies(requirement: "identifier \"io.github.ikari-zen.inputmethod.ikari.settings\"", descriptor: accepted))
-        #expect(!BridgeServer.peerSatisfies(requirement: SigningRequirements.settingsApp(mode: .team), descriptor: accepted))
-        #expect(!BridgeServer.peerSatisfies(requirement: SigningRequirements.settingsApp(mode: .adhoc), descriptor: accepted))
+        #expect(!BridgeServer.peerSatisfies(requirement: SigningRequirements.settingsApp(mode: .team) ?? "", descriptor: accepted))
+        #expect(
+            !BridgeServer.peerSatisfies(
+                requirement: SigningRequirements.settingsApp(mode: .adhoc, cdhash: Data([1, 2, 3])) ?? "",
+                descriptor: accepted))
     }
 }
 

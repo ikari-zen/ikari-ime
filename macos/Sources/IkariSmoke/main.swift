@@ -39,14 +39,27 @@ enum SmokeConstants {
 let arguments = Array(CommandLine.arguments.dropFirst())
 
 if arguments.first == "--print-requirement" {
-    guard arguments.count == 3, let mode = SigningMode(rawValue: arguments[2]) else {
-        FileHandle.standardError.write(Data("usage: ikari-smoke --print-requirement engine|shell|settings team|adhoc\n".utf8))
+    // settings / bridge-shell を adhoc で出すときは、cdhash を読む相手のバンドル（IkariSettings.app / ikari.app）の
+    // パスが 4 つ目に要る
+    guard arguments.count == 3 || arguments.count == 4, let mode = SigningMode(rawValue: arguments[2]) else {
+        FileHandle.standardError.write(
+            Data("usage: ikari-smoke --print-requirement engine|shell|settings|bridge-shell team|adhoc [bundle-path]\n".utf8))
         exit(2)
     }
+    let pinned = arguments.count == 4 ? BundlePinning.cdhash(ofBundleAt: URL(fileURLWithPath: arguments[3])) : nil
     switch arguments[1] {
     case "engine": print(SigningRequirements.engine(mode: mode))
     case "shell": print(SigningRequirements.shell(mode: mode))
-    case "settings": print(SigningRequirements.settingsApp(mode: mode))
+    case "settings", "bridge-shell":
+        let text =
+            arguments[1] == "settings"
+            ? SigningRequirements.settingsApp(mode: mode, cdhash: pinned)
+            : SigningRequirements.bridgeShell(mode: mode, cdhash: pinned)
+        guard let text else {
+            FileHandle.standardError.write(Data("cannot build the requirement (cdhash unavailable)\n".utf8))
+            exit(1)
+        }
+        print(text)
     default:
         FileHandle.standardError.write(Data("unknown target: \(arguments[1])\n".utf8))
         exit(2)

@@ -8,7 +8,8 @@ public enum PeerSignature {
 
     /// `getsockopt(LOCAL_PEERTOKEN)` の audit token から、相手のコードが署名要件を満たすか。
     /// 取得や評価のどこで失敗しても `false`。
-    public static func satisfies(requirement text: String, descriptor: Int32) -> Bool {
+    /// `expectedPath` があれば、相手のコードのパスもそこであること（`SecCodeCopyPath`）。
+    public static func satisfies(requirement text: String, expectedPath: URL? = nil, descriptor: Int32) -> Bool {
         var token = audit_token_t()
         var length = socklen_t(MemoryLayout<audit_token_t>.size)
         guard getsockopt(descriptor, solLocal, localPeerToken, &token, &length) == 0 else { return false }
@@ -23,6 +24,19 @@ public enum PeerSignature {
         guard SecRequirementCreateWithString(text as CFString, SecCSFlags(), &requirement) == errSecSuccess,
             let requirement
         else { return false }
-        return SecCodeCheckValidity(code, SecCSFlags(), requirement) == errSecSuccess
+        guard SecCodeCheckValidity(code, SecCSFlags(), requirement) == errSecSuccess else { return false }
+        guard let expectedPath else { return true }
+        return codePath(code).map { BundlePinning.pathMatches($0, expected: expectedPath) } ?? false
+    }
+
+    /// 動いているコードのバンドルのパス
+    static func codePath(_ code: SecCode) -> URL? {
+        var staticCode: SecStaticCode?
+        guard SecCodeCopyStaticCode(code, SecCSFlags(), &staticCode) == errSecSuccess, let staticCode else {
+            return nil
+        }
+        var path: CFURL?
+        guard SecCodeCopyPath(staticCode, SecCSFlags(), &path) == errSecSuccess else { return nil }
+        return path as URL?
     }
 }
