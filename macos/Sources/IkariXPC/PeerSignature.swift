@@ -35,6 +35,11 @@ public enum PeerSignature {
         guard SecCodeCopyStaticCode(code, SecCSFlags(), &staticCode) == errSecSuccess, let staticCode else {
             return nil
         }
+        return codePath(of: staticCode)
+    }
+
+    /// 静的コードのパス（`SecCodeCopyPath`。末尾に `/` が付くことがある）
+    public static func codePath(of staticCode: SecStaticCode) -> URL? {
         var path: CFURL?
         guard SecCodeCopyPath(staticCode, SecCSFlags(), &path) == errSecSuccess else { return nil }
         return path as URL?

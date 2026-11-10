@@ -433,6 +433,34 @@ private struct Rig {
             !BridgeServer.peerSatisfies(
                 requirement: SigningRequirements.settingsApp(mode: .adhoc, cdhash: Data([1, 2, 3])) ?? "",
                 descriptor: accepted))
+
+        // 相手のパス（expectedPath）の検査を、実際のソケットで通す。
+        // テストのプロセスは .app のバンドルではないので、相手（このプロセス）の実際のパスを「本物の場所」に見立てる。
+        let actual = try #require(staticCode.flatMap { PeerSignature.codePath(of: $0) })
+        let requirement = "identifier \"\(id)\""
+        func accepts(_ expected: URL) -> Bool {
+            BridgeServer.peerSatisfies(requirement: requirement, expectedPath: expected, descriptor: accepted)
+        }
+        let plain = URL(fileURLWithPath: actual.path.hasSuffix("/") ? String(actual.path.dropLast()) : actual.path)
+        #expect(accepts(plain))
+        #expect(accepts(URL(fileURLWithPath: plain.path + "/", isDirectory: true)))
+        #expect(accepts(plain.deletingLastPathComponent().appendingPathComponent("../" + plain.deletingLastPathComponent().lastPathComponent + "/" + plain.lastPathComponent)))
+        // 弾かれる: 兄弟、接尾辞つき、親、シンボリックリンク経由の別の場所
+        #expect(!accepts(plain.deletingLastPathComponent().appendingPathComponent("sibling-" + plain.lastPathComponent)))
+        #expect(!accepts(URL(fileURLWithPath: plain.path + "-evil")))
+        #expect(!accepts(URL(fileURLWithPath: plain.path + "-evil/", isDirectory: true)))
+        #expect(!accepts(plain.deletingLastPathComponent()))
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("pc-link-\(UUID().uuidString.prefix(6))")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let elsewhere = directory.appendingPathComponent("elsewhere")
+        try FileManager.default.createDirectory(at: elsewhere, withIntermediateDirectories: true)
+        let linkToGenuine = directory.appendingPathComponent("link")
+        try FileManager.default.createSymbolicLink(at: linkToGenuine, withDestinationURL: plain)
+        #expect(accepts(linkToGenuine))  // 本物へのリンクは、解けば本物の場所
+        let linkToOther = directory.appendingPathComponent("link-other")
+        try FileManager.default.createSymbolicLink(at: linkToOther, withDestinationURL: elsewhere)
+        #expect(!accepts(linkToOther))
     }
 }
 

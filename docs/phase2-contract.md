@@ -37,6 +37,7 @@ Swift の定数は `macos/Sources/IkariXPC/Identifiers.swift`（`IkariIdentifier
 設定アプリ → 殻（`SigningRequirements.bridgeShell(mode:cdhash:)`）も同じ形（`identifier "io.github.ikari-zen.inputmethod.ikari"`、ad-hoc は `and cdhash H"<ikari.app の cdhash>"`）。
 
 - ad-hoc では identifier の一致だけでは相手を確かめられないので、ブリッジ（上の 2 つ）は cdhash も固定する（#269）。cdhash は値を埋めず、同じバンドルから実行時に読む（殻は `Contents/Helpers/IkariSettings.app`、設定アプリは外側の `ikari.app`。`BundlePinning`）。さらに相手のコードのパス（`SecCodeCopyPath`）が、その自バンドル内の場所かも確かめる。cdhash を読めない、バンドルの構造が想定と違うときは、接続を断る（安全側）。`team` の要件は変えない。
+- cdhash は殻の起動時に 1 回だけ読む。ad-hoc では、`install.sh` などで入れ替えたら殻を再起動する（しないと、新しい設定アプリは殻のログの `bridge: rejected a peer (signature)` で拒まれる）。
 - ad-hoc のうち、殻 ↔ エンジン（XPC）は identifier の一致だけ。同梱の XPC サービスは launchd の名前空間で守られる。
 - `ikari-smoke --print-requirement settings|bridge-shell adhoc <バンドルのパス>` は、そのバンドルの cdhash で要件を出す。
 - `team` のビルドの署名 ID は Keychain の `Apple Development: …` 証明書（期限 2027-05-23。切れたら Xcode で更新する）。

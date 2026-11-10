@@ -43,6 +43,15 @@ import Testing
         #expect(!BundlePinning.pathMatches(directory, expected: real))
     }
 
+    @Test func pathMatchesIgnoresTrailingSlashButNotPrefixesOrDotDot() {
+        let expected = URL(fileURLWithPath: "/Applications/ikari.app/Contents/Helpers/IkariSettings.app")
+        #expect(BundlePinning.pathMatches(URL(string: "file:///Applications/ikari.app/Contents/Helpers/IkariSettings.app/")!, expected: expected))
+        #expect(BundlePinning.pathMatches(URL(fileURLWithPath: "/Applications/ikari.app/Contents/Helpers/IkariSettings.app/", isDirectory: true), expected: expected))
+        #expect(BundlePinning.pathMatches(URL(fileURLWithPath: "/Applications/x/../ikari.app/Contents/Helpers/IkariSettings.app"), expected: expected))
+        #expect(!BundlePinning.pathMatches(URL(fileURLWithPath: "/Applications/ikari.app/Contents/Helpers/IkariSettings.app-evil/"), expected: expected))
+        #expect(!BundlePinning.pathMatches(URL(fileURLWithPath: "/Applications/ikari.app-evil/Contents/Helpers/IkariSettings.app"), expected: expected))
+    }
+
     /// 本物と同じバイナリは通り、同じ識別子で ad-hoc 署名した別のバイナリは弾かれる
     @Test func cdhashRequirementRejectsAnotherBinaryWithTheSameIdentifier() throws {
         let directory = try makeTemporaryDirectory()

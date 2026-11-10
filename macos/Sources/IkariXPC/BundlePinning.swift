@@ -43,10 +43,16 @@ public enum BundlePinning {
         return unique
     }
 
-    /// 相手のパスが想定の場所か（シンボリックリンクを解いて比べる）
+    /// 相手のパスが想定の場所か（末尾の `/` の有無に依らず、シンボリックリンクと `..` を解いた完全一致）
     public static func pathMatches(_ actual: URL, expected: URL) -> Bool {
-        actual.resolvingSymlinksInPath().standardizedFileURL.path
-            == expected.resolvingSymlinksInPath().standardizedFileURL.path
+        normalizedPath(actual) == normalizedPath(expected)
+    }
+
+    /// `SecCodeCopyPath` は `file:///…/ikari.app/` のように末尾に `/` が付くことがあるので、ディレクトリとして正規化する
+    static func normalizedPath(_ url: URL) -> String {
+        var path = url.path
+        while path.count > 1, path.hasSuffix("/") { path.removeLast() }
+        return URL(fileURLWithPath: path, isDirectory: true).resolvingSymlinksInPath().standardized.path
     }
 }
 
