@@ -88,6 +88,7 @@
 - [ ] Settings → Code security（Advanced Security）で、次を有効にする。
   - [ ] Dependency graph と **Dependabot alerts**（設定ファイルは `.github/dependabot.yml`。週 1 回、更新の PR を出す）
   - [ ] **Secret scanning** と **Push protection**
+  - [ ] 依存の定期検査（`.github/workflows/audit.yml`。週 1 回の `cargo audit`）を、Actions の画面から手動で 1 回動かして、通ることを確かめる。失敗の通知が届く設定（Settings → Notifications）も見る。
   - [ ] Code scanning（CodeQL。`.github/workflows/codeql.yml` が main への push と PR、週 1 回で動く）の最初の結果を確かめる
 - [ ] **ブランチ保護**（Settings → Rules → Rulesets、または Branches）。今は、main への直接のコミットと push を、手元の `.githooks/`（`git config core.hooksPath .githooks` で有効）と、Claude Code のフックで止めている。これらは手元でしか効かないので、GitHub の設定でも止める。
   - [ ] main への直接の push を禁止する（PR を必須にする）。
