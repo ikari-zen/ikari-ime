@@ -407,6 +407,8 @@ pub(crate) fn real_tests() -> [&'static [&'static str]; 9] {
             "lm-metal",
             "--",
             "--ignored",
+            // 時間の上限を測るテストがあるので、並べて流さない（並列だと p99 が上限を超える）
+            "--test-threads=1",
         ],
         &[
             "test",
@@ -420,6 +422,8 @@ pub(crate) fn real_tests() -> [&'static [&'static str]; 9] {
             "real_model_edge",
             "--",
             "--ignored",
+            // 締め切り（30ms）の中で LM が使われることを測るテストがあるので、並べて流さない
+            "--test-threads=1",
         ],
         &[
             "test",
