@@ -337,7 +337,7 @@ fn real(root: &Path, consts: &LibConsts) -> Result<(), Failure> {
     Ok(())
 }
 
-/// 実データの `#[ignore]` テスト（cargo の引数。`cargo xtask cov --real` も同じものを流す）
+/// 実データの `#[ignore]` テスト（cargo の引数。時間の上限を測るテストを含むものは `--release`。`cargo xtask cov --real` も同じものを流す）
 pub(crate) fn real_tests() -> [&'static [&'static str]; 9] {
     [
         &[
@@ -400,6 +400,7 @@ pub(crate) fn real_tests() -> [&'static [&'static str]; 9] {
         ],
         &[
             "test",
+            "--release",
             "-p",
             "ikari-engine",
             "--features",
