@@ -7,6 +7,7 @@ pub(crate) mod features;
 mod ingest;
 mod learning;
 mod profile;
+mod recent;
 mod transfer;
 mod util;
 
@@ -27,6 +28,7 @@ pub use learning::{
     Unit, rewriter_key,
 };
 pub use profile::{PROFILE_SCHEMA, Profile, ProfileDomain, ProfileWeight};
+pub use recent::{RecentChoices, RecentClock};
 pub use transfer::{
     EXPORT_SCHEMA, ExportIssue, ExportIssueKind, ImportSummary, check_export, export_text,
     import_text, validate_export,

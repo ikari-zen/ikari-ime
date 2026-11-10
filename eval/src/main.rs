@@ -8,10 +8,11 @@ use std::error::Error;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use std::time::Duration;
 
 use clap::Parser;
-use ikari_core::user::today_unix_day;
+use ikari_core::user::{RecentClock, today_unix_day};
 use ikari_core::{Grammar, Profile, open_dir};
 use ikari_eval::ab::{render_profile_ab, run_profile_ab};
 use ikari_eval::ajimee::load_ajimee;
@@ -340,7 +341,15 @@ fn run_scenario_mode(
     let store = setup.store.clone();
     let vectors = setup.vectors.clone();
     let today = today_unix_day();
+    // 直前ボーナスの時計は手動にして、`wait` の step で進める（ADR 0045）
+    let manual_clock = Arc::new(AtomicU64::new(0));
+    if let Some(store) = &setup.store {
+        store
+            .recent()
+            .set_clock(RecentClock::Manual(manual_clock.clone()));
+    }
     let mut host = ConverterHost {
+        manual_clock: Some(manual_clock),
         converter: &setup.converter,
         lm_deadline: args.lm_deadline_ms.map(std::time::Duration::from_millis),
         carry: Some(args.carry_params()),

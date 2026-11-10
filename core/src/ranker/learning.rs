@@ -5,7 +5,8 @@
 //! n と N は層の重み（usage 1.0 / initial 0.4）と経過日数の減衰（半減期 90 日）をかけた回数。
 //! `prior_count`（既定 1.0）は、観測が少ないうちは share を 1 にしないための平滑化で、
 //! ADR 0002 §8.4 の `n/N` からの小さな逸脱（これがないと層の重みと減衰が share に効かない）。
-//! 「最後に選んだものを 1 位にする」学習ではない。`Unconditional` の重みは低い（0.2）ので、別の文脈
+//! 「最後に選んだものを 1 位にする」学習ではない（ただし同じ読みで直前に選んだ表記だけは、窓の間、
+//! 文脈に依らない加点を受ける。ADR 0045）。`Unconditional` の重みは低い（0.2）ので、別の文脈
 //! （`Prev`、`Bag`、`Topic` が一致しない）での選択はほとんど効かない。ただし、今の文脈の特徴量に
 //! その読みの記録が 1 つもないときだけ、`Unconditional` の重みを 1.0 にする（back-off。ADR 0013）。
 //! 上限（`max_total`）は phrase の加点と word の加点に別々にかける。
@@ -26,6 +27,14 @@ use crate::vectors::WordVectors;
 
 /// `from_kv` が見るキーの接頭辞（ranker-config は Ranker をまたいで共有されるため、他のキーは無視する）
 pub const CONFIG_KEY_PREFIX: &str = "learning.";
+
+/// 直前ボーナスの大きさの既定。LM ありで、15 回選んだ表記に直前の 1 回の別の表記が勝つ最小の値に余裕を足した
+/// （5900 で負け、6000 で勝つ。6500 は余裕約 8%。ADR 0045 §6）
+const DEFAULT_RECENT_BONUS: i32 = 6500;
+/// 直前ボーナスが直線に 0 まで減る窓の既定（秒）。分単位の窓（ADR 0045 §6）
+const DEFAULT_RECENT_WINDOW_SECS: u32 = 300;
+
+const MILLIS_PER_SEC: u64 = 1000;
 
 /// back-off のときの `Unconditional` の重みの既定（ADR 0013 §9 Q2）
 const DEFAULT_BACKOFF_WEIGHT: f32 = 1.0;
@@ -80,6 +89,11 @@ pub struct LearningConfig {
     pub top_weight: u32,
     /// 1 位の確定で、すでにある記録の `last_day` だけを更新する（`top_weight` が 0 のとき）
     pub top_refresh: bool,
+    /// 同じ読みで直前に選んだ表記への加点の大きさ（ADR 0045）。0 なら加点しない（今と同じ）。
+    /// `0` 以上（`max_total` を超える分は切る）。文脈に依らない加点として LearningGuard が止める
+    pub recent_bonus: i32,
+    /// 直前ボーナスが直線に 0 まで減る窓（秒）。`recent_bonus` が 0 の間は効かない
+    pub recent_window_secs: u32,
 }
 
 impl Default for LearningConfig {
@@ -99,6 +113,8 @@ impl Default for LearningConfig {
             explicit_weight: DEFAULT_EXPLICIT_WEIGHT,
             top_weight: DEFAULT_TOP_WEIGHT,
             top_refresh: DEFAULT_TOP_REFRESH,
+            recent_bonus: DEFAULT_RECENT_BONUS,
+            recent_window_secs: DEFAULT_RECENT_WINDOW_SECS,
         }
     }
 }
@@ -122,7 +138,7 @@ impl LearningConfig {
     pub const KEY_PREFIX: &'static str = CONFIG_KEY_PREFIX;
 
     /// `learning.<name>` のキーだけを見る（`base_bonus`、`usage_weight`、`initial_weight`、
-    /// `word_factor`、`word_role_mismatch_factor`、`half_life_days`、`max_total`、`prior_count`、`unconditional_weight`、`unconditional_backoff_weight`、`today`）。他の接頭辞のキーは無視する。
+    /// `word_factor`、`word_role_mismatch_factor`、`half_life_days`、`max_total`、`prior_count`、`recent_bonus`、`recent_window_secs`、`unconditional_weight`、`unconditional_backoff_weight`、`today`）。他の接頭辞のキーは無視する。
     /// `learning.` の下の未知のキーや、読めない値はエラー。
     pub fn from_kv(kv: &BTreeMap<String, String>) -> Result<Self, RankerConfigError> {
         let mut cfg = Self::default();
@@ -149,12 +165,20 @@ impl LearningConfig {
                 "explicit_weight" => cfg.explicit_weight = parse_value(key, value)?,
                 "top_weight" => cfg.top_weight = parse_value(key, value)?,
                 "top_refresh" => cfg.top_refresh = parse_value(key, value)?,
+                "recent_bonus" => cfg.recent_bonus = parse_value(key, value)?,
+                "recent_window_secs" => cfg.recent_window_secs = parse_value(key, value)?,
                 "unconditional_weight" => cfg.unconditional_weight = parse_value(key, value)?,
                 "unconditional_backoff_weight" => {
                     cfg.unconditional_backoff_weight = parse_value(key, value)?;
                 }
                 _ => return Err(config_error(key, "未知のキーです")),
             }
+        }
+        if cfg.recent_bonus < 0 {
+            return Err(config_error(
+                "learning.recent_bonus",
+                "0 以上にしてください（0 で直前ボーナスなし）",
+            ));
         }
         Ok(cfg)
     }
@@ -181,6 +205,18 @@ impl LearningConfig {
         let half_life = self.half_life_days.max(1) as f32;
         r.count as f32 * self.layer_weight(r.layer) * 0.5f32.powf(age / half_life)
     }
+}
+
+/// 直前ボーナス: `round(recent_bonus × max(0, 1 − 経過 / 窓))`（ADR 0045 §5）。窓が 0 なら加点しない。
+fn recent_bonus(cfg: &LearningConfig, age_ms: u64) -> i64 {
+    let window_ms = u64::from(cfg.recent_window_secs) * MILLIS_PER_SEC;
+    if cfg.recent_bonus <= 0 || age_ms >= window_ms {
+        return 0;
+    }
+    // 直前の 1 回が、長い学習で積める最大（max_total）より強くならないようにする
+    let top = cfg.recent_bonus.min(cfg.max_total.max(0));
+    let left = 1.0 - age_ms as f64 / window_ms as f64;
+    (f64::from(top) * left).round() as i64
 }
 
 pub struct LearningRanker {
@@ -435,6 +471,11 @@ impl LearningRanker {
         // 役割が違う対抗と競うときの係数（1.0 のときは表を作らず、今と同じ動きにする）
         let rivals = (self.cfg.word_role_mismatch_factor < 1.0).then(|| span_rivals(cands));
 
+        // 同じ読みで直前に選んだ表記（phrase のキー）と、そのときからの経過。word には効かせない（ADR 0045 §4）
+        let recent = (self.cfg.recent_bonus > 0)
+            .then(|| self.store.recent().latest(input.reading))
+            .flatten();
+
         let base = self.cfg.base_bonus as f32;
         let cap = i64::from(self.cfg.max_total.max(0));
         // share -> 加点（四捨五入して 0..=cap）
@@ -495,8 +536,13 @@ impl LearningRanker {
                     );
                 }
             }
+            let recent_bonus = recent
+                .as_ref()
+                .filter(|(surface, _)| *surface == phrase_key)
+                .map_or(0, |(_, age_ms)| recent_bonus(&self.cfg, *age_ms));
             out.total[i] = (capped(phrase.context + phrase.unconditional)
-                + capped(word.context + word.unconditional)) as i32;
+                + capped(word.context + word.unconditional)
+                + recent_bonus) as i32;
             out.context_only[i] = (capped(phrase.context) + capped(word.context)) as i32;
         }
         out
@@ -683,6 +729,8 @@ mod tests {
             today: Some(TODAY),
             // 既存のテストは役割の違いを見ない動きを確かめる。既定の係数は別のテストで見る
             word_role_mismatch_factor: 1.0,
+            // 既存のテストは直前の選択を見ない動きを確かめる。直前ボーナスは recent_cfg で見る
+            recent_bonus: 0,
             ..LearningConfig::default()
         }
     }
@@ -962,6 +1010,167 @@ mod tests {
         );
     }
 
+    fn recent_cfg(bonus: i32, window_secs: u32) -> LearningConfig {
+        LearningConfig {
+            recent_bonus: bonus,
+            recent_window_secs: window_secs,
+            ..cfg()
+        }
+    }
+
+    /// 手動の時計で開いた store に、work の文脈で `始めて知った` を 1 回確定させる
+    fn recent_store(
+        f: &Fixture,
+        dir: &tempfile::TempDir,
+    ) -> (Arc<LearningStore>, Arc<std::sync::atomic::AtomicU64>) {
+        let ms = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let store = LearningStore::open_with_recent_clock(
+            &dir.path().join("learning.tsv"),
+            crate::user::RecentClock::Manual(ms.clone()),
+        )
+        .unwrap();
+        store.attach_grammar(f.grammar.clone());
+        let store = Arc::new(store);
+        store.record(&commit(&pool(f)[1], work_context(f)), None, TODAY);
+        (store, ms)
+    }
+
+    fn set_ms(ms: &std::sync::atomic::AtomicU64, v: u64) {
+        ms.store(v, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn recent_bonus_shape_is_linear_and_zero_at_window_end() {
+        let c = recent_cfg(2000, 100);
+        assert_eq!(recent_bonus(&c, 0), 2000);
+        assert_eq!(recent_bonus(&c, 50_000), 1000);
+        assert_eq!(recent_bonus(&c, 100_000), 0);
+        assert_eq!(recent_bonus(&c, 999_999), 0);
+        assert_eq!(recent_bonus(&recent_cfg(0, 100), 0), 0);
+        assert_eq!(recent_bonus(&recent_cfg(2000, 0), 0), 0);
+        // max_total を超える分は切る
+        let capped = LearningConfig {
+            max_total: 500,
+            ..recent_cfg(9000, 100)
+        };
+        assert_eq!(recent_bonus(&capped, 0), 500);
+    }
+
+    #[test]
+    fn recent_bonus_is_added_only_to_the_last_chosen_within_the_window() {
+        let f = fixture();
+        let dir = tempfile::tempdir().unwrap();
+        let (store, ms) = recent_store(&f, &dir);
+        let ctx = work_context(&f);
+        let base = learned_bonus(&store, &f, recent_cfg(0, 100), &ctx);
+        set_ms(&ms, 25_000);
+        assert_eq!(
+            learned_bonus(&store, &f, recent_cfg(2000, 100), &ctx),
+            base + 1500
+        );
+        set_ms(&ms, 100_000);
+        assert_eq!(learned_bonus(&store, &f, recent_cfg(2000, 100), &ctx), base);
+        // 選ばれていない候補には付かない
+        set_ms(&ms, 0);
+        let ranker = LearningRanker::new(Arc::clone(&store), None, recent_cfg(2000, 100));
+        let r = rank(&ranker, &f, &ctx, false, pool(&f));
+        assert_eq!(score_of(&r, "初めて知った"), 1000);
+    }
+
+    #[test]
+    fn recent_bonus_zero_is_identical_to_before() {
+        let f = fixture();
+        let dir = tempfile::tempdir().unwrap();
+        let (store, _ms) = recent_store(&f, &dir);
+        let ctx = work_context(&f);
+        let a = LearningRanker::new(Arc::clone(&store), None, cfg());
+        let b = LearningRanker::new(Arc::clone(&store), None, recent_cfg(0, 1));
+        let ra = rank(&a, &f, &ctx, false, pool(&f));
+        let rb = rank(&b, &f, &ctx, false, pool(&f));
+        let scores = |r: &[Candidate]| {
+            r.iter()
+                .map(|c| (c.surface.clone(), c.score))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(scores(&ra), scores(&rb));
+        assert_eq!(cfg().recent_bonus, 0);
+        assert_eq!(LearningConfig::default().recent_bonus, DEFAULT_RECENT_BONUS);
+    }
+
+    #[test]
+    fn recent_bonus_does_not_apply_to_other_readings_or_secure() {
+        let f = fixture();
+        let dir = tempfile::tempdir().unwrap();
+        let (store, _ms) = recent_store(&f, &dir);
+        let ctx = work_context(&f);
+        let plain = Context::new();
+        let secure = Context::new().with_secure(true);
+        let score_with = |reading: &str, c: &Context, cfg: LearningConfig| {
+            let ranker = LearningRanker::new(Arc::clone(&store), None, cfg);
+            let input = RankInput {
+                reading,
+                context: c,
+                grammar: &*f.grammar,
+                analysis: &ctx,
+                dict: &f.dict,
+                deadline: None,
+            };
+            let mut cands = pool(&f);
+            ranker.rank(&input, &mut cands);
+            cands.iter().map(|c| c.score).collect::<Vec<_>>()
+        };
+        let on = recent_cfg(2000, 100);
+        let off = recent_cfg(0, 100);
+        assert_eq!(
+            score_with("はじめてしった", &secure, on.clone()),
+            vec![1000, 3000]
+        );
+        // 読みが違えば（学習の記録もないので）効かない
+        assert_eq!(
+            score_with("はじめて", &plain, on),
+            score_with("はじめて", &plain, off)
+        );
+    }
+
+    #[test]
+    fn recent_bonus_is_context_free_and_not_context_only() {
+        let f = fixture();
+        let dir = tempfile::tempdir().unwrap();
+        let (store, _ms) = recent_store(&f, &dir);
+        let other = story_context(&f);
+        let ctx = Context::new();
+        let free = |cfg: LearningConfig| {
+            let ranker = LearningRanker::new(Arc::clone(&store), None, cfg);
+            let input = RankInput {
+                reading: READING,
+                context: &ctx,
+                grammar: &*f.grammar,
+                analysis: &other,
+                dict: &f.dict,
+                deadline: None,
+            };
+            ranker.context_free_bonus(&input, &pool(&f)).unwrap()
+        };
+        let off = free(recent_cfg(0, 100));
+        let on = free(recent_cfg(2000, 100));
+        assert_eq!(on[1], off[1] + 2000);
+        assert_eq!(on[0], 0);
+    }
+
+    #[test]
+    fn recent_config_keys_are_validated() {
+        let mut kv = BTreeMap::new();
+        kv.insert("learning.recent_bonus".to_string(), "1000".to_string());
+        kv.insert("learning.recent_window_secs".to_string(), "120".to_string());
+        let c = LearningConfig::from_kv(&kv).unwrap();
+        assert_eq!((c.recent_bonus, c.recent_window_secs), (1000, 120));
+        kv.insert("learning.recent_bonus".to_string(), "-1".to_string());
+        assert_eq!(
+            LearningConfig::from_kv(&kv).unwrap_err().key,
+            "learning.recent_bonus"
+        );
+    }
+
     #[test]
     fn context_free_bonus_is_only_the_unconditional_part() {
         let f = fixture();
@@ -1139,6 +1348,7 @@ mod tests {
                 max_total: 500,
                 // 役割の係数（既定 0.1）で word の加点が上限より小さくならないようにする
                 word_role_mismatch_factor: 1.0,
+                recent_bonus: 0,
                 ..LearningConfig::default()
             },
         );
