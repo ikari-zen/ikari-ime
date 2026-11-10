@@ -78,3 +78,18 @@ struct SystemStartupFailureReporter: StartupFailureReporting {
         }
     }
 }
+
+/// 不正な学習ファイルを退避して空で起動したことの知らせ（#271）。
+/// 判断の置き場所: 出すかどうか（エンジンの Hello の返事で 1 回だけ）は Rust（shell-core）。ここは表示だけ。
+enum LearningQuarantineNotice {
+    static let logMessage = "learning file was unreadable; moved aside and started with an empty learning"
+    static let noticeTitle = "学習データを読み込めませんでした"
+    static let noticeBody =
+        "学習データを読み込めなかったため、いったん空の状態で起動しました。元のファイルは、学習データと同じフォルダに「learning.tsv.bad」などの名前で残してあります。"
+
+    /// ログと通知を 1 回ずつ出す
+    static func present(reporter: StartupFailureReporting) {
+        reporter.log(logMessage)
+        reporter.notifyUser(title: noticeTitle, body: noticeBody)
+    }
+}

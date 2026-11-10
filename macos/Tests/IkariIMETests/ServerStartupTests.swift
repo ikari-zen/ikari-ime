@@ -47,3 +47,14 @@ private final class SpyReporter: StartupFailureReporting {
         #expect(!ServerStartup.isConnectionNameRegistered("io.github.ikari-zen.test.no-such-name-\(UUID().uuidString)"))
     }
 }
+
+@Suite struct LearningQuarantineNoticeTests {
+    @Test func presentLogsAndNotifiesOnce() {
+        let spy = SpyReporter()
+        LearningQuarantineNotice.present(reporter: spy)
+        #expect(spy.logs == [LearningQuarantineNotice.logMessage])
+        #expect(spy.notices.count == 1)
+        #expect(spy.notices.first?.title == "学習データを読み込めませんでした")
+        #expect(spy.notices.first?.body.contains("learning.tsv.bad") == true)
+    }
+}

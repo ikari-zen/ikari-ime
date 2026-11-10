@@ -613,6 +613,9 @@ fn action_to_pb(action: &ShellAction) -> pb::ShellAction {
             mode_id: mode_id.clone(),
         }),
         ShellAction::BridgeClose { conn } => Action::BridgeClose(pb::BridgeClose { conn: conn.0 }),
+        ShellAction::ShowLearningQuarantineNotice => {
+            Action::ShowLearningQuarantineNotice(pb::Empty {})
+        }
     };
     pb::ShellAction {
         action: Some(action),
@@ -679,6 +682,7 @@ fn action_from_pb(action: pb::ShellAction) -> Result<ShellAction> {
             Action::BridgeClose(close) => ShellAction::BridgeClose {
                 conn: ConnId(close.conn),
             },
+            Action::ShowLearningQuarantineNotice(_) => ShellAction::ShowLearningQuarantineNotice,
         },
     )
 }
@@ -1026,6 +1030,7 @@ mod tests {
                 mode_id: "io.github.ikari-zen.inputmethod.ikari.Japanese".into(),
             },
             ShellAction::BridgeClose { conn: ConnId(9) },
+            ShellAction::ShowLearningQuarantineNotice,
         ]
     }
 

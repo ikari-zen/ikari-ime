@@ -664,3 +664,59 @@ mod lane_e {
         assert_eq!(shell.input_mode(), InputMode::English);
     }
 }
+
+// ---------------------------------------------------------------- 学習ファイルの退避の通知（#271）
+
+mod learning_quarantine {
+    use super::*;
+
+    fn engine_info(shell: &Shell, learning_quarantined: bool) -> JobResult {
+        JobResult::EngineInfo {
+            attempt: 0,
+            generation: shell.poll_generation,
+            lm: Some(EngineLmState::Ready),
+            profile: None,
+            learning_quarantined,
+        }
+    }
+
+    fn count(actions: &[ShellAction]) -> usize {
+        actions
+            .iter()
+            .filter(|a| **a == ShellAction::ShowLearningQuarantineNotice)
+            .count()
+    }
+
+    fn new_shell() -> Shell {
+        shell(SettingsSource::Inline(String::new()), resources())
+    }
+
+    #[test]
+    fn quarantined_hello_shows_the_notice_once() {
+        let mut shell = new_shell();
+        let first = shell.accept(engine_info(&shell, true));
+        assert_eq!(count(&first), 1);
+        // エンジンは 1 回しか true を返さない。続く Hello（false）では出ない
+        let second = shell.accept(engine_info(&shell, false));
+        assert_eq!(count(&second), 0);
+    }
+
+    #[test]
+    fn normal_hello_shows_nothing() {
+        let mut shell = new_shell();
+        assert_eq!(count(&shell.accept(engine_info(&shell, false))), 0);
+    }
+
+    #[test]
+    fn a_stale_generation_still_delivers_the_notice() {
+        let mut shell = new_shell();
+        let stale = JobResult::EngineInfo {
+            attempt: 0,
+            generation: shell.poll_generation.wrapping_add(1),
+            lm: Some(EngineLmState::Ready),
+            profile: None,
+            learning_quarantined: true,
+        };
+        assert_eq!(count(&shell.accept(stale)), 1);
+    }
+}

@@ -962,9 +962,15 @@ impl Shell {
                 generation,
                 lm,
                 profile,
+                learning_quarantined,
             } => {
+                // エンジンは 1 回しか伝えないので、古い世代の結果でも落とさずに返す
+                let mut notice = Vec::new();
+                if learning_quarantined {
+                    notice.push(ShellAction::ShowLearningQuarantineNotice);
+                }
                 if generation != self.poll_generation {
-                    return Vec::new();
+                    return notice;
                 }
                 if let Some(lm) = lm {
                     self.lm_state = Some(lm);
@@ -974,14 +980,15 @@ impl Shell {
                     }
                     if lm == EngineLmState::Loading && attempt < LM_POLL_LIMIT {
                         self.pending_lm_poll = Some((attempt + 1, generation));
-                        return vec![ShellAction::ScheduleTimer {
+                        notice.push(ShellAction::ScheduleTimer {
                             id: LM_POLL_TIMER,
                             after_ms: LM_POLL_INTERVAL_MS,
-                        }];
+                        });
+                        return notice;
                     }
                 }
                 self.refreshing = false;
-                Vec::new()
+                notice
             }
             JobResult::Postal { request, addresses } => {
                 // パスワード欄に移っていたら何もしない
