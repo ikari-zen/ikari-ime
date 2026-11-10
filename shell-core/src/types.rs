@@ -500,6 +500,9 @@ pub enum ShellAction {
     BridgeClose {
         conn: ConnId,
     },
+    /// 不正な学習ファイルを退避して空で起動したことを知らせる（#271）。エンジンが Hello の返事で 1 回だけ伝え、
+    /// shell-core が 1 回だけ返す。OS 側は、いまの入力処理が終わってから通知を出す
+    ShowLearningQuarantineNotice,
 }
 
 // ---------------------------------------------------------------- エンジン

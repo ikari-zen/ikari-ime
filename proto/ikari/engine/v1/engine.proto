@@ -54,7 +54,9 @@ message Envelope {
 
 message EngineConfig { string data_dir = 1; bool enable_lm = 2; uint32 idle_unload_secs = 3; }  // FFI の open に渡す
 message Hello { string shell_version = 1; }
-message HelloReply { string engine_version = 1; string dict_label = 2; LmState lm = 3; }
+// learning_quarantined: 起動のときに不正な学習ファイルを .bad へ退避し、空で始めた。最初の Hello の返事だけ true
+// （エンジンが 1 回だけ伝える。#271。追加だけなので schema_version は 1 のまま）
+message HelloReply { string engine_version = 1; string dict_label = 2; LmState lm = 3; bool learning_quarantined = 4; }
 enum LmState { LM_STATE_UNSPECIFIED = 0; LM_DISABLED = 1; LM_LOADING = 2; LM_READY = 3; LM_FAILED = 4; }
 // 4 は share_context（ADR 0015 D5、D6。ADR 0046 で借用を廃止）。番号と名前は再利用しない
 message BeginSession { reserved 4; reserved "share_context"; uint64 session_id = 1; string client_bundle_id = 2; bool secure = 3; }

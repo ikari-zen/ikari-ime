@@ -60,6 +60,8 @@ pub(crate) enum JobResult {
         generation: u64,
         lm: Option<EngineLmState>,
         profile: Option<Vec<ProfileDomain>>,
+        /// エンジンが「不正な学習ファイルを退避した」と伝えた（1 回だけ true。#271）
+        learning_quarantined: bool,
     },
     Postal {
         request: PostalLookupRequest,
@@ -168,6 +170,7 @@ fn run(engine: &EngineLink, shell_version: &str, job: Job) -> JobResult {
                     attempt,
                     generation,
                     lm: Some(lm_state(&hello)),
+                    learning_quarantined: hello.learning_quarantined,
                     profile: if attempt == 0 {
                         EngineAdmin::new(engine).profile().ok()
                     } else {
@@ -179,6 +182,7 @@ fn run(engine: &EngineLink, shell_version: &str, job: Job) -> JobResult {
                     generation,
                     lm: None,
                     profile: None,
+                    learning_quarantined: false,
                 },
             }
         }

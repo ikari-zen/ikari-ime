@@ -372,6 +372,7 @@ fn answer(script: &EngineScript, body: &Body) -> Body {
             engine_version: "scenario".into(),
             dict_label: "scenario".into(),
             lm: v1::LmState::LmReady as i32,
+            ..Default::default()
         }),
         Body::Convert(_) => match script.pages.first() {
             Some(page) => Body::ConvertReply(convert_reply(page)),

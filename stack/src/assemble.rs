@@ -173,6 +173,7 @@ pub(super) fn assemble_with(
                 open_elapsed,
                 has_user_dict,
                 warnings,
+                learning_quarantined: None,
             },
             vectors: None,
             profile: None,
@@ -222,12 +223,28 @@ pub(super) fn assemble_with(
         None
     };
 
+    let mut learning_quarantined: Option<PathBuf> = None;
     let learning = match reuse.learning.clone() {
         Some(store) => Some(store),
         None => match &user_dir {
             Some(ud) if full || opts.open_learning => {
-                let store = LearningStore::open(&ud.learning_tsv())
-                    .map_err(|e| open_err(format!("{}: {e}", ud.learning_tsv().display())))?;
+                let path = ud.learning_tsv();
+                let wrap = |e| open_err(format!("{}: {e}", path.display()));
+                // 実行時は、壊れた学習ファイルを退避して空で始める（日本語が打てなくなるのを避ける）。
+                // CLI と eval は利用者のファイルを動かさない
+                let store = if opts.mode == AssemblyMode::Runtime && opts.quarantine_learning {
+                    let (store, moved) = LearningStore::open_or_quarantine(&path).map_err(wrap)?;
+                    if let Some(moved) = moved {
+                        warnings.push(format!(
+                            "learning file was unreadable; moved to {} and started empty",
+                            moved.display()
+                        ));
+                        learning_quarantined = Some(moved);
+                    }
+                    store
+                } else {
+                    LearningStore::open(&path).map_err(wrap)?
+                };
                 // 品詞名で特徴量を作る（辞書を作り直しても学習が壊れないように。ADR 0002 §8.1）
                 store.attach_grammar(Arc::clone(&grammar));
                 Some(Arc::new(store))
@@ -391,6 +408,7 @@ pub(super) fn assemble_with(
             open_elapsed,
             has_user_dict,
             warnings,
+            learning_quarantined,
         },
         vectors,
         profile,

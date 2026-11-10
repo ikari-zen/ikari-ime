@@ -877,6 +877,7 @@ fn answer(log: &EngineLog, body: &Body) -> Body {
             engine_version: "bench".into(),
             dict_label: "bench".into(),
             lm: v1::LmState::LmReady as i32,
+            ..Default::default()
         }),
         Body::Convert(_) => match log.script.pages.first() {
             Some(page) => Body::ConvertReply(convert_reply(page)),

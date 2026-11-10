@@ -183,6 +183,9 @@ pub struct StackOptions {
     pub open_learning: bool,
     /// 学習データが空でも `LearningRanker` を入れる（セッションの途中で学習が増えるため。Runtime のみ）
     pub always_learning_ranker: bool,
+    /// 学習ファイルが不正なとき、`.bad` へ退避して空で始める（常駐エンジン用。Runtime のみ）。
+    /// false なら、不正なファイルはエラーのまま触らない（CLI、eval）
+    pub quarantine_learning: bool,
     /// Rewriter の時計。None なら SystemClock
     pub clock: Option<Arc<dyn Clock>>,
     /// 住所 ↔ 郵便番号の表（`postal.tsv`。ADR 0032）。None なら `build_stack_with` が
@@ -208,6 +211,7 @@ impl fmt::Debug for StackOptions {
             .field("no_analyzer", &self.no_analyzer)
             .field("open_learning", &self.open_learning)
             .field("always_learning_ranker", &self.always_learning_ranker)
+            .field("quarantine_learning", &self.quarantine_learning)
             .field("clock", &self.clock.is_some())
             .field("postal_tsv", &self.postal_tsv)
             .field("postal", &self.postal)
@@ -228,6 +232,8 @@ pub struct StackMeta {
     pub has_user_dict: bool,
     /// 続行できた不具合（ユーザー辞書、プロファイル、既定の vectors.bin）。ユーザーの文字列は含まない
     pub warnings: Vec<String>,
+    /// 学習ファイルが不正で退避したとき、退避先（この組み立てで 1 回だけ Some。殻への通知に使う）
+    pub learning_quarantined: Option<PathBuf>,
 }
 
 /// LM の統計（ログと eval の欄用）。

@@ -1371,6 +1371,15 @@ public nonisolated struct Ikari_Shell_V1_ShellAction: Sendable {
     set {action = .deleteText(newValue)}
   }
 
+  /// #271: 学習ファイルが不正で退避したことを利用者に 1 回だけ知らせる。エンジンの Hello の返事で知った shell-core が 1 回だけ返す
+  public var showLearningQuarantineNotice: Ikari_Shell_V1_Empty {
+    get {
+      if case .showLearningQuarantineNotice(let v)? = action {return v}
+      return Ikari_Shell_V1_Empty()
+    }
+    set {action = .showLearningQuarantineNotice(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Action: Equatable, Sendable {
@@ -1394,6 +1403,8 @@ public nonisolated struct Ikari_Shell_V1_ShellAction: Sendable {
     case bridgeClose(Ikari_Shell_V1_BridgeClose)
     /// ADR 0050
     case deleteText(Ikari_Shell_V1_DeleteText)
+    /// #271: 学習ファイルが不正で退避したことを利用者に 1 回だけ知らせる。エンジンの Hello の返事で知った shell-core が 1 回だけ返す
+    case showLearningQuarantineNotice(Ikari_Shell_V1_Empty)
 
   }
 
@@ -3241,7 +3252,7 @@ nonisolated extension Ikari_Shell_V1_BridgeClose: SwiftProtobuf.Message, SwiftPr
 
 nonisolated extension Ikari_Shell_V1_ShellAction: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ShellAction"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pass_through\0\u{1}consume\0\u{3}set_marked_text\0\u{1}commit\0\u{3}show_candidates\0\u{3}move_selection\0\u{3}hide_candidates\0\u{1}restore\0\u{3}resolve_stray_marked_text\0\u{1}prefetch\0\u{3}show_menu\0\u{3}schedule_timer\0\u{3}cancel_timer\0\u{3}bridge_reply\0\u{3}open_settings\0\u{3}select_mode\0\u{3}bridge_close\0\u{3}delete_text\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pass_through\0\u{1}consume\0\u{3}set_marked_text\0\u{1}commit\0\u{3}show_candidates\0\u{3}move_selection\0\u{3}hide_candidates\0\u{1}restore\0\u{3}resolve_stray_marked_text\0\u{1}prefetch\0\u{3}show_menu\0\u{3}schedule_timer\0\u{3}cancel_timer\0\u{3}bridge_reply\0\u{3}open_settings\0\u{3}select_mode\0\u{3}bridge_close\0\u{3}delete_text\0\u{3}show_learning_quarantine_notice\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -3483,6 +3494,19 @@ nonisolated extension Ikari_Shell_V1_ShellAction: SwiftProtobuf.Message, SwiftPr
           self.action = .deleteText(v)
         }
       }()
+      case 19: try {
+        var v: Ikari_Shell_V1_Empty?
+        var hadOneofValue = false
+        if let current = self.action {
+          hadOneofValue = true
+          if case .showLearningQuarantineNotice(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.action = .showLearningQuarantineNotice(v)
+        }
+      }()
       default: break
       }
     }
@@ -3565,6 +3589,10 @@ nonisolated extension Ikari_Shell_V1_ShellAction: SwiftProtobuf.Message, SwiftPr
     case .deleteText?: try {
       guard case .deleteText(let v)? = self.action else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 18)
+    }()
+    case .showLearningQuarantineNotice?: try {
+      guard case .showLearningQuarantineNotice(let v)? = self.action else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 19)
     }()
     case nil: break
     }
