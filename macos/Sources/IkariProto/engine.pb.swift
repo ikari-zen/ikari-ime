@@ -815,6 +815,8 @@ public nonisolated struct Ikari_Engine_V1_Hello: Sendable {
   public init() {}
 }
 
+/// learning_quarantined: 起動のときに不正な学習ファイルを .bad へ退避し、空で始めた。最初の Hello の返事だけ true
+/// （エンジンが 1 回だけ伝える。#271。追加だけなので schema_version は 1 のまま）
 public nonisolated struct Ikari_Engine_V1_HelloReply: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -825,6 +827,8 @@ public nonisolated struct Ikari_Engine_V1_HelloReply: Sendable {
   public var dictLabel: String = String()
 
   public var lm: Ikari_Engine_V1_LmState = .unspecified
+
+  public var learningQuarantined: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -2560,7 +2564,7 @@ nonisolated extension Ikari_Engine_V1_Hello: SwiftProtobuf.Message, SwiftProtobu
 
 nonisolated extension Ikari_Engine_V1_HelloReply: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".HelloReply"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}engine_version\0\u{3}dict_label\0\u{1}lm\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}engine_version\0\u{3}dict_label\0\u{1}lm\0\u{3}learning_quarantined\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2571,6 +2575,7 @@ nonisolated extension Ikari_Engine_V1_HelloReply: SwiftProtobuf.Message, SwiftPr
       case 1: try { try decoder.decodeSingularStringField(value: &self.engineVersion) }()
       case 2: try { try decoder.decodeSingularStringField(value: &self.dictLabel) }()
       case 3: try { try decoder.decodeSingularEnumField(value: &self.lm) }()
+      case 4: try { try decoder.decodeSingularBoolField(value: &self.learningQuarantined) }()
       default: break
       }
     }
@@ -2586,6 +2591,9 @@ nonisolated extension Ikari_Engine_V1_HelloReply: SwiftProtobuf.Message, SwiftPr
     if self.lm != .unspecified {
       try visitor.visitSingularEnumField(value: self.lm, fieldNumber: 3)
     }
+    if self.learningQuarantined != false {
+      try visitor.visitSingularBoolField(value: self.learningQuarantined, fieldNumber: 4)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -2593,6 +2601,7 @@ nonisolated extension Ikari_Engine_V1_HelloReply: SwiftProtobuf.Message, SwiftPr
     if lhs.engineVersion != rhs.engineVersion {return false}
     if lhs.dictLabel != rhs.dictLabel {return false}
     if lhs.lm != rhs.lm {return false}
+    if lhs.learningQuarantined != rhs.learningQuarantined {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

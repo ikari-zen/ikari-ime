@@ -297,6 +297,7 @@ impl Engine {
                 .as_deref(),
         );
         let admin_dir = data_dir.clone();
+        let learning_quarantined = AtomicBool::new(stack.meta.learning_quarantined.is_some());
         let inner = Arc::new(Inner {
             stack: RwLock::new(Arc::new(stack)),
             rebuild,
@@ -324,6 +325,7 @@ impl Engine {
             data_dir: admin_dir,
             admin: Mutex::new(()),
             save_io: Mutex::new(()),
+            learning_quarantined,
             seam_override,
         });
         diag::set_panic_log(&inner.log);
@@ -458,6 +460,8 @@ struct Inner {
     admin: Mutex<()>,
     /// 学習ファイルの書き込みを 1 つずつにする（`save` の状態とは別。書き込みの間、状態を持たない）
     save_io: Mutex<()>,
+    /// 起動時に不正な学習ファイルを退避した記録。Hello の返事に入れたら下ろして、1 回だけ伝える（#271）
+    learning_quarantined: AtomicBool,
     /// 文節の区切りをコアに頼む口。None なら本番（`RealSeam`）。テストだけがモックを入れる
     seam_override: Option<Arc<dyn SegmentSeam>>,
 }
