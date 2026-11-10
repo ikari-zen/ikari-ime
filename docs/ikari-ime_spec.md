@@ -1,6 +1,6 @@
 # ikari-ime 要件定義書 v0.1
 
-Oct 10, 2026 · @ゼン
+Oct 10, 2026 · [@ikari-zen](https://github.com/ikari-zen)
 
 ## 概要と目的
 
