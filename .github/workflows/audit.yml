@@ -1,0 +1,20 @@
+# 依存の既知の脆弱性の定期検査（RustSec の公開情報と Cargo.lock を照らす）。週 1 回と、手動で動く。
+# check.sh には入れない（結果が日によって変わり、ネットワークが要るため）。PR ごとにも流さない
+# （無関係な既存の指摘で PR が止まるのを避ける）。失敗したら、Actions の通知が来る。
+name: Audit
+on:
+  schedule:
+    - cron: "41 4 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  cargo-audit:
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout v7（コミットの SHA で固定）
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: cargo-audit を入れる（版を固定）
+        run: cargo install cargo-audit --version 0.22.2 --locked
+      - name: 脆弱性を検査する
+        run: cargo audit
