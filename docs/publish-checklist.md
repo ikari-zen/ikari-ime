@@ -91,11 +91,11 @@
   - [ ] Code scanning（CodeQL。`.github/workflows/codeql.yml` が main への push と PR、週 1 回で動く）の最初の結果を確かめる
 - [ ] **ブランチ保護**（Settings → Rules → Rulesets、または Branches）。今は、main への直接のコミットと push を、手元の `.githooks/`（`git config core.hooksPath .githooks` で有効）と、Claude Code のフックで止めている。これらは手元でしか効かないので、GitHub の設定でも止める。
   - [ ] main への直接の push を禁止する（PR を必須にする）。
-  - [ ] 必要なチェックに、CodeQL を入れる。`scripts/check.sh`（fmt、clippy、テスト）は、手元で流す検査で、GitHub では動かない。必要なチェックには入れられないので、作者が PR ごとに `CHECK_EXIT=0` を確かめる（今の運用）。CI で流す案は、別の Issue で決める。
+  - [ ] 必要なチェックに、CodeQL を入れる。`scripts/check.sh`（fmt、clippy、テスト）は、手元で流す検査で、GitHub では動かない。必要なチェックには入れられないので、作者が PR ごとに `CHECK_EXIT=0` を確かめる（今の運用。2026-11-10 作者決定：公開時はこのまま。CI で流す案は、公開後に別の Issue で扱う）。
   - [ ] マージの方法は squash だけにする（Settings → General → Pull Requests）。マージ後にブランチを自動で消す。
   - [ ] force push と、main の削除を禁止する。
 - [ ] リポジトリの説明（About）とトピックを設定する。例: 説明は「文脈を使って同音異義語を選び分ける日本語入力メソッド（macOS）」、トピックは `ime`、`japanese`、`macos`、`input-method`、`rust`、`swift`。
-- [ ] Issue テンプレート（`.github/ISSUE_TEMPLATE/`。不具合の報告、作業の項目）が、ログインしていない人にも見える形で出ること。`blank_issues_enabled` は今 `true`（テンプレートなしの Issue も可）。このままでよいかを作者が決める。
+- [ ] Issue テンプレート（`.github/ISSUE_TEMPLATE/`。不具合の報告、作業の項目）が、ログインしていない人にも見える形で出ること。`blank_issues_enabled` は今 `true`（テンプレートなしの Issue も可）。このままにする（2026-11-10 作者決定）。
 - [ ] **Discussions は使わない**（Settings → General → Features で Discussions がオフのまま）。質問と提案は Issue で受ける。
 - [ ] Security タブの **Private vulnerability reporting** を有効にする（[SECURITY.md](../SECURITY.md) と [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) の連絡先がこれなので、有効でないと届かない）。
 - [ ] 最初の数日は、新しい Issue と PR を見て、個人的な文章が書かれていたら、本文を編集してもらう。
