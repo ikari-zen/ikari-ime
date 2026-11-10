@@ -228,6 +228,8 @@ pub struct StackMeta {
     pub has_user_dict: bool,
     /// 続行できた不具合（ユーザー辞書、プロファイル、既定の vectors.bin）。ユーザーの文字列は含まない
     pub warnings: Vec<String>,
+    /// 学習ファイルが不正で退避したとき、退避先（この組み立てで 1 回だけ Some。殻への通知に使う）
+    pub learning_quarantined: Option<PathBuf>,
 }
 
 /// LM の統計（ログと eval の欄用）。

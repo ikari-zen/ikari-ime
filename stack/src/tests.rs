@@ -194,6 +194,45 @@ fn runtime_adds_learning_only_when_wanted() {
 }
 
 #[test]
+fn runtime_quarantines_a_broken_learning_file_and_starts_empty() {
+    let dir = temp_dir("quarantine");
+    let tsv = dir.join("learning.tsv");
+    std::fs::write(&tsv, "broken\n").unwrap();
+    let paths = StackPaths {
+        user_dir: Some(dir.clone()),
+        ..Default::default()
+    };
+    let (d, g) = mock();
+    let stack = assemble(StackInputs::new(d, g), &paths, &StackOptions::default()).unwrap();
+    assert_eq!(
+        stack.meta.learning_quarantined.as_deref(),
+        Some(dir.join("learning.tsv.bad").as_path())
+    );
+    assert_eq!(
+        std::fs::read(dir.join("learning.tsv.bad")).unwrap(),
+        b"broken\n"
+    );
+    assert!(stack.learning.as_ref().unwrap().is_empty());
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn eval_does_not_move_a_broken_learning_file() {
+    let dir = temp_dir("quarantine-eval");
+    std::fs::write(dir.join("learning.tsv"), "broken\n").unwrap();
+    let paths = StackPaths {
+        user_dir: Some(dir.clone()),
+        ..Default::default()
+    };
+    let (d, g) = mock();
+    let r = assemble(StackInputs::new(d, g), &paths, &eval_opts(RankerSet::Full));
+    assert!(r.is_err());
+    assert!(dir.join("learning.tsv").exists());
+    assert!(!dir.join("learning.tsv.bad").exists());
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn reuse_keeps_the_same_learning_store() {
     let dir = temp_dir("reuse");
     let paths = StackPaths {

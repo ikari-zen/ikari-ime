@@ -180,6 +180,19 @@ impl LearningStore {
         })
     }
 
+    /// `open` と同じで、ファイルが読めない・不正なときは、そのファイルを `<名前>.bad`（あれば `.bad.1`、`.2` …）へ
+    /// 移し（rename。中身も権限も変えない）、空の学習で開く。壊れた学習ファイルで日本語が打てなくなるのを避けるため。
+    /// 移した先を 2 つ目の値で返す（正常なら None）。移せなかったときは、元のエラーを返して何も変えない（データを失わない側）。
+    pub fn open_or_quarantine(path: &Path) -> Result<(Self, Option<PathBuf>), UserDataError> {
+        match Self::open(path) {
+            Ok(store) => Ok((store, None)),
+            Err(err) => {
+                let moved = quarantine(path).map_err(|_| err)?;
+                Ok((Self::open(path)?, Some(moved)))
+            }
+        }
+    }
+
     /// 学習ファイルの中身を検証する（エクスポートのインポートの事前検証用）。
     pub fn validate_text(text: &str) -> Result<(), UserDataError> {
         parse(text, Path::new(LEARNING_SECTION_NAME)).map(|_| ())
@@ -550,6 +563,28 @@ fn serialize(salt: u64, rows: &Rows) -> String {
         ));
     }
     out
+}
+
+/// 退避先の拡張子（`learning.tsv` → `learning.tsv.bad`）
+const QUARANTINE_SUFFIX: &str = "bad";
+
+/// `path` を同じフォルダの `.bad`（あれば `.bad.1`、`.2` …。上限なし。上書きしない）へ移す。移した先を返す。
+fn quarantine(path: &Path) -> std::io::Result<PathBuf> {
+    let base = path.as_os_str().to_owned();
+    let with = |suffix: String| {
+        let mut s = base.clone();
+        s.push(".");
+        s.push(suffix);
+        PathBuf::from(s)
+    };
+    let mut candidate = with(QUARANTINE_SUFFIX.to_owned());
+    let mut n: u64 = 0;
+    while std::fs::symlink_metadata(&candidate).is_ok() {
+        n += 1;
+        candidate = with(format!("{QUARANTINE_SUFFIX}.{n}"));
+    }
+    std::fs::rename(path, &candidate)?;
+    Ok(candidate)
 }
 
 fn parse(text: &str, file: &Path) -> Result<(u64, Rows), UserDataError> {
@@ -983,6 +1018,100 @@ mod tests {
             "{good}{COLUMNS}\nusage\t-\tword\tあ\t亜\t\t00ff\t1\t1\nusage\t-\tword\tあ\t亜\t\t00ff\t1\t1\n"
         );
         assert!(LearningStore::validate_text(&dup).is_err());
+    }
+
+    fn bad_texts() -> Vec<Vec<u8>> {
+        let good = "#ikari-learning\tschema=1\tsalt=00000000000000ff\n";
+        vec![
+            format!("{good}wrong columns\n").into_bytes(),
+            format!("{good}{COLUMNS}\nusage\t-\tword\tあ\t亜\t\t00ff\t0\t1\n").into_bytes(),
+            format!(
+                "{good}{COLUMNS}\nusage\t-\tword\tあ\t亜\t\t00ff\t1\t1\nusage\t-\tword\tあ\t亜\t\t00ff\t1\t1\n"
+            )
+            .into_bytes(),
+            vec![0xff, 0xfe, 0x00, b'\n'],
+        ]
+    }
+
+    #[test]
+    fn invalid_file_is_moved_to_bad_and_opens_empty() {
+        for (i, bytes) in bad_texts().iter().enumerate() {
+            let dir = tempfile::tempdir().unwrap();
+            let p = dir.path().join("learning.tsv");
+            std::fs::write(&p, bytes).unwrap();
+            let (store, moved) = LearningStore::open_or_quarantine(&p).unwrap();
+            let bad = dir.path().join("learning.tsv.bad");
+            assert_eq!(moved.as_deref(), Some(bad.as_path()), "case {i}");
+            assert_eq!(&std::fs::read(&bad).unwrap(), bytes, "case {i}");
+            assert!(!p.exists(), "case {i}");
+            assert!(store.is_empty(), "case {i}");
+        }
+    }
+
+    #[test]
+    fn quarantine_keeps_mode_and_never_overwrites() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("learning.tsv");
+        let mut expected = Vec::new();
+        for n in 0..3u8 {
+            let body = vec![b'x', n];
+            std::fs::write(&p, &body).unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600)).unwrap();
+            let (_, moved) = LearningStore::open_or_quarantine(&p).unwrap();
+            let moved = moved.unwrap();
+            let mode = std::fs::metadata(&moved).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+            expected.push((moved, body));
+        }
+        let names: Vec<String> = expected
+            .iter()
+            .map(|(m, _)| m.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "learning.tsv.bad",
+                "learning.tsv.bad.1",
+                "learning.tsv.bad.2"
+            ]
+        );
+        for (m, body) in &expected {
+            assert_eq!(&std::fs::read(m).unwrap(), body);
+        }
+    }
+
+    #[test]
+    fn valid_or_missing_file_is_not_moved() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("learning.tsv");
+        let (store, moved) = LearningStore::open_or_quarantine(&p).unwrap();
+        assert!(moved.is_none());
+        store.save().unwrap();
+        let before = std::fs::read(&p).unwrap();
+        let (_, moved) = LearningStore::open_or_quarantine(&p).unwrap();
+        assert!(moved.is_none());
+        assert_eq!(std::fs::read(&p).unwrap(), before);
+        assert!(!dir.path().join("learning.tsv.bad").exists());
+    }
+
+    #[test]
+    fn unmovable_invalid_file_stays_an_error() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("learning.tsv");
+        std::fs::write(&p, b"broken\n").unwrap();
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o500)).unwrap();
+        let result = LearningStore::open_or_quarantine(&p);
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        // root はフォルダの権限を無視して移せてしまうので、その場合は確かめない
+        if let Err(e) = result {
+            assert!(matches!(
+                e,
+                UserDataError::Parse { .. } | UserDataError::Invalid(_)
+            ));
+            assert_eq!(std::fs::read(&p).unwrap(), b"broken\n");
+        }
     }
 
     #[test]
