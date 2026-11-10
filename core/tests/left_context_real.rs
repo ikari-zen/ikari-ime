@@ -135,11 +135,20 @@ fn top1(conv: &Converter, context: &str, reading: &str) -> String {
 }
 
 /// (文脈, 読み, 規則ありの 1位, 規則なしの 1位)
-const CASES: [(&str, &str, &str, &str); 7] = [
-    ("洗濯", "き", "機", "器"),
-    ("最新", "ばん", "版", "板"),
-    ("自動", "か", "化", "家"),
-    ("京都", "し", "市", "史"),
+///
+/// 確かめること: (1) 規則の効果（規則なしと 1位が変わる組）、(2) 規則なしでも同じ組は退行しないこと。
+/// 規則なしの 1位は LM と辞書で決まるので、実辞書で測った値（2026-11-11）を置く。
+const CASES: [(&str, &str, &str, &str); 11] = [
+    // 規則の効果
+    ("自動", "か", "化", "か"),
+    ("国際", "か", "化", "か"),
+    ("高齢", "しゃ", "者", "車"),
+    ("技術", "しゃ", "者", "車"),
+    ("最終", "かい", "回", "海"),
+    // 規則なしでも同じ（退行しないこと）
+    ("洗濯", "き", "機", "機"),
+    ("最新", "ばん", "版", "版"),
+    ("京都", "し", "市", "市"),
     // 変わらないこと（子供たち と 子供達 は同じ lemma。犬都 は人名）
     ("子供", "たち", "たち", "たち"),
     ("犬", "と", "と", "と"),
@@ -169,20 +178,21 @@ fn real_dictionary_compound_with_the_left_word() {
 #[test]
 #[ignore = "needs IKARI_DICT_DIR (a real dictionary built by ikari-dict-builder)"]
 fn real_dictionary_compound_from_the_user_dictionary() {
-    // 日本語版 はシステム辞書にない（ADR 0007 §7.3）。ユーザー辞書に 名詞 で登録すると当たる
+    // 洗濯会 はシステム辞書にない（ADR 0007 §7.3）。ユーザー辞書に 名詞 で登録すると当たる
+    // （確かめること: 登録の効果。規則なしの 1位は 海）
     let none = converter(LeftContextConfig::default().compound_bonus, "");
-    assert_eq!(top1(&none.converter, "日本語", "ばん"), "板");
+    assert_eq!(top1(&none.converter, "洗濯", "かい"), "海");
     let user = converter(
         LeftContextConfig::default().compound_bonus,
-        "にほんごばん\t日本語版\t名詞\n",
+        "せんたくかい\t洗濯会\t名詞\n",
     );
-    assert_eq!(top1(&user.converter, "日本語", "ばん"), "版");
+    assert_eq!(top1(&user.converter, "洗濯", "かい"), "会");
     // 人名で登録した語は当たらない（§12.1 Q4）
     let person = converter(
         LeftContextConfig::default().compound_bonus,
-        "にほんごばん\t日本語版\t人名\n",
+        "せんたくかい\t洗濯会\t人名\n",
     );
-    assert_eq!(top1(&person.converter, "日本語", "ばん"), "板");
+    assert_eq!(top1(&person.converter, "洗濯", "かい"), "海");
 }
 
 /// LeftContextRanker の `rank` 1回の時間（評価セットの文脈つきのケース。ADR 0007 §4）
