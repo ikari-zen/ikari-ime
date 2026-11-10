@@ -41,10 +41,24 @@ final class BridgeServer: @unchecked Sendable {
     private let sendQueue = DispatchQueue(label: "\(IkariIdentifiers.shell).bridge-send", qos: .utility)
 
     /// `peerValidator` は接続したソケットの記述子を受け、相手が設定アプリなら真。既定は署名の確認（テストだけが差し替える）
-    init(directory: URL, signing: SigningMode, peerValidator: (@Sendable (Int32) -> Bool)? = nil) {
+    /// 既定の確認は、署名要件（ad-hoc では同梱の設定アプリの cdhash とパスも。#269）。`shellBundle` は自分（ikari.app）。
+    /// 期待を作れない（cdhash を読めない）ときは、すべての接続を断る
+    init(
+        directory: URL, signing: SigningMode, shellBundle: URL = Bundle.main.bundleURL,
+        peerValidator: (@Sendable (Int32) -> Bool)? = nil
+    ) {
         socketURL = directory.appendingPathComponent(Self.socketRelativePath)
-        let requirement = SigningRequirements.settingsApp(mode: signing)
-        self.peerValidator = peerValidator ?? { Self.peerSatisfies(requirement: requirement, descriptor: $0) }
+        if let peerValidator {
+            self.peerValidator = peerValidator
+        } else if let expectation = PeerExpectation.settingsApp(mode: signing, shellBundle: shellBundle) {
+            self.peerValidator = {
+                Self.peerSatisfies(
+                    requirement: expectation.requirement, expectedPath: expectation.expectedPath, descriptor: $0)
+            }
+        } else {
+            AppContext.log.error("bridge: cannot pin the settings app (code hash unavailable); refusing peers")
+            self.peerValidator = { _ in false }
+        }
     }
 
     var socketPath: String { socketURL.path }
@@ -223,22 +237,8 @@ final class BridgeServer: @unchecked Sendable {
     }
 
     /// `getsockopt(LOCAL_PEERTOKEN)` の audit token から、相手のコードが署名要件を満たすか
-    static func peerSatisfies(requirement text: String, descriptor: Int32) -> Bool {
-        var token = audit_token_t()
-        var length = socklen_t(MemoryLayout<audit_token_t>.size)
-        guard getsockopt(descriptor, solLocal, localPeerToken, &token, &length) == 0 else { return false }
-        let tokenData = withUnsafeBytes(of: &token) { Data($0) }
-
-        var code: SecCode?
-        let attributes = [kSecGuestAttributeAudit: tokenData] as CFDictionary
-        guard SecCodeCopyGuestWithAttributes(nil, attributes, SecCSFlags(), &code) == errSecSuccess, let code else {
-            return false
-        }
-        var requirement: SecRequirement?
-        guard SecRequirementCreateWithString(text as CFString, SecCSFlags(), &requirement) == errSecSuccess,
-            let requirement
-        else { return false }
-        return SecCodeCheckValidity(code, SecCSFlags(), requirement) == errSecSuccess
+    static func peerSatisfies(requirement text: String, expectedPath: URL? = nil, descriptor: Int32) -> Bool {
+        PeerSignature.satisfies(requirement: text, expectedPath: expectedPath, descriptor: descriptor)
     }
 
     // MARK: 接続ごとの受信

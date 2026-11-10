@@ -28,11 +28,22 @@ struct SocketConnector: BridgeConnecting {
     init(
         socketPath: String = SocketConnector.defaultSocketPath(),
         signing: SigningMode = BuildSigning.current(),
+        settingsBundle: URL = Bundle.main.bundleURL,
         peerValidator: (@Sendable (Int32) -> Bool)? = nil
     ) {
         self.socketPath = socketPath
-        let requirement = SigningRequirements.bridgeShell(mode: signing)
-        self.peerValidator = peerValidator ?? { PeerSignature.satisfies(requirement: requirement, descriptor: $0) }
+        if let peerValidator {
+            self.peerValidator = peerValidator
+        } else if let expectation = PeerExpectation.bridgeShell(mode: signing, settingsBundle: settingsBundle) {
+            // ad-hoc では、外側の ikari.app の cdhash とパスも確かめる（#269）
+            self.peerValidator = {
+                PeerSignature.satisfies(
+                    requirement: expectation.requirement, expectedPath: expectation.expectedPath, descriptor: $0)
+            }
+        } else {
+            // cdhash を読めない、またはバンドルの構造が想定と違う: 安全側（接続しない）
+            self.peerValidator = { _ in false }
+        }
     }
 
     static func defaultSocketPath(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> String {
