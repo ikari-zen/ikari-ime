@@ -22,6 +22,7 @@ mod emoji;
 mod kun;
 mod lex;
 mod matrix;
+mod numeral;
 mod policy;
 mod town;
 mod vectors;
