@@ -21,6 +21,7 @@ use std::io;
 use std::path::Path;
 
 use ikari_dict_format::postal::{PostalLineError, is_skipped_line, parse_line};
+use ikari_dict_format::reading::fold_fullwidth_digits;
 
 pub use ikari_dict_format::postal::POSTAL_TSV_FILE_NAME;
 
@@ -143,7 +144,10 @@ impl PostalTable {
     }
 
     /// 読み（`normalize_key` 済み）に完全一致する行。なければ空。
+    /// 表の読みの数字は半角（`きた1じょうにし`。ADR 0030 §3.1）なので、引く読みの全角の数字は半角にして引く。
     pub fn by_reading(&self, reading: &str) -> Vec<PostalMatch<'_>> {
+        let reading = fold_fullwidth_digits(reading);
+        let reading = reading.as_ref();
         let order = &self.by_reading_order;
         let start = order.partition_point(|&r| self.reading_of(r) < reading);
         order[start..]
@@ -221,6 +225,20 @@ mod tests {
         );
         assert!(t.by_reading("ちよだく").is_empty());
         assert!(t.by_reading("").is_empty());
+    }
+
+    #[test]
+    fn digits_in_the_reading_match_in_both_widths() {
+        let t = PostalTable::from_tsv_str(
+            "# ikari-ime postal table v1\nさっぽろしちゅうおうくきた1じょうにし\t札幌市中央区北1条西\t0600001\ts\n",
+        )
+        .unwrap();
+        for reading in [
+            "さっぽろしちゅうおうくきた1じょうにし",
+            "さっぽろしちゅうおうくきた１じょうにし",
+        ] {
+            assert_eq!(t.by_reading(reading)[0].codes, [600_001], "{reading}");
+        }
     }
 
     #[test]

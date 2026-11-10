@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::ops::Range;
 
-use crate::reading::is_indexable;
+use crate::reading::is_indexable_with_digits;
 use crate::util::{
     Fnv1a64, HeaderReader, check_preamble, check_section, get_u16, get_u32, pad_to_align,
 };
@@ -53,7 +53,7 @@ const INDEX_VALUE_SHIFT: u32 = 32;
 const U32_SIZE: usize = 4;
 
 /// `encode_dict` の入力1件。順序は問わない（encode が (読み, cost, 表記, left, right, pos) で整列する）。
-/// reading は `reading::is_indexable` を満たす正規化済みの読みであること。
+/// reading は `reading::is_indexable_with_digits` を満たす正規化済みの読みであること。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DictEntryInput<'a> {
     pub reading: &'a str,
@@ -208,7 +208,7 @@ pub fn encode_dict(spec: &DictSpec<'_>) -> Result<Vec<u8>, FormatError> {
     let entry_count = u32::try_from(spec.entries.len())
         .map_err(|_| invalid("too many entries (more than u32::MAX)"))?;
     for e in spec.entries {
-        if !is_indexable(e.reading) {
+        if !is_indexable_with_digits(e.reading) {
             return Err(invalid(format!("reading {:?} is not indexable", e.reading)));
         }
         if u16::try_from(e.surface.len()).is_err() {

@@ -15,7 +15,9 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
 use ikari_dict_format::MAX_READING_CHARS;
-use ikari_dict_format::reading::{is_indexable, normalize_key, strip_reading_separators};
+use ikari_dict_format::reading::{
+    is_indexable, is_indexable_with_digits, normalize_key, strip_reading_separators,
+};
 
 use crate::{
     BuildError, SKIP_LEFT_ID_MINUS1, SKIP_NOTCORE_PROPER_HOMOPHONE, SKIP_NOTCORE_PROPER_SHORT,
@@ -305,7 +307,13 @@ impl LexAccumulator {
             cols[COL_READING],
         )));
         // 規則5: 索引に入れられない読み
-        if !is_indexable(&reading) {
+        // 住所の連なり（`adding_priority`）だけは、数字を含む町名の読み（`きた1じょうにし`）を入れる
+        let indexable = if self.adding_priority {
+            is_indexable_with_digits(&reading)
+        } else {
+            is_indexable(&reading)
+        };
+        if !indexable {
             let too_long = reading.chars().count() > MAX_READING_CHARS;
             self.skip(if too_long {
                 SKIP_READING_TOO_LONG
