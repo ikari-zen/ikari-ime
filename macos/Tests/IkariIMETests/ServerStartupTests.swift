@@ -12,18 +12,38 @@ private final class SpyReporter: StartupFailureReporting {
 }
 
 @Suite struct ServerStartupTests {
-    @Test func nilServerLogsAndNotifiesOnce() {
+    @Test func nilServerLogsNotifiesAndTerminates() {
         let spy = SpyReporter()
-        #expect(ServerStartup.checkServer(nil, reporter: spy) == false)
+        #expect(ServerStartup.evaluate(server: nil, nameAlreadyRegistered: false, reporter: spy) == .terminate)
         #expect(spy.logs == [ServerStartup.logMessage])
         #expect(spy.notices.count == 1)
-        #expect(spy.notices.first?.title == ServerStartup.noticeTitle)
+        #expect(spy.notices.first?.body == ServerStartup.noticeBody)
     }
 
-    @Test func createdServerReportsNothing() {
+    @Test func nilServerWithConflictNotifiesOnlyOnce() {
         let spy = SpyReporter()
-        #expect(ServerStartup.checkServer(NSObject(), reporter: spy) == true)
+        #expect(ServerStartup.evaluate(server: nil, nameAlreadyRegistered: true, reporter: spy) == .terminate)
+        #expect(spy.logs.count == 1)
+        #expect(spy.notices.count == 1)
+    }
+
+    @Test func conflictLogsAndNotifiesOnceButKeepsRunning() {
+        let spy = SpyReporter()
+        #expect(ServerStartup.evaluate(server: NSObject(), nameAlreadyRegistered: true, reporter: spy) == .proceed)
+        #expect(spy.logs == [ServerStartup.conflictLogMessage])
+        #expect(spy.notices.count == 1)
+        #expect(spy.notices.first?.body == ServerStartup.conflictNoticeBody)
+    }
+
+    @Test func noConflictAndCreatedReportsNothing() {
+        let spy = SpyReporter()
+        #expect(ServerStartup.evaluate(server: NSObject(), nameAlreadyRegistered: false, reporter: spy) == .proceed)
         #expect(spy.logs.isEmpty)
         #expect(spy.notices.isEmpty)
+    }
+
+    @Test func lookupFindsARegisteredNameAndNotAnUnregisteredOne() {
+        #expect(ServerStartup.isConnectionNameRegistered("com.apple.cfprefsd.daemon"))
+        #expect(!ServerStartup.isConnectionNameRegistered("io.github.ikari-zen.test.no-such-name-\(UUID().uuidString)"))
     }
 }

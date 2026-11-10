@@ -22,9 +22,15 @@ guard let bundleIdentifier = Bundle.main.bundleIdentifier else {
     exit(EXIT_FAILURE)
 }
 
+// 接続名の衝突は IMKServer が nil を返さないので、作る前に確かめる
+let nameAlreadyRegistered = ServerStartup.isConnectionNameRegistered(IkariIdentifiers.inputMethodConnection)
 // サーバを生存させておく（解放されると接続を受けられなくなる）
 let server = IMKServer(name: IkariIdentifiers.inputMethodConnection, bundleIdentifier: bundleIdentifier)
-guard ServerStartup.checkServer(server, reporter: SystemStartupFailureReporter()) else {
+guard
+    ServerStartup.evaluate(
+        server: server, nameAlreadyRegistered: nameAlreadyRegistered, reporter: SystemStartupFailureReporter())
+        == .proceed
+else {
     exit(EXIT_FAILURE)
 }
 
