@@ -1,6 +1,6 @@
 # Rust 依存クレートのライセンス
 
-ikari.app に入る Rust の成果物（`ikari-engine-ffi`、`ikari-shell-ffi`）が静的に含む依存クレート（60 個）のライセンスです。`cargo xtask licenses` で作ります（cargo-about。設定は `about.toml`）。手で書き換えないでください。
+ikari.app に入る Rust の成果物（`ikari-engine-ffi`、`ikari-shell-ffi`）が静的に含む依存クレート（61 個）のライセンスです。`cargo xtask licenses` で作ります（cargo-about。設定は `about.toml`）。手で書き換えないでください。
 
 ビルドのときだけ使うもの、テストだけで使うもの、配らない道具（cli、dict-builder、評価、xtask）は含みません。同じ本文のライセンスはまとめてあります。
 
@@ -212,7 +212,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ````
 
-## Apache-2.0（30 個）
+## Apache-2.0（31 個）
 
 - anyhow 1.0.104（https://github.com/dtolnay/anyhow）
 - ikari-core 0.1.0
@@ -227,6 +227,7 @@ limitations under the License.
 - ikari-shell-core 0.1.0
 - ikari-shell-ffi 0.1.0
 - ikari-stack 0.1.0
+- ikari-textfile 0.1.0
 - itoa 1.0.18（https://github.com/dtolnay/itoa）
 - libc 0.2.190（https://github.com/rust-lang/libc）
 - llama-cpp-2 0.1.160（https://github.com/utilityai/llama-cpp-rs）
