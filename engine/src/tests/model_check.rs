@@ -127,17 +127,21 @@ fn directory_and_fifo_are_rejected_without_blocking() {
         select_lm_model(true, &sub, NAME, &known()),
         (None, Some(ModelReject::Unreadable))
     );
-    let fifo = dir.join("fifo.gguf");
-    let status = std::process::Command::new("mkfifo")
-        .arg(&fifo)
-        .status()
-        .expect("run mkfifo");
-    assert!(status.success());
-    // open すると書き手が来るまで止まる。止まらずに返ること（種類を先に見る）
-    assert_eq!(
-        select_lm_model(true, &fifo, NAME, &known()),
-        (None, Some(ModelReject::Unreadable))
-    );
+    // FIFO は Unix にしかない（Windows の CI の Git の mkfifo は普通のファイルを作ってしまう）
+    #[cfg(unix)]
+    {
+        let fifo = dir.join("fifo.gguf");
+        let status = std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .expect("run mkfifo");
+        assert!(status.success());
+        // open すると書き手が来るまで止まる。止まらずに返ること（種類を先に見る）
+        assert_eq!(
+            select_lm_model(true, &fifo, NAME, &known()),
+            (None, Some(ModelReject::Unreadable))
+        );
+    }
     let _ = std::fs::remove_dir_all(dir);
 }
 
