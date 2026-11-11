@@ -517,6 +517,7 @@ dependencies = [
  "clap",
  "flate2",
  "ikari-dict-format",
+ "ikari-textfile",
  "regex",
  "serde_json",
  "sha2",
@@ -660,6 +661,10 @@ dependencies = [
 
 [[package]]
 name = "ikari-testtime"
+version = "0.1.0"
+
+[[package]]
+name = "ikari-textfile"
 version = "0.1.0"
 
 [[package]]
