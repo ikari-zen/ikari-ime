@@ -8,8 +8,7 @@
 name: CI
 on:
   pull_request:
-    # TEMP: #306 がマージされるまで（PR の base が feat/ci-split-ubuntu の間）。ready にする前に外す
-    branches: [main, feat/ci-split-ubuntu]
+    branches: [main]
   push:
     branches: [main]
 permissions:
@@ -83,7 +82,7 @@ jobs:
       - name: cargo test --workspace
         env:
           IKARI_TEST_TIME_SCALE: "5"
-        # 初めは落ちる箇所が多いかもしれないので、1 つで止めず全部の結果を見る
+        # 1 つ落ちても、ほかの crate の結果を見られるようにする
         run: cargo test --workspace --no-fail-fast
 
   check:
