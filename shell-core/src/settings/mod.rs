@@ -10,6 +10,7 @@
 //! - `store`: ファイルの読み書き（mtime と大きさで手の編集に気づく。一時ファイル + rename、権限 0600）
 //! - `chord`: キーの表記の読み書きと表示
 //! - `values`: 設定アプリの Model のうち、検証・整形・既定値・変更の組み立て（`@Observable` の状態は持たない）
+//! - `specs`: 画面に出す設定の一覧（キー、種類、既定値、節。ADR 0040 §2.5）
 //! - `admin`: 管理の要求（属性プロファイル）の組み立て
 
 mod admin;
@@ -17,6 +18,7 @@ mod chord;
 mod defaults;
 mod file;
 mod parse;
+mod specs;
 mod store;
 mod text;
 mod values;
@@ -32,6 +34,10 @@ pub use chord::KeyChord;
 pub use defaults::*;
 pub use parse::{
     effective_entries, engine_settings_differ, is_acceptable, is_known_key, parse_bundle_id_list,
+};
+pub use specs::{
+    Reflect, SettingKind, SettingSpec, SettingsScreen, SettingsSection, all_specs, specs_for,
+    specs_tsv,
 };
 pub use store::{Reload, SettingsChange, SettingsStore, StoreError, Updated};
 pub use values::{

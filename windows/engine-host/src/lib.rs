@@ -9,6 +9,8 @@
 //! - 1 本の接続の要求は届いた順に処理する。別の接続（別のアプリの TIP）とは並行に動く。
 //! - `Engine::handle` は決して panic せず、エラーも `Envelope` で返すので、ハンドラは常に返事を返す。
 
+pub mod settings_pipe;
+
 use std::io;
 use std::sync::Arc;
 
