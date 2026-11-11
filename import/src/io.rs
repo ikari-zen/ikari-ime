@@ -78,6 +78,8 @@ pub fn read_ingest_file(path: &Path) -> Result<IngestFile, ReadError> {
 mod tests {
     use super::*;
 
+    // Windows では symlink の作成に特権（開発者モード）が要るので、Unix だけで確かめる
+    #[cfg(unix)]
     #[test]
     fn rejects_symlink() {
         let dir = tempfile::tempdir().unwrap();
@@ -91,6 +93,8 @@ mod tests {
         }
     }
 
+    // FIFO（mkfifo）は Unix にしかない
+    #[cfg(unix)]
     #[test]
     fn rejects_fifo_without_blocking() {
         let dir = tempfile::tempdir().unwrap();
@@ -112,6 +116,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     unsafe extern "C" {
         #[link_name = "mkfifo"]
         fn libc_mkfifo(path: *const std::ffi::c_char, mode: u32) -> i32;

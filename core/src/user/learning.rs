@@ -1060,6 +1060,8 @@ mod tests {
         }
     }
 
+    // 権限のビット（mode）は Unix だけの概念なので、Windows では確かめない
+    #[cfg(unix)]
     #[test]
     fn quarantine_keeps_mode_and_never_overwrites() {
         use std::os::unix::fs::PermissionsExt;
@@ -1119,6 +1121,8 @@ mod tests {
         assert!(!dir.path().join("learning.tsv.bad").exists());
     }
 
+    // 権限のビット（mode）は Unix だけの概念なので、Windows では確かめない
+    #[cfg(unix)]
     #[test]
     fn read_failures_are_not_moved() {
         use std::os::unix::fs::PermissionsExt;
@@ -1146,6 +1150,8 @@ mod tests {
         std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600)).unwrap();
     }
 
+    // 権限のビット（mode）は Unix だけの概念なので、Windows では確かめない
+    #[cfg(unix)]
     #[test]
     fn unmovable_invalid_file_stays_an_error() {
         use std::os::unix::fs::PermissionsExt;

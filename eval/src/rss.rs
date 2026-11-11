@@ -62,6 +62,8 @@ mod imp {
 
 #[cfg(test)]
 mod tests {
+    // max_rss_bytes を使うテストは Unix だけ（Windows では値を返さない）
+    #[cfg(unix)]
     use super::*;
 
     #[cfg(unix)]
