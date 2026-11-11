@@ -546,7 +546,10 @@ mod tests {
         if std::env::var_os(UPDATE_ENV).is_some() {
             std::fs::write(GOLDEN_PATH, &expected).unwrap();
         }
-        let actual = std::fs::read_to_string(GOLDEN_PATH).unwrap_or_default();
+        // Windows では git が改行を CRLF で取り出すことがある（autocrlf）。LF と CRLF のどちらでも同じに読む
+        let actual = std::fs::read_to_string(GOLDEN_PATH)
+            .unwrap_or_default()
+            .replace("\r\n", "\n");
         assert_eq!(
             actual, expected,
             "macos/Resources/settings-specs.tsv is stale. Run with {UPDATE_ENV}=1"
