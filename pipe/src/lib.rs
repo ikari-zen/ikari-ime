@@ -8,8 +8,11 @@
 //! - `Server`: 受け付けを繰り返し、接続ごとにスレッドを持って `FnMut(&[u8]) -> Option<Vec<u8>>` に渡す。
 //! - `name`: パイプの名前（ユーザーの SID とセッションを含める）。SID を取るのは OS 層なので、文字列で受ける。
 //! - `mem`: メモリ上の `Duplex` と `Listener`（テスト用。Mac で全部試せる）。
+//! - `os`: 名前付きパイプの OS 層（`os::windows`。`cfg(windows)`。W1-b）。
 //!
-//! `shell-core` には依存しない（依存の向きは ADR 0040 §2.2）。`unsafe` を書かない。
+//! `shell-core` には依存しない（依存の向きは ADR 0040 §2.2）。`unsafe` は `os::windows` の中だけに置く。
+
+#![deny(unsafe_code)]
 
 pub mod client;
 pub mod duplex;
@@ -17,6 +20,7 @@ pub mod frame;
 pub mod mem;
 mod mux;
 pub mod name;
+pub mod os;
 pub mod server;
 
 pub use client::{Client, ClientError};
