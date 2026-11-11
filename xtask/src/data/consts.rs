@@ -136,10 +136,18 @@ mod tests {
     }
 
     #[test]
-    fn real_lib_sh_has_no_webwords_list_yet() {
+    fn real_lib_sh_pins_the_webwords_list_to_a_release_asset() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
         let c = LibConsts::load(&root).unwrap();
-        assert_eq!(c.webwords_list().unwrap(), None);
+        let list = c.webwords_list().unwrap().expect("pinned");
+        assert!(
+            list.url
+                .starts_with("https://github.com/ikari-zen/ikari-ime/releases/download/webwords-"),
+            "{}",
+            list.url
+        );
+        assert_eq!(list.sha256.len(), 64, "{}", list.sha256);
+        assert!(list.sha256.bytes().all(|b| b.is_ascii_hexdigit()));
     }
 
     #[test]

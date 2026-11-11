@@ -31,8 +31,8 @@ readonly ABR_CHAIN_LEX_FILE="chain_lex.csv"
 # URL（GitHub の Release の資産。xz）と sha256（xz の資産そのものの sha256）が空の間は、取得しない（一覧を Release に置いたら埋める）。
 # 辞書のビルドは、data/raw/ の下に WEBWORDS_LIST_PATH のファイル（xz を展開したもの）があれば組み込む（なければ今と同じ辞書を作る）
 readonly WEBWORDS_LIST_PATH="webwords/webwords.tsv"
-readonly WEBWORDS_LIST_URL=""
-readonly WEBWORDS_LIST_SHA256=""
+readonly WEBWORDS_LIST_URL="https://github.com/ikari-zen/ikari-ime/releases/download/webwords-20261101/webwords-20261101.tsv.xz"
+readonly WEBWORDS_LIST_SHA256="0e0eea7a5386fda1190f1ca9056918b60537d0fe14731a4e11b03230782d1ba6"
 # 外来語の一覧から作る lex.csv（辞書のビルドの中間ファイル。data/build/ の下）
 readonly WEBWORDS_LEX_FILE="webwords_lex.csv"
 readonly DICT_POLICY="dict-builder/policy/chive.tsv"
