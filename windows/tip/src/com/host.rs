@@ -14,6 +14,7 @@ use windows::Win32::System::LibraryLoader::GetModuleFileNameW;
 
 use super::connector::PipeConnector;
 use super::{dll, log};
+use crate::latency::{self, Meter};
 use crate::transport::{DownSink, PipeTransport};
 
 /// `core::user::dir` の `USER_DIR_ENV`・`APPDATA_ENV`・`APP_DIR_NAME` と同じ値
@@ -35,7 +36,7 @@ fn env_dir(name: &str) -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
-fn user_dir() -> Option<PathBuf> {
+pub fn user_dir() -> Option<PathBuf> {
     env_dir(USER_DIR_ENV).or_else(|| env_dir(APPDATA_ENV).map(|appdata| appdata.join(APP_DIR_NAME)))
 }
 
@@ -75,6 +76,11 @@ fn resources_dir() -> PathBuf {
         .unwrap_or_default()
 }
 
+/// このプロセスの往復時間の測定（S1。オンかは最初に呼んだときに決める。既定はオフ。`latency`）
+pub fn meter() -> &'static Arc<Meter> {
+    latency::global(user_dir)
+}
+
 /// `Shell` を作る。作れなければ `None`（キーはすべてアプリに渡す）。
 pub fn create_shell() -> Option<Shell> {
     let settings = match user_dir() {
@@ -87,7 +93,8 @@ pub fn create_shell() -> Option<Shell> {
         resources_dir: resources_dir(),
     };
     let sink = DownSink::new();
-    let transport = PipeTransport::new(PipeConnector, Arc::clone(&sink));
+    let transport =
+        PipeTransport::new(PipeConnector, Arc::clone(&sink)).with_meter(Arc::clone(meter()));
     match Shell::new(config, Box::new(transport), Arc::new(SystemClock::new())) {
         Ok(shell) => {
             sink.bind(shell.engine());

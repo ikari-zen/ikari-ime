@@ -19,6 +19,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, Weak};
 use std::time::{Duration, Instant};
 
+use crate::latency::{Kind, Meter};
 use ikari_pipe::duplex::Halves;
 use ikari_pipe::{Client, ClientError, Duplex};
 use ikari_shell_core::{DownKind, EngineLink, EngineTransport, TransportError, TransportHandle};
@@ -198,6 +199,8 @@ pub struct PipeTransport<C: Connector> {
     backoff: Mutex<Backoff>,
     /// 接続の表。錠は表を引く間だけ持つ（`request` の待ちの間は持たない）
     connections: Mutex<HashMap<TransportHandle, Arc<Connection>>>,
+    /// 往復時間の測定（S1。オフなら何も測らない。`latency`）
+    meter: Arc<Meter>,
 }
 
 impl<C: Connector> PipeTransport<C> {
@@ -218,7 +221,15 @@ impl<C: Connector> PipeTransport<C> {
             next_handle: AtomicU64::new(FIRST_HANDLE),
             backoff: Mutex::new(Backoff::new(backoff_initial, backoff_max)),
             connections: Mutex::new(HashMap::new()),
+            meter: Arc::new(Meter::disabled()),
         }
+    }
+
+    /// 往復時間を測る（S1）。
+    #[must_use]
+    pub fn with_meter(mut self, meter: Arc<Meter>) -> Self {
+        self.meter = meter;
+        self
     }
 
     fn table(&self) -> MutexGuard<'_, HashMap<TransportHandle, Arc<Connection>>> {
@@ -258,11 +269,13 @@ impl<C: Connector> EngineTransport for PipeTransport<C> {
         if !self.backoff().ready(Instant::now()) {
             return Err(TransportError::Unavailable);
         }
+        self.meter.connect_attempt();
         let Some((duplex, server_pid)) = self.connector.open() else {
             self.backoff().failed(Instant::now());
             return Err(TransportError::Unavailable);
         };
         self.backoff().succeeded();
+        self.meter.connect_succeeded();
         let handle = TransportHandle(self.next_handle.fetch_add(1, Ordering::Relaxed));
         let watch = Arc::new(Watch {
             handle,
@@ -289,10 +302,14 @@ impl<C: Connector> EngineTransport for PipeTransport<C> {
         timeout: Duration,
     ) -> Result<Vec<u8>, TransportError> {
         let connection = self.get(handle).ok_or(TransportError::Unavailable)?;
-        connection
+        // 測るのは、送ってから返事を受けるまで（接続の引きは含めない）
+        let stamp = self.meter.start();
+        let result = connection
             .client
             .request(bytes, timeout)
-            .map_err(transport_error)
+            .map_err(transport_error);
+        self.meter.finish(Kind::Request, stamp, result.is_ok());
+        result
     }
 
     fn post(&self, handle: TransportHandle, bytes: &[u8]) {
