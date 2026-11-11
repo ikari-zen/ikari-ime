@@ -39,6 +39,7 @@ use super::edit::{self, Doc, Exec, Timers, TsfText};
 use super::guard::guard;
 use super::{host, keyboard, log, timer};
 use crate::keys;
+use crate::latency::Kind;
 use crate::ops::OpsTranslator;
 
 /// `ActivateEx` の旗（使わない）
@@ -394,6 +395,8 @@ impl TextService_Impl {
     }
 
     fn deactivate(&self) {
+        // 測定の残りを書き出す（オフなら何もしない）
+        host::meter().flush_all();
         let this = self.this();
         leave_client(&this);
         timer::cancel_all(&this);
@@ -462,6 +465,9 @@ impl TextService_Impl {
         if !ensure_active(&this) {
             return false;
         }
+        // 往復時間の測定（S1）。キーを受けてから、返った操作を実行し終わるまで。オフなら分岐 1 つ
+        let meter = host::meter();
+        let stamp = meter.start();
         let Some(press) = keyboard::read(wparam, lparam) else {
             return false;
         };
@@ -469,13 +475,17 @@ impl TextService_Impl {
         let Some(event) = keys::key_event(&press.raw()) else {
             return false;
         };
-        let eaten = run_event(&this, Some(context), event, Mode::Sync).unwrap_or(false);
+        let outcome = run_event(&this, Some(context), event, Mode::Sync);
+        meter.finish(Kind::Key, stamp, outcome.is_some());
+        let eaten = outcome.unwrap_or(false);
         if eaten
             && test
             && let Ok(mut state) = self.state.try_borrow_mut()
         {
             state.eaten_key = Some(id);
         }
+        // 書き出しは、キーの処理が終わったあと（測った時間に入れない）
+        meter.flush_if_due();
         eaten
     }
 }
