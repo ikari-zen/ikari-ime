@@ -83,7 +83,8 @@ jobs:
       - name: cargo test --workspace
         env:
           IKARI_TEST_TIME_SCALE: "5"
-        run: cargo test --workspace
+        # 初めは落ちる箇所が多いかもしれないので、1 つで止めず全部の結果を見る
+        run: cargo test --workspace --no-fail-fast
 
   check:
     runs-on: macos-latest

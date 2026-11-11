@@ -147,6 +147,8 @@ fn user_data_commands_need_a_resolvable_user_dir() {
         .env_remove("IKARI_USER_DIR")
         .env_remove("HOME")
         .env_remove("XDG_DATA_HOME")
+        // Windows の置き場所（%APPDATA%）も外す
+        .env_remove("APPDATA")
         .args(["user-dict", "list"])
         .output()
         .unwrap();
