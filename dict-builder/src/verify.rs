@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::Path;
 
-use ikari_dict_format::reading::is_indexable;
+use ikari_dict_format::reading::is_indexable_with_digits;
 use ikari_dict_format::{
     DICT_KIND_SYSTEM, FormatError, GRAMMAR_FILE_NAME, MAX_READING_CHARS, SYSTEM_DICT_FILE_NAME,
     VECTORS_FILE_NAME, index_for_each, parse_dict_layout, parse_grammar_layout,
@@ -146,7 +146,7 @@ pub fn verify(dir: &Path) -> Result<VerifyReport, BuildError> {
         }
         let result = (|| -> Result<(), BuildError> {
             let key = std::str::from_utf8(key).map_err(|_| fail("index", "key is not UTF-8"))?;
-            if !is_indexable(key) {
+            if !is_indexable_with_digits(key) {
                 return Err(fail(
                     "index",
                     format!("key {key:?} is not an indexable reading"),

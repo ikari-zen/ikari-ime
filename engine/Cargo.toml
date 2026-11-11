@@ -15,10 +15,16 @@ ikari-core.workspace = true
 ikari-stack.workspace = true
 ikari-proto.workspace = true
 ikari-runmark.workspace = true
+ikari-resource.workspace = true
 prost.workspace = true
 flate2.workspace = true
 jiff.workspace = true
 
+# RSS の取得（task_info。unsafe は src/rss.rs に閉じる。ADR 0034 §3.4）
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
+ikari-testtime.workspace = true
 ikari-dict-builder.workspace = true
 tempfile.workspace = true

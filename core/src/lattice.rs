@@ -11,6 +11,7 @@ use crate::converter::{
     NumeralCoverRule, VolitionalRule,
 };
 use crate::dict::{Dictionary, Grammar, IME_EXCLUDED, WordId};
+use ikari_dict_format::reading::fold_fullwidth_digits;
 
 /// ラティスのノード。位置は文字単位（`key` の何文字目か）。
 #[derive(Clone, Copy, Debug)]
@@ -798,9 +799,19 @@ fn build_inner(
         },
     };
 
+    // 辞書は半角の数字で索引を作ってある（数字を含む町名の連なり。ADR 0030 §3.1）ので、全角の数字は引くときだけ半角にする。
+    // 1 文字を 1 文字に替えるので、ノードの位置は `key` のまま。全角の数字がなければ `key` をそのまま引く
+    let folded = fold_fullwidth_digits(key);
+    let folded_bytes: Option<Vec<u32>> = match &folded {
+        std::borrow::Cow::Borrowed(_) => None,
+        std::borrow::Cow::Owned(text) => Some(text.char_indices().map(|(i, _)| i as u32).collect()),
+    };
     for i in 0..n {
         let first = lat.nodes.len();
-        let tail = &key[lat.char_bytes[i] as usize..];
+        let tail = match &folded_bytes {
+            Some(bytes) => &folded[bytes[i] as usize..],
+            None => &key[lat.char_bytes[i] as usize..],
+        };
         // i より後ろで最も近い境界。この位置を越える辞書のノードは作らない
         let next_boundary = boundaries
             .iter()

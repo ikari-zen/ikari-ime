@@ -170,7 +170,9 @@ assemble_settings_app() {
   [[ -f "$icon" ]] || die "$icon がありません（swift macos/tools/make-app-icon.swift で作る）"
   cp "$icon" "$resources/AppIcon.icns"
   [[ -f "$IKARI_ROOT/THIRD_PARTY_NOTICES.md" ]] || die "THIRD_PARTY_NOTICES.md がありません"
-  cp "$IKARI_ROOT/THIRD_PARTY_NOTICES.md" "$resources/THIRD_PARTY_NOTICES.md"
+  # 「ライセンス」画面は THIRD_PARTY_NOTICES を 1 つ表示するので、Rust 依存の一覧（cargo xtask licenses の生成物）を後ろにつないで置く（#242）
+  [[ -f "$IKARI_ROOT/THIRD_PARTY_LICENSES_RUST.md" ]] || die "THIRD_PARTY_LICENSES_RUST.md がありません（cargo xtask licenses）"
+  { cat "$IKARI_ROOT/THIRD_PARTY_NOTICES.md"; printf "\n\n"; cat "$IKARI_ROOT/THIRD_PARTY_LICENSES_RUST.md"; } > "$resources/THIRD_PARTY_NOTICES.md"
   [[ -d "$IKARI_MACOS_DIR/Resources/keymap" ]] || die "macos/Resources/keymap がありません"
   cp -R "$IKARI_MACOS_DIR/Resources/keymap" "$resources/keymap"
 }
@@ -304,9 +306,13 @@ verify_settings_app() {
   echo "settings entitlements: app-sandbox=none, network=none, hardened-runtime=on"
 
   local requirement
-  requirement="$("$APP/Contents/MacOS/ikari-smoke" --print-requirement settings "$SIGNING")"
+  # ad-hoc の要件は cdhash を含む（#269）。同じバンドルから読んだ値で組み立てる
+  requirement="$("$APP/Contents/MacOS/ikari-smoke" --print-requirement settings "$SIGNING" "$SETTINGS")"
   codesign --verify -R="$requirement" "$SETTINGS" || die "設定アプリが署名要件を満たしません: $requirement"
-  echo "signing requirement satisfied (settings)"
+  local bridge_shell_req
+  bridge_shell_req="$("$APP/Contents/MacOS/ikari-smoke" --print-requirement bridge-shell "$SIGNING" "$APP")"
+  codesign --verify -R="$bridge_shell_req" "$APP" || die "殻（ブリッジの相手）が署名要件を満たしません: $bridge_shell_req"
+  echo "signing requirement satisfied (settings, bridge shell)"
 
   # 外側の署名の封印に含まれる（差し替えられたら ikari.app の検証が通らなくなる）
   grep -q "Helpers/$SETTINGS_APP_NAME" "$APP/Contents/_CodeSignature/CodeResources" \

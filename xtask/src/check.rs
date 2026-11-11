@@ -110,6 +110,7 @@ fn steps(root: &Path, plan: &Plan) -> Result<(), Failure> {
     }
 
     audit(root)?;
+    rust_licenses(root)?;
     rust_base(root)?;
     if plan.lm {
         rust_lm(root)?;
@@ -152,6 +153,24 @@ fn audit(root: &Path) -> Result<(), Failure> {
             "cargo audit が脆弱性を見つけたか、データベースの取得に失敗しました（cargo audit で確かめてください）",
         )
     })
+}
+
+/// 配るバイナリの Rust 依存のライセンス一覧が最新か（cargo-about。issue #242。数秒）
+fn rust_licenses(root: &Path) -> Result<(), Failure> {
+    log("Rust 依存のライセンス一覧が最新か（cargo xtask licenses --check）");
+    if !crate::licenses::available() {
+        warn(
+            "cargo-about がありません。検査を飛ばします（cargo install cargo-about --locked --features cli）",
+        );
+        return Ok(());
+    }
+    let exe = std::env::current_exe()
+        .map_err(|e| Failure::new(format!("xtask の実行ファイルの場所を取れません: {e}")))?;
+    exec(
+        Command::new(exe)
+            .current_dir(root)
+            .args(["licenses", "--check"]),
+    )
 }
 
 fn rust_base(root: &Path) -> Result<(), Failure> {
@@ -318,7 +337,7 @@ fn real(root: &Path, consts: &LibConsts) -> Result<(), Failure> {
     Ok(())
 }
 
-/// 実データの `#[ignore]` テスト（cargo の引数。`cargo xtask cov --real` も同じものを流す）
+/// 実データの `#[ignore]` テスト（cargo の引数。時間の上限を測るテストを含むものは `--release`。`cargo xtask cov --real` も同じものを流す）
 pub(crate) fn real_tests() -> [&'static [&'static str]; 9] {
     [
         &[
@@ -381,12 +400,15 @@ pub(crate) fn real_tests() -> [&'static [&'static str]; 9] {
         ],
         &[
             "test",
+            "--release",
             "-p",
             "ikari-engine",
             "--features",
             "lm-metal",
             "--",
             "--ignored",
+            // 時間の上限を測るテストがあるので、並べて流さない（並列だと p99 が上限を超える）
+            "--test-threads=1",
         ],
         &[
             "test",
@@ -400,6 +422,8 @@ pub(crate) fn real_tests() -> [&'static [&'static str]; 9] {
             "real_model_edge",
             "--",
             "--ignored",
+            // 締め切り（30ms）の中で LM が使われることを測るテストがあるので、並べて流さない
+            "--test-threads=1",
         ],
         &[
             "test",

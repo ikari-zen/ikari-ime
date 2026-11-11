@@ -538,9 +538,12 @@ dependencies = [
  "ikari-core",
  "ikari-dict-builder",
  "ikari-proto",
+ "ikari-resource",
  "ikari-runmark",
  "ikari-stack",
+ "ikari-testtime",
  "jiff",
+ "libc",
  "prost",
  "tempfile",
 ]
@@ -590,6 +593,7 @@ name = "ikari-lm"
 version = "0.1.0"
 dependencies = [
  "ikari-core",
+ "ikari-testtime",
  "llama-cpp-2",
  "tempfile",
 ]
@@ -601,6 +605,17 @@ dependencies = [
  "prost",
  "prost-build",
  "protox",
+]
+
+[[package]]
+name = "ikari-resource"
+version = "0.1.0"
+dependencies = [
+ "ikari-dict-format",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
 ]
 
 [[package]]
@@ -642,6 +657,10 @@ dependencies = [
  "ikari-core",
  "ikari-lm",
 ]
+
+[[package]]
+name = "ikari-testtime"
+version = "0.1.0"
 
 [[package]]
 name = "indexmap"

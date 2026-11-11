@@ -14,6 +14,142 @@
 
 詳細は [testdata/sudachi-mini/README.md](testdata/sudachi-mini/README.md) をご覧ください。
 
+#### SudachiDict に含まれるデータの表示（UniDic、NEologd）
+
+SudachiDict の LEGAL（https://github.com/WorksApplications/SudachiDict/blob/develop/LEGAL 。2026-11-10 に取得）によると、`small_lex.csv` と `matrix.def` は UniDic（BSD-3-Clause。The UniDic Consortium）の一部、`core_lex.csv` と `notcore_lex.csv` は NEologd（Toshinori Sato）の一部を含みます。ikari はこれらのファイルから辞書を作るので、LEGAL の表示を次に写します（原文のまま）。
+
+```text
+LEGAL NOTICE INFORMATION
+========================
+
+- All the files in this distribution are covered under the Apache License
+version 2.0. (see the file LICENSE-2.0.txt)
+
+
+- src/main/text/small_lex.csv contains a part
+  of UniDic (https://unidic.ninjal.ac.jp/).
+- src/main/text/matrix.def.zip is a part of UniDic.
+
+Copyright (c) 2011-2013, The UniDic Consortium
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+ * Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+
+ * Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the
+   distribution.
+
+ * Neither the name of the UniDic Consortium nor the names of its
+   contributors may be used to endorse or promote products derived
+   from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+- src/main/text/core_lex.csv and src/main/text/notcore_lex.csv contain
+a part of NEologd (https://github.com/neologd/mecab-unidic-neologd).
+
+Copyright (C) 2015-2019 Toshinori Sato (@overlast)
+
+      https://github.com/neologd/mecab-unidic-neologd
+
+    i. 本データは、株式会社はてなが提供するはてなキーワード一覧ファイル
+       中の表記、及び、読み仮名の大半を使用している。
+
+       はてなキーワード一覧ファイルの著作権は、株式会社はてなにある。
+
+       はてなキーワード一覧ファイルの使用条件に基づき、また、
+       データ使用の許可を頂いたことに対する感謝の意を込めて、
+       以下に株式会社はてなおよびはてなキーワードへの参照をURLで示す。
+
+       株式会社はてな : http://hatenacorp.jp/information/outline
+
+       はてなキーワード :
+       http://developer.hatena.ne.jp/ja/documents/keyword/misc/catalog
+
+   ii. 本データは、日本郵便株式会社が提供する郵便番号データ中の表記、
+       及び、読み仮名を使用している。
+
+       日本郵便株式会社は、郵便番号データに限っては著作権を主張しないと
+       述べている。
+
+       日本郵便株式会社の郵便番号データに対する感謝の意を込めて、
+       以下に日本郵便株式会社および郵便番号データへの参照をURLで示す。
+
+       日本郵便株式会社 :
+         http://www.post.japanpost.jp/about/profile.html
+
+       郵便番号データ :
+         http://www.post.japanpost.jp/zipcode/dl/readme.html
+
+  iii. 本データは、スナフキん氏が提供する日本全国駅名一覧中の表記、及び
+       読み仮名を使用している。
+
+       日本全国駅名一覧の著作権は、スナフキん氏にある。
+
+       スナフキん氏は 「このデータを利用されるのは自由ですが、その際に
+       不利益を被ったりした場合でも、スナフキんは一切責任は負えません
+       ことをご承知おき下さい」と述べている。
+
+       スナフキん氏に対する感謝の意を込めて、
+       以下に日本全国駅名一覧のコーナーへの参照をURLで示す。
+
+       日本全国駅名一覧のコーナー :
+         http://www5a.biglobe.ne.jp/~harako/data/station.htm
+
+   iv. 本データは、工藤拓氏が提供する人名(姓/名)エントリデータ中の、
+       漢字表記の姓・名とそれに対応する読み仮名を使用している。
+
+       人名(姓/名)エントリデータは被災者・安否不明者の人名の
+       表記揺れ対策として、Mozcの人名辞書を活用できるという
+       工藤氏の考えによって提供されている。
+
+       工藤氏に対する感謝の意を込めて、
+       以下にデータ本体と経緯が分かる情報への参照をURLで示す。
+
+       人名(姓/名)エントリデータ :
+         http://chasen.org/~taku/software/misc/personal_name.zip
+
+       上記データが提供されることになった経緯
+         http://togetter.com/li/111529
+
+    v. 本データは、Web上からクロールした大量の文書データから抽出した
+       表記とそれに対応する読み仮名のデータを含んでいる。
+
+       抽出した表記とそれに対応する読み仮名の組は、上記の i. から iv.
+       の言語資源の組み合わせによって得られる組のみを採録した。
+
+       Web 上に文書データを公開して下さっている皆様に感謝いたします。
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+```
+
 ### chiVe
 
 - **ライセンス**: Apache License 2.0
@@ -77,73 +213,46 @@ SOFTWARE.
 
 ## Rust依存クレート
 
-### fst
+配るバイナリ（ikari.app に入る Rust の成果物 `ikari-engine-ffi`、`ikari-shell-ffi`）が静的に含む依存クレートのライセンスと著作権表示は、[THIRD_PARTY_LICENSES_RUST.md](THIRD_PARTY_LICENSES_RUST.md) にまとめてあります。cargo-about で機械的に作った一覧で（`cargo xtask licenses`。設定は [about.toml](about.toml)）、許可しているライセンス（Apache-2.0、MIT、Unicode-3.0）以外が入ると作れません。設定アプリの「ライセンス」画面には、このファイルのあとに続けて出ます。
 
-- **ライセンス**: Unlicense or MIT
-- **バージョン**: 0.4.7
-- **用途**: 索引データ構造（有限状態トランスデューサー）
-- **リポジトリ**: https://github.com/BurntSushi/fst
-
-### memmap2
-
-- **ライセンス**: MIT or Apache-2.0
-- **バージョン**: 0.9
-- **用途**: メモリ効率的なファイルマッピングによる辞書の読み込み
-- **リポジトリ**: https://github.com/RazrFalcon/memmap2-rs
-
-### clap
-
-- **ライセンス**: MIT or Apache-2.0
-- **バージョン**: 4.6（derive feature）
-- **用途**: コマンドラインオプションの解析（CLI、dict-builder、eval用）
-- **リポジトリ**: https://github.com/clap-rs/clap
-
-### tempfile
-
-- **ライセンス**: MIT or Apache-2.0
-- **バージョン**: 3
-- **用途**: テスト時の一時ディレクトリ・ファイル管理（dev-dependency）
-- **リポジトリ**: https://github.com/Stebalien/tempfile
-
-### serde / serde_json
-
-- **ライセンス**: MIT or Apache-2.0
-- **バージョン**: serde 1.0、serde_json 1.0
-- **用途**: 取り込みファイル（JSONL）の読み込み（import crate）
-- **リポジトリ**: https://github.com/serde-rs/serde 、https://github.com/serde-rs/json
-
-### jiff
-
-- **ライセンス**: Unlicense or MIT
-- **バージョン**: 0.2
-- **用途**: Rewriter（日付や時刻の展開）の現在時刻の取得
-- **リポジトリ**: https://github.com/BurntSushi/jiff
-
-### bzip2 / flate2 / regex / sha2
-
-- **ライセンス**: bzip2、flate2、regex、sha2 はいずれも MIT or Apache-2.0。bzip2 が内部で使う libbz2-rs-sys（bzip2 の Rust 実装）は bzip2-1.0.6 ライセンス（BSD 系）
-- **バージョン**: bzip2 0.6（libbz2-rs-sys 0.2）、flate2 1、regex 1、sha2 0.10
-- **用途**: 辞書の元データを作る道具（dict-builder の `webwords`）が、Wikipedia のダンプ（bz2、gzip）を読み、本文から語を取り出し、入力の sha256 を取る。bzip2、regex、sha2 は製品のバイナリ（アプリ、エンジン）には含まれない。flate2 はエンジンのログの gzip 圧縮にも使う
-- **リポジトリ**: https://github.com/trifectatechfoundation/bzip2-rs 、https://github.com/trifectatechfoundation/libbz2-rs-sys 、https://github.com/rust-lang/flate2-rs 、https://github.com/rust-lang/regex 、https://github.com/RustCrypto/hashes
-
-### prost / prost-build / protox
-
-- **ライセンス**: prost、prost-build は Apache-2.0。protox は MIT or Apache-2.0
-- **バージョン**: 0.14（prost、prost-build）、0.10（protox）
-- **用途**: 殻とエンジンの間のメッセージ（protobuf）の Rust 側の符号化。`.proto` のコンパイルはビルド時に protox で行う（`protoc` は不要）
-- **リポジトリ**: https://github.com/tokio-rs/prost 、https://github.com/andrewhickman/protox
+辞書を作る道具（dict-builder の `webwords` が使う bzip2、regex、sha2 など）、評価、CLI、xtask は、配るバイナリに含まれないので、一覧に入れていません。
 
 ## 言語モデルと推論エンジン（フェーズ2のエンジンが使用）
 
 ### llama.cpp
 
 - **ライセンス**: MIT（Copyright (c) 2023-2026 The ggml authors）
-- **用途**: 言語モデルの推論。Rust クレート `llama-cpp-2` / `llama-cpp-sys-2`（0.1.159。MIT or Apache-2.0）経由で、エンジン（`IkariEngine.xpc`）の静的ライブラリに含まれる。Metal のシェーダは埋め込みで、ネットワークは使わない
+- **用途**: 言語モデルの推論。Rust クレート `llama-cpp-2` / `llama-cpp-sys-2`（0.1.160。MIT or Apache-2.0）経由で、エンジン（`IkariEngine.xpc`）の静的ライブラリに含まれる。Metal のシェーダは埋め込みで、ネットワークは使わない
 - **リポジトリ**: https://github.com/ggml-org/llama.cpp
+- **許諾文（全文。llama-cpp-sys-2 に入っている llama.cpp の `LICENSE`）**:
+
+```text
+MIT License
+
+Copyright (c) 2023-2026 The ggml authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ### zenz-v3.2 small
 
-- **ライセンス**: Apache-2.0（Hugging Face のモデルページ https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf の表示とモデルカードによる。2026-10-26 に確認）。モデルのページには、元になったモデルや学習データのライセンスの記載がない
+- **ライセンス**: CC BY-SA 4.0（Hugging Face のモデルページ https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf の表示とモデルカードの `license: cc-by-sa-4.0` による。2026-11-09 に確認。2026-10-26 には Apache-2.0 と書いていたが、現在の表示は CC BY-SA 4.0 で、最終更新は 2026-11-07）。ikari はモデルを配らず、利用者が取得する。モデルを配る場合は、表示（作者、ライセンス、変更の有無）と同じ条件での提供（ShareAlike）の及ぶ範囲を、先に確かめる（#242）。モデルのページには、元になったモデルや学習データのライセンスの記載がない
 - **用途**: 候補の再ランキング（既定の唯一の LM）。モデルファイルはバンドルに含めず、`scripts/install-data.sh` が `~/Library/Application Support/ikari-ime/models/` に置く
 
 ### kanakanji-edge
@@ -156,7 +265,9 @@ SOFTWARE.
 ### swift-protobuf
 
 - **ライセンス**: Apache License 2.0
-- **バージョン**: 1.38.x
+- **バージョン**: 1.39.0（`macos/Package.resolved`）
+- **著作権**: Apple Inc. and the Swift Project authors
+- **許諾文**: Apache License 2.0 の全文は [THIRD_PARTY_LICENSES_RUST.md](THIRD_PARTY_LICENSES_RUST.md) の Apache-2.0 の項（同じ条文）と [LICENSE](LICENSE) にある
 - **用途**: 殻とエンジンの間のメッセージ（protobuf）の符号化
 - **リポジトリ**: https://github.com/apple/swift-protobuf
 
@@ -167,4 +278,4 @@ ikari-ime のコードは Apache License 2.0 です（[LICENSE](LICENSE)、[NOTI
 
 ## ライセンス確認
 
-各クレートのライセンスは、[Cargo.lock](Cargo.lock) および Rust クレートレジストリで確認できます。
+Rust 依存の一覧は、[Cargo.lock](Cargo.lock) が変わったあとに `cargo xtask licenses` で作り直します（cargo-about が要る: `cargo install cargo-about --locked --features cli`）。最新かどうかは `cargo xtask licenses --check` で確かめられ、`scripts/check.sh` も流します（cargo-about がなければ飛ばして警告します）。

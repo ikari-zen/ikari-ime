@@ -33,7 +33,7 @@ struct DictionaryTab: View {
                 }
                 GridRow {
                     Text("品詞")
-                    Picker("品詞", selection: Binding(get: { model.draft.posName }, set: model.selectPos)) {
+                    Picker("品詞", selection: Binding(get: { model.draft.posName }, set: { model.selectPos($0) })) {
                         ForEach(model.posOptions, id: \.name) { Text($0.name).tag($0.name) }
                     }
                     .labelsHidden()

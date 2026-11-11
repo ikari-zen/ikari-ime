@@ -1,6 +1,7 @@
 //! `--scenario <tsv>`: 学習のシナリオ（ADR 0002 §15.1）。
 //!
-//! 列は `step`（`commit` / `probe`）、`context`、`reading`、`surface`。省略可能な列 `expect`
+//! 列は `step`（`commit` / `probe` / `wait`。`wait` は `surface` 列の秒数だけ手動の時計を進める。
+//! `reading` と `context` は空。ADR 0045）、`context`、`reading`、`surface`。省略可能な列 `expect`
 //! （`top1`（既定）/ `not-top1`）は probe の期待を表す。
 //! 一時的なユーザーディレクトリで、`commit` を順に実行して学習させ、`probe` の順位を調べる。
 //! 省略可能な列 `field`（`none` / `available`）と `history` は、左文脈を `compose_left` で作る（ADR 0046。
@@ -10,6 +11,8 @@
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use ikari_core::{CarryParams, CommitEvent, Converter};
@@ -28,6 +31,8 @@ const COL_HISTORY: &str = "history";
 const COL_EXPECT: &str = "expect";
 const STEP_COMMIT: &str = "commit";
 const STEP_PROBE: &str = "probe";
+const STEP_WAIT: &str = "wait";
+const MILLIS_PER_SEC: u64 = 1000;
 const EXPECT_TOP1: &str = "top1";
 const EXPECT_NOT_TOP1: &str = "not-top1";
 
@@ -35,6 +40,8 @@ const EXPECT_NOT_TOP1: &str = "not-top1";
 pub enum StepKind {
     Commit,
     Probe,
+    /// 手動の時計を進める（秒。`surface` 列）
+    Wait(u64),
 }
 
 /// probe が満たすべき条件
@@ -112,14 +119,28 @@ pub fn load_scenario(tsv: &str) -> Result<Vec<ScenarioStep>, EvalSetError> {
         let kind = match get(COL_STEP).trim() {
             STEP_COMMIT => StepKind::Commit,
             STEP_PROBE => StepKind::Probe,
+            STEP_WAIT => {
+                let secs = get(COL_SURFACE)
+                    .trim()
+                    .parse::<u64>()
+                    .map_err(|_| err(line_no, "`wait` needs a number of seconds in `surface`"))?;
+                StepKind::Wait(secs)
+            }
             other => {
                 return Err(err(
                     line_no,
-                    format!("step must be `{STEP_COMMIT}` or `{STEP_PROBE}`, got `{other}`"),
+                    format!(
+                        "step must be `{STEP_COMMIT}`, `{STEP_PROBE}` or `{STEP_WAIT}`, got `{other}`"
+                    ),
                 ));
             }
         };
-        for req in [COL_READING, COL_SURFACE] {
+        let required: &[&str] = if matches!(kind, StepKind::Wait(_)) {
+            &[]
+        } else {
+            &[COL_READING, COL_SURFACE]
+        };
+        for req in required {
             if get(req).is_empty() {
                 return Err(err(line_no, format!("empty required value `{req}`")));
             }
@@ -135,7 +156,7 @@ pub fn load_scenario(tsv: &str) -> Result<Vec<ScenarioStep>, EvalSetError> {
                 ));
             }
         };
-        if kind == StepKind::Commit && expect != Expect::Top1 {
+        if kind != StepKind::Probe && expect != Expect::Top1 {
             return Err(err(line_no, "`expect` applies to probe steps only"));
         }
         steps.push(ScenarioStep {
@@ -161,6 +182,8 @@ pub trait ScenarioHost {
     fn commit(&mut self, step: &ScenarioStep, max_rank: usize) -> Result<(), String>;
     /// `step.surface` の順位と、1位の表記
     fn probe(&mut self, step: &ScenarioStep, max_rank: usize) -> (Option<usize>, Option<String>);
+    /// 手動の時計を `secs` 秒進める（直前ボーナスの窓。ADR 0045）
+    fn wait(&mut self, secs: u64);
 }
 
 #[derive(Clone, Debug)]
@@ -178,6 +201,7 @@ impl StepOutcome {
     pub fn passed(&self) -> Option<bool> {
         match self.step.kind {
             StepKind::Commit => self.error.as_ref().map(|_| false),
+            StepKind::Wait(_) => None,
             StepKind::Probe => Some(match self.step.expect {
                 Expect::Top1 => self.rank == Some(1),
                 Expect::NotTop1 => self.rank != Some(1),
@@ -230,6 +254,15 @@ pub fn run_scenario(
                     error: None,
                 }
             }
+            StepKind::Wait(secs) => {
+                host.wait(secs);
+                StepOutcome {
+                    step: step.clone(),
+                    rank: None,
+                    top1: None,
+                    error: None,
+                }
+            }
         })
         .collect();
     ScenarioReport { outcomes }
@@ -248,7 +281,7 @@ pub fn render_scenario(report: &ScenarioReport) -> String {
     for o in &report.outcomes {
         let s = &o.step;
         let expect = match (s.kind, s.expect) {
-            (StepKind::Commit, _) => "-",
+            (StepKind::Commit | StepKind::Wait(_), _) => "-",
             (StepKind::Probe, Expect::Top1) => EXPECT_TOP1,
             (StepKind::Probe, Expect::NotTop1) => EXPECT_NOT_TOP1,
         };
@@ -262,10 +295,10 @@ pub fn render_scenario(report: &ScenarioReport) -> String {
             out,
             "| {} | {} | {} | {} | {} | {expect} | {} | {} | {result} |",
             s.line,
-            if s.kind == StepKind::Commit {
-                STEP_COMMIT
-            } else {
-                STEP_PROBE
+            match s.kind {
+                StepKind::Commit => STEP_COMMIT,
+                StepKind::Probe => STEP_PROBE,
+                StepKind::Wait(_) => STEP_WAIT,
             },
             cell(&s.context),
             cell(&s.reading),
@@ -287,6 +320,8 @@ pub struct ConverterHost<'a, F: FnMut(CommitEvent)> {
     /// `field` 列のあるステップの左文脈の組み立て（`--carry-fill`・`--carry-joint`。ADR 0046）。
     /// `None` なら足さない
     pub carry: Option<CarryParams>,
+    /// `wait` が進める手動の時計（学習の `RecentChoices` と共有する。ADR 0045）。`None` なら `wait` は何もしない
+    pub manual_clock: Option<Arc<AtomicU64>>,
 }
 
 impl<F: FnMut(CommitEvent)> ConverterHost<'_, F> {
@@ -329,6 +364,12 @@ impl<F: FnMut(CommitEvent)> ScenarioHost for ConverterHost<'_, F> {
         let (_, rank, top1) = self.convert_and_find(step, max_rank);
         (rank, top1)
     }
+
+    fn wait(&mut self, secs: u64) {
+        if let Some(clock) = &self.manual_clock {
+            clock.fetch_add(secs.saturating_mul(MILLIS_PER_SEC), Ordering::Relaxed);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -340,6 +381,7 @@ mod tests {
     struct FakeHost {
         learned: Vec<(String, String, String)>,
         fail_commit_for: Option<String>,
+        waited: u64,
     }
 
     impl ScenarioHost for FakeHost {
@@ -369,6 +411,10 @@ mod tests {
             } else {
                 (Some(3), Some("別".to_owned()))
             }
+        }
+
+        fn wait(&mut self, secs: u64) {
+            self.waited += secs;
         }
     }
 
@@ -413,6 +459,26 @@ probe\t技術文書で\tひんし\t瀕死\tnot-top1
         let without = load_scenario("step\tcontext\treading\tsurface\nprobe\tc\tr\ts\n").unwrap();
         assert_eq!((without[0].field, without[0].history.as_str()), (None, ""));
         assert!(load_scenario(&format!("{head}probe\tc\tr\ts\tmaybe\t\n")).is_err());
+    }
+
+    #[test]
+    fn wait_step_takes_seconds_in_surface_and_advances_the_host() {
+        let head = "step\tcontext\treading\tsurface\n";
+        let steps = load_scenario(&format!("{head}wait\t\t\t3600\nprobe\t\tあ\t亜\n")).unwrap();
+        assert_eq!(steps[0].kind, StepKind::Wait(3600));
+        let mut host = FakeHost::default();
+        let report = run_scenario(&mut host, &steps, 50);
+        assert_eq!(host.waited, 3600);
+        assert_eq!(report.outcomes[0].passed(), None);
+        assert_eq!(report.probe_count(), 1);
+        assert!(render_scenario(&report).contains("| 2 | wait |"));
+        for bad in ["wait\t\t\t\n", "wait\t\t\tx\n", "wait\t\t\t-1\n"] {
+            assert_eq!(load_scenario(&format!("{head}{bad}")).unwrap_err().line, 2);
+        }
+        assert!(
+            load_scenario("step\tcontext\treading\tsurface\texpect\nwait\t\t\t1\tnot-top1\n")
+                .is_err()
+        );
     }
 
     #[test]

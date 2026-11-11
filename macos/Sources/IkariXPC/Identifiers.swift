@@ -48,21 +48,34 @@ public enum SigningRequirements {
         }
     }
 
-    /// 殻がブリッジ（Unix ソケット）で受けた接続の相手（設定アプリ）が正しいか（ADR 0005 §6.3）
-    public static func settingsApp(mode: SigningMode, teamID: String = IkariIdentifiers.teamID) -> String {
-        let identifier = "identifier \"\(IkariIdentifiers.settings)\""
-        switch mode {
-        case .team: return "\(identifier) and \(teamClause(teamID))"
-        case .adhoc: return identifier
-        }
+    /// 殻がブリッジ（Unix ソケット）で受けた接続の相手（設定アプリ）が正しいか（ADR 0005 §6.3）。
+    /// ad-hoc では identifier の一致だけでは相手を確かめられないので、`cdhash`（同じバンドルから読んだ値）も要る。
+    /// ad-hoc で `cdhash` がなければ要件を作れない（nil。呼び出し側は接続を断る）。
+    public static func settingsApp(
+        mode: SigningMode, teamID: String = IkariIdentifiers.teamID, cdhash: Data? = nil
+    ) -> String? {
+        pinned(identifier: IkariIdentifiers.settings, mode: mode, teamID: teamID, cdhash: cdhash)
     }
 
-    /// 設定アプリがブリッジ（Unix ソケット）でつないだ相手（殻）が正しいか（殻側の `settingsApp` の対）
-    public static func bridgeShell(mode: SigningMode, teamID: String = IkariIdentifiers.teamID) -> String {
-        let identifier = "identifier \"\(IkariIdentifiers.shell)\""
+    /// 設定アプリがブリッジ（Unix ソケット）でつないだ相手（殻）が正しいか（殻側の `settingsApp` の対）。`cdhash` の扱いも同じ
+    public static func bridgeShell(
+        mode: SigningMode, teamID: String = IkariIdentifiers.teamID, cdhash: Data? = nil
+    ) -> String? {
+        pinned(identifier: IkariIdentifiers.shell, mode: mode, teamID: teamID, cdhash: cdhash)
+    }
+
+    /// `cdhash H"<16 進>"`（`kSecCodeInfoUnique` の値から）
+    static func cdhashClause(_ cdhash: Data) -> String {
+        "cdhash H\"" + cdhash.map { String(format: "%02x", $0) }.joined() + "\""
+    }
+
+    private static func pinned(identifier: String, mode: SigningMode, teamID: String, cdhash: Data?) -> String? {
+        let identifierClause = "identifier \"\(identifier)\""
         switch mode {
-        case .team: return "\(identifier) and \(teamClause(teamID))"
-        case .adhoc: return identifier
+        case .team: return "\(identifierClause) and \(teamClause(teamID))"
+        case .adhoc:
+            guard let cdhash, !cdhash.isEmpty else { return nil }
+            return "\(identifierClause) and \(cdhashClause(cdhash))"
         }
     }
 

@@ -26,6 +26,7 @@ impl Inner {
             engine_version: env!("CARGO_PKG_VERSION").to_owned(),
             dict_label: self.stack().meta.dict_label.clone(),
             lm: self.lm_state() as i32,
+            learning_quarantined: self.learning_quarantined.swap(false, Ordering::AcqRel),
         })
     }
 

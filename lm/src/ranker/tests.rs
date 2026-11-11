@@ -75,9 +75,9 @@ const WARM_UP_TEST_BUDGET_MS: u64 = 10_000;
 
 fn cfg(budget_ms: u64, idle_ms: u64) -> ZenzConfig {
     ZenzConfig {
-        budget: Duration::from_millis(budget_ms),
-        idle_unload: Duration::from_millis(idle_ms),
-        load_retry: Duration::from_millis(50),
+        budget: ikari_testtime::ms(budget_ms),
+        idle_unload: ikari_testtime::ms(idle_ms),
+        load_retry: ikari_testtime::ms(50),
         ..ZenzConfig::default()
     }
 }
@@ -154,12 +154,12 @@ fn scores(c: &[Candidate]) -> Vec<(String, i32)> {
 }
 
 fn wait_until(mut cond: impl FnMut() -> bool) -> bool {
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + ikari_testtime::scaled(Duration::from_secs(5));
     while Instant::now() < deadline {
         if cond() {
             return true;
         }
-        thread::sleep(Duration::from_millis(5));
+        thread::sleep(ikari_testtime::ms(5));
     }
     false
 }
@@ -191,7 +191,7 @@ fn rate_stays_within_one_when_the_request_cannot_be_sent() {
 #[test]
 fn rate_stays_within_one_when_many_calls_overlap() {
     let state = mock(&[("品詞", 1.0)]);
-    *lock(&state.delay) = Duration::from_millis(150);
+    *lock(&state.delay) = ikari_testtime::ms(150);
     let r = ZenzRanker::new(loader(&state), cfg(10, 60_000));
     let fx = Fixture::new();
     let ctx = Context::new().with_left_text("文脈");
@@ -348,7 +348,7 @@ fn non_finite_nll_is_penalized_not_fatal() {
 #[test]
 fn timeout_leaves_scores_untouched_and_late_result_is_reused() {
     let state = mock(&[("品詞", 2.0), ("瀕死", 5.0)]);
-    *lock(&state.delay) = Duration::from_millis(200);
+    *lock(&state.delay) = ikari_testtime::ms(200);
     let r = ZenzRanker::new(loader(&state), cfg(30, 60_000));
     let fx = Fixture::new();
     let ctx = Context::new().with_left_text("ctx");
@@ -359,7 +359,7 @@ fn timeout_leaves_scores_untouched_and_late_result_is_reused() {
     fx.rank(&r, &ctx, "ひんし", &mut cands);
     let waited = t.elapsed();
     // NFR-04: 30ms 待って諦める（余裕を見て 150ms 未満）
-    assert!(waited < Duration::from_millis(150), "{waited:?}");
+    assert!(waited < ikari_testtime::ms(150), "{waited:?}");
     assert_eq!(scores(&cands), scores(&mk()));
     assert_eq!(r.stats().timeouts, 1);
 
@@ -391,16 +391,16 @@ fn timeout_leaves_scores_untouched_and_late_result_is_reused() {
 #[test]
 fn waits_only_until_the_deadline_even_when_the_budget_is_longer() {
     let state = mock(&[("品詞", 2.0), ("瀕死", 5.0)]);
-    *lock(&state.delay) = Duration::from_millis(400);
+    *lock(&state.delay) = ikari_testtime::ms(400);
     let r = ZenzRanker::new(loader(&state), cfg(2000, 60_000));
     let fx = Fixture::new();
     let ctx = Context::new().with_left_text("ctx");
     let mut cands = vec![dict_cand("瀕死", 5000), dict_cand("品詞", 5100)];
     let t = Instant::now();
-    let deadline = Some(Instant::now() + Duration::from_millis(40));
+    let deadline = Some(Instant::now() + ikari_testtime::ms(40));
     fx.rank_until(&r, &ctx, "ひんし", &mut cands, deadline);
     let waited = t.elapsed();
-    assert!(waited < Duration::from_millis(200), "{waited:?}");
+    assert!(waited < ikari_testtime::ms(200), "{waited:?}");
     assert_eq!(
         scores(&cands),
         vec![("瀕死".to_owned(), 5000), ("品詞".to_owned(), 5100)]
@@ -412,18 +412,14 @@ fn waits_only_until_the_deadline_even_when_the_budget_is_longer() {
 #[test]
 fn budget_is_still_the_ceiling_when_the_deadline_is_far() {
     let state = mock(&[("a", 1.0), ("b", 2.0)]);
-    *lock(&state.delay) = Duration::from_millis(400);
+    *lock(&state.delay) = ikari_testtime::ms(400);
     let r = ZenzRanker::new(loader(&state), cfg(30, 60_000));
     let fx = Fixture::new();
     let mut cands = vec![dict_cand("a", 0), dict_cand("b", 0)];
     let t = Instant::now();
-    let deadline = Some(Instant::now() + Duration::from_secs(10));
+    let deadline = Some(Instant::now() + ikari_testtime::scaled(Duration::from_secs(10)));
     fx.rank_until(&r, &Context::new(), "x", &mut cands, deadline);
-    assert!(
-        t.elapsed() < Duration::from_millis(200),
-        "{:?}",
-        t.elapsed()
-    );
+    assert!(t.elapsed() < ikari_testtime::ms(200), "{:?}", t.elapsed());
     assert_eq!(r.stats().timeouts, 1);
 }
 
@@ -436,7 +432,7 @@ fn an_expired_or_missing_deadline_sends_nothing() {
 
     // 過ぎた締め切り: 送らない。時間切れとして数える（calls に含む）
     let mut c = vec![dict_cand("a", 0), dict_cand("b", 0)];
-    let past = Instant::now().checked_sub(Duration::from_millis(1));
+    let past = Instant::now().checked_sub(ikari_testtime::ms(1));
     fx.rank_until(&r, &ctx, "x", &mut c, past);
     assert_eq!(c.iter().map(|c| c.score).collect::<Vec<_>>(), vec![0, 0]);
     let s = r.stats();
@@ -456,18 +452,18 @@ fn an_expired_or_missing_deadline_sends_nothing() {
 fn all_rank_calls_of_one_conversion_share_one_deadline() {
     // 1つ目の rank が締め切りまで待って時間切れになったら、2つ目は待たずに戻る
     let state = mock(&[("a", 1.0), ("b", 2.0)]);
-    *lock(&state.delay) = Duration::from_millis(300);
+    *lock(&state.delay) = ikari_testtime::ms(300);
     let r = ZenzRanker::new(loader(&state), cfg(2000, 60_000));
     let fx = Fixture::new();
     let ctx = Context::new().with_left_text("ctx");
-    let deadline = Some(Instant::now() + Duration::from_millis(50));
+    let deadline = Some(Instant::now() + ikari_testtime::ms(50));
     let t = Instant::now();
     let mut first = vec![dict_cand("a", 0), dict_cand("b", 0)];
     fx.rank_until(&r, &ctx, "x", &mut first, deadline);
     let after_first = t.elapsed();
     let mut second = vec![dict_cand("a", 0), dict_cand("c", 0)];
     fx.rank_until(&r, &ctx, "x", &mut second, deadline);
-    assert!(t.elapsed() - after_first < Duration::from_millis(20));
+    assert!(t.elapsed() - after_first < ikari_testtime::ms(20));
     let s = r.stats();
     assert_eq!((s.calls, s.timeouts, s.expired, s.requests), (2, 2, 1, 1));
 }
@@ -476,13 +472,13 @@ fn all_rank_calls_of_one_conversion_share_one_deadline() {
 fn a_finished_late_result_is_used_even_after_the_deadline() {
     // 先行計算（長い締め切り）が終わったあとの、締め切りが「今」の呼び出しは、待たずに結果だけ使う
     let state = mock(&[("品詞", 2.0), ("瀕死", 5.0)]);
-    *lock(&state.delay) = Duration::from_millis(100);
+    *lock(&state.delay) = ikari_testtime::ms(100);
     let r = ZenzRanker::new(loader(&state), cfg(2000, 60_000));
     let fx = Fixture::new();
     let ctx = Context::new().with_left_text("ctx");
     let mk = || vec![dict_cand("瀕死", 5000), dict_cand("品詞", 5100)];
     let mut early = mk();
-    let soon = Some(Instant::now() + Duration::from_millis(10));
+    let soon = Some(Instant::now() + ikari_testtime::ms(10));
     fx.rank_until(&r, &ctx, "ひんし", &mut early, soon);
     assert_eq!(r.stats().timeouts, 1);
     assert!(wait_until(|| lock(&r.shared.late).is_some()));
@@ -498,8 +494,8 @@ fn a_finished_late_result_is_used_even_after_the_deadline() {
 #[test]
 fn warm_up_loads_the_model_and_scores_once_without_touching_the_rates() {
     let state = mock(&[]);
-    *lock(&state.load_delay) = Duration::from_millis(50);
-    *lock(&state.delay) = Duration::from_millis(20);
+    *lock(&state.load_delay) = ikari_testtime::ms(50);
+    *lock(&state.delay) = ikari_testtime::ms(20);
     // 予算は採点の遅れより十分長くする（負荷が高くても、後半の本番の呼び出しが時間切れにならない）。
     // 読み込みと採点の遅れは、warm_up がそれらを待ってから返すことの確認にだけ使う
     let r = ZenzRanker::new(loader(&state), cfg(WARM_UP_TEST_BUDGET_MS, 60_000));
@@ -561,7 +557,7 @@ fn warm_up_returns_when_loading_fails_or_the_worker_is_gone() {
 #[test]
 fn late_result_is_not_used_for_a_different_conversion() {
     let state = mock(&[("a", 1.0), ("b", 2.0)]);
-    *lock(&state.delay) = Duration::from_millis(120);
+    *lock(&state.delay) = ikari_testtime::ms(120);
     let r = ZenzRanker::new(loader(&state), cfg(20, 60_000));
     let fx = Fixture::new();
     let ctx = Context::new().with_left_text("ctx");
@@ -613,7 +609,7 @@ fn requests_keep_the_model_alive() {
     for i in 0..4 {
         let mut cands = vec![dict_cand("a", 0)];
         fx.rank(&r, &Context::new(), &format!("k{i}"), &mut cands);
-        thread::sleep(Duration::from_millis(100));
+        thread::sleep(ikari_testtime::ms(100));
     }
     // 合計 400ms 以上経っているが、各間隔は idle_unload より短いので解放されない
     assert_eq!(r.stats().unloads, 0);
@@ -630,11 +626,11 @@ fn reload_after_unload_counts_as_timeout_while_loading() {
     assert!(wait_until(|| r.stats().unloads == 1));
 
     // 読み込みに 200ms かかる。その間は時間切れとして、順位を変えずに戻る
-    *lock(&state.load_delay) = Duration::from_millis(200);
+    *lock(&state.load_delay) = ikari_testtime::ms(200);
     let mut c = vec![dict_cand("a", 0), dict_cand("b", 0)];
     let t = Instant::now();
     fx.rank(&r, &Context::new(), "y", &mut c);
-    assert!(t.elapsed() < Duration::from_millis(150));
+    assert!(t.elapsed() < ikari_testtime::ms(150));
     assert_eq!(c.iter().map(|c| c.score).collect::<Vec<_>>(), vec![0, 0]);
     assert_eq!(r.stats().timeouts, 1);
     // 読み込みと採点が終わったあとは、遅れて届いた結果を使える
@@ -665,7 +661,7 @@ fn load_failure_keeps_ranking_unchanged_and_retries_later() {
 
     // 待ち時間を過ぎて、読み込みが直っていれば成功する
     state.fail_load.store(false, Ordering::SeqCst);
-    thread::sleep(Duration::from_millis(80));
+    thread::sleep(ikari_testtime::ms(80));
     let mut c = vec![dict_cand("a", 0), dict_cand("b", 0)];
     fx.rank(&r, &Context::new(), "z", &mut c);
     assert_eq!(c[1].score, 1000);
@@ -704,17 +700,17 @@ fn empty_and_rewriter_only_pools_do_nothing() {
 #[test]
 fn newest_request_wins_when_the_worker_is_busy() {
     let state = mock(&[("a", 1.0)]);
-    *lock(&state.load_delay) = Duration::from_millis(150);
+    *lock(&state.load_delay) = ikari_testtime::ms(150);
     let r = Arc::new(ZenzRanker::new(loader(&state), cfg(10, 60_000)));
     let fx = Arc::new(Fixture::new());
     // 読み込み中に3つの要求が溜まる
     for reading in ["r1", "r2", "r3"] {
         let mut c = vec![dict_cand("a", 0)];
         fx.rank(&r, &Context::new(), reading, &mut c);
-        thread::sleep(Duration::from_millis(5));
+        thread::sleep(ikari_testtime::ms(5));
     }
     assert!(wait_until(|| r.stats().completed >= 2));
-    thread::sleep(Duration::from_millis(50));
+    thread::sleep(ikari_testtime::ms(50));
     let s = r.stats();
     // r1 は読み込み中に受け取って処理する。その間に届いた r2 は、r3 に置き換えられる
     assert_eq!(s.requests, 3);

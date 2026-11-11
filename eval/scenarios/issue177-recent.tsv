@@ -1,0 +1,33 @@
+# issue177-recent: 同じ読みで直前に選んだ表記に、数分だけ加点する（#177、ADR 0045）。
+# 長く選んだ「瀕死を」があっても、直前に選んだ「品詞を」が窓の間は1位になる。窓を過ぎれば長い学習に戻る。
+# 文脈が「瀕死を」を支持するときは、直前ボーナスでも覆さない。読みが違えば効かない。
+# wait は surface 列の秒数だけ手動の時計を進める。窓は learning.recent_window_secs（既定 300 秒）。
+# 既定の設定（learning.recent_bonus = 6500）で、LM なしと LM ありの両方で通る。
+# 実行: ikari-eval --ranker full --scenario eval/scenarios/issue177-recent.tsv（LM あり: --lm <gguf> --lm-deadline-ms 3000）
+step	context	reading	surface	expect
+commit		ひんしを	瀕死を
+commit		ひんしを	瀕死を
+commit		ひんしを	瀕死を
+commit		ひんしを	瀕死を
+commit		ひんしを	瀕死を
+commit		ひんしを	瀕死を
+commit		ひんしを	瀕死を
+commit		ひんしを	瀕死を
+commit		ひんしを	瀕死を
+commit		ひんしを	瀕死を
+commit		ひんしを	瀕死を
+commit		ひんしを	瀕死を
+commit		ひんしを	瀕死を
+commit		ひんしを	瀕死を
+commit		ひんしを	瀕死を
+wait			3600
+probe		ひんしを	瀕死を	top1
+commit		ひんしを	品詞を
+probe		ひんしを	品詞を	top1
+probe	敵の攻撃を受けて兵士は	ひんしを	瀕死を	top1
+wait			3600
+probe		ひんしを	瀕死を	top1
+commit		ひんしを	品詞を
+commit		ひんしを	瀕死を
+probe		ひんしを	瀕死を	top1
+probe		ひんし	瀕死	top1

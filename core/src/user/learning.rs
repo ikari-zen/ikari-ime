@@ -19,7 +19,7 @@ use super::util::{
     check_schema, fnv1a64, fnv1a64_continue, has_cell_breaker, parse_error, parse_header,
     read_optional, write_atomic,
 };
-use super::{ContextFeatures, UserDataError};
+use super::{ContextFeatures, RecentChoices, RecentClock, UserDataError};
 use crate::candidate::{CandidateOrigin, Segment};
 use crate::converter::CommitEvent;
 use crate::dict::Grammar;
@@ -125,28 +125,75 @@ struct Stat {
 
 type Rows = BTreeMap<Key, Stat>;
 
+/// 確定を記録するときの重み（ADR 0057）。ファイルの形式は変えず、`count` を何回分増やすかだけを決める。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RecordPolicy {
+    /// 1 位以外を選んだ確定（人間の意図が明らか）の回数の重み
+    pub explicit_weight: u32,
+    /// 1 位のまま確定したもの（慌てて確定したかもしれない）の回数の重み。0 なら記録しない
+    pub top_weight: u32,
+    /// 1 位の確定で、記録がすでにあるときに `last_day` だけを更新する（`top_weight` が 0 のときの忘却の起点）
+    pub top_refresh: bool,
+}
+
+impl Default for RecordPolicy {
+    fn default() -> Self {
+        Self {
+            explicit_weight: 4,
+            top_weight: 1,
+            top_refresh: true,
+        }
+    }
+}
+
 /// 学習の記録。メモリに全件を持ち、`save` で TSV に書く（一時ファイル + rename）。
 pub struct LearningStore {
+    policy: RwLock<RecordPolicy>,
     path: PathBuf,
     salt: u64,
     rows: RwLock<Rows>,
     grammar: OnceLock<Arc<dyn Grammar>>,
+    /// 同じ読みで直前に選んだ表記（保存しない。ADR 0045）
+    recent: RecentChoices,
 }
 
 impl LearningStore {
     /// ファイルがなければ空で作る（ソルトを生成する。ファイルは `save` で作られる）。
     /// ファイルが不正なら何も返さずエラー（既存のファイルは変更しない）。
     pub fn open(path: &Path) -> Result<Self, UserDataError> {
+        Self::open_with_recent_clock(path, RecentClock::System)
+    }
+
+    /// `open` と同じで、直前の選択の時計を差し替える（eval とテスト用）。
+    pub fn open_with_recent_clock(path: &Path, clock: RecentClock) -> Result<Self, UserDataError> {
         let (salt, rows) = match read_optional(path)? {
             Some(text) => parse(&text, path)?,
             None => (new_salt(), Rows::new()),
         };
         Ok(Self {
+            policy: RwLock::new(RecordPolicy::default()),
             path: path.to_path_buf(),
             salt,
             rows: RwLock::new(rows),
             grammar: OnceLock::new(),
+            recent: RecentChoices::new(clock),
         })
+    }
+
+    /// `open` と同じで、ファイルの中身が不正なとき（列、値、重複、UTF-8）は、そのファイルを `<名前>.bad`（あれば `.bad.1`、`.2` …）へ
+    /// 移し（rename。中身も権限も変えない）、空の学習で開く。壊れた学習ファイルで日本語が打てなくなるのを避けるため。
+    /// 移した先を 2 つ目の値で返す（正常なら None）。移せなかったとき、読み取りの失敗、`Schema` の不一致（新しい版の形式）は、元のエラーを返して何も変えない（データを失わない側）。
+    pub fn open_or_quarantine(path: &Path) -> Result<(Self, Option<PathBuf>), UserDataError> {
+        match Self::open(path) {
+            Ok(store) => Ok((store, None)),
+            // 退避するのは「内容が不正」だけ。読み取りの失敗（権限、I/O、ディレクトリ）と、
+            // 新しい版が書いた形式（Schema。ダウングレード）は、触らずエラーで止める
+            Err(err) if !is_corrupt_content(&err) => Err(err),
+            Err(err) => {
+                let moved = quarantine(path).map_err(|_| err)?;
+                Ok((Self::open(path)?, Some(moved)))
+            }
+        }
     }
 
     /// 学習ファイルの中身を検証する（エクスポートのインポートの事前検証用）。
@@ -166,6 +213,16 @@ impl LearningStore {
         self.grammar.get().map(|g| &**g)
     }
 
+    /// 記録の重み（既定は `RecordPolicy::default`）。
+    pub fn record_policy(&self) -> RecordPolicy {
+        *self.policy.read().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// 記録の重みを変える（設定から。`stack` が組み立てのときに呼ぶ）。
+    pub fn set_record_policy(&self, policy: RecordPolicy) {
+        *self.policy.write().unwrap_or_else(|e| e.into_inner()) = policy;
+    }
+
     /// 確定を `usage` 層に記録する。secure の確定は `Conversion::commit` が None を返すので、ここには来ない。
     pub fn record(&self, ev: &CommitEvent, vectors: Option<&dyn WordVectors>, today: u32) {
         let feats = extract_named(&ev.analysis, self.grammar(), vectors, self.salt);
@@ -174,6 +231,15 @@ impl LearningStore {
             return;
         }
         let cand = &ev.candidate;
+        let policy = self.record_policy();
+        let (weight, refresh) = if ev.explicit {
+            (policy.explicit_weight, false)
+        } else {
+            (policy.top_weight, policy.top_refresh)
+        };
+        if weight == 0 && !refresh {
+            return;
+        }
         let mut rows = self.write();
 
         let (surface_key, segments_text) = match cand.origin {
@@ -187,6 +253,7 @@ impl LearningStore {
             return;
         }
         if reading.chars().count() <= MAX_READING_CHARS {
+            self.recent.note(&reading, &surface_key);
             for f in &feats.features {
                 bump(
                     &mut rows,
@@ -200,6 +267,8 @@ impl LearningStore {
                     },
                     &segments_text,
                     today,
+                    weight,
+                    refresh,
                 );
             }
         }
@@ -231,6 +300,8 @@ impl LearningStore {
                         },
                         &text,
                         today,
+                        weight,
+                        refresh,
                     );
                 }
             }
@@ -285,11 +356,16 @@ impl LearningStore {
                 },
                 &text,
                 today,
+                1,
+                false,
             );
         }
     }
 
     pub fn reset(&self, layer: LayerSel) {
+        if matches!(layer, LayerSel::All | LayerSel::Usage) {
+            self.recent.clear();
+        }
         let mut rows = self.write();
         match layer {
             LayerSel::All => rows.clear(),
@@ -325,6 +401,11 @@ impl LearningStore {
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// 同じ読みで直前に選んだ表記（ADR 0045）
+    pub fn recent(&self) -> &RecentChoices {
+        &self.recent
     }
 
     /// 読みが一致する行（加点の計算用）。
@@ -416,13 +497,21 @@ fn segment_text(s: &SegmentKey) -> String {
     [s.surface.as_str(), s.reading.as_str(), s.pos_name.as_str()].join(SEGMENT_FIELD_SEPARATOR)
 }
 
-fn bump(rows: &mut Rows, key: Key, segments: &str, today: u32) {
+/// `weight` 回分の確定を数える。`weight` が 0 のときは回数を増やさず、`refresh` なら既にある行の
+/// `last_day` だけを更新する（忘却の起点を新しくする。行は作らない）
+fn bump(rows: &mut Rows, key: Key, segments: &str, today: u32, weight: u32, refresh: bool) {
+    if weight == 0 {
+        if refresh && let Some(stat) = rows.get_mut(&key) {
+            stat.last_day = stat.last_day.max(today);
+        }
+        return;
+    }
     let stat = rows.entry(key).or_insert_with(|| Stat {
         segments: segments.to_string(),
         count: 0,
         last_day: today,
     });
-    stat.count = stat.count.saturating_add(1);
+    stat.count = stat.count.saturating_add(weight);
     stat.last_day = stat.last_day.max(today);
 }
 
@@ -477,6 +566,37 @@ fn serialize(salt: u64, rows: &Rows) -> String {
         ));
     }
     out
+}
+
+/// ファイルの中身が不正か（退避してよいエラー）。`read_to_string` が `InvalidData` を返すのは UTF-8 が不正なときだけ
+fn is_corrupt_content(err: &UserDataError) -> bool {
+    match err {
+        UserDataError::Parse { .. } | UserDataError::Invalid(_) => true,
+        UserDataError::Io(e) => e.kind() == std::io::ErrorKind::InvalidData,
+        UserDataError::Schema { .. } => false,
+    }
+}
+
+/// 退避先の拡張子（`learning.tsv` → `learning.tsv.bad`）
+const QUARANTINE_SUFFIX: &str = "bad";
+
+/// `path` を同じフォルダの `.bad`（あれば `.bad.1`、`.2` …。上限なし。上書きしない）へ移す。移した先を返す。
+fn quarantine(path: &Path) -> std::io::Result<PathBuf> {
+    let base = path.as_os_str().to_owned();
+    let with = |suffix: String| {
+        let mut s = base.clone();
+        s.push(".");
+        s.push(suffix);
+        PathBuf::from(s)
+    };
+    let mut candidate = with(QUARANTINE_SUFFIX.to_owned());
+    let mut n: u64 = 0;
+    while std::fs::symlink_metadata(&candidate).is_ok() {
+        n += 1;
+        candidate = with(format!("{QUARANTINE_SUFFIX}.{n}"));
+    }
+    std::fs::rename(path, &candidate)?;
+    Ok(candidate)
 }
 
 fn parse(text: &str, file: &Path) -> Result<(u64, Rows), UserDataError> {
@@ -610,6 +730,7 @@ mod tests {
                 origin: CandidateOrigin::Dictionary,
             },
             analysis: Arc::new(ctx),
+            explicit: true,
         }
     }
 
@@ -678,9 +799,64 @@ mod tests {
         store.record(&ev, None, 12);
         let hits = store.lookup("ひんし");
         assert!(!hits.is_empty());
-        assert!(hits.iter().all(|h| h.count == 2 && h.last_day == 12));
+        let w = store.record_policy().explicit_weight;
+        assert!(hits.iter().all(|h| h.count == 2 * w && h.last_day == 12));
         assert!(hits.iter().all(|h| h.unit == Unit::Phrase));
         assert!(hits.iter().all(|h| h.layer == Layer::Usage));
+    }
+
+    #[test]
+    fn top_choice_adds_no_count_but_refreshes_last_day() {
+        // ADR 0057: 1 位のままの確定は回数を増やさない。すでにある記録の last_day だけを更新する
+        let (_d, store) = open_tmp();
+        // 1 位の確定を 0 回扱いにする設定（既定は弱い重み 1。ADR 0057）
+        store.set_record_policy(RecordPolicy {
+            top_weight: 0,
+            ..store.record_policy()
+        });
+        let mut ev = commit("ひんし", vec![seg("品詞", "ひんし", true)], tech());
+        // 記録がないうちの 1 位の確定は何も作らない
+        ev.explicit = false;
+        store.record(&ev, None, 10);
+        assert!(store.is_empty());
+        // 1 位以外を選んだ確定は、重みの分だけ数える
+        ev.explicit = true;
+        store.record(&ev, None, 10);
+        let w = store.record_policy().explicit_weight;
+        assert!(
+            store
+                .lookup("ひんし")
+                .iter()
+                .all(|h| h.count == w && h.last_day == 10)
+        );
+        // 1 位の確定: 回数はそのまま、last_day だけ新しくなる
+        ev.explicit = false;
+        store.record(&ev, None, 50);
+        assert!(
+            store
+                .lookup("ひんし")
+                .iter()
+                .all(|h| h.count == w && h.last_day == 50)
+        );
+        // 更新をやめる設定なら last_day も動かない
+        store.set_record_policy(RecordPolicy {
+            top_refresh: false,
+            ..store.record_policy()
+        });
+        store.record(&ev, None, 90);
+        assert!(store.lookup("ひんし").iter().all(|h| h.last_day == 50));
+        // 1 位の確定に重みを付ければ数える
+        store.set_record_policy(RecordPolicy {
+            top_weight: 1,
+            ..store.record_policy()
+        });
+        store.record(&ev, None, 90);
+        assert!(
+            store
+                .lookup("ひんし")
+                .iter()
+                .all(|h| h.count == w + 1 && h.last_day == 90)
+        );
     }
 
     #[test]
@@ -726,6 +902,25 @@ mod tests {
         let ev = commit(&long, vec![seg("亜", &long, true)], tech());
         store.record(&ev, None, 1);
         assert!(store.is_empty());
+        assert!(store.recent().latest(&long).is_none());
+    }
+
+    #[test]
+    fn record_notes_recent_choice_and_reset_clears_it() {
+        let (_d, store) = open_tmp();
+        store.record(
+            &commit("ひんし", vec![seg("品詞", "ひんし", true)], tech()),
+            None,
+            1,
+        );
+        assert_eq!(
+            store.recent().latest("ひんし").map(|(s, _)| s),
+            Some("品詞".into())
+        );
+        store.reset(LayerSel::Initial);
+        assert!(store.recent().latest("ひんし").is_some());
+        store.reset(LayerSel::Usage);
+        assert!(store.recent().latest("ひんし").is_none());
     }
 
     #[test]
@@ -835,6 +1030,139 @@ mod tests {
             "{good}{COLUMNS}\nusage\t-\tword\tあ\t亜\t\t00ff\t1\t1\nusage\t-\tword\tあ\t亜\t\t00ff\t1\t1\n"
         );
         assert!(LearningStore::validate_text(&dup).is_err());
+    }
+
+    fn bad_texts() -> Vec<Vec<u8>> {
+        let good = "#ikari-learning\tschema=1\tsalt=00000000000000ff\n";
+        vec![
+            format!("{good}wrong columns\n").into_bytes(),
+            format!("{good}{COLUMNS}\nusage\t-\tword\tあ\t亜\t\t00ff\t0\t1\n").into_bytes(),
+            format!(
+                "{good}{COLUMNS}\nusage\t-\tword\tあ\t亜\t\t00ff\t1\t1\nusage\t-\tword\tあ\t亜\t\t00ff\t1\t1\n"
+            )
+            .into_bytes(),
+            vec![0xff, 0xfe, 0x00, b'\n'],
+        ]
+    }
+
+    #[test]
+    fn invalid_file_is_moved_to_bad_and_opens_empty() {
+        for (i, bytes) in bad_texts().iter().enumerate() {
+            let dir = tempfile::tempdir().unwrap();
+            let p = dir.path().join("learning.tsv");
+            std::fs::write(&p, bytes).unwrap();
+            let (store, moved) = LearningStore::open_or_quarantine(&p).unwrap();
+            let bad = dir.path().join("learning.tsv.bad");
+            assert_eq!(moved.as_deref(), Some(bad.as_path()), "case {i}");
+            assert_eq!(&std::fs::read(&bad).unwrap(), bytes, "case {i}");
+            assert!(!p.exists(), "case {i}");
+            assert!(store.is_empty(), "case {i}");
+        }
+    }
+
+    #[test]
+    fn quarantine_keeps_mode_and_never_overwrites() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("learning.tsv");
+        let mut expected = Vec::new();
+        for n in 0..3u8 {
+            let body = vec![b'x', n];
+            std::fs::write(&p, &body).unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600)).unwrap();
+            let (_, moved) = LearningStore::open_or_quarantine(&p).unwrap();
+            let moved = moved.unwrap();
+            let mode = std::fs::metadata(&moved).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+            expected.push((moved, body));
+        }
+        let names: Vec<String> = expected
+            .iter()
+            .map(|(m, _)| m.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "learning.tsv.bad",
+                "learning.tsv.bad.1",
+                "learning.tsv.bad.2"
+            ]
+        );
+        for (m, body) in &expected {
+            assert_eq!(&std::fs::read(m).unwrap(), body);
+        }
+    }
+
+    #[test]
+    fn valid_or_missing_file_is_not_moved() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("learning.tsv");
+        let (store, moved) = LearningStore::open_or_quarantine(&p).unwrap();
+        assert!(moved.is_none());
+        store.save().unwrap();
+        let before = std::fs::read(&p).unwrap();
+        let (_, moved) = LearningStore::open_or_quarantine(&p).unwrap();
+        assert!(moved.is_none());
+        assert_eq!(std::fs::read(&p).unwrap(), before);
+        assert!(!dir.path().join("learning.tsv.bad").exists());
+    }
+
+    #[test]
+    fn schema_mismatch_is_not_moved() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("learning.tsv");
+        let text = "#ikari-learning\tschema=9\tsalt=00000000000000ff\n";
+        std::fs::write(&p, text).unwrap();
+        let err = LearningStore::open_or_quarantine(&p).err().unwrap();
+        assert!(matches!(err, UserDataError::Schema { found: 9, .. }));
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), text);
+        assert!(!dir.path().join("learning.tsv.bad").exists());
+    }
+
+    #[test]
+    fn read_failures_are_not_moved() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        // ディレクトリが learning.tsv の位置にある
+        let p = dir.path().join("learning.tsv");
+        std::fs::create_dir(&p).unwrap();
+        assert!(matches!(
+            LearningStore::open_or_quarantine(&p),
+            Err(UserDataError::Io(_))
+        ));
+        assert!(p.is_dir());
+        std::fs::remove_dir(&p).unwrap();
+        // 読めない権限（root は権限を無視するので、読めてしまうときは確かめない）
+        std::fs::write(&p, b"broken\n").unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::read(&p).is_err() {
+            assert!(matches!(
+                LearningStore::open_or_quarantine(&p),
+                Err(UserDataError::Io(_))
+            ));
+            assert!(p.exists());
+            assert!(!dir.path().join("learning.tsv.bad").exists());
+        }
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600)).unwrap();
+    }
+
+    #[test]
+    fn unmovable_invalid_file_stays_an_error() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("learning.tsv");
+        std::fs::write(&p, b"broken\n").unwrap();
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o500)).unwrap();
+        let result = LearningStore::open_or_quarantine(&p);
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        // root はフォルダの権限を無視して移せてしまうので、その場合は確かめない
+        if let Err(e) = result {
+            assert!(matches!(
+                e,
+                UserDataError::Parse { .. } | UserDataError::Invalid(_)
+            ));
+            assert_eq!(std::fs::read(&p).unwrap(), b"broken\n");
+        }
     }
 
     #[test]

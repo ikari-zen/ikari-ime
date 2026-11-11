@@ -19,7 +19,7 @@ i210-ken-s	単独	issue210,ken-guard			けん	県	けん単独は県が 1 位の
 i210-kanagawa-s	単独	issue210,ken-guard			かながわけんの	神奈川県の	〜県の	dev	issue210
 i210-hyogo-s	単独	issue210,ken-guard			ひょうごけんに	兵庫県に	〜県に	dev	issue210
 i210-kenmei-s	単独	issue210,ken-guard			けんめい	件名	件名	dev	issue210
-i210-toukyouto-c	文脈	issue210,ken-guard		私は東京都に住んでいて、隣の	けん	県	文脈つきの けん 単独	dev	issue210
+i210-ken-guard-c	文脈	issue210,ken-guard		私は大阪府に住んでいて、隣の	けん	県	文脈つきの けん 単独	dev	issue210
 i210-nokensa-s	単独	issue210,ken-guard			のけんさ	の検査	の + けん で始まる別の語。件 + 差に崩れないか	dev	issue210
 i210-nokentou-s	単独	issue210,ken-guard			のけんとう	の検討	件 + 等に崩れないか	dev	issue210
 i210-nokenkyuu-s	単独	issue210,ken-guard			のけんきゅう	の研究	件 + 救などに崩れないか	test	issue210

@@ -172,6 +172,7 @@ message DiagTag { string key = 1; string value = 2; }
 | `convert`、`prefetch` に `ctx=0` | 周辺テキストが `available = false` のときだけ足す（`ctx_change` は番号が変わったときしか出ないので、回数はここで数える） | 3 |
 | `lm_load` | 所要（us）、`err`（失敗なら種類）。読み込みが終わったとき | 5 |
 | `lm_unload` | `reason=idle` `settings` `shutdown` | 5 |
+| `lm_reject` | `file=<モデルのファイル名>`、`reason=unknown_name` `size` `sha256` `unreadable`。起動時、モデルが既知の表（名前、大きさ、sha256）と合わず LM なしで起動したとき（#270）。ファイル名はエンジンの固定の定数で、外部由来の文字列は書かない（NFR-19） | 5 |
 | `stat` | `rss_kb=`、`sessions=`。前回の `stat` から要求があったときだけ、10 分ごと（見回りのスレッド） | 5 |
 | `log_dropped` | `n=`（キューが満杯で捨てた行の数） | 健全性 |
 | `diag_reject` | `n=`（許可リストで捨てた値・行の数）。1 分ごとにまとめて | 健全性 |
@@ -184,7 +185,7 @@ message DiagTag { string key = 1; string value = 2; }
 - `end_session` の行には `session=N` を足す。`err=UNKNOWN_SESSION` の行にも、要求が持つ `session=N` を足す（`prefetch` `convert` `commit_text` `reconvert`。番号だけ。#313）。集計が、セッションの区切りと、知らないと言われた番号の状態（begin なし / end のあと）を調べるため。
 - `rw=` は `commit` `commit_segments` の確定した候補の Rewriter の名前（複数の文節なら `,` でつなぐ）。`ctx=0` は `convert` `prefetch` で周辺テキストがない（`available = false` または送られなかった）とき。
 - `lm_load` は暖機のスレッドが読み込みを終えたとき（失敗は `err=lm_load_failed`）。`lm_unload` の `idle` は見回りが「読み込み済み → 未読み込み」を見つけたとき（最大 1 秒の遅れ）、`settings` は Stack の差し替えで読み込み済みの LM が替わったとき、`shutdown` は `Engine` を閉じるとき。
-- `stat` は見回りが 10 分ごと（前回から要求があったときだけ）に書く。RSS は `ps` を見回りのスレッドから呼んで取る（unsafe と新しい依存を避けるため）。取れなければ `rss_kb` を省く。
+- `stat` は見回りが 10 分ごと（前回から要求があったときだけ）に書く。RSS は Mach の `task_info(MACH_TASK_BASIC_INFO)` の `resident_size` を見回りのスレッドで取る（`engine/src/rss.rs`。unsafe はここの FFI 1 つだけ。依存は `libc`）。取れなければ `rss_kb` を省く。**変更（#238）**: 当初は `ps` を起動していたが、App Sandbox のエンジンでは動かず、実機の `stat` 行に `rss_kb` が出なかった（`stat` 全行に `rss_kb` なしで `sessions=` だけ）。`task_info` は自プロセスの情報で、Sandbox でも取れる。
 - #69 で `convert` の行に `gap=<読み全体の 1 位と 2 位の score の差。整数。候補が 1 件以下なら na>` と `confident=1|0` を足した。閾値（LM なし 5000、LM あり 10000）は暫定で、この `gap` を見て見直す。
 - #159 で `convert` の行に `rlen=<変換した読みの文字数>` と `qlen=<変換の時点でまだ終わっていない先行計算の数（待ち + 処理中）>` を足した（LM が時間切れで LM なしになる割合を、読みの長さと待ち行列の長さで調べるため）。どちらも数だけで、読みは書かない（許可リストの原則どおり）。secure のセッションは `rlen=` を書かない（`app=` と同じく NFR-18。`qlen=` はセッションに依らない数なので書く）。`diag-report.py` は rlen 別・qlen 別の `lm_applied=0` の割合を出す（`rlen` が `RLEN_CAP` 以上、`qlen` が 3 以上はまとめる）。
 

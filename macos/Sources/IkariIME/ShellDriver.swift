@@ -317,6 +317,11 @@ final class ShellDriver: @unchecked Sendable {
                 if let ui { MainActor.assumeIsolated { ui.openSettings(open.tab) } }
             case .selectMode(let select):
                 session?.selectMode(select.modeID)
+            case .showLearningQuarantineNotice:
+                // 通知はモーダル（OK を押すまで主スレッドが止まる）。キー処理の途中では出さず、いまの dispatch が終わってから出す
+                DispatchQueue.main.async {
+                    LearningQuarantineNotice.present(reporter: SystemStartupFailureReporter())
+                }
             }
         }
         if let panelReport, panelReports < Self.maxPanelReports {

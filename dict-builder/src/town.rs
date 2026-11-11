@@ -13,9 +13,10 @@ use std::path::{Path, PathBuf};
 use ikari_dict_format::postal::{
     POSTAL_TSV_COLUMNS_COMMENT, POSTAL_TSV_HEADER, format_line, parse_code,
 };
-use ikari_dict_format::reading::{normalize_key, strip_reading_separators};
+use ikari_dict_format::reading::{fold_fullwidth_digits, normalize_key, strip_reading_separators};
 
 use crate::lex::unescape_unicode;
+use crate::numeral::expand_digit_town;
 use crate::{BuildError, open_reader, read_line_at};
 
 /// (読み, 表記)。Sudachi との照合では読みを `match_key` にしたもの
@@ -32,6 +33,9 @@ pub const DEFAULT_TOWN_COST: i16 = 11000;
 pub const DEFAULT_CHAIN_COST: i16 = 7000;
 /// 「都道府県 + 市区町村」だけの連なりのコストの既定（#202 第 2 段階。ADR 0030 §13。掃引で決める）
 pub const DEFAULT_MUNICIPALITY_CHAIN_COST: i16 = 7000;
+/// 数字を含む町名の連なりのうち、全角の数字の表記（`北１条西`）の行のコストに足す差。半角の表記（`北1条西`。公用文の既定）を先に出すための
+/// 同点の解消で、順位の差を作る大きさではない（ADR 0030 §3.1。ユーザー決定 2026-11-10: 半角を先）
+pub const FULLWIDTH_SURFACE_COST_DELTA: i16 = 1;
 
 // ABR の CSV の列名
 const H_TYPE: &str = "machiaza_type";
@@ -90,6 +94,7 @@ const LARGE_YO: char = 'ヨ';
 const LARGE_YU: char = 'ユ';
 /// 表記に最低限必要な文字数（1 文字の地名は普通の語と同音になりやすいので入れない）
 const MIN_SURFACE_CHARS: usize = 2;
+const FULLWIDTH_ZERO: u32 = '０' as u32;
 
 // Sudachi の lex.csv の列
 const SUDACHI_COLUMNS_MIN: usize = 12;
@@ -114,6 +119,10 @@ pub const TOWN_SKIP_CHOME_IN_READING: &str = "chome_only_in_reading";
 pub const TOWN_SKIP_SUFFIX_NOT_IN_READING: &str = "cho_mura_suffix_not_in_reading";
 pub const TOWN_SKIP_SHORT: &str = "single_char_surface";
 pub const TOWN_SKIP_NO_HAN: &str = "no_han_char";
+/// 表記に数字がある町名で、数字を読みにした形を作れなかった（数字の連なりが読みと合わない、助数詞が分からない、読みに数詞が見つからない）
+pub const TOWN_SKIP_DIGITS_UNALIGNED: &str = "digits_not_expandable";
+/// 数字を含む町名は、単語の行にはしない（住所の連なりと郵便番号の表だけに入れる。ADR 0030 §3.1）
+pub const TOWN_SKIP_DIGITS_NOT_WORD: &str = "digits_chain_only";
 pub const TOWN_SKIP_DUPLICATE: &str = "duplicate_pair";
 pub const TOWN_SKIP_IN_SUDACHI: &str = "already_in_sudachi";
 /// 住所の連なりを作れなかった行（都道府県・郡・市・区に使えない字がある）
@@ -271,7 +280,7 @@ fn unify_compat_ideograph(c: char) -> char {
 }
 
 /// 表記に使える文字。CJK 統合漢字（基本ブロック）、々〆〇、ひらがな、カタカナ（ヶ ヵ を含む）、長音。
-/// 数字、英字、括弧、私用領域・拡張漢字・異体字選択子は含まない（読みに数字が入る表記は辞書の読みにできない）。
+/// 英字、括弧、私用領域・拡張漢字・異体字選択子は含まない。数字はここに含まない（`convert` が半角にそろえて別に通す。ADR 0030 §3.1）。
 fn is_surface_char(c: char) -> bool {
     is_han(c)
         || matches!(c, '々' | '〆' | '〇' | 'ー')
@@ -290,15 +299,27 @@ fn convert(oaza_raw: &str, kana: &str) -> Result<(String, String, bool), &'stati
     if kana.is_empty() {
         return Err(TOWN_SKIP_EMPTY_READING);
     }
-    let oaza_unified: String = oaza_raw.chars().map(unify_compat_ideograph).collect();
+    // 全角の数字は半角にそろえる（ABR の表記と読みは `１０` のように全角。ADR 0030 §3.1）
+    let oaza_unified: String = fold_fullwidth_digits(oaza_raw)
+        .chars()
+        .map(unify_compat_ideograph)
+        .collect();
+    let kana = fold_fullwidth_digits(kana);
+    let kana = kana.as_ref();
     let oaza = oaza_unified.as_str();
     if oaza.is_empty() {
         return Err(TOWN_SKIP_EMPTY_SURFACE);
     }
-    if !oaza.chars().all(is_surface_char) {
+    if !oaza
+        .chars()
+        .all(|c| is_surface_char(c) || c.is_ascii_digit())
+    {
         return Err(TOWN_SKIP_SURFACE_CHARS);
     }
-    if !kana.chars().all(is_reading_char) {
+    if !kana
+        .chars()
+        .all(|c| is_reading_char(c) || c.is_ascii_digit())
+    {
         return Err(TOWN_SKIP_READING_CHARS);
     }
     // 「大字」「字」の接頭辞は、入力しないので外す（読みの「オオアザ」「アザ」も外す）
@@ -339,6 +360,67 @@ fn convert(oaza_raw: &str, kana: &str) -> Result<(String, String, bool), &'stati
         return Err(TOWN_SKIP_SUFFIX_NOT_IN_READING);
     }
     Ok((surface.to_string(), reading, fixed))
+}
+
+/// 町名 1 つの表記と読み。数字を含む町名（`北1条西`）は、読みが複数になり、表記は全角の数字の形も持つ（ADR 0030 §3.1）
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TownNames {
+    /// 表記（数字は半角）
+    surface: String,
+    /// 全角の数字の表記（数字を含む町名だけ）
+    surface_fullwidth: Option<String>,
+    /// 読み（カタカナ）。先頭が標準の読み。数字を含む町名は、数字を読みにした形（ゆれの全部）、数字を含む読み（`キタ1ジョウニシ`）の順
+    readings: Vec<String>,
+}
+
+impl TownNames {
+    fn has_digits(&self) -> bool {
+        self.surface_fullwidth.is_some()
+    }
+}
+
+/// 半角の数字を全角にする
+fn fullwidth_digits(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            if c.is_ascii_digit() {
+                char::from_u32(FULLWIDTH_ZERO + u32::from(c) - u32::from('0')).unwrap_or(c)
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
+/// `convert` に、数字を含む町名の読みの展開（`expand_digit_town`）を足したもの。
+/// 戻り値の `bool` は、読みを直したか。数字のない町名は、`convert` と同じ 1 組。
+fn convert_names(oaza_raw: &str, kana: &str) -> Result<(TownNames, bool), &'static str> {
+    let (surface, reading, fixed) = convert(oaza_raw, kana)?;
+    let surface_has_digits = surface.chars().any(|c| c.is_ascii_digit());
+    let reading_has_digits = reading.chars().any(|c| c.is_ascii_digit());
+    if !surface_has_digits {
+        // 表記に数字がなく読みにだけある町名は、これまでどおり使わない
+        if reading_has_digits {
+            return Err(TOWN_SKIP_READING_CHARS);
+        }
+        return Ok((
+            TownNames {
+                surface,
+                surface_fullwidth: None,
+                readings: vec![reading],
+            },
+            fixed,
+        ));
+    }
+    let readings = expand_digit_town(&surface, &reading).ok_or(TOWN_SKIP_DIGITS_UNALIGNED)?;
+    Ok((
+        TownNames {
+            surface_fullwidth: Some(fullwidth_digits(&surface)),
+            surface,
+            readings,
+        },
+        fixed,
+    ))
 }
 
 /// 表記が町・村で終わるとき、読みがその読みで終わるか。それ以外の表記は常に true。
@@ -408,7 +490,7 @@ fn fold_small_kana(c: char) -> char {
 }
 
 /// 照合用の読み（ひらがなにして、小書きを揃える）
-fn match_key(reading: &str) -> String {
+pub(crate) fn match_key(reading: &str) -> String {
     normalize_key(reading)
         .chars()
         .map(fold_small_kana)
@@ -441,6 +523,8 @@ struct Collected {
     pairs: BTreeSet<Key>,
     /// 住所の連なり（都道府県 + 郡 + 市 + 区 + 町名と、都道府県を省いた形）の (読み, 表記)
     chains: BTreeSet<Key>,
+    /// 数字を含む町名の連なりの、全角の数字の表記の行（`北１条西`。コストを `FULLWIDTH_SURFACE_COST_DELTA` だけ高くするため、`chains` とは分ける）
+    fullwidth_chains: BTreeSet<Key>,
     /// 町名がない「都道府県 + 郡 + 市 + 区」の連なり（コストを別に決めるため、`chains` とは分ける）
     municipality_chains: BTreeSet<Key>,
     rows_read: usize,
@@ -461,6 +545,8 @@ struct TownRow {
     municipality: Vec<(String, String)>,
     surface: String,
     reading: String,
+    /// `reading` のほかの読み（数字を含む町名の、ゆれの読みと数字を含む読み。`postal.tsv` の `s` の行にする）
+    alt_readings: Vec<String>,
     /// 大字・町名・丁目の行（区分 1・2）か。連なり（`chain_lex.csv`）はこの行からだけ作る
     in_chain: bool,
 }
@@ -510,6 +596,22 @@ fn chain_forms(
         }
     }
     forms
+}
+
+/// 町名（数字を含む町名は、読みの全部と全角の数字の表記も）の住所の連なりを足す
+fn add_town_chains(
+    chains: &mut BTreeSet<Key>,
+    fullwidth_chains: &mut BTreeSet<Key>,
+    pref: &(String, String),
+    municipality: &[(String, String)],
+    names: &TownNames,
+) {
+    for reading in &names.readings {
+        add_chains(chains, pref, municipality, &names.surface, reading);
+        if let Some(fullwidth) = &names.surface_fullwidth {
+            add_chains(fullwidth_chains, pref, municipality, fullwidth, reading);
+        }
+    }
 }
 
 /// 住所の連なりを足す（形は [`chain_forms`]）
@@ -568,6 +670,7 @@ fn collect_pairs(path: &Path, want_ids: bool) -> Result<Collected, BuildError> {
 
     let mut pairs: BTreeSet<(String, String)> = BTreeSet::new();
     let mut chains: BTreeSet<(String, String)> = BTreeSet::new();
+    let mut fullwidth_chains: BTreeSet<(String, String)> = BTreeSet::new();
     let mut municipality_chains: BTreeSet<(String, String)> = BTreeSet::new();
     let mut skipped: BTreeMap<&'static str, usize> = BTreeMap::new();
     let mut rows_read = 0usize;
@@ -601,7 +704,7 @@ fn collect_pairs(path: &Path, want_ids: bool) -> Result<Collected, BuildError> {
             // 連なり（辞書）には入れない
             if want_ids
                 && cols[i_status] != STATUS_UNKNOWN
-                && let Ok((surface, reading, _)) = convert(cols[i_oaza], cols[i_kana])
+                && let Ok((names, _)) = convert_names(cols[i_oaza], cols[i_kana])
                 && let Some(pref) = chain_part(cols[i_pref.0], cols[i_pref.1])
                 && let Some(municipality) = municipality_cols
                     .iter()
@@ -613,8 +716,9 @@ fn collect_pairs(path: &Path, want_ids: bool) -> Result<Collected, BuildError> {
                     machiaza_id: cols[i_id].to_string(),
                     pref,
                     municipality,
-                    surface,
-                    reading,
+                    surface: names.surface,
+                    reading: names.readings[0].clone(),
+                    alt_readings: names.readings[1..].to_vec(),
                     in_chain: false,
                 });
             }
@@ -624,8 +728,8 @@ fn collect_pairs(path: &Path, want_ids: bool) -> Result<Collected, BuildError> {
             skip(TOWN_SKIP_STATUS);
             continue;
         }
-        match convert(cols[i_oaza], cols[i_kana]) {
-            Ok((surface, reading, was_fixed)) => {
+        match convert_names(cols[i_oaza], cols[i_kana]) {
+            Ok((names, was_fixed)) => {
                 fixed += usize::from(was_fixed);
                 let parts = (
                     chain_part(cols[i_pref.0], cols[i_pref.1]),
@@ -636,7 +740,13 @@ fn collect_pairs(path: &Path, want_ids: bool) -> Result<Collected, BuildError> {
                 );
                 match parts {
                     (Some(pref), Some(municipality)) => {
-                        add_chains(&mut chains, &pref, &municipality, &surface, &reading);
+                        add_town_chains(
+                            &mut chains,
+                            &mut fullwidth_chains,
+                            &pref,
+                            &municipality,
+                            &names,
+                        );
                         add_chains(&mut municipality_chains, &pref, &municipality, "", "");
                         if want_ids {
                             towns.push(TownRow {
@@ -644,15 +754,19 @@ fn collect_pairs(path: &Path, want_ids: bool) -> Result<Collected, BuildError> {
                                 machiaza_id: cols[i_id].to_string(),
                                 pref,
                                 municipality,
-                                surface: surface.clone(),
-                                reading: reading.clone(),
+                                surface: names.surface.clone(),
+                                reading: names.readings[0].clone(),
+                                alt_readings: names.readings[1..].to_vec(),
                                 in_chain: true,
                             });
                         }
                     }
                     _ => skip(TOWN_SKIP_CHAIN_PART),
                 }
-                if !pairs.insert((reading, surface)) {
+                // 数字を含む町名は、単語の行にしない（連なりと郵便番号の表だけ）
+                if names.has_digits() {
+                    skip(TOWN_SKIP_DIGITS_NOT_WORD);
+                } else if !pairs.insert((names.readings[0].clone(), names.surface)) {
                     skip(TOWN_SKIP_DUPLICATE);
                 }
             }
@@ -662,6 +776,7 @@ fn collect_pairs(path: &Path, want_ids: bool) -> Result<Collected, BuildError> {
     Ok(Collected {
         pairs,
         chains,
+        fullwidth_chains,
         municipality_chains,
         rows_read,
         skipped,
@@ -748,6 +863,7 @@ pub fn build_town_lex(cfg: &TownConfig) -> Result<TownReport, BuildError> {
     let Collected {
         pairs,
         chains,
+        fullwidth_chains,
         municipality_chains,
         rows_read,
         mut skipped,
@@ -781,12 +897,20 @@ pub fn build_town_lex(cfg: &TownConfig) -> Result<TownReport, BuildError> {
             .iter()
             .map(|(reading, surface)| lex_line(surface, reading, ids, chain.cost))
             .collect();
+        lines.extend(fullwidth_chains.iter().map(|(reading, surface)| {
+            lex_line(
+                surface,
+                reading,
+                ids,
+                chain.cost.saturating_add(FULLWIDTH_SURFACE_COST_DELTA),
+            )
+        }));
         lines.extend(
             municipality_chains
                 .iter()
                 .map(|(reading, surface)| lex_line(surface, reading, ids, chain.municipality_cost)),
         );
-        chains_written = chains.len() + municipality_chains.len();
+        chains_written = chains.len() + fullwidth_chains.len() + municipality_chains.len();
         write_atomically(&chain.out, lines)?;
     }
     let postal = match &cfg.postal {
@@ -903,7 +1027,15 @@ fn build_postal_table(
             }
             continue;
         };
-        let forms = chain_forms(&town.pref, &town.municipality, &town.surface, &town.reading);
+        let mut forms = chain_forms(&town.pref, &town.municipality, &town.surface, &town.reading);
+        // 数字を含む町名のほかの読みは、読み → 郵便番号にだけ使う `s` の行にする（郵便番号 → 住所は `f` の 1 行だけ）
+        for alt in &town.alt_readings {
+            forms.extend(
+                chain_forms(&town.pref, &town.municipality, &town.surface, alt)
+                    .into_iter()
+                    .map(|(key, _)| (key, false)),
+            );
+        }
         let Some(((full_key, _), _)) = forms.split_first() else {
             report.not_folded += 1;
             continue;
@@ -1041,12 +1173,13 @@ mod tests {
     fn unusable_rows_are_rejected_with_a_reason() {
         assert_eq!(conv("青葉町", ""), Err(TOWN_SKIP_EMPTY_READING));
         assert_eq!(conv("", "アオバ"), Err(TOWN_SKIP_EMPTY_SURFACE));
+        // 全角の数字は半角にそろえて通る（ADR 0030 §3.1）。英字と全角の数字の混じり（`Ｂ`）は使わない
         assert_eq!(
             conv("北１条西", "キタ１ジョウニシ"),
-            Err(TOWN_SKIP_SURFACE_CHARS)
+            Ok(("北1条西".into(), "キタ1ジョウニシ".into()))
         );
         assert_eq!(
-            conv("北1条西", "キタイチジョウニシ"),
+            conv("北１２３Ｂ", "キタ１２３ビー"),
             Err(TOWN_SKIP_SURFACE_CHARS)
         );
         assert_eq!(
@@ -1063,6 +1196,53 @@ mod tests {
         );
         assert_eq!(conv("乙", "オツ"), Err(TOWN_SKIP_SHORT));
         assert_eq!(conv("あいのさと", "アイノサト"), Err(TOWN_SKIP_NO_HAN));
+    }
+
+    fn names(
+        oaza: &str,
+        kana: &str,
+    ) -> Result<(String, Option<String>, Vec<String>), &'static str> {
+        convert_names(oaza, kana).map(|(n, _)| (n.surface, n.surface_fullwidth, n.readings))
+    }
+
+    #[test]
+    fn digit_towns_get_both_readings_and_both_digit_widths() {
+        // ABR の表記・読みは全角の数字。読みは数字を読みにした形（先頭）と数字を含む読み（末尾）、表記は半角と全角
+        let (surface, fullwidth, readings) = names("北１条西", "キタ１ジョウニシ").unwrap();
+        assert_eq!(surface, "北1条西");
+        assert_eq!(fullwidth.as_deref(), Some("北１条西"));
+        assert_eq!(readings, ["キタイチジョウニシ", "キタ1ジョウニシ"]);
+        // 10 以上、複数の数字
+        let (_, _, readings) = names("北１０条西", "キタ１０ジョウニシ").unwrap();
+        assert_eq!(readings, ["キタジュウジョウニシ", "キタ10ジョウニシ"]);
+        // 読みが数詞のもの（ABR の一部）も、数字を含む読みと両方にする
+        let (surface, _, readings) = names("新野９線", "ニイノキュウセン").unwrap();
+        assert_eq!(surface, "新野9線");
+        assert_eq!(
+            readings,
+            ["ニイノキュウセン", "ニイノクセン", "ニイノ9セン"]
+        );
+        // 数字のない町名はこれまでと同じ 1 組
+        assert_eq!(
+            names("千代田", "チヨダ"),
+            Ok(("千代田".into(), None, vec!["チヨダ".into()]))
+        );
+    }
+
+    #[test]
+    fn digit_towns_that_cannot_be_expanded_are_rejected() {
+        // 助数詞が分からない、読みに数詞が見つからない
+        assert_eq!(
+            names("字布部１", "アザヌノベイチ"),
+            Err(TOWN_SKIP_DIGITS_UNALIGNED)
+        );
+        // 表記に数字がなく読みにだけある町名はこれまでどおり使わない
+        assert_eq!(names("北条", "キタ１ジョウ"), Err(TOWN_SKIP_READING_CHARS));
+        // 読みに丁目があって表記にない行は、数字の町でも使わない
+        assert_eq!(
+            names("春光町１区", "シュンコウチヨウイックイッチョウメ"),
+            Err(TOWN_SKIP_CHOME_IN_READING)
+        );
     }
 
     #[test]
@@ -1194,6 +1374,8 @@ mod tests {
             "1,1,梅田,ウメダ,1,大阪府,オオサカフ,,,大阪市,オオサカシ,北区,キタク", // Sudachi にある（連なりは Sudachi にない）
             "1,3,小字だけ,コアザダケ,1,,,,,,,,",
             "1,1,不明,フメイ,3,,,,,,,,",
+            // 数字を含む町名（連なりだけ。単語の行にはしない）
+            "1,1,北１条西,キタ１ジョウニシ,1,北海道,ホッカイドウ,,,札幌市,サッポロシ,中央区,チュウオウク",
         ] {
             writeln!(f, "{row}").expect("write");
         }
@@ -1225,7 +1407,9 @@ mod tests {
         })
         .expect("build");
         assert_eq!(report.written, 2);
-        assert_eq!(report.chains_written, 9);
+        // 旭ケ丘 2 + 八幡町 2 + 梅田 2 + 町名のない 3 + 北1条西（読み 2 × 表記 2 × 形 2 = 8）
+        assert_eq!(report.chains_written, 17);
+        assert_eq!(report.skipped[TOWN_SKIP_DIGITS_NOT_WORD], 1);
         assert_eq!((report.left_id, report.right_id), (4792, 4791));
         assert_eq!(report.skipped[TOWN_SKIP_DUPLICATE], 1);
         assert_eq!(report.skipped[TOWN_SKIP_IN_SUDACHI], 1);
@@ -1243,7 +1427,7 @@ mod tests {
         // 連なりは別のファイル。都道府県つきと、省いたもの（読みは小書きに直す）。Sudachi にある梅田の連なりも書く
         let chain_text = fs::read_to_string(chain_out).expect("read");
         let lines: Vec<&str> = chain_text.lines().collect();
-        assert_eq!(lines.len(), 9);
+        assert_eq!(lines.len(), 17);
         for (reading, surface) in [
             (
                 "ホッカイドウサッポロシチュウオウクアサヒガオカ",
@@ -1258,9 +1442,44 @@ mod tests {
             ("ホッカイドウサッポロシチュウオウク", "北海道札幌市中央区"),
             ("トウキョウトチヨダク", "東京都千代田区"),
             ("オオサカフオオサカシキタク", "大阪府大阪市北区"),
+            // 数字を含む町名: 数字を読みにした形と数字を含む読み × 半角の表記
+            (
+                "ホッカイドウサッポロシチュウオウクキタイチジョウニシ",
+                "北海道札幌市中央区北1条西",
+            ),
+            (
+                "ホッカイドウサッポロシチュウオウクキタ1ジョウニシ",
+                "北海道札幌市中央区北1条西",
+            ),
+            (
+                "サッポロシチュウオウクキタイチジョウニシ",
+                "札幌市中央区北1条西",
+            ),
+            (
+                "サッポロシチュウオウクキタ1ジョウニシ",
+                "札幌市中央区北1条西",
+            ),
         ] {
             let row = format!(
                 "{surface},4792,4791,{DEFAULT_CHAIN_COST},{surface},名詞,固有名詞,地名,一般,*,*,{reading},{surface},*,A,*,*,*,*"
+            );
+            assert!(lines.contains(&row.as_str()), "missing {row}");
+        }
+        // 全角の数字の表記は、コストを `FULLWIDTH_SURFACE_COST_DELTA` だけ高くして、同じ読みで書く（半角が先）
+        let fullwidth_cost = DEFAULT_CHAIN_COST + FULLWIDTH_SURFACE_COST_DELTA;
+        for reading in [
+            "ホッカイドウサッポロシチュウオウクキタイチジョウニシ",
+            "ホッカイドウサッポロシチュウオウクキタ1ジョウニシ",
+            "サッポロシチュウオウクキタイチジョウニシ",
+            "サッポロシチュウオウクキタ1ジョウニシ",
+        ] {
+            let surface = if reading.starts_with("ホッカイドウ") {
+                "北海道札幌市中央区北１条西"
+            } else {
+                "札幌市中央区北１条西"
+            };
+            let row = format!(
+                "{surface},4792,4791,{fullwidth_cost},{surface},名詞,固有名詞,地名,一般,*,*,{reading},{surface},*,A,*,*,*,*"
             );
             assert!(lines.contains(&row.as_str()), "missing {row}");
         }
@@ -1285,8 +1504,10 @@ mod tests {
                 "131016,0009001,3,神田須田,カンダスダ,1,東京都,トウキョウト,,,,,千代田区,チヨダク",
                 // 郡つき（郡を省いた形が s に出る）
                 "014001,0001000,1,栄町,サカエマチ,1,北海道,ホッカイドウ,空知郡,ソラチグン,南幌町,ナンポロチョウ,,",
-                // 表記に数字がある町は畳めない
+                // 表記に数字がある町は、数字を読みにした形と数字を含む読みの両方で入る（ADR 0030 §3.1）
                 "131016,0005000,1,北１条,キタ１ジョウ,1,東京都,トウキョウト,,,,,千代田区,チヨダク",
+                // 表記に括弧がある町は畳めない
+                "131016,0006000,1,北（東）,キタヒガシ,1,東京都,トウキョウト,,,,,千代田区,チヨダク",
             ]
             .map(String::from),
         );
@@ -1307,7 +1528,8 @@ mod tests {
                 "131016,0001002,東京都,,,千代田区,,内幸町,二丁目,,,1000011,2026-04-23,",
                 "131016,0009001,東京都,,,千代田区,,神田須田,,,,1010041,2026-04-23,",
                 "131016,0003000,東京都,,,千代田区,,千代田,,,,9999999,2020-01-01,2021-01-01", // 廃止
-                "131016,0005000,東京都,,,千代田区,,北１条,,,,1000005,2026-04-23,", // 畳めない
+                "131016,0005000,東京都,,,千代田区,,北１条,,,,1000005,2026-04-23,",
+                "131016,0006000,東京都,,,千代田区,,北（東）,,,,1000006,2026-04-23,", // 畳めない
                 "014001,0001000,北海道,空知郡,南幌町,,,栄町,,,,0691234,2026-04-23,",
                 "014001,0001000,北海道,空知郡,南幌町,,,栄町,,,,0691235,2026-04-23,",
                 "999999,0000001,不明,,,,,,,,,1234567,2026-04-23,", // マスターにない
@@ -1330,17 +1552,17 @@ mod tests {
         })
         .expect("build");
         let postal = report.postal.expect("postal report");
-        assert_eq!(postal.rows_read, 11);
+        assert_eq!(postal.rows_read, 12);
         assert_eq!(postal.deleted, 1);
         assert_eq!(postal.not_folded, 1);
         assert_eq!(postal.unjoined, 1);
         assert_eq!(postal.municipality_rows_used, 1);
         assert_eq!(postal.municipality_rows_unused, 1);
-        // 千代田区（市区町村だけ）、千代田、内幸町、神田須田、栄町
-        assert_eq!(postal.towns, 5);
+        // 千代田区（市区町村だけ）、千代田、内幸町、神田須田、栄町、北1条
+        assert_eq!(postal.towns, 6);
         assert_eq!(postal.towns_outside_chain, 1);
-        // 郵便番号の種類: 1000000、1000001、1000011、1010041、0691234、0691235
-        assert_eq!(postal.distinct_codes, 6);
+        // 郵便番号の種類: 1000000、1000001、1000011、1010041、0691234、0691235、1000005
+        assert_eq!(postal.distinct_codes, 7);
         assert_eq!(postal.codes_with_many_towns, 0);
 
         let text = fs::read_to_string(postal_out).expect("read");
@@ -1372,6 +1594,7 @@ mod tests {
                 "東京都千代田区",
                 "東京都千代田区内幸町",
                 "東京都千代田区千代田",
+                "東京都千代田区北1条",
                 "東京都千代田区神田須田",
             ]
         );
@@ -1413,9 +1636,28 @@ mod tests {
                 "missing {surface}"
             );
         }
-        // 小字だけの大字（神田須田）は表に入る。数字の町と廃止の行は入らない
+        // 小字だけの大字（神田須田）は表に入る。廃止の行と括弧の町は入らない
         assert!(got.iter().any(|r| r.1 == "東京都千代田区神田須田" && r.3));
-        assert!(!got.iter().any(|r| r.1.contains("北１条")));
+        assert!(!got.iter().any(|r| r.1.contains("北（東）")));
+        // 数字を含む町: f は数字を読みにした形（半角の表記の 1 行）。ほかの読み（数字を含む読み）と、省いた形は s
+        assert!(got.contains(&want(
+            "とうきょうとちよだくきたいちじょう",
+            "東京都千代田区北1条",
+            &[1_000_005],
+            true
+        )));
+        for (reading, surface) in [
+            ("とうきょうとちよだくきた1じょう", "東京都千代田区北1条"),
+            ("ちよだくきたいちじょう", "千代田区北1条"),
+            ("ちよだくきた1じょう", "千代田区北1条"),
+        ] {
+            assert!(
+                got.contains(&want(reading, surface, &[1_000_005], false)),
+                "missing {reading} {surface}"
+            );
+        }
+        // 全角の数字の表記は、郵便番号の表には入れない（郵便番号 → 住所は半角の 1 行）
+        assert!(!got.iter().any(|r| r.1.contains('１')));
         // 同じ (読み, 表記) の行は 1 つだけ
         let mut keys: Vec<(&str, &str)> =
             got.iter().map(|r| (r.0.as_str(), r.1.as_str())).collect();

@@ -166,20 +166,37 @@ fn mock_stack(mock: &Arc<MockLm>, learning_path: Option<&Path>) -> Stack {
     }
 }
 
+/// 時間に依存するテスト用の、倍率（`IKARI_TEST_TIME_SCALE`）を掛けた LM の締め切り。
+/// 倍率 1 では `LmBudget::default()` と同じ
+fn test_budget() -> LmBudget {
+    let b = LmBudget::default();
+    LmBudget {
+        base: ikari_testtime::scaled(b.base),
+        per_char: ikari_testtime::scaled(b.per_char),
+        max: ikari_testtime::scaled(b.max),
+    }
+}
+
+/// 倍率を掛けた、Space からの待ち時間。倍率 1 では `DEFAULT_CONVERT_WAIT`
+fn test_wait() -> Duration {
+    ikari_testtime::scaled(DEFAULT_CONVERT_WAIT)
+}
+
 fn engine_with(mock: &Arc<MockLm>, learning_path: Option<&Path>) -> Engine {
     Engine::from_parts(EngineParts {
         stack: mock_stack(mock, learning_path),
         rebuild: None,
         data_dir: None,
         lm_requested: true,
-        lm_budget: LmBudget::default(),
-        convert_wait: DEFAULT_CONVERT_WAIT,
+        lm_budget: test_budget(),
+        convert_wait: test_wait(),
         lock: None,
     })
 }
 
+/// `delay_ms` は倍率を掛けて使う
 fn engine(delay_ms: u64) -> (Engine, Arc<MockLm>) {
-    let mock = MockLm::new(Duration::from_millis(delay_ms));
+    let mock = MockLm::new(ikari_testtime::ms(delay_ms));
     (engine_with(&mock, None), mock)
 }
 
@@ -405,12 +422,20 @@ struct Real {
 
 impl Real {
     fn new() -> Real {
+        Real::with_learning_file(None)
+    }
+
+    /// 開く前に `learning.tsv` を置く（不正な中身の確認用）
+    fn with_learning_file(learning: Option<&[u8]>) -> Real {
         let dir = temp_dir("admin");
         let dict = UserDir::new(&dir).dict_dir();
         std::fs::create_dir_all(&dict).unwrap();
         for entry in std::fs::read_dir(fixture_dict_dir()).unwrap() {
             let entry = entry.unwrap();
             std::fs::copy(entry.path(), dict.join(entry.file_name())).unwrap();
+        }
+        if let Some(bytes) = learning {
+            std::fs::write(UserDir::new(&dir).learning_tsv(), bytes).unwrap();
         }
         let mut real = Real { dir, engine: None };
         real.open();
@@ -452,6 +477,43 @@ impl Drop for Real {
         self.engine = None;
         let _ = std::fs::remove_dir_all(&self.dir);
     }
+}
+
+/// 不正な `learning.tsv` は `.bad` に退避して空で起動し、Hello の返事で 1 回だけ伝える（#271）
+#[test]
+fn broken_learning_file_is_quarantined_and_reported_once() {
+    let broken = b"not a learning file\n";
+    let real = Real::with_learning_file(Some(broken));
+    let tsv = real.user().learning_tsv();
+    let bad = tsv.with_file_name("learning.tsv.bad");
+    assert_eq!(std::fs::read(&bad).unwrap(), broken);
+    assert!(!tsv.exists());
+    let flags: Vec<bool> = (0..3)
+        .map(
+            |_| match send(real.e(), envelope::Body::Hello(pb::Hello::default())) {
+                envelope::Body::HelloReply(h) => h.learning_quarantined,
+                other => panic!("expected HelloReply, got {other:?}"),
+            },
+        )
+        .collect();
+    assert_eq!(flags, [true, false, false]);
+}
+
+/// 正常な（またはない）学習ファイルでは、退避も通知もしない
+#[test]
+fn healthy_learning_file_is_not_reported() {
+    let real = Real::new();
+    match send(real.e(), envelope::Body::Hello(pb::Hello::default())) {
+        envelope::Body::HelloReply(h) => assert!(!h.learning_quarantined),
+        other => panic!("expected HelloReply, got {other:?}"),
+    }
+    assert!(
+        !real
+            .user()
+            .learning_tsv()
+            .with_file_name("learning.tsv.bad")
+            .exists()
+    );
 }
 
 fn user_dict_reply(body: envelope::Body) -> pb::UserDictListReply {
@@ -699,6 +761,7 @@ mod crash_record;
 mod diag;
 mod emoji;
 mod lifecycle;
+mod model_check;
 mod postal;
 mod protocol;
 mod real;

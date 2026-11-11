@@ -232,6 +232,8 @@ message ShellAction {
     BridgeClose bridge_close = 17;
     // ADR 0050
     DeleteText delete_text = 18;
+    // #271: 学習ファイルが不正で退避したことを利用者に 1 回だけ知らせる。エンジンの Hello の返事で知った shell-core が 1 回だけ返す
+    Empty show_learning_quarantine_notice = 19;
   }
 }
 

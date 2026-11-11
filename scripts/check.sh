@@ -1,5 +1,5 @@
 #!/bin/bash
-# コミットの前に流す門（CI を置かない代わり。docs/refactor-plan-2026-10.md §5.5、§6.2）。
+# コミットの前に流す門。同じものを CI（.github/workflows/ci.yml）も流し、main へのマージの必須チェックになっている（docs/refactor-plan-2026-10.md §5.5、§6.2）。
 #
 #   scripts/check.sh                 文書とスクリプトの検査、cargo fmt --check、clippy -D warnings、cargo test --workspace、swift test
 #   scripts/check.sh --lm            + ikari-lm / ikari-engine-ffi / ikari-stack を feature つきで clippy と test（cmake が要る）

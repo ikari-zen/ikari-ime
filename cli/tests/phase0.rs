@@ -26,8 +26,12 @@ fn build_fixture_dict(out_dir: &Path) {
     build(&cfg).expect("build fixture dictionary");
 }
 
+/// 実機のユーザーデータ（~/Library/Application Support/ikari-ime/ など）を読まないよう、
+/// 空の一時フォルダを `IKARI_USER_DIR` に指定して起動する（#285）。
 fn run_ikari(args: &[&str]) -> Output {
+    let user = tempfile::tempdir().unwrap();
     Command::new(env!("CARGO_BIN_EXE_ikari"))
+        .env("IKARI_USER_DIR", user.path())
         .args(args)
         .output()
         .expect("spawn ikari")

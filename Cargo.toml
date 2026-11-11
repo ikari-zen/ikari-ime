@@ -1,8 +1,8 @@
 [workspace]
 resolver = "2"
 members = [
-    "core", "cli", "dict-builder", "dict-format", "eval", "import", "lm",
-    "input", "stack", "runmark", "proto", "engine", "engine-ffi", "shell-ffi", "shell-core", "xtask",
+    "core", "cli", "dict-builder", "dict-format", "resource", "eval", "import", "lm",
+    "input", "stack", "runmark", "testtime", "proto", "engine", "engine-ffi", "shell-ffi", "shell-core", "xtask",
 ]
 # default-members は置かない（refactor-plan-2026-10 §9 P4）。lm と engine-ffi も feature を付けなければ
 # llama.cpp をビルドしないので、`cargo test` が両 crate の単体テストを飛ばさない。
@@ -31,6 +31,7 @@ prost-build = "0.14"
 protox = "0.10"
 
 ikari-dict-format = { path = "dict-format" }
+ikari-resource = { path = "resource" }
 ikari-core = { path = "core" }
 ikari-dict-builder = { path = "dict-builder" }
 ikari-import = { path = "import" }
@@ -38,6 +39,7 @@ ikari-lm = { path = "lm" }
 ikari-input = { path = "input" }
 ikari-stack = { path = "stack" }
 ikari-runmark = { path = "runmark" }
+ikari-testtime = { path = "testtime" }
 ikari-proto = { path = "proto" }
 ikari-engine = { path = "engine" }
 ikari-shell-core = { path = "shell-core" }

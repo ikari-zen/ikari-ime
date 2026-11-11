@@ -50,7 +50,7 @@ fn convert_waits_for_a_running_prefetch_until_the_budget() {
     let r = convert(&e, 1, READING, 0);
     assert_eq!(surfaces(&r)[0], BOOSTED);
     assert!(r.lm_applied);
-    assert!(started.elapsed() < Duration::from_millis(200));
+    assert!(started.elapsed() < ikari_testtime::ms(200));
 }
 
 #[test]
@@ -64,9 +64,9 @@ fn convert_falls_back_without_the_lm_when_the_prefetch_is_too_slow() {
     let waited = started.elapsed();
     assert_eq!(surfaces(&r)[0], BASE_TOP);
     assert!(!r.lm_applied);
-    assert!(waited < Duration::from_millis(150), "{waited:?}");
+    assert!(waited < ikari_testtime::ms(150), "{waited:?}");
     assert!(
-        waited >= Duration::from_millis(20),
+        waited >= ikari_testtime::ms(20),
         "waits for the budget: {waited:?}"
     );
 }
@@ -203,14 +203,14 @@ fn secure_sessions_are_not_prefetched_learned_or_remembered() {
 /// ログを `data_dir/logs/engine.log` に書くエンジン
 fn logged_engine(delay_ms: u64, budget: LmBudget, tag: &str) -> (Engine, PathBuf) {
     let dir = temp_dir(tag);
-    let mock = MockLm::new(Duration::from_millis(delay_ms));
+    let mock = MockLm::new(ikari_testtime::ms(delay_ms));
     let e = Engine::from_parts(EngineParts {
         stack: mock_stack(&mock, None),
         rebuild: None,
         data_dir: Some(dir.clone()),
         lm_requested: true,
         lm_budget: budget,
-        convert_wait: DEFAULT_CONVERT_WAIT,
+        convert_wait: test_wait(),
         lock: None,
     });
     (e, dir)
@@ -242,7 +242,7 @@ fn prefetch_and_settle(e: &Engine, dir: &Path, reading: &str, rev: u64) {
 
 #[test]
 fn convert_log_says_hit_with_the_lm() {
-    let (e, dir) = logged_engine(0, LmBudget::default(), "log-hit");
+    let (e, dir) = logged_engine(0, test_budget(), "log-hit");
     begin(&e, 1, false);
     prefetch_and_settle(&e, &dir, READING, 7);
     let r = convert(&e, 1, READING, 7);
@@ -256,7 +256,7 @@ fn convert_log_says_hit_with_the_lm() {
 
 #[test]
 fn convert_and_commit_lines_share_a_conversion_number() {
-    let (e, dir) = logged_engine(0, LmBudget::default(), "log-conv");
+    let (e, dir) = logged_engine(0, test_budget(), "log-conv");
     begin(&e, 7, false);
     let r = convert(&e, 7, READING, 0);
     let reply = send(
@@ -279,7 +279,7 @@ fn convert_and_commit_lines_share_a_conversion_number() {
 
 #[test]
 fn convert_log_says_wait_hit_and_wait_miss() {
-    let (e, dir) = logged_engine(10, LmBudget::default(), "log-wait-hit");
+    let (e, dir) = logged_engine(10, test_budget(), "log-wait-hit");
     begin(&e, 1, false);
     prefetch(&e, 1, READING, 0);
     let r = convert(&e, 1, READING, 0);
@@ -288,7 +288,7 @@ fn convert_log_says_wait_hit_and_wait_miss() {
     assert!(line.contains("cache=wait_hit lm_applied=1"), "{line}");
     let _ = std::fs::remove_dir_all(dir);
 
-    let (e, dir) = logged_engine(200, LmBudget::default(), "log-wait-miss");
+    let (e, dir) = logged_engine(200, test_budget(), "log-wait-miss");
     begin(&e, 1, false);
     prefetch(&e, 1, READING, 0);
     let r = convert(&e, 1, READING, 0);
@@ -300,7 +300,7 @@ fn convert_log_says_wait_hit_and_wait_miss() {
 
 #[test]
 fn convert_log_tells_why_the_cache_missed() {
-    let (e, dir) = logged_engine(0, LmBudget::default(), "log-miss");
+    let (e, dir) = logged_engine(0, test_budget(), "log-miss");
     begin(&e, 1, false);
     prefetch_and_settle(&e, &dir, READING, 3);
     // 読みだけが違う
@@ -321,7 +321,7 @@ fn convert_log_tells_why_the_cache_missed() {
 
 #[test]
 fn convert_log_has_gap_and_confident_without_text() {
-    let (e, dir) = logged_engine(0, LmBudget::default(), "log-gap");
+    let (e, dir) = logged_engine(0, test_budget(), "log-gap");
     begin(&e, 1, false);
     let r = convert(&e, 1, READING, 0);
     let line = last_convert_line(&e, &dir);
@@ -338,7 +338,7 @@ fn convert_log_has_gap_and_confident_without_text() {
 
 #[test]
 fn convert_log_has_rlen_and_qlen_as_numbers_only() {
-    let (e, dir) = logged_engine(0, LmBudget::default(), "log-rlen");
+    let (e, dir) = logged_engine(0, test_budget(), "log-rlen");
     begin(&e, 1, false);
     convert(&e, 1, READING, 0);
     let line = last_convert_line(&e, &dir);
@@ -372,7 +372,7 @@ fn confident_threshold_boundaries() {
 
 #[test]
 fn engine_log_never_contains_the_text() {
-    let (e, dir) = logged_engine(0, LmBudget::default(), "log-privacy");
+    let (e, dir) = logged_engine(0, test_budget(), "log-privacy");
     begin(&e, 1, false);
     prefetch_and_settle(&e, &dir, READING, 0);
     convert(&e, 1, READING, 0);
@@ -447,7 +447,7 @@ fn prefetch_with(e: &Engine, session: u64, rev: u64, context: Option<pb::Surroun
 /// 番号が進んだ理由（どれが変わったか、文字数の差）だけが `ctx_change` の行に出て、周辺テキストは出ない
 #[test]
 fn ctx_change_line_has_flags_and_deltas_only() {
-    let (e, dir) = logged_engine(0, LmBudget::default(), "log-ctx-change");
+    let (e, dir) = logged_engine(0, test_budget(), "log-ctx-change");
     begin(&e, 1, false);
     prefetch_with(&e, 1, 1, surrounding("ひみつの左", "ひみつの右", true));
     // 番号が同じなら行は増えない
@@ -489,7 +489,7 @@ fn ctx_change_line_has_flags_and_deltas_only() {
 /// 確定のあとに番号が進むと、`ctx_change` の行に確定からの経過 ms と確定の文字数が付く（#249）
 #[test]
 fn ctx_change_line_has_commit_timing_after_commit() {
-    let (e, dir) = logged_engine(0, LmBudget::default(), "log-ctx-commit");
+    let (e, dir) = logged_engine(0, test_budget(), "log-ctx-commit");
     begin(&e, 1, false);
     prefetch_with(&e, 1, 1, surrounding("あ", "", true));
     send(
@@ -511,7 +511,7 @@ fn ctx_change_line_has_commit_timing_after_commit() {
 /// パスワード欄では、番号も周辺テキストも記録しない（NFR-18）
 #[test]
 fn secure_sessions_leave_no_context_trace() {
-    let (e, dir) = logged_engine(0, LmBudget::default(), "log-ctx-secure");
+    let (e, dir) = logged_engine(0, test_budget(), "log-ctx-secure");
     begin(&e, 2, true);
     prefetch_with(&e, 2, 1, surrounding("あ", "い", true));
     prefetch_with(&e, 2, 2, surrounding("あう", "い", true));
@@ -535,9 +535,9 @@ fn secure_sessions_leave_no_context_trace() {
 #[test]
 fn convert_waits_up_to_30ms_from_the_space() {
     let budget = LmBudget {
-        base: Duration::from_millis(1),
+        base: ikari_testtime::ms(1),
         per_char: Duration::ZERO,
-        max: Duration::from_millis(300),
+        max: ikari_testtime::ms(300),
     };
     let (e, dir) = logged_engine(8, budget, "wait-30-hit");
     begin(&e, 1, false);
@@ -550,7 +550,7 @@ fn convert_waits_up_to_30ms_from_the_space() {
 
 #[test]
 fn convert_never_waits_more_than_30ms() {
-    let (e, dir) = logged_engine(200, LmBudget::default(), "wait-30-miss");
+    let (e, dir) = logged_engine(200, test_budget(), "wait-30-miss");
     begin(&e, 1, false);
     prefetch(&e, 1, READING, 0);
     let started = Instant::now();
@@ -558,9 +558,9 @@ fn convert_never_waits_more_than_30ms() {
     let waited = started.elapsed();
     assert!(!r.lm_applied);
     assert_eq!(surfaces(&r)[0], BASE_TOP);
-    assert!(waited >= DEFAULT_CONVERT_WAIT, "{waited:?}");
+    assert!(waited >= test_wait(), "{waited:?}");
     // 30ms の待ちとその場の変換。余裕を見ても、計算の 300ms には届かない
-    assert!(waited < Duration::from_millis(150), "{waited:?}");
+    assert!(waited < ikari_testtime::ms(150), "{waited:?}");
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -569,13 +569,13 @@ fn convert_never_waits_more_than_30ms() {
 fn convert_uses_the_configured_wait() {
     let run = |wait: Duration, tag: &str| {
         let dir = temp_dir(tag);
-        let mock = MockLm::new(Duration::from_millis(80));
+        let mock = MockLm::new(ikari_testtime::ms(80));
         let e = Engine::from_parts(EngineParts {
             stack: mock_stack(&mock, None),
             rebuild: None,
             data_dir: Some(dir.clone()),
             lm_requested: true,
-            lm_budget: LmBudget::default(),
+            lm_budget: test_budget(),
             convert_wait: wait,
             lock: None,
         });
@@ -586,7 +586,7 @@ fn convert_uses_the_configured_wait() {
         r.lm_applied
     };
     assert!(
-        run(Duration::from_millis(200), "wait-cfg-long"),
+        run(ikari_testtime::ms(200), "wait-cfg-long"),
         "waits for 80ms"
     );
     assert!(!run(Duration::ZERO, "wait-cfg-zero"), "does not wait");

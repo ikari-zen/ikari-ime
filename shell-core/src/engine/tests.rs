@@ -198,6 +198,7 @@ fn default_response(request: &v1::Envelope, engine_version: &str) -> Option<v1::
             engine_version: engine_version.to_owned(),
             dict_label: "test".into(),
             lm: v1::LmState::LmReady as i32,
+            ..Default::default()
         }),
         Some(Body::Convert(_)) | Some(Body::Page(_)) => {
             let reply = v1::ConvertReply {
