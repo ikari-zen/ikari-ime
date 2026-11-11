@@ -43,5 +43,8 @@ jobs:
       # check.sh は XCFramework の鮮度も検査する（#154）。
       - name: XCFramework とアプリをビルドする（ad-hoc 署名）
         run: macos/scripts/build.sh --signing adhoc --release
+      # 待ち時間（30ms など）を測るテストが、3 コアのランナーで並行に動くと間に合わず揺れる。1 本ずつ流す
       - name: scripts/check.sh
+        env:
+          RUST_TEST_THREADS: "1"
         run: scripts/check.sh
