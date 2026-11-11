@@ -148,3 +148,57 @@ pub(crate) fn load_keymap(resources_dir: &Path, settings: &SettingsSnapshot) -> 
         .unwrap_or_default();
     Arc::new(keymap)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::settings::default_snapshot;
+    use ikari_textfile::testing::read_variants;
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("ikari-backend-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn keymap_preset_reads_lf_crlf_and_bom_files() {
+        let dir = temp_dir("keymap");
+        let settings = default_snapshot();
+        let keymap_dir = dir.join(KEYMAP_DIRECTORY);
+        std::fs::create_dir_all(&keymap_dir).unwrap();
+        let path = keymap_dir.join(format!(
+            "{}.{KEYMAP_EXTENSION}",
+            preset_name(settings.keymap_preset)
+        ));
+        let lf = "# preset\nf6\tconvert.hiragana\nf7\tconvert.fullwidth_katakana\n";
+        std::fs::write(&path, lf).unwrap();
+        let expected = load_keymap(&dir, &settings);
+        // 資源が読めなかったときの F キーだけの割り当てとは違う
+        let fallback =
+            Keymap::from_settings(FUNCTION_KEYS_ONLY_PRESET, &settings.keymap_overrides).unwrap();
+        assert_ne!(*expected, fallback);
+        for (v, text) in read_variants(lf) {
+            std::fs::write(&path, text).unwrap();
+            assert_eq!(*load_keymap(&dir, &settings), *expected, "{v:?}");
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn romaji_table_reads_lf_crlf_and_bom_files() {
+        let dir = temp_dir("romaji");
+        let settings_path = dir.join("settings.tsv");
+        for (v, text) in read_variants("# my table\nka\tか\n") {
+            std::fs::write(dir.join(ROMAJI_FILE_NAME), text).unwrap();
+            let backend = SettingsBackend::file(settings_path.clone());
+            // 読めない表は「使えない」になる（BOM が残ると最初の行が不正になる）
+            assert_eq!(
+                format!("{:?}", backend.romaji_source()),
+                "RomajiSource",
+                "{v:?}"
+            );
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+}

@@ -582,6 +582,7 @@ version = "0.1.0"
 dependencies = [
  "ikari-core",
  "ikari-dict-format",
+ "ikari-textfile",
  "serde",
  "serde_json",
  "tempfile",

@@ -179,6 +179,22 @@ mod tests {
     }
 
     #[test]
+    fn load_reads_lf_crlf_and_bom_files() {
+        let dir =
+            std::env::temp_dir().join(format!("ikari-engine-settings-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for (v, text) in
+            ikari_textfile::testing::read_variants("engine.lm\toff\nengine.idle_unload_secs\t60\n")
+        {
+            std::fs::write(dir.join(SETTINGS_FILE_NAME), text).unwrap();
+            let s = load(&dir);
+            assert_eq!(s.lm, Some(false), "{v:?}");
+            assert_eq!(s.idle_unload_secs, Some(60), "{v:?}");
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn reads_the_pack_switch() {
         assert_eq!(parse("dict.pack_it\toff\n").pack_it, Some(false));
         assert_eq!(parse("dict.pack_it\ton\n").pack_it, Some(true));

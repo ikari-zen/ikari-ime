@@ -194,7 +194,7 @@ fn meta_value(meta: &str, name: &str) -> String {
 /// golden の TSV から (context, reading) を取り出す。コメント、タブのない行、読みが空の行は飛ばす。
 /// context が空の行がある（タブで分ける）。
 fn golden_cases(text: &str) -> Vec<(&str, &str)> {
-    text.split('\n')
+    text.lines()
         .filter(|line| !line.starts_with('#'))
         .filter_map(|line| line.split_once('\t'))
         .filter(|(_, reading)| !reading.is_empty())
@@ -202,7 +202,8 @@ fn golden_cases(text: &str) -> Vec<(&str, &str)> {
 }
 
 fn read_text(path: &Path) -> String {
-    std::fs::read_to_string(path).unwrap_or_default()
+    // BOM つきでも読む（ADR 0040 §2.9）
+    ikari_textfile::read_to_string(path).unwrap_or_default()
 }
 
 fn head_commit(root: &Path) -> Result<String, Failure> {
@@ -1277,9 +1278,25 @@ mod tests {
     }
 
     #[test]
-    fn golden_cases_characterize_crlf_leaves_cr() {
-        // 今は CRLF のファイルだと読みの末尾に CR が残る（直す前の挙動）
-        assert_eq!(golden_cases("前\tよみ\r\n"), vec![("前", "よみ\r")]);
+    fn golden_cases_read_lf_crlf_and_bom_files() {
+        // 直す前は CRLF のファイルだと読みの末尾に CR が残っていた
+        for (v, text) in ikari_textfile::testing::read_variants("# c\n前\tよみ\n\tだけ\n") {
+            // BOM は read_text が外す。ここでは本文だけを渡す
+            let body = ikari_textfile::strip_bom(&text);
+            assert_eq!(
+                golden_cases(body),
+                vec![("前", "よみ"), ("", "だけ")],
+                "{v:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn read_text_strips_the_bom() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("golden.tsv");
+        std::fs::write(&path, "\u{feff}前\tよみ\r\n").unwrap();
+        assert_eq!(golden_cases(&read_text(&path)), vec![("前", "よみ")]);
     }
 
     #[test]
