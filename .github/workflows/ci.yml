@@ -21,15 +21,17 @@ jobs:
       # actions/checkout v7（コミットの SHA で固定）
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: ツールの版を表示する
-        run: ls -d /Applications/Xcode* ; sw_vers
-      - name: ツールの版を表示する（続き）
         run: |
           rustc --version
           cargo --version
           swift --version
           xcodebuild -version
           cmake --version
-      - name: 診断 swift build
-        run: |
-          swift build -c release --package-path macos --product IkariSettings 2>&1 | grep -E "error|While|Build complete" | head -8
-          swift build --package-path macos --build-tests 2>&1 | grep -E "error|While|Build complete" | head
+      - name: cargo-about を入れる（ライセンス一覧の検査。版を固定）
+        run: cargo install cargo-about --version 0.9.3 --locked
+      # XCFramework（swift test が使う）を作る。署名は ad-hoc（CI に証明書はない）。
+      # check.sh は XCFramework の鮮度も検査する（#154）。
+      - name: XCFramework とアプリをビルドする（ad-hoc 署名）
+        run: macos/scripts/build.sh --signing adhoc --release
+      - name: scripts/check.sh
+        run: scripts/check.sh
