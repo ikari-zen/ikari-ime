@@ -191,6 +191,16 @@ fn meta_value(meta: &str, name: &str) -> String {
         .to_owned()
 }
 
+/// golden の TSV から (context, reading) を取り出す。コメント、タブのない行、読みが空の行は飛ばす。
+/// context が空の行がある（タブで分ける）。
+fn golden_cases(text: &str) -> Vec<(&str, &str)> {
+    text.split('\n')
+        .filter(|line| !line.starts_with('#'))
+        .filter_map(|line| line.split_once('\t'))
+        .filter(|(_, reading)| !reading.is_empty())
+        .collect()
+}
+
 fn read_text(path: &Path) -> String {
     std::fs::read_to_string(path).unwrap_or_default()
 }
@@ -610,17 +620,7 @@ impl Snapshot {
         let golden_out = self.out.join("cli").join("golden.txt");
         write(&golden_out, "")?;
         let user_dir = tmp.join("user");
-        for line in text.split('\n') {
-            // タブで分ける（context が空の行がある）。コメントとタブのない行は飛ばす
-            if line.starts_with('#') {
-                continue;
-            }
-            let Some((context, reading)) = line.split_once('\t') else {
-                continue;
-            };
-            if reading.is_empty() {
-                continue;
-            }
+        for (context, reading) in golden_cases(&text) {
             let _ = std::fs::remove_dir_all(&user_dir);
             std::fs::create_dir_all(&user_dir)
                 .map_err(|e| die(format!("{} を作れません: {e}", user_dir.display())))?;
@@ -1269,6 +1269,18 @@ mod tests {
     use super::*;
 
     const REPORT: &str = "| 区分 | 件数 | 1位 | 3位以内 | 平均 | x |\n|---|---|---|---|---|---|\n| 全体 | 120 | 100 | 0.90 | 0.5 | 0.8 |\n| warm | 1 | 2 | 0.123 |\n- LM: 呼び出し 12 / 時間切れ 3 (budget)\n";
+
+    #[test]
+    fn golden_cases_skip_comments_and_blank_readings() {
+        let text = "# c\n前\tよみ\n\tだけ\ntab なし\n前\t\n";
+        assert_eq!(golden_cases(text), vec![("前", "よみ"), ("", "だけ")]);
+    }
+
+    #[test]
+    fn golden_cases_characterize_crlf_leaves_cr() {
+        // 今は CRLF のファイルだと読みの末尾に CR が残る（直す前の挙動）
+        assert_eq!(golden_cases("前\tよみ\r\n"), vec![("前", "よみ\r")]);
+    }
 
     #[test]
     fn reads_report_fields_like_awk() {
