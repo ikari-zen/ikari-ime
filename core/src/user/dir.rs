@@ -16,8 +16,8 @@ const DICT_DIR_NAME: &str = "dict";
 const APP_DIR_NAME: &str = "ikari-ime";
 const MACOS_SUPPORT_DIR: &str = "Library/Application Support";
 const XDG_DATA_FALLBACK: &str = ".local/share";
-/// Windows でユーザーデータの親になる環境変数（`%APPDATA%`。Roaming）
-const APPDATA_ENV: &str = "APPDATA";
+/// Windows でユーザーデータの親になる環境変数（`%LOCALAPPDATA%`。Local。辞書が大きく、ローミングの同期に向かない。2026-11-12 ユーザー決定）
+const LOCAL_APPDATA_ENV: &str = "LOCALAPPDATA";
 
 /// 既定の置き場所の決め方を選ぶ OS。Mac 上で他の OS の分岐をテストできるよう、引数で渡す。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -52,8 +52,8 @@ pub struct UserDirEnv {
     pub ikari_user_dir: Option<PathBuf>,
     pub xdg_data_home: Option<PathBuf>,
     pub home: Option<PathBuf>,
-    /// Windows の `%APPDATA%`
-    pub appdata: Option<PathBuf>,
+    /// Windows の `%LOCALAPPDATA%`
+    pub local_appdata: Option<PathBuf>,
 }
 
 impl UserDirEnv {
@@ -67,7 +67,7 @@ impl UserDirEnv {
             ikari_user_dir: get(USER_DIR_ENV),
             xdg_data_home: get("XDG_DATA_HOME"),
             home: get("HOME"),
-            appdata: get(APPDATA_ENV),
+            local_appdata: get(LOCAL_APPDATA_ENV),
         }
     }
 }
@@ -78,7 +78,7 @@ impl UserDir {
     }
 
     /// 優先順位: 明示の指定、`$IKARI_USER_DIR`、macOS は `~/Library/Application Support/ikari-ime`、
-    /// Windows は `%APPDATA%\ikari-ime`、
+    /// Windows は `%LOCALAPPDATA%\ikari-ime`（`%LOCALAPPDATA%` がなければ決めない）、
     /// その他は `$XDG_DATA_HOME/ikari-ime`（なければ `~/.local/share/ikari-ime`）。
     /// 決められなければ None（HOME もない環境）。
     pub fn resolve(explicit: Option<&Path>) -> Option<Self> {
@@ -98,8 +98,8 @@ impl UserDir {
                 return Some(Self::new(home.join(MACOS_SUPPORT_DIR).join(APP_DIR_NAME)));
             }
             HostOs::Windows => {
-                let appdata = env.appdata.as_ref()?;
-                return Some(Self::new(appdata.join(APP_DIR_NAME)));
+                let local_appdata = env.local_appdata.as_ref()?;
+                return Some(Self::new(local_appdata.join(APP_DIR_NAME)));
             }
             HostOs::Other => {}
         }
@@ -152,7 +152,7 @@ mod tests {
             ikari_user_dir: user.map(PathBuf::from),
             xdg_data_home: xdg.map(PathBuf::from),
             home: home.map(PathBuf::from),
-            appdata: None,
+            local_appdata: None,
         }
     }
 
@@ -201,9 +201,9 @@ mod tests {
     }
 
     #[test]
-    fn windows_default_is_appdata() {
+    fn windows_default_is_local_appdata() {
         let e = UserDirEnv {
-            appdata: Some(PathBuf::from(r"C:\Users\u\AppData\Roaming")),
+            local_appdata: Some(PathBuf::from(r"C:\Users\u\AppData\Local")),
             home: Some(PathBuf::from("/ignored")),
             xdg_data_home: Some(PathBuf::from("/ignored")),
             ..UserDirEnv::default()
@@ -211,7 +211,7 @@ mod tests {
         let d = UserDir::resolve_with(None, &e, HostOs::Windows).unwrap();
         assert_eq!(
             d.root(),
-            Path::new(r"C:\Users\u\AppData\Roaming").join("ikari-ime")
+            Path::new(r"C:\Users\u\AppData\Local").join("ikari-ime")
         );
         // IKARI_USER_DIR は Windows でも優先される
         let e = UserDirEnv {
@@ -224,7 +224,7 @@ mod tests {
                 .root(),
             Path::new("/env")
         );
-        // %APPDATA% がなければ決められない
+        // %LOCALAPPDATA% がなければ決められない（%USERPROFILE% などからは推測しない）
         assert!(UserDir::resolve_with(None, &UserDirEnv::default(), HostOs::Windows).is_none());
     }
 

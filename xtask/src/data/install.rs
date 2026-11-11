@@ -50,7 +50,7 @@ struct DestEnv {
     ikari_user_dir: Option<PathBuf>,
     legacy_data_dir: Option<PathBuf>,
     xdg_data_home: Option<PathBuf>,
-    appdata: Option<PathBuf>,
+    local_appdata: Option<PathBuf>,
     home: Option<PathBuf>,
 }
 
@@ -65,14 +65,14 @@ impl DestEnv {
             ikari_user_dir: get(USER_DIR_ENV),
             legacy_data_dir: get(LEGACY_DATA_DIR_ENV),
             xdg_data_home: get("XDG_DATA_HOME"),
-            appdata: get("APPDATA"),
+            local_appdata: get("LOCALAPPDATA"),
             home: get("HOME").or_else(|| get("USERPROFILE")),
         }
     }
 }
 
 /// 置き場所。`warn_legacy` が true なら旧名の環境変数を使ったことを知らせる。
-/// OS ごと: macOS は `~/Library/Application Support/ikari-ime`、Windows は `%APPDATA%\ikari-ime`、
+/// OS ごと: macOS は `~/Library/Application Support/ikari-ime`、Windows は `%LOCALAPPDATA%\ikari-ime`、
 /// それ以外は `$XDG_DATA_HOME/ikari-ime`（なければ `~/.local/share/ikari-ime`。`ikari_core::user::dir` と同じ）。
 fn default_dest(env: &DestEnv, os: &str) -> Result<(PathBuf, bool), Failure> {
     if let Some(dir) = &env.ikari_user_dir {
@@ -90,9 +90,9 @@ fn default_dest(env: &DestEnv, os: &str) -> Result<(PathBuf, bool), Failure> {
             .ok_or_else(no_home)?
             .join(MACOS_SUPPORT_DIR)
             .join(APP_DIR_NAME),
-        "windows" => match (&env.appdata, &env.home) {
-            (Some(appdata), _) => appdata.join(APP_DIR_NAME),
-            (None, Some(home)) => home.join("AppData/Roaming").join(APP_DIR_NAME),
+        "windows" => match (&env.local_appdata, &env.home) {
+            (Some(local_appdata), _) => local_appdata.join(APP_DIR_NAME),
+            (None, Some(home)) => home.join("AppData/Local").join(APP_DIR_NAME),
             (None, None) => return Err(no_home()),
         },
         _ => match (&env.xdg_data_home, &env.home) {
@@ -283,10 +283,10 @@ mod tests {
             default_dest(&xdg, "linux").unwrap().0,
             Path::new("/x/ikari-ime")
         );
-        let win = env(|e| e.appdata = Some("C:/Roaming".into()));
+        let win = env(|e| e.local_appdata = Some("C:/Local".into()));
         assert_eq!(
             default_dest(&win, "windows").unwrap().0,
-            Path::new("C:/Roaming/ikari-ime")
+            Path::new("C:/Local/ikari-ime")
         );
     }
 
