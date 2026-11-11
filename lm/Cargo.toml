@@ -16,4 +16,5 @@ ikari-core.workspace = true
 llama-cpp-2 = { workspace = true, optional = true }
 
 [dev-dependencies]
+ikari-testtime.workspace = true
 tempfile.workspace = true
