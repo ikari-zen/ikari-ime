@@ -22,7 +22,7 @@
   - テストの `std::os::unix::fs::symlink`: `engine/src/tests.rs`、`engine/src/tests/model_check.rs`、`engine-ffi/src/lib.rs`、`import/src/io.rs`
   - `shell-core/src/settings/store.rs` と `eval/src/rss.rs` は `cfg(unix)` で分けてある
 - ファイルの改行と BOM: BOM を外しているのは `dict-builder/src/town.rs` だけ。`split('\n')` で行に分ける箇所があり、CRLF だと行末に CR が残る（`xtask/src/eval/snapshot.rs:613`、`shell-core/src/settings/file.rs:19`。後者は行末の CR を保って書き戻す）。`.lines()` は CRLF を扱える。
-- キー割り当てのプリセットの TSV は `macos/Resources/keymap/` にある（`shell-core/src/keymap.rs` がテストで読む）。
+- キー割り当てのプリセットの TSV は `shell-core/resources/keymap/` にある（W2 で `macos/Resources/keymap/` から移した）（`shell-core/src/keymap.rs` がテストで読む）。
 - `lm` は `llama-cpp-2` の CPU 版で、ビルドに cmake が要る（feature なしならビルドしない）。
 - CI（`.github/workflows/ci.yml`）は `macos-latest` だけ。`scripts/check.sh` は `cargo xtask check` の包み（ADR 0043）。
 - spec の「リポジトリ構成」は「`windows/`（TSFの殻、C++）」のまま（§4 で直す）。
@@ -203,7 +203,7 @@ ikari-engine.exe（windows/engine-host。Rust、ユーザーのセッション�
 | | W1-c 常駐のエンジン（並行） | `windows/engine-host/` | Mac: 受け付けの繰り返しと `Engine::handle` の結合（テスト用の辞書） | なし |
 | | W1-d Windows の CI のジョブ（W1-a〜c の後） | `.github/workflows/ci.yml` | `windows-latest` で `cargo test --workspace`（LM なし）と W1-b のテスト、パイプの上で `Convert` が 1 往復。必須にはしない | S1 の概算 |
 | **W2 TIP の最小** | W2-0 契約コミット | `windows/tip/` の骨組み、`TsfOp` | ビルド | — |
-| | W2-a キーと動作の変換（並行。W1 を待たない） | `windows/tip/src/{keys,ops}.rs`、キー割り当てのプリセットを OS 共通の場所へ（今は `macos/Resources/keymap/`） | Mac: VK と修飾、配列によらない文字（どの配列でも動く）、`ShellAction` → `TsfOp` の表のテスト | なし |
+| | W2-a キーと動作の変換（並行。W1 を待たない） | `windows/tip/src/{keys,ops}.rs`、キー割り当てのプリセットを OS 共通の場所へ（`macos/Resources/keymap/` から `shell-core/resources/keymap/` へ移した） | Mac: VK と修飾、配列によらない文字（どの配列でも動く）、`ShellAction` → `TsfOp` の表のテスト | なし |
 | | W2-b COM の層（並行。Opus） | `windows/tip/src/com/`、`EngineTransport` と `TextAccess` の適合 | `cargo check --target`。CI: `DllRegisterServer` と解除 | 登録、Notepad で読み → Space → 1 位の確定、S1 の本測定、S2、S3（起動）、落ちたときに固まらないか |
 | **W3 候補窓** | W3-0 スパイク（main に入れない） | 捨てるブランチと手順書 | ビルド | S10（§2.4）。結果を本 ADR に追記し、ユーザーが方式を決める |
 | | W3-a 本実装 | 決めた方式の crate（`windows/candidate/` など） | 内容と配置は `shell-core` の既存のテスト | 表示、選択、ページ、高 DPI、2 枚のモニタ |

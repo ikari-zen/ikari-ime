@@ -119,7 +119,7 @@ fn run(
     let config = ShellConfig {
         shell_version: "scenario".into(),
         settings: SettingsSource::Inline(setup.settings_tsv()),
-        resources_dir: Path::new(env!("CARGO_MANIFEST_DIR")).join("../macos/Resources"),
+        resources_dir: Path::new(env!("CARGO_MANIFEST_DIR")).join("resources"),
     };
     let mut shell = Shell::new(
         config,

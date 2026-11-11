@@ -1,0 +1,12 @@
+[package]
+name = "ikari-tip"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Windows の TIP（各アプリに入る DLL）。OS に依存しない純粋な部分（keys、ops）は Mac でテストする（ADR 0040 §2.2）。COM の層は W2-b"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ikari-shell-core.workspace = true

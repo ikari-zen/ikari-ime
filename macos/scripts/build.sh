@@ -162,7 +162,7 @@ build_swift() {
 
 # 設定アプリ「ikari 設定」を Contents/Helpers/ に置く（ADR 0005 §2、§6.2）。
 # Resources: アプリのアイコン（macos/Resources/settings/AppIcon.icns）、ライセンス表示（NFR-43）、
-# キー割り当てのプリセット（上書きが「プリセットと同じ」かを画面が判定するため。殻の Resources/keymap と同じファイル）
+# キー割り当てのプリセット（上書きが「プリセットと同じ」かを画面が判定するため。shell-core/resources/keymap。OS 共通のプリセット）
 assemble_settings_app() {
   local resources="$SETTINGS/Contents/Resources"
   cp "$TEMPLATES/IkariSettings.Info.plist" "$SETTINGS/Contents/Info.plist"
@@ -177,8 +177,8 @@ assemble_settings_app() {
   # 「ライセンス」画面は THIRD_PARTY_NOTICES を 1 つ表示するので、Rust 依存の一覧（cargo xtask licenses の生成物）を後ろにつないで置く（#242）
   [[ -f "$IKARI_ROOT/THIRD_PARTY_LICENSES_RUST.md" ]] || die "THIRD_PARTY_LICENSES_RUST.md がありません（cargo xtask licenses）"
   { cat "$IKARI_ROOT/THIRD_PARTY_NOTICES.md"; printf "\n\n"; cat "$IKARI_ROOT/THIRD_PARTY_LICENSES_RUST.md"; } > "$resources/THIRD_PARTY_NOTICES.md"
-  [[ -d "$IKARI_MACOS_DIR/Resources/keymap" ]] || die "macos/Resources/keymap がありません"
-  cp -R "$IKARI_MACOS_DIR/Resources/keymap" "$resources/keymap"
+  [[ -d "$IKARI_ROOT/shell-core/resources/keymap" ]] || die "shell-core/resources/keymap がありません"
+  cp -R "$IKARI_ROOT/shell-core/resources/keymap" "$resources/keymap"
 }
 
 assemble_bundle() {
@@ -211,10 +211,10 @@ assemble_bundle() {
 
   assemble_settings_app
 
-  # Resources: keymap のプリセットなど。icons/ は直下に平らに置く（Info.plist のアイコン名は直下を指す）
+  # Resources: keymap のプリセット（OS 共通。shell-core/resources/keymap）と、macOS 固有のもの。icons/ は直下に平らに置く（Info.plist のアイコン名は直下を指す）
   local res="$IKARI_MACOS_DIR/Resources"
+  cp -R "$IKARI_ROOT/shell-core/resources/keymap" "$APP/Contents/Resources/keymap"
   if [[ -d "$res" ]]; then
-    [[ ! -d "$res/keymap" ]] || cp -R "$res/keymap" "$APP/Contents/Resources/keymap"
     [[ ! -d "$res/icons" ]] || find "$res/icons" -type f -exec cp {} "$APP/Contents/Resources/" \;
     find "$res" -maxdepth 1 -type f -exec cp {} "$APP/Contents/Resources/" \;
     # モードの表示名（ja.lproj / en.lproj の InfoPlist.strings）はディレクトリごと置く（ADR 0005 §3.3）

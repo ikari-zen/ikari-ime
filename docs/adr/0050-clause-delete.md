@@ -13,7 +13,7 @@
 ## 0. 現状の把握（researcher の調査とコードで確かめたこと）
 
 - Swift は判断しない。NSEvent → `KeyInput` → shell-core。`Machine::dispatch`（`shell-core/src/machine/mod.rs`）は `bound_action` でキー割り当てを先に引く。割り当てにない Option 付きのキーは、idle なら `PassThrough`、読みの入力中と変換中は表示を確定してから渡す。
-- 3 つのプリセット（`macos/Resources/keymap/{macos,ms-ime,atok}.tsv`）に `option+backspace`、`shift+option+backspace`、`option+left/right` はない。`shift+left/right` は変換中の区切り直し（`segment.shrink/expand`）で使っている。
+- 3 つのプリセット（`shell-core/resources/keymap/{macos,ms-ime,atok}.tsv`）に `option+backspace`、`shift+option+backspace`、`option+left/right` はない。`shift+left/right` は変換中の区切り直し（`segment.shrink/expand`）で使っている。
 - 読みの入力中（`InputState::Composing { kana, pending }`）に読みの中のカーソルはない（常に末尾）。区切りは持たない。読みが変わるたびに `Prefetch` が先行計算を作る。
 - 変換中（`ConvertingState`）は、文節のモードなら `segments` と `focused`、最初の Space のあと（全体の候補）なら `whole_layout` に区切りがある。文節を取り除く操作はエンジンにない（`ResizeSegment` は区切りを動かすだけ）。
 - 確定後（idle）の区切りを知る手段は `Reconvert`（`core/src/converter/reconvert.rs`）だけ。確定履歴 → 表記の解析の順で読みを求め、`group_words` で文節に分ける。エンジン往復は p99 2.7 ms（ADR 0006 §16.5）。64 文字まで（`MAX_RECONVERT_CHARACTERS`）、改行を含むと断る（`is_reconvertible`）。全部が読めない（英字だけなど）と `Empty`。

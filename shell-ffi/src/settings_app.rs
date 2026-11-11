@@ -384,7 +384,10 @@ mod tests {
     use app::app_request::Body as In;
 
     fn presets() -> Vec<app::PresetText> {
-        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../macos/Resources/keymap");
+        let root = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../shell-core/resources/keymap"
+        );
         [
             (pb::KeymapPreset::Macos, "macos"),
             (pb::KeymapPreset::MsIme, "ms-ime"),
