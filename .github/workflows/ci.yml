@@ -21,6 +21,8 @@ jobs:
       # actions/checkout v7（コミットの SHA で固定）
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: ツールの版を表示する
+        run: ls -d /Applications/Xcode* ; sw_vers
+      - name: ツールの版を表示する（続き）
         run: |
           rustc --version
           cargo --version
