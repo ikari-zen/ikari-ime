@@ -1,0 +1,44 @@
+# 捨てるスパイク（ADR 0040 §2.5、issue #322）。main に入れない。ワークスペースには入れない。
+[package]
+name = "settings-ui-spike"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# 親のワークスペースに入らない独立したプロジェクトにする
+[workspace]
+
+# 2 方式は別の exe にする（配布の大きさを方式ごとに測るため）
+[[bin]]
+name = "settings-webview"
+path = "src/bin/webview.rs"
+
+[[bin]]
+name = "settings-slint"
+path = "src/bin/slint.rs"
+
+[dependencies]
+
+[target.'cfg(windows)'.dependencies]
+# U-a: WebView2。候補窓のスパイク（#319）と同じ版
+wry = "0.53"
+tao = "0.34"
+# U-c: Rust の GUI crate。画面の定義は slint! マクロ（build.rs なし）
+slint = "1"
+# 時間とメモリの計測用
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Performance",
+    "Win32_System_ProcessStatus",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+] }
+
+# 2 方式を同じ条件で比べる（大きさの比較のため）
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

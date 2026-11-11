@@ -1,0 +1,3 @@
+# Slint の見た目を Fluent（Windows 11 風。ライト・ダークはシステムに従う見込み。未確認）に固定する
+[env]
+SLINT_STYLE = "fluent"
