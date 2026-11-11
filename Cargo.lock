@@ -571,6 +571,7 @@ dependencies = [
  "ikari-engine",
  "ikari-pipe",
  "ikari-proto",
+ "ikari-shell-core",
  "ikari-testtime",
  "prost",
  "tempfile",
