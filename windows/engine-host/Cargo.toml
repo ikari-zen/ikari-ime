@@ -1,0 +1,18 @@
+[package]
+name = "ikari-engine-host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# Windows の常駐のエンジン（ADR 0040 §2.2）。名前付きパイプで受けた枠を `Engine::handle` に渡す。
+# 受け付けの繰り返しは OS に依存しない（Mac でテストする）。
+[dependencies]
+ikari-pipe.workspace = true
+ikari-engine.workspace = true
+
+[dev-dependencies]
+ikari-testtime.workspace = true
+ikari-proto.workspace = true
+ikari-dict-builder.workspace = true
+prost.workspace = true

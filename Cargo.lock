@@ -560,6 +560,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ikari-engine-host"
+version = "0.1.0"
+dependencies = [
+ "ikari-dict-builder",
+ "ikari-engine",
+ "ikari-pipe",
+ "ikari-proto",
+ "ikari-testtime",
+ "prost",
+]
+
+[[package]]
 name = "ikari-eval"
 version = "0.1.0"
 dependencies = [
@@ -596,6 +608,13 @@ dependencies = [
  "ikari-testtime",
  "llama-cpp-2",
  "tempfile",
+]
+
+[[package]]
+name = "ikari-pipe"
+version = "0.1.0"
+dependencies = [
+ "ikari-testtime",
 ]
 
 [[package]]

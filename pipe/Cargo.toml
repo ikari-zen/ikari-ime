@@ -1,0 +1,14 @@
+[package]
+name = "ikari-pipe"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# TIP（各アプリに入る DLL）と常駐のエンジンをつなぐ、枠つきの双方向の流れ（ADR 0040 §2.2、§5）。
+# 標準ライブラリだけ（TIP の DLL は全アプリのプロセスに入るので、依存を増やさない）。
+# 名前付きパイプの OS 層（`cfg(windows)`。W1-b）以外は OS に依存しない。`shell-core` には依存しない。
+[dependencies]
+
+[dev-dependencies]
+ikari-testtime.workspace = true
