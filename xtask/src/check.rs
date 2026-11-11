@@ -20,6 +20,11 @@ const SWIFT_TEST_TIMEOUT_ENV: &str = "IKARI_SWIFT_TEST_TIMEOUT";
 /// 暫定値（計測なし。通常は数分）。swift test が終わらずに固まることがあったため（check.sh から引き継ぐ）
 const SWIFT_TEST_TIMEOUT_SECS: u64 = 900;
 const SWIFT_POLL: Duration = Duration::from_millis(500);
+/// Windows 向けの型・借用の検査の対象（ADR 0040 §2.6）
+const WINDOWS_TARGET: &str = "x86_64-pc-windows-msvc";
+/// Windows ターゲットの check から外す crate。C/C++ をビルドする feature（LM）は付けないので、今は外すものがない。
+/// 増やすときは理由を書き、出力にも出る（W0-c の実測: LM なしの workspace 全体が Mac から通る）
+const WINDOWS_CHECK_EXCLUDES: &[&str] = &[];
 const EDGE_MODEL_FILE: &str = "kanakanji-edge-33m-Q8_0.gguf";
 
 /// fmt、clippy、cargo test、swift test（macOS のみ）、文書とスクリプトの検査。結果を記録する（コミット前に流す門）
@@ -207,7 +212,48 @@ fn rust_base(root: &Path) -> Result<(), Failure> {
         "warnings",
     ]))?;
     log("cargo test --workspace");
-    exec(cargo(root).args(["test", "--workspace"]))
+    exec(cargo(root).args(["test", "--workspace"]))?;
+    windows_check(root)
+}
+
+/// `rustup target add` したか（標準ライブラリの置き場所があるか）
+fn target_installed(target: &str) -> bool {
+    capture(Command::new("rustc").args(["--print", "target-libdir", "--target", target]))
+        .is_some_and(|dir| Path::new(dir.trim()).is_dir())
+}
+
+/// Windows（msvc）向けに、テストも含めて型と借用を検査する（LM なし。リンクと実行はしない。ADR 0040 §2.6）。
+/// Windows 自体では cargo test が同じ範囲を見るので飛ばす。
+fn windows_check(root: &Path) -> Result<(), Failure> {
+    if cfg!(windows) {
+        return Ok(());
+    }
+    log(&format!(
+        "cargo check --workspace --tests --target {WINDOWS_TARGET}（LM なし）"
+    ));
+    if !target_installed(WINDOWS_TARGET) {
+        return Err(Failure::new(format!(
+            "ターゲットがありません。rustup target add {WINDOWS_TARGET} を実行してください"
+        )));
+    }
+    let mut command = cargo(root);
+    command.args([
+        "check",
+        "--workspace",
+        "--tests",
+        "--target",
+        WINDOWS_TARGET,
+    ]);
+    for krate in WINDOWS_CHECK_EXCLUDES {
+        command.args(["--exclude", krate]);
+    }
+    if !WINDOWS_CHECK_EXCLUDES.is_empty() {
+        warn(&format!(
+            "Windows の check から外した crate: {}",
+            WINDOWS_CHECK_EXCLUDES.join(", ")
+        ));
+    }
+    exec(&mut command)
 }
 
 fn rust_lm(root: &Path) -> Result<(), Failure> {

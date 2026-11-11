@@ -558,7 +558,7 @@ Claude Codeには1フェーズずつ依頼し、各フェーズの完了条件�
 
 ### リポジトリ構成
 
-決着した。現在の構成は [docs/architecture.md](architecture.md)、決めた経緯は [ADR 0001 §2](adr/0001-phase0-architecture.md) と [ADR 0004 §3、§6](adr/0004-phase2-macos.md)。`windows/`（TSFの殻、C++）は Windows 版の段で足す。
+決着した。現在の構成は [docs/architecture.md](architecture.md)、決めた経緯は [ADR 0001 §2](adr/0001-phase0-architecture.md) と [ADR 0004 §3、§6](adr/0004-phase2-macos.md)。`windows/`（TSF の TIP、常駐のエンジン `engine-host`、候補窓、設定画面。Rust と、画面は [ADR 0040 §2.5](adr/0040-windows-feasibility.md) で決めた方式）は Windows 版の段で足す（構成は [ADR 0040 §2.2](adr/0040-windows-feasibility.md)）。
 
 ### フェーズ0の作業
 
