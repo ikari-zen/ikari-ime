@@ -22,6 +22,8 @@ ikari-ime の今の構成を 1 か所にまとめた地図。判断の理由は�
 | `engine-ffi` | エンジンの C ABI（staticlib。ヘッダ `include/ikari_engine.h`） | [0004 §4.2](adr/0004-phase2-macos.md) |
 | `shell-core` | 殻の OS に依存しない処理の全部（入力の状態機械、キー割り当て、合成器の呼び出し、英語のモードの文脈（`english`）、郵便番号と Unicode の表記（`postal`）、ショートコード、候補ウィンドウの配置（`panel`）、メニュー、エンジンとの通信と再接続（`engine`）、設定アプリとのブリッジの判断（`bridge`）、設定の検証と整形（`settings`）、診断ログ）。入口は「OS のイベント → `Shell::dispatch` → 動作の列」の 1 本。共通のシナリオ（`shell-core/scenarios/`）で振る舞いを守る | [0041](adr/0041-shell-state-machine-in-rust.md) |
 | `shell-ffi` | 殻と設定アプリが使う `shell-core` の C ABI（staticlib。ヘッダ `include/ikari_shell.h`。`ikari_shell_*`、`ikari_settings_*`、`ikari_panel_*`。入出力は protobuf の `ikari.shell.v1`・`ikari.settings.v1`） | [0041 §4.4](adr/0041-shell-state-machine-in-rust.md) |
+| `pipe` | TIP と常駐のエンジンをつなぐ、枠つきの双方向の流れ（枠の符号化、要求と返事の多重化、時間切れ、クライアントとサーバー）。標準ライブラリだけ。名前付きパイプの OS 層は `cfg(windows)`（W1-b）。`shell-core` に依存しない | [0040 §2.2、§5](adr/0040-windows-feasibility.md) |
+| `windows/engine-host`（`ikari-engine-host`） | Windows の常駐のエンジン。`pipe::Server` で受けた枠を `Engine::handle` に渡す。受け付けの繰り返しは OS に依存しない | [0040 §2.2](adr/0040-windows-feasibility.md) |
 | `cli` | コマンド `ikari`（変換、ユーザー辞書、取り込み）。バイナリ名は `ikari` | [0001 §5](adr/0001-phase0-architecture.md)、[0002 §14](adr/0002-phase1-architecture.md) |
 | `eval` | 評価セットの実行、レポート、シナリオ、AJIMEE。`ikari-eval` | [0001 §6](adr/0001-phase0-architecture.md)、[0002 §15](adr/0002-phase1-architecture.md) |
 
@@ -36,6 +38,7 @@ core, dict-format ← import
 core, stack, import（+ lm optional）← cli, eval
 input, proto ← shell-core ← shell-ffi（staticlib）
 proto ← engine
+engine, pipe ← windows/engine-host
 ```
 
 - `lm` と `engine-ffi` は feature なしなら llama.cpp をビルドしないので、`cargo build` / `cargo test` は workspace 全体を対象にする。
@@ -75,6 +78,19 @@ IkariEngine.xpc（同梱の XPC サービス。App Sandbox、ネットワーク�
 - 英語のモードの郵便番号（ADR 0032 §9.1、設定 `postal.english`、既定 off）: 語頭の `te` + 数字 7 桁を殻の `PostalMachine`（`shell-core/src/postal/`）がためて、7 桁目で候補ウィンドウを自動で出す（下線なし。選ぶのは ↑/↓ だけ）。住所は、殻が主スレッドの外で `PostalLookupRequest` をエンジンへ 1 回送り（shell-core の `engine`。待ちの上限は暫定で 1 秒）、エンジンが `postal.tsv` の表（`stack().postal`）を引いて返す。返事が来たとき状態が同じ（同じコードと同じ候補の通し番号）なら候補に足し、違えば捨てる。設定アプリからは中継しない（shell-core の `bridge/relay_policy.rs`）。同じ状態機械が、`u+` + 16 進 4〜6 桁（設定 `unicode.notation`、既定 off。issue #28）も扱う。4 桁目で候補（そのまま、その文字）が出て、桁が増えるたびに更新する。問い合わせはなく、10FFFF を超える並び・制御文字・未割り当ては出さない。`u` の次は `+` が要る（`use`、`unit` などは素通し）。
 - 確信度が高い変換（#69、設定 `candidate.hide_when_confident`、既定 on。2026-10-28 ユーザー決定）: エンジンが、読み全体の候補の 1 位と 2 位の最終スコアの差を見て、閾値以上なら `ConvertReply.confident = true` を返す（閾値は LM なし 5000、LM あり 10000。暫定。`convert` の行の `gap=` `confident=` で実利用の分布を見て見直す）。殻は、設定がオンで confident、1 文節のとき、最初の Space で 1 位だけを下線つきで出し、候補ウィンドウは出さない。もう一度 Space、↓、↑、数字キーで一覧を出す（選択は 0 番のまま）。Enter、Esc、BackSpace、文字入力は今までどおり。
 
+## 2.1 Windows のプロセスの構成（計画。[ADR 0040 §2.2](adr/0040-windows-feasibility.md)。今あるのは `pipe` と `engine-host` の受け付けまで）
+
+```
+アプリのプロセス（各アプリ）
+  └─ ikari_tip.dll（windows/tip。Rust、cdylib。TSF の COM は cfg(windows) の薄い層。判断は shell-core）
+       │ 名前付きパイプ（枠 + Envelope。pipe::Client）
+ikari-engine.exe（windows/engine-host。ユーザーのセッションで常駐。pipe::Server → engine）
+候補窓、設定画面（方式は ADR 0040 §2.4、§2.5 のスパイクで決める）
+```
+
+- 依存の向きは `windows/tip → pipe`、`windows/tip → shell-core`、`windows/engine-host → pipe`、`windows/engine-host → engine` の一方向。
+- 検証: Mac で `cargo check --workspace --tests --target x86_64-pc-windows-msvc`（`scripts/check.sh` に入っている。LM なし。外す crate は今ない）。CI の job `windows`（`windows-latest`。`cargo test --workspace`、LM なし。必須ではない）。キー入力と画面は実機（VM）。
+
 ## 3. データの置き場所
 
 | 場所 | 中身 | 作る人 |
@@ -104,7 +120,7 @@ IkariEngine.xpc（同梱の XPC サービス。App Sandbox、ネットワーク�
 | --- | --- |
 | `scripts/setup.sh` | 取得 → 辞書のビルド → データの配置 → アプリのビルドとインストール → smoke を通す |
 | `scripts/fetch-data.sh`、`build-dict.sh`、`install-data.sh` | 上の各段。単独でも使える |
-| `scripts/check.sh` | コミットの前に流す門（fmt、clippy、test、`swift test`、文書のリンク。`--lm` `--real` `--perf` `--eval`） |
+| `scripts/check.sh` | コミットの前に流す門（fmt、clippy、test、Windows ターゲットの `cargo check`、`swift test`、文書のリンク。`--lm` `--real` `--perf` `--eval`） |
 | `macos/scripts/{build,install,smoke}.sh` | バンドルのビルド、署名、配置、E2E。macOS 固有 |
 | `eval/scripts/snapshot.sh` | 振る舞いが変わっていないことの確認（リファクタの前後の比較） |
 | `cargo xtask webwords fetch\|build\|measure\|publish` | 外来語の一覧の作り直し（約 3〜4 か月ごと。手順は [webwords-update.md](webwords-update.md)） |

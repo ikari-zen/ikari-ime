@@ -172,7 +172,8 @@ impl SettingsStore {
 }
 
 fn read_text(path: &Path) -> Option<String> {
-    fs::read_to_string(path).ok()
+    // BOM つき（Windows のメモ帳）でも、最初のキーを読めるようにする（ADR 0040 §2.9）
+    ikari_textfile::read_to_string(path).ok()
 }
 
 fn parse_file(path: &Path) -> super::SettingsValidation {
@@ -307,6 +308,33 @@ mod tests {
         let done = store.update(vec![], vec!["paging.size".into()]).unwrap();
         assert_eq!(done.snapshot.page_size, 3);
         assert_eq!(fs::read_to_string(dir.file()).unwrap(), "# keep\n");
+    }
+
+    #[test]
+    fn open_reads_lf_crlf_and_bom_files_and_update_keeps_the_newline_style() {
+        use ikari_textfile::testing::{Variant, read_variants, variant};
+        let original = "# notes\ninput.method\tkana\npaging.size\t5\n";
+        for (v, text) in read_variants(original) {
+            let dir = TempDir::new("variants");
+            fs::write(dir.file(), &text).unwrap();
+            let (mut store, issues) = SettingsStore::open(dir.file());
+            assert!(issues.is_empty(), "{v:?}: {issues:?}");
+            assert_eq!(store.snapshot().page_size, 5, "{v:?}");
+            assert_eq!(
+                store.snapshot().input_method,
+                crate::types::InputMethodKind::Kana,
+                "{v:?}"
+            );
+            store
+                .update(vec![entry("paging.size", "7")], vec![])
+                .unwrap();
+            let written = fs::read_to_string(dir.file()).unwrap();
+            let expected = match v {
+                Variant::Crlf => variant(&original.replace('5', "7"), Variant::Crlf),
+                _ => original.replace('5', "7"),
+            };
+            assert_eq!(written, expected, "{v:?}");
+        }
     }
 
     #[test]

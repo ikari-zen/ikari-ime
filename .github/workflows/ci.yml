@@ -1,6 +1,9 @@
-# PR と main への push ごとに scripts/check.sh（fmt、clippy、cargo test、swift test、文書の検査）を流す（#290）。
-# ブランチ保護の「必要なチェック」に check を入れ、check が通っていないものをマージさせない。
-# 公開リポジトリでは GitHub ホストの macOS ランナーが無料。
+# PR と main への push ごとに scripts/check.sh を 2 つの job に分けて流す（#290、#295）。
+#   rust  ubuntu。文書の検査、ライセンス、fmt、clippy、cargo test（--rust-only）
+#   windows windows-latest。cargo test --workspace（LM なし。必須ではない。#316）
+#   check macOS。XCFramework のビルドと swift test（--swift-only）。Swift は Linux では作れない
+# ブランチ保護の「必要なチェック」に check を入れてある（job の名前を変えない）。rust は必須ではないが、check と同じく通らないものはマージしない。
+# 公開リポジトリでは GitHub ホストのランナーが無料。macOS は混むので、macOS で流すものを Swift だけに絞る。
 # 依存の脆弱性（cargo audit）は audit.yml が週 1 回流すので、ここでは入れない（無関係な既存の指摘で PR が止まるのを避ける）。
 name: CI
 on:
@@ -14,11 +17,78 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  rust:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # actions/checkout v7（コミットの SHA で固定）
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: ツールの版を表示する
+        run: |
+          rustc --version
+          cargo --version
+      # check.sh が Windows 向けの cargo check（型と借用の検査。ADR 0040 §2.6）を流すので、ターゲットを足す
+      - name: Windows のターゲットを足す
+        run: rustup target add x86_64-pc-windows-msvc
+      # Swatinem/rust-cache v2.9.3（コミットの SHA で固定）。~/.cargo のレジストリと target を覚える
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+      # actions/cache v6.1.0（コミットの SHA で固定）。cargo-about のコンパイル（約 65 秒）を省く
+      - name: cargo-about のキャッシュ
+        id: about-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ~/.cargo/bin/cargo-about
+          key: cargo-about-0.9.3-${{ runner.os }}
+      - name: cargo-about を入れる（ライセンス一覧の検査。版を固定）
+        if: steps.about-cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-about --version 0.9.3 --locked --features cli
+      - name: cargo-about の版を表示する
+        run: cargo about --version
+      # ライセンス一覧の検査は --offline で、全クレート（ほかの OS 向けのものも）が手元のレジストリに要る
+      - name: 依存を取得する
+        run: cargo fetch --locked
+      # check は、道具がないと警告だけで検査を飛ばす。CI では飛ばさせない（版とチェックサムを固定）
+      - name: gitleaks を入れる（秘密と個人情報の検査）
+        run: |
+          version=8.30.1
+          archive="gitleaks_${version}_linux_x64.tar.gz"
+          curl -sSfL -o "$RUNNER_TEMP/$archive" "https://github.com/gitleaks/gitleaks/releases/download/v${version}/${archive}"
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $RUNNER_TEMP/$archive" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/gitleaks"
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/gitleaks" gitleaks
+          echo "$RUNNER_TEMP/gitleaks" >> "$GITHUB_PATH"
+      - name: gitleaks の版を表示する
+        run: gitleaks version
+      # 待ち時間（30ms など）を測るテストは、遅いランナーで揺れる。時間を 5 倍にする（CONTRIBUTING.md。値は計測で決めたものではない）
+      - name: scripts/check.sh --rust-only
+        env:
+          IKARI_TEST_TIME_SCALE: "5"
+        run: scripts/check.sh --rust-only
+
+  # Windows（x86_64-pc-windows-msvc）で cargo test --workspace（LM なし）を流す（ADR 0040 W1-d、#316）。
+  # 必須のチェックではない（ルールセットに入れない。動きが安定してから、必須にするかをユーザーに聞く）。
+  # LM（llama-cpp-2）は feature を付けないのでビルドしない。fmt と clippy は rust（ubuntu）が見る。
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: ツールの版を表示する
+        run: |
+          rustc --version
+          cargo --version
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+      # rust と同じ理由で時間を 5 倍にする（CONTRIBUTING.md）
+      - name: cargo test --workspace
+        env:
+          IKARI_TEST_TIME_SCALE: "5"
+        # 1 つ落ちても、ほかの crate の結果を見られるようにする
+        run: cargo test --workspace --no-fail-fast
+
   check:
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
-      # actions/checkout v7（コミットの SHA で固定）
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: ツールの版を表示する
         run: |
@@ -27,24 +97,10 @@ jobs:
           swift --version
           xcodebuild -version
           cmake --version
-      - name: cargo-about を入れる（ライセンス一覧の検査。版を固定）
-        run: |
-          cargo install cargo-about --version 0.9.3 --locked --features cli
-          cargo about --version
-      # ライセンス一覧の検査は --offline で、全クレート（ほかの OS 向けのものも）が手元のレジストリに要る
-      - name: 依存を取得する
-        run: cargo fetch --locked
-      # check.sh は、道具がないと警告だけで検査を飛ばす。CI では飛ばさせない
-      - name: gitleaks を入れる（秘密と個人情報の検査）
-        run: |
-          brew install gitleaks
-          gitleaks version
-      # XCFramework（swift test が使う）を作る。署名は ad-hoc（CI に証明書はない）。
-      # check.sh は XCFramework の鮮度も検査する（#154）。
-      - name: XCFramework とアプリをビルドする（ad-hoc 署名）
-        run: macos/scripts/build.sh --signing adhoc --release
-      # 待ち時間（30ms など）を測るテストは、遅いランナーで揺れる。時間を 5 倍にする（CONTRIBUTING.md。値は計測で決めたものではない）
-      - name: scripts/check.sh
-        env:
-          IKARI_TEST_TIME_SCALE: "5"
-        run: scripts/check.sh
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+      # XCFramework（swift test が使う）だけ作る。アプリの組み立てと署名はしない。
+      # check.sh --swift-only は XCFramework の鮮度も検査する（#154）。
+      - name: XCFramework をビルドする
+        run: macos/scripts/build.sh --signing adhoc --release --frameworks-only
+      - name: scripts/check.sh --swift-only
+        run: scripts/check.sh --swift-only

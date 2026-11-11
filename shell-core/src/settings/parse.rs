@@ -15,6 +15,8 @@ pub(super) fn parse_tsv(tsv: &str) -> SettingsValidation {
     let mut settings = default_snapshot();
     let mut issues: Vec<SettingsIssue> = Vec::new();
 
+    // 先頭の BOM（Windows のメモ帳など）は、最初のキーに混ざらないように外す（ADR 0040 §2.9）
+    let tsv = ikari_textfile::strip_bom(tsv);
     for (offset, raw_line) in split_lines(tsv).into_iter().enumerate() {
         let number = u32::try_from(offset + 1).unwrap_or(u32::MAX);
         let line = raw_line.trim_matches('\r');
@@ -332,6 +334,19 @@ mod tests {
 
     fn parse(tsv: &str) -> SettingsValidation {
         parse_tsv(tsv)
+    }
+
+    #[test]
+    fn lf_crlf_and_bom_files_parse_the_same() {
+        let text = "# notes\ninput.method\tkana\nkeymap.preset\tms-ime\npaging.size\t5\n";
+        let expected = parse(text);
+        assert!(expected.issues.is_empty());
+        assert_eq!(expected.snapshot.page_size, 5);
+        for (v, variant_text) in ikari_textfile::testing::read_variants(text) {
+            let got = parse(&variant_text);
+            assert_eq!(got.snapshot, expected.snapshot, "{v:?}");
+            assert!(got.issues.is_empty(), "{v:?}: {:?}", got.issues);
+        }
     }
 
     fn kinds(v: &SettingsValidation) -> Vec<(u32, &str, SettingsIssueKind)> {

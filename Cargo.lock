@@ -504,6 +504,7 @@ dependencies = [
  "ikari-dict-builder",
  "ikari-dict-format",
  "ikari-input",
+ "ikari-textfile",
  "jiff",
  "memmap2",
  "tempfile",
@@ -517,6 +518,7 @@ dependencies = [
  "clap",
  "flate2",
  "ikari-dict-format",
+ "ikari-textfile",
  "regex",
  "serde_json",
  "sha2",
@@ -542,6 +544,7 @@ dependencies = [
  "ikari-runmark",
  "ikari-stack",
  "ikari-testtime",
+ "ikari-textfile",
  "jiff",
  "libc",
  "prost",
@@ -593,6 +596,7 @@ version = "0.1.0"
 dependencies = [
  "ikari-core",
  "ikari-dict-format",
+ "ikari-textfile",
  "serde",
  "serde_json",
  "tempfile",
@@ -656,6 +660,7 @@ dependencies = [
  "ikari-input",
  "ikari-proto",
  "ikari-runmark",
+ "ikari-textfile",
  "prost",
  "serde",
  "serde_json",
@@ -683,6 +688,17 @@ dependencies = [
 [[package]]
 name = "ikari-testtime"
 version = "0.1.0"
+
+[[package]]
+name = "ikari-textfile"
+version = "0.1.0"
+
+[[package]]
+name = "ikari-tip"
+version = "0.1.0"
+dependencies = [
+ "ikari-shell-core",
+]
 
 [[package]]
 name = "indexmap"
@@ -1504,6 +1520,7 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "ikari-textfile",
  "jiff",
  "serde_json",
  "tempfile",

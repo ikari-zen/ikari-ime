@@ -371,6 +371,8 @@ fn report_shows_config_and_rss() {
     let out = stdout(&o);
     assert!(out.contains("- 構成: ranker=cost analyzer=null"), "{out}");
     assert!(out.contains("最大RSS: "), "{out}");
+    // RSS の計測は Unix だけ（eval/src/rss.rs。Windows は「未計測」と出す）
+    #[cfg(unix)]
     assert!(!out.contains("最大RSS: 未計測"), "{out}");
 }
 
