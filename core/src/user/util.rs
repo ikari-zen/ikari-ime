@@ -2,6 +2,7 @@
 
 use std::fs;
 use std::io::Write;
+#[cfg(unix)]
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -13,7 +14,7 @@ use super::UserDataError;
 const SECONDS_PER_DAY: u64 = 86_400;
 /// 書き込み途中のファイルの拡張子（rename で置き換える）
 pub const TMP_SUFFIX: &str = "tmp";
-/// ユーザーデータのフォルダの権限（本人だけ）
+/// ユーザーデータのフォルダの権限（本人だけ。Unix のみ。Windows ではユーザーのプロファイルの ACL に任せる）
 pub const PRIVATE_DIR_MODE: u32 = 0o700;
 /// ユーザーデータのファイルの権限（本人だけ）
 pub const PRIVATE_FILE_MODE: u32 = 0o600;
@@ -84,12 +85,16 @@ pub fn prepare_tmp(path: &Path, contents: &str) -> Result<PathBuf, UserDataError
 }
 
 /// 本人だけが入れるフォルダ（0700）を作る（途中のフォルダも）。既にあれば権限を 0700 に直す。
+/// Windows では権限を設定しない（通常のフォルダ作成）。
 pub fn create_private_dir_all(path: &Path) -> std::io::Result<()> {
-    fs::DirBuilder::new()
-        .recursive(true)
-        .mode(PRIVATE_DIR_MODE)
-        .create(path)?;
-    fs::set_permissions(path, fs::Permissions::from_mode(PRIVATE_DIR_MODE))
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    builder.mode(PRIVATE_DIR_MODE);
+    builder.create(path)?;
+    #[cfg(unix)]
+    fs::set_permissions(path, fs::Permissions::from_mode(PRIVATE_DIR_MODE))?;
+    Ok(())
 }
 
 /// 一時ファイル用。0600 で新しく作る（O_EXCL。前回の残りは先に消す）。
@@ -99,14 +104,20 @@ pub fn create_private_new(path: &Path) -> std::io::Result<fs::File> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => return Err(e),
     }
-    fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(PRIVATE_FILE_MODE)
-        .open(path)
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    options.mode(PRIVATE_FILE_MODE);
+    options.open(path)
 }
 
 /// フォルダの中の通常ファイルの権限を 0600 に直す（best effort。起動時に既存ファイルを閉じる）。
+/// Windows では何もしない。
+#[cfg(not(unix))]
+pub fn tighten_files(_dir: &Path) {}
+
+/// フォルダの中の通常ファイルの権限を 0600 に直す（best effort。起動時に既存ファイルを閉じる）。
+#[cfg(unix)]
 pub fn tighten_files(dir: &Path) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
@@ -171,6 +182,7 @@ pub fn parse_error(file: &Path, line: usize, message: impl Into<String>) -> User
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     fn mode(p: &Path) -> u32 {
         fs::metadata(p).unwrap().permissions().mode() & 0o777
     }
@@ -184,10 +196,15 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         fs::write(tmp_path(&file), "stale").unwrap();
         write_atomic(&file, "x\n").unwrap();
-        assert_eq!(mode(&dir), PRIVATE_DIR_MODE);
-        assert_eq!(mode(&file), PRIVATE_FILE_MODE);
+        #[cfg(unix)]
+        {
+            assert_eq!(mode(&dir), PRIVATE_DIR_MODE);
+            assert_eq!(mode(&file), PRIVATE_FILE_MODE);
+        }
+        assert_eq!(fs::read_to_string(&file).unwrap(), "x\n");
     }
 
+    #[cfg(unix)]
     #[test]
     fn tighten_files_closes_existing_files() {
         let t = tempfile::tempdir().unwrap();
