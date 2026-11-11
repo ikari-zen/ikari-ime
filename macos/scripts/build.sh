@@ -31,7 +31,7 @@ while [[ $# -gt 0 ]]; do
     --skip-rust) SKIP_RUST=1 ;;
     --allow-stub) ALLOW_STUB=1 ;;
     --frameworks-only) FRAMEWORKS_ONLY=1 ;;
-    -h | --help) sed -n '2,18p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h | --help) sed -n '2,15p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) parse_common_flag "$1" || die "不明な引数: $1" ;;
   esac
   shift
