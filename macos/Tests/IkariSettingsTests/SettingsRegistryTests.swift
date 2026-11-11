@@ -34,7 +34,7 @@ private let keymapPrefix = "keymap."
 
 @Suite @MainActor struct SettingsRegistryTests {
     /// 画面が持つ操作。キーごとに、一覧の既定値と違う値を書く（既定のままだと行を書かないため）
-    private func write(_ row: SpecRow, with model: SettingsModel) async throws {
+    private func write(_ row: SpecRow, index: Int, with model: SettingsModel) async throws {
         let flipped = row.defaultText == "on" || row.defaultText == "true" ? false : true
         switch row.key {
         case "input.method": await model.setInputMethod(.kana)
@@ -62,7 +62,8 @@ private let keymapPrefix = "keymap."
                 Issue.record("画面にないキー: \(row.key)")
                 return
             }
-            await model.setKeymap(action, to: .chord("f13"))
+            // 操作ごとに別のキー（同じキーは別の操作と衝突して断られる）
+            await model.setKeymap(action, to: .chord("ctrl+option+shift+f\(index + 1)"))
         }
     }
 
@@ -84,8 +85,8 @@ private let keymapPrefix = "keymap."
         let harness = try await Harness.make()
         defer { harness.close() }
         let model = await makeSettingsModel(harness)
-        for row in rows {
-            try await write(row, with: model)
+        for (index, row) in rows.enumerated() {
+            try await write(row, index: index, with: model)
             #expect(model.errorMessage == nil, "\(row.key): \(model.errorMessage ?? "")")
             #expect(harness.shell.state.snapshot.settings[row.key] != nil, "画面から書けない: \(row.key)")
         }
