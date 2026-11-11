@@ -8,7 +8,8 @@
 name: CI
 on:
   pull_request:
-    branches: [main]
+    # TEMP: #306 がマージされるまで（PR の base が feat/ci-split-ubuntu の間）。ready にする前に外す
+    branches: [main, feat/ci-split-ubuntu]
   push:
     branches: [main]
 permissions:
