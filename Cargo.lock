@@ -617,6 +617,7 @@ name = "ikari-pipe"
 version = "0.1.0"
 dependencies = [
  "ikari-testtime",
+ "windows-sys",
 ]
 
 [[package]]

@@ -30,6 +30,8 @@ llama-cpp-2 = "0.1.159"
 prost = "0.14"
 prost-build = "0.14"
 protox = "0.10"
+# Win32 の生の FFI（名前付きパイプの OS 層。pipe/src/os/windows.rs。ADR 0040 §2.2）。features は使う crate が付ける
+windows-sys = "0.61"
 
 ikari-dict-format = { path = "dict-format" }
 ikari-resource = { path = "resource" }
