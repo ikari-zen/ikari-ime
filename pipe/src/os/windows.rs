@@ -844,7 +844,13 @@ mod tests {
         let sid = current_user_sid().unwrap();
         assert!(sddl.starts_with("D:P"), "{sddl}");
         assert_eq!(sddl.matches('(').count(), 2, "{sddl}");
-        assert!(sddl.contains(&format!(";;;{sid})")), "{sddl}");
+        // SDDL の文字列化は、よく知られた SID を別名に省略する。組み込みの管理者（RID 500。GitHub の
+        // ランナーのユーザーがこれ）は `LA`。SID のままの形か、RID 500 のときの `LA` のどちらかを許す
+        let is_builtin_admin = sid.ends_with("-500");
+        assert!(
+            sddl.contains(&format!(";;;{sid})")) || (is_builtin_admin && sddl.contains(";;;LA)")),
+            "{sddl}"
+        );
         assert!(sddl.contains(";;;SY)"), "{sddl}");
     }
 
