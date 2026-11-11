@@ -207,6 +207,8 @@ mod tests {
     }
 
     /// 実辞書で open -> handle -> close（`IKARI_DICT_DIR` を指定したときだけ）。
+    // symlink で辞書を見せる。Windows では symlink に特権が要るので、Unix だけで確かめる（IKARI_DICT_DIR がなければ何もしないテスト）
+    #[cfg(unix)]
     #[test]
     fn open_handle_close_roundtrip_with_a_real_dictionary() {
         let Some(dict) = std::env::var_os("IKARI_DICT_DIR").filter(|v| !v.is_empty()) else {

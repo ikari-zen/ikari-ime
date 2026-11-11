@@ -98,6 +98,8 @@ fn rejection_is_logged_with_the_file_name_and_a_reason_only() {
 
 // ---- 普通のファイルでないもの、シンボリックリンク ----
 
+// Windows では symlink の作成に特権（開発者モード）が要るので、Unix だけで確かめる
+#[cfg(unix)]
 #[test]
 fn symlink_to_correct_model_passes_and_to_broken_model_is_rejected() {
     let (dir, good) = model_at("model-link", GOOD);

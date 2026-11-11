@@ -346,6 +346,8 @@ mod tests {
     use super::*;
 
     use std::path::PathBuf;
+    // 子プロセスを使うテストは Unix だけ（シグナルの処理が cfg(unix) のため）
+    #[cfg(unix)]
     use std::process::{Command, Stdio};
 
     /// 前回の印の中身（`body`）を置いて `begin` した判定
