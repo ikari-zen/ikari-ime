@@ -663,6 +663,13 @@ name = "ikari-testtime"
 version = "0.1.0"
 
 [[package]]
+name = "ikari-tip"
+version = "0.1.0"
+dependencies = [
+ "ikari-shell-core",
+]
+
+[[package]]
 name = "indexmap"
 version = "2.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
     "core", "cli", "dict-builder", "dict-format", "resource", "eval", "import", "lm",
-    "input", "stack", "runmark", "testtime", "proto", "engine", "engine-ffi", "shell-ffi", "shell-core", "xtask",
+    "input", "stack", "runmark", "testtime", "proto", "engine", "engine-ffi", "shell-ffi", "shell-core", "xtask", "windows/tip",
 ]
 # default-members は置かない（refactor-plan-2026-10 §9 P4）。lm と engine-ffi も feature を付けなければ
 # llama.cpp をビルドしないので、`cargo test` が両 crate の単体テストを飛ばさない。
