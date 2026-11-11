@@ -1,0 +1,9 @@
+[package]
+name = "ikari-testtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# テスト専用（dev-dependencies からだけ使う）。時間に依存するテストの時間を、環境変数で伸ばす。
+[dependencies]

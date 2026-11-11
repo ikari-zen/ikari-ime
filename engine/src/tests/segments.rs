@@ -26,7 +26,7 @@ fn seg_engine_with(
     delay_ms: u64,
     learning_path: Option<&Path>,
 ) -> (Engine, Arc<MockSeam>, Arc<MockLm>) {
-    let mock = MockLm::new(Duration::from_millis(delay_ms));
+    let mock = MockLm::new(ikari_testtime::ms(delay_ms));
     let stack = mock_stack(&mock, learning_path);
     let seam = MockSeam::new(Arc::clone(&stack.converter));
     let engine = Engine::from_parts_seam(
@@ -35,8 +35,8 @@ fn seg_engine_with(
             rebuild: None,
             data_dir: None,
             lm_requested: true,
-            lm_budget: LmBudget::default(),
-            convert_wait: DEFAULT_CONVERT_WAIT,
+            lm_budget: test_budget(),
+            convert_wait: test_wait(),
             lock: None,
         },
         Some(seam.clone()),
