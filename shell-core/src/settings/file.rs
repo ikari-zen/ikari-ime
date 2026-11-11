@@ -211,6 +211,51 @@ mod tests {
         );
     }
 
+    // --- 今の挙動を固めるテスト（W0-d。`split('\n')` を直す前） ---
+
+    #[test]
+    fn characterize_crlf_replace_drops_no_cr_and_leaves_no_cr_in_the_value() {
+        let result = update(
+            "input.method\tromaji\r\npaging.size\t3\r\n",
+            &[("paging.size", "9")],
+            &[],
+        );
+        assert_eq!(result, "input.method\tromaji\r\npaging.size\t9\r\n");
+        let parsed = crate::settings::validate(&result).unwrap();
+        assert!(parsed.issues.is_empty());
+        assert_eq!(parsed.snapshot.page_size, 9);
+    }
+
+    #[test]
+    fn characterize_crlf_reset_removes_the_whole_line() {
+        assert_eq!(
+            update(
+                "# keep\r\npaging.size\t3\r\ninput.method\tkana\r\n",
+                &[],
+                &["paging.size"]
+            ),
+            "# keep\r\ninput.method\tkana\r\n"
+        );
+    }
+
+    #[test]
+    fn characterize_crlf_append_uses_lf_for_the_new_line() {
+        // 今は、足した行だけ LF になる（混ざる）。直したあとは CRLF にそろえる
+        assert_eq!(
+            update("input.method\tkana\r\n", &[("paging.size", "2")], &[]),
+            "input.method\tkana\r\npaging.size\t2\n"
+        );
+    }
+
+    #[test]
+    fn characterize_bom_on_the_first_key_is_not_matched() {
+        // 今は、BOM つきの最初の行はキーとして一致せず、同じキーの行が足される
+        assert_eq!(
+            update("\u{feff}paging.size\t3\n", &[("paging.size", "9")], &[]),
+            "\u{feff}paging.size\t3\npaging.size\t9\n"
+        );
+    }
+
     #[test]
     fn ignores_keys_and_values_that_could_inject_lines() {
         let text = "input.method\tkana\n";
