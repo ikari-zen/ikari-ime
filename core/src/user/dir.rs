@@ -16,6 +16,29 @@ const DICT_DIR_NAME: &str = "dict";
 const APP_DIR_NAME: &str = "ikari-ime";
 const MACOS_SUPPORT_DIR: &str = "Library/Application Support";
 const XDG_DATA_FALLBACK: &str = ".local/share";
+/// Windows でユーザーデータの親になる環境変数（`%APPDATA%`。Roaming）
+const APPDATA_ENV: &str = "APPDATA";
+
+/// 既定の置き場所の決め方を選ぶ OS。Mac 上で他の OS の分岐をテストできるよう、引数で渡す。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HostOs {
+    Macos,
+    Windows,
+    /// macOS と Windows 以外（XDG に従う）
+    Other,
+}
+
+impl HostOs {
+    pub const fn current() -> Self {
+        if cfg!(target_os = "macos") {
+            Self::Macos
+        } else if cfg!(windows) {
+            Self::Windows
+        } else {
+            Self::Other
+        }
+    }
+}
 
 /// ユーザーデータのディレクトリ。ファイルの場所をここで一元化する。
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -29,6 +52,8 @@ pub struct UserDirEnv {
     pub ikari_user_dir: Option<PathBuf>,
     pub xdg_data_home: Option<PathBuf>,
     pub home: Option<PathBuf>,
+    /// Windows の `%APPDATA%`
+    pub appdata: Option<PathBuf>,
 }
 
 impl UserDirEnv {
@@ -42,6 +67,7 @@ impl UserDirEnv {
             ikari_user_dir: get(USER_DIR_ENV),
             xdg_data_home: get("XDG_DATA_HOME"),
             home: get("HOME"),
+            appdata: get(APPDATA_ENV),
         }
     }
 }
@@ -52,26 +78,30 @@ impl UserDir {
     }
 
     /// 優先順位: 明示の指定、`$IKARI_USER_DIR`、macOS は `~/Library/Application Support/ikari-ime`、
+    /// Windows は `%APPDATA%\ikari-ime`、
     /// その他は `$XDG_DATA_HOME/ikari-ime`（なければ `~/.local/share/ikari-ime`）。
     /// 決められなければ None（HOME もない環境）。
     pub fn resolve(explicit: Option<&Path>) -> Option<Self> {
-        Self::resolve_with(
-            explicit,
-            &UserDirEnv::from_process(),
-            cfg!(target_os = "macos"),
-        )
+        Self::resolve_with(explicit, &UserDirEnv::from_process(), HostOs::current())
     }
 
-    pub fn resolve_with(explicit: Option<&Path>, env: &UserDirEnv, macos: bool) -> Option<Self> {
+    pub fn resolve_with(explicit: Option<&Path>, env: &UserDirEnv, os: HostOs) -> Option<Self> {
         if let Some(p) = explicit {
             return Some(Self::new(p));
         }
         if let Some(p) = &env.ikari_user_dir {
             return Some(Self::new(p));
         }
-        if macos {
-            let home = env.home.as_ref()?;
-            return Some(Self::new(home.join(MACOS_SUPPORT_DIR).join(APP_DIR_NAME)));
+        match os {
+            HostOs::Macos => {
+                let home = env.home.as_ref()?;
+                return Some(Self::new(home.join(MACOS_SUPPORT_DIR).join(APP_DIR_NAME)));
+            }
+            HostOs::Windows => {
+                let appdata = env.appdata.as_ref()?;
+                return Some(Self::new(appdata.join(APP_DIR_NAME)));
+            }
+            HostOs::Other => {}
         }
         if let Some(x) = &env.xdg_data_home {
             return Some(Self::new(x.join(APP_DIR_NAME)));
@@ -122,13 +152,14 @@ mod tests {
             ikari_user_dir: user.map(PathBuf::from),
             xdg_data_home: xdg.map(PathBuf::from),
             home: home.map(PathBuf::from),
+            appdata: None,
         }
     }
 
     #[test]
     fn explicit_wins() {
         let e = env(Some("/env"), Some("/xdg"), Some("/home/u"));
-        let d = UserDir::resolve_with(Some(Path::new("/explicit")), &e, true).unwrap();
+        let d = UserDir::resolve_with(Some(Path::new("/explicit")), &e, HostOs::Macos).unwrap();
         assert_eq!(d.root(), Path::new("/explicit"));
     }
 
@@ -136,11 +167,15 @@ mod tests {
     fn env_var_beats_platform_default() {
         let e = env(Some("/env"), Some("/xdg"), Some("/home/u"));
         assert_eq!(
-            UserDir::resolve_with(None, &e, true).unwrap().root(),
+            UserDir::resolve_with(None, &e, HostOs::Macos)
+                .unwrap()
+                .root(),
             Path::new("/env")
         );
         assert_eq!(
-            UserDir::resolve_with(None, &e, false).unwrap().root(),
+            UserDir::resolve_with(None, &e, HostOs::Other)
+                .unwrap()
+                .root(),
             Path::new("/env")
         );
     }
@@ -148,7 +183,7 @@ mod tests {
     #[test]
     fn macos_default() {
         let e = env(None, Some("/xdg"), Some("/Users/u"));
-        let d = UserDir::resolve_with(None, &e, true).unwrap();
+        let d = UserDir::resolve_with(None, &e, HostOs::Macos).unwrap();
         assert_eq!(
             d.root(),
             Path::new("/Users/u/Library/Application Support/ikari-ime")
@@ -158,17 +193,45 @@ mod tests {
     #[test]
     fn xdg_default_on_other_platforms() {
         let e = env(None, Some("/xdg"), Some("/home/u"));
-        let d = UserDir::resolve_with(None, &e, false).unwrap();
+        let d = UserDir::resolve_with(None, &e, HostOs::Other).unwrap();
         assert_eq!(d.root(), Path::new("/xdg/ikari-ime"));
         let e = env(None, None, Some("/home/u"));
-        let d = UserDir::resolve_with(None, &e, false).unwrap();
+        let d = UserDir::resolve_with(None, &e, HostOs::Other).unwrap();
         assert_eq!(d.root(), Path::new("/home/u/.local/share/ikari-ime"));
     }
 
     #[test]
+    fn windows_default_is_appdata() {
+        let e = UserDirEnv {
+            appdata: Some(PathBuf::from(r"C:\Users\u\AppData\Roaming")),
+            home: Some(PathBuf::from("/ignored")),
+            xdg_data_home: Some(PathBuf::from("/ignored")),
+            ..UserDirEnv::default()
+        };
+        let d = UserDir::resolve_with(None, &e, HostOs::Windows).unwrap();
+        assert_eq!(
+            d.root(),
+            Path::new(r"C:\Users\u\AppData\Roaming").join("ikari-ime")
+        );
+        // IKARI_USER_DIR は Windows でも優先される
+        let e = UserDirEnv {
+            ikari_user_dir: Some(PathBuf::from("/env")),
+            ..e
+        };
+        assert_eq!(
+            UserDir::resolve_with(None, &e, HostOs::Windows)
+                .unwrap()
+                .root(),
+            Path::new("/env")
+        );
+        // %APPDATA% がなければ決められない
+        assert!(UserDir::resolve_with(None, &UserDirEnv::default(), HostOs::Windows).is_none());
+    }
+
+    #[test]
     fn unresolvable_without_home() {
-        assert!(UserDir::resolve_with(None, &env(None, None, None), true).is_none());
-        assert!(UserDir::resolve_with(None, &env(None, None, None), false).is_none());
+        assert!(UserDir::resolve_with(None, &env(None, None, None), HostOs::Macos).is_none());
+        assert!(UserDir::resolve_with(None, &env(None, None, None), HostOs::Other).is_none());
     }
 
     #[test]
