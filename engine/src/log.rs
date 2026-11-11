@@ -15,7 +15,6 @@
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufWriter, Write};
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, TrySendError, sync_channel};
@@ -479,11 +478,12 @@ fn format_line(out: &mut String, line: &LogLine) {
 }
 
 fn open_append(path: &Path) -> io::Result<(File, u64)> {
-    let file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .mode(ikari_core::user::PRIVATE_FILE_MODE)
-        .open(path)?;
+    let mut options = OpenOptions::new();
+    options.create(true).append(true);
+    // Windows では、ユーザーのフォルダの ACL に任せる
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, ikari_core::user::PRIVATE_FILE_MODE);
+    let file = options.open(path)?;
     let size = file.metadata().map(|m| m.len()).unwrap_or(0);
     Ok((file, size))
 }
@@ -609,6 +609,7 @@ mod tests {
         text
     }
 
+    #[cfg(unix)]
     #[test]
     fn log_dir_and_file_are_private() {
         use std::os::unix::fs::PermissionsExt;

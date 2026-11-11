@@ -468,6 +468,8 @@ struct Inner {
 
 /// 起動時にデータ用フォルダ（本体、backups、logs）を 0700、中のファイルを 0600 にする。
 /// 失敗しても起動は止めない（権限を変えられない場所でも動く）。
+/// Windows ではユーザーのフォルダの ACL に任せ、何もしない。
+#[cfg(unix)]
 fn secure_data_dir(data_dir: &Path) {
     for dir in [
         data_dir.to_path_buf(),
@@ -483,6 +485,9 @@ fn secure_data_dir(data_dir: &Path) {
         }
     }
 }
+
+#[cfg(not(unix))]
+fn secure_data_dir(_data_dir: &Path) {}
 
 fn char_count_exceeds(s: &str, limit: usize) -> bool {
     s.chars().nth(limit).is_some()
