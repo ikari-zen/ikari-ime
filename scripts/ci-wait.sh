@@ -62,7 +62,7 @@ while :; do
       state=$(gh pr view "$pr" --json mergeStateStatus --jq .mergeStateStatus 2>/dev/null || true)
       case "$state" in
         CLEAN|UNSTABLE|HAS_HOOKS)
-          echo "全部通った（#$pr head=${head} 状態=$state）"
+          echo "全部通った（#$pr head=${head} 状態=${state}）"
           exit 0 ;;
       esac
       continue
