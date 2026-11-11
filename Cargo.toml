@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "core", "cli", "dict-builder", "dict-format", "resource", "eval", "import", "lm",
     "input", "stack", "runmark", "testtime", "proto", "engine", "engine-ffi", "shell-ffi", "shell-core", "xtask",
+    "pipe", "windows/engine-host",
 ]
 # default-members は置かない（refactor-plan-2026-10 §9 P4）。lm と engine-ffi も feature を付けなければ
 # llama.cpp をビルドしないので、`cargo test` が両 crate の単体テストを飛ばさない。
@@ -43,6 +44,7 @@ ikari-testtime = { path = "testtime" }
 ikari-proto = { path = "proto" }
 ikari-engine = { path = "engine" }
 ikari-shell-core = { path = "shell-core" }
+ikari-pipe = { path = "pipe" }
 
 # xtask は debug ビルドで走る（`cargo xtask`）。辞書の入力（数百 MB）の sha256 を取るので、この crate だけ最適化する
 [profile.dev.package.xtask]
