@@ -14,14 +14,14 @@
 
 公開すると、履歴、Issue、PR のすべてが見えます。リポジトリ全体と、GitHub 上の文章を、もう一度走査します。個人名、住所、メールアドレス、パスワード、鍵、ホームディレクトリのパス、旧リポジトリのアカウントや名前は、書かれていないことを確かめます。走査する語は、`.gitleaks.toml` の規則と、公開しない `.gitleaks.local.toml`（作者の手元にだけある）の規則に従います。
 
-- [ ] 追跡しているファイル全体を `git grep` で探す。語は、`.gitleaks.local.toml` の規則にある語と、次の例の形に合わせる。
+- [x] 追跡しているファイル全体を `git grep` で探す。語は、`.gitleaks.local.toml` の規則にある語と、次の例の形に合わせる。
 
   ```sh
   git grep -nE '/Users/[A-Za-z0-9._-]+' -- . ':!THIRD_PARTY_LICENSES_RUST.md'   # ホームのパス（ダミーの someone と u は問題なし）
   git grep -nE '[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}' | grep -v noreply   # メールアドレスの形
   ```
 
-- [ ] 履歴の全部のコミットを走査する（作者欄のメールが noreply だけであることも `scripts/check.sh` が確かめる）。
+- [x] 履歴の全部のコミットを走査する（作者欄のメールが noreply だけであることも `scripts/check.sh` が確かめる）。
 
   ```sh
   gitleaks git . --config .gitleaks.toml --redact --no-banner
@@ -29,13 +29,13 @@
   git log --all --format='%an <%ae>%n%cn <%ce>' | sort -u                # 作者とコミッターの一覧
   ```
 
-- [ ] コミットメッセージを探す（上の `git grep` と同じ語を、履歴に対して）。
+- [x] コミットメッセージを探す（上の `git grep` と同じ語を、履歴に対して）。
 
   ```sh
   git log --all --format='%H%n%B' | grep -nE '/Users/|@[A-Za-z0-9-]+\.[a-z]{2,}' | grep -v noreply
   ```
 
-- [ ] Issue を**全件**取得して探す（本文、コメント、タイトル。閉じたものも）。
+- [x] Issue を**全件**取得して探す（本文、コメント、タイトル。閉じたものも）。
 
   ```sh
   gh issue list --state all --limit 2000 --json number,title,body,comments > /tmp/ikari-issues.json   # 場所は作業用のフォルダでよい。終わったら消す
@@ -43,32 +43,32 @@
   ```
 
   `.gitleaks.local.toml` の語も同じ形で探します。件数が `limit` に達していないことを、`gh issue list --state all --limit 1 --json number` の最大の番号と見比べて確かめます。
-- [ ] Pull Request も同様に、全件を取得して探す（本文、コメント、レビューのコメント）。
+- [x] Pull Request も同様に、全件を取得して探す（本文、コメント、レビューのコメント）。
 
   ```sh
   gh pr list --state all --limit 2000 --json number,title,body,comments,reviews > /tmp/ikari-prs.json
   ```
 
-- [ ] 見つかったものは、書き直すか、Issue と PR の本文を編集する。コミットメッセージに残るものは、公開をいったん止めて、作者に相談する（履歴の書き換えは作者が決める）。
-- [ ] 走査に使った一時ファイルを消す。
+- [x] 見つかったものは、書き直すか、Issue と PR の本文を編集する。コミットメッセージに残るものは、公開をいったん止めて、作者に相談する（履歴の書き換えは作者が決める）。
+- [x] 走査に使った一時ファイルを消す。
 
 ### 1.2 検査の全部を通す
 
-- [ ] `scripts/check.sh` を、**フルで**流して、`CHECK_EXIT=0` になること（fmt、clippy、`cargo test`、`swift test`、文書のリンク、gitleaks を含む）。`macos/Frameworks` が古いと止まるので、そのときは `macos/scripts/build.sh --signing team --release` を先に流す。
-- [ ] `cargo xtask licenses --check` が通ること（Rust の依存のライセンス一覧 [THIRD_PARTY_LICENSES_RUST.md](../THIRD_PARTY_LICENSES_RUST.md) が最新）。
-- [ ] 新しいクローン（別のフォルダ）で、README の「ビルドと検証だけ」の手順を、そのまま流して通ること。README に書いた時間と容量と、手順の名前が合っていること。
+- [x] `scripts/check.sh` を、**フルで**流して、`CHECK_EXIT=0` になること（fmt、clippy、`cargo test`、`swift test`、文書のリンク、gitleaks を含む）。`macos/Frameworks` が古いと止まるので、そのときは `macos/scripts/build.sh --signing team --release` を先に流す。
+- [x] `cargo xtask licenses --check` が通ること（Rust の依存のライセンス一覧 [THIRD_PARTY_LICENSES_RUST.md](../THIRD_PARTY_LICENSES_RUST.md) が最新）。
+- [x] 新しいクローン（別のフォルダ）で、README の「ビルドと検証だけ」の手順を、そのまま流して通ること。README に書いた時間と容量と、手順の名前が合っていること。
 
 ### 1.3 ライセンスと表示
 
-- [ ] [LICENSE](../LICENSE)（Apache License 2.0）と [NOTICE](../NOTICE) が、リポジトリの直下にあること。
-- [ ] [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) の、辞書、モデル、地名のデータの条件が、取得元の今の表示と合っていること（zenz は Hugging Face の表示を、公開の直前にもう一度見る）。
-- [ ] 辞書の元データ、モデルのファイル、ビルド済みの辞書を、リポジトリに**含めていない**こと（`git ls-files data` が空。大きなファイルがないことを `git ls-files -z | xargs -0 du -ch | tail -1` で見る）。
+- [x] [LICENSE](../LICENSE)（Apache License 2.0）と [NOTICE](../NOTICE) が、リポジトリの直下にあること。
+- [ ] [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) の、辞書、モデル、地名のデータの条件が、取得元の今の表示と合っていること（zenz は Hugging Face の表示を、公開の直前にもう一度見る）。（2026-11-11 に確認したのは zenz だけ: Hugging Face の表示は CC BY-SA 4.0 で、記載と一致。辞書・地名のデータは未確認）
+- [x] 辞書の元データ、モデルのファイル、ビルド済みの辞書を、リポジトリに**含めていない**こと（`git ls-files data` が空。大きなファイルがないことを `git ls-files -z | xargs -0 du -ch | tail -1` で見る）。
 
 ### 1.4 公開する形
 
-- [ ] 公開するのは、**ソースだけ**。Releases は作らない（ビルド済みの配布は #241 のあと）。
-- [ ] [README](../README.md) の冒頭が「ビルド済みのアプリは、まだ配っていません」になっていること。[SECURITY.md](../SECURITY.md) も同じ内容であること。
-- [ ] [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md)、[CONTRIBUTING.md](../CONTRIBUTING.md)、[CHANGELOG.md](../CHANGELOG.md) があること。
+- [x] 公開するのは、**ソースだけ**。Releases は作らない（ビルド済みの配布は #241 のあと）。
+- [x] [README](../README.md) の冒頭が「ビルド済みのアプリは、まだ配っていません」になっていること。[SECURITY.md](../SECURITY.md) も同じ内容であること。
+- [x] [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md)、[CONTRIBUTING.md](../CONTRIBUTING.md)、[CHANGELOG.md](../CHANGELOG.md) があること。
 
 ## 2. 公開の操作（作者が行う。エージェントはしない）
 
