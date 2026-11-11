@@ -8,6 +8,9 @@
 #   scripts/check.sh --eval <基準>   + eval/scripts/snapshot.sh --compare <基準>（cargo xtask eval snapshot）（振る舞いが変わっていないことの確認）
 #   scripts/check.sh --docs-only     文書とスクリプトの検査だけ（数秒）
 #   scripts/check.sh --no-swift      swift test を飛ばす（macOS 以外）
+#   scripts/check.sh --rust-only     Rust 側だけ（文書の検査、ライセンス、fmt、clippy、cargo test）。CI の ubuntu の job 用
+#   scripts/check.sh --swift-only    XCFramework の鮮度の検査と swift test だけ（macOS）。CI の macOS の job 用
+#   （--docs-only、--rust-only、--swift-only は一部だけなので、結果を記録しない。マージの前の確認には使えない）
 #
 # --real の前提（setup.sh と同じ既定の場所。環境変数で変えられる）:
 #   IKARI_DICT_DIR   辞書（既定 data/build/dict）
