@@ -1,78 +1,18 @@
 //! 受け付けの繰り返しと `Engine::handle` の結合（W1-c）。メモリ上の流れと、テスト用の辞書（`testdata/sudachi-mini`）。
 
+mod common;
+
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
 
+use common::*;
 use ikari_engine::Engine;
 use ikari_engine_host::serve;
 use ikari_pipe::mem;
 use ikari_pipe::{Client, ClientError};
-use ikari_proto::SCHEMA_VERSION;
 use ikari_proto::v1 as pb;
 use ikari_proto::v1::{Envelope, envelope};
 use prost::Message;
-
-mod common;
-use common::open_engine;
-
-/// 辞書の「この」の候補（`testdata/sudachi-mini/lex.csv`）
-const READING: &str = "この";
-const CANDIDATES: [&str; 3] = ["児野", "古野", "好乃"];
-const SESSION: u64 = 1;
-
-fn long() -> Duration {
-    ikari_testtime::ms(10_000)
-}
-
-fn envelope_bytes(request_id: u64, body: envelope::Body) -> Vec<u8> {
-    Envelope {
-        schema_version: SCHEMA_VERSION,
-        request_id,
-        body: Some(body),
-    }
-    .encode_to_vec()
-}
-
-fn call(client: &Client, request_id: u64, body: envelope::Body) -> envelope::Body {
-    let reply = client
-        .request(&envelope_bytes(request_id, body), long())
-        .expect("reply");
-    let reply = Envelope::decode(reply.as_slice()).expect("reply is an Envelope");
-    assert_eq!(reply.request_id, request_id, "request_id is echoed");
-    reply.body.expect("reply body")
-}
-
-fn begin_session(client: &Client, session: u64) {
-    let reply = call(
-        client,
-        1,
-        envelope::Body::BeginSession(pb::BeginSession {
-            session_id: session,
-            client_bundle_id: "engine-host-test".into(),
-            secure: false,
-        }),
-    );
-    assert!(matches!(reply, envelope::Body::Ack(_)), "{reply:?}");
-}
-
-fn convert(client: &Client, session: u64) -> pb::ConvertReply {
-    let reply = call(
-        client,
-        2,
-        envelope::Body::Convert(pb::Convert {
-            session_id: session,
-            reading: READING.into(),
-            context: None,
-            context_rev: 0,
-            page_size: 0,
-        }),
-    );
-    match reply {
-        envelope::Body::ConvertReply(r) => r,
-        other => panic!("unexpected: {other:?}"),
-    }
-}
 
 /// `serve` を別のスレッドで動かす。`connector` を全部落とすと受け口が閉じ、`serve` が戻る。
 fn spawn_host(engine: Arc<Engine>) -> (mem::MemConnector, thread::JoinHandle<()>) {
