@@ -31,7 +31,5 @@ jobs:
           cmake --version
       - name: 診断 swift build
         run: |
-          for p in ikari IkariEngine ikari-smoke IkariSettings; do
-            echo "=== $p"; swift build -c release --package-path macos --product $p 2>&1 | grep -E "error|While emitting|While |Compiling|Build complete" | head -8 || true
-          done
-          echo "=== debug all"; swift build --package-path macos --build-tests 2>&1 | grep -E "error|While|Build complete" | head
+          swift build -c release --package-path macos --product IkariSettings 2>&1 | grep -E "error|While|Build complete" | head -8
+          swift build --package-path macos --build-tests 2>&1 | grep -E "error|While|Build complete" | head
