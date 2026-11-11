@@ -114,12 +114,8 @@ fn run_connection(
     shutdown: &Arc<dyn Shutdown>,
     handler: &mut dyn FnMut(&[u8]) -> Option<Vec<u8>>,
 ) {
-    loop {
-        let frame = match read_frame(&mut reader) {
-            Ok(Some(frame)) => frame,
-            // 相手が閉じた、壊れた枠、上限超過
-            Ok(None) | Err(_) => break,
-        };
+    // 相手が閉じた、壊れた枠、上限超過のどれも、ここで抜けて閉じる
+    while let Ok(Some(frame)) = read_frame(&mut reader) {
         match frame.kind {
             FrameKind::Request => {
                 let reply = match handler(&frame.body) {

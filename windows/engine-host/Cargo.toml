@@ -15,4 +15,6 @@ ikari-engine.workspace = true
 ikari-testtime.workspace = true
 ikari-proto.workspace = true
 ikari-dict-builder.workspace = true
+ikari-core.workspace = true
 prost.workspace = true
+tempfile.workspace = true

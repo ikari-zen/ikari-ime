@@ -563,12 +563,14 @@ dependencies = [
 name = "ikari-engine-host"
 version = "0.1.0"
 dependencies = [
+ "ikari-core",
  "ikari-dict-builder",
  "ikari-engine",
  "ikari-pipe",
  "ikari-proto",
  "ikari-testtime",
  "prost",
+ "tempfile",
 ]
 
 [[package]]
