@@ -4,7 +4,6 @@
 
 use std::fmt;
 use std::fs::{File, OpenOptions, TryLockError};
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 
 use ikari_core::user::UserDir;
@@ -36,11 +35,13 @@ pub struct EngineLock {
 impl EngineLock {
     pub fn acquire(data_dir: &Path) -> Result<EngineLock, LockError> {
         let path = UserDir::new(data_dir).engine_lock();
-        let file = OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .mode(ikari_core::user::PRIVATE_FILE_MODE)
-            .write(true)
+        let mut options = OpenOptions::new();
+        options.create(true).truncate(false).write(true);
+        // Windows では、ユーザーのフォルダ（%APPDATA%）の ACL に任せる（権限のビットはない）
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, ikari_core::user::PRIVATE_FILE_MODE);
+        // `File::try_lock` は Windows では LockFileEx（排他）。プロセスが死ねば解放される
+        let file = options
             .open(&path)
             .map_err(|e| LockError::Io(format!("{}: {e}", path.display())))?;
         match file.try_lock() {
@@ -91,6 +92,7 @@ mod tests {
         dir
     }
 
+    #[cfg(unix)]
     #[test]
     fn lock_file_is_private() {
         use std::os::unix::fs::PermissionsExt;
