@@ -61,7 +61,7 @@
 ### 1.3 ライセンスと表示
 
 - [x] [LICENSE](../LICENSE)（Apache License 2.0）と [NOTICE](../NOTICE) が、リポジトリの直下にあること。
-- [ ] [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) の、辞書、モデル、地名のデータの条件が、取得元の今の表示と合っていること（zenz は Hugging Face の表示を、公開の直前にもう一度見る）。（2026-11-11 に確認したのは zenz だけ: Hugging Face の表示は CC BY-SA 4.0 で、記載と一致。辞書・地名のデータは未確認）
+- [x] [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) の、辞書、モデル、地名のデータの条件が、取得元の今の表示と合っていること（zenz は Hugging Face の表示を、公開の直前にもう一度見る）。（2026-11-11 に確認。zenz: Hugging Face の表示は CC BY-SA 4.0。SudachiDict と chiVe: GitHub の表示は Apache-2.0。ABR: デジタル庁の利用規約（最終更新 2026-05-29）は PDL1.0 で、出典と加工の明記が要る。いずれも記載と一致。日本郵便の郵便番号データの再配布の可否は、取得元に記載がなく、これまでどおり「確かめていない」。ikari-ime は表を配らない）
 - [x] 辞書の元データ、モデルのファイル、ビルド済みの辞書を、リポジトリに**含めていない**こと（`git ls-files data` が空。大きなファイルがないことを `git ls-files -z | xargs -0 du -ch | tail -1` で見る）。
 
 ### 1.4 公開する形
