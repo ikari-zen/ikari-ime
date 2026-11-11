@@ -1,6 +1,7 @@
 //! Windows の TIP（ADR 0040 §2.2）。**この crate の純粋な部分は OS に依存しない**（`cfg(windows)` なし。Mac でテストが回る）。
 //!
 //! - `keys`: Windows の仮想キー（VK）と修飾、OS が返した文字 → `ShellEvent`
+//! - `latency`: 往復時間の測定（S1。既定でオフ。入力の内容は記録しない）
 //! - `ops`: `ShellAction` → `TsfOp` の列
 //! - `tsf_op`: 純粋な部分と COM の層の間の契約。COM の層は `TsfOp` を順に実行するだけで、判断を持たない
 //! - `transport`: `pipe::Client` を `shell-core` の `EngineTransport` に適合させる（落ちた通知を含む）
@@ -11,6 +12,7 @@
 #![deny(unsafe_code)]
 
 pub mod keys;
+pub mod latency;
 pub mod ops;
 pub mod transport;
 pub mod tsf_op;

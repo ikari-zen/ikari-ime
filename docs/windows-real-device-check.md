@@ -81,6 +81,7 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 | 3 | `.\start-engine.ps1` | エンジンを別のコンソールで起動し、パイプができるまで最大 10 秒待つ。`-Foreground` はこのコンソールで動かす（Ctrl+C の確認用） |
 | 4 | `.\register.ps1 -DryRun`、次に**管理者の** PowerShell で `.\register.ps1` | 計画を表示し、確認を取ってから、DLL とキーマップの表を `%LOCALAPPDATA%\ikari-ime-dev\tip\` にコピーし、`regsvr32 /s` で登録する（`HKCR\CLSID\{83A140BE-…}`、日本語の入力プロファイル、TIP の分類） |
 | 5 | 設定アプリで入力方式を足す | 「設定 > 時刻と言語 > 言語と地域 > 日本語 > 言語のオプション > キーボードを追加する」で「ikari」を足し、入力方式の切り替えで選ぶ（名前と場所は Windows の版で違います） |
+| 往復時間の表 | `.\latency.ps1` | `<データ>\logs\tip-latency.log`（TIP の測定。`latency.on` があるときだけ書かれる。項目 18）を、中央値と p95 の表にする（読むだけ） |
 | 状態 | `.\status.ps1` | エンジンのプロセス、パイプの名前、登録、データのファイル、ログの末尾を表示する（何も変えない） |
 
 **すでに `%LOCALAPPDATA%\ikari-ime` に学習がある環境では**、`install-data.ps1` は辞書とモデルのファイルだけを置き、そのほかには触りません。それでも、確かめたいデータがあるなら、先に `IKARI_USER_DIR` を空のフォルダに向けて試してください（ユーザー環境変数にして、エンジンとアプリを起動し直します。TIP は、アプリの中でこの変数を読みます）。
@@ -259,9 +260,10 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 
 #### 項目 18: キー 1 回と Space の往復の時間（S1）
 
-- やること: **TIP の側で往復の時間を測る道具は、今ありません**（要望。PR の説明に書いた）。今できる測り方は 2 つ。(a) `<データ>\logs\engine.log` の、要求ごとの所要時間（エンジンの中の時間。パイプと TIP の時間は入らない）を、項目 14 の操作を 20 回ほど行って集める。(b) 体感: キーを打って、遅れを感じるか。目安は NFR-02（Space から 1 ページ目まで p99 16ms 以下。ただし候補窓の描画は含まない）。
-- 期待する結果: (a) の中央値と大きい方の値（最大と、おおよその p99）が、数 ms から十数 ms に収まる見込み（根拠はない。**測ってみないと分からない**）。(b) 遅れを感じない。
-- うまくいかないとき: 数字と、操作の内容（読みの長さ、LM なし）を記録する。S1 の本測定には、TIP の側の測定が要る。それを足すかは、結果を見てユーザーが決める。
+- 測り方（#334。TIP の測定は**既定でオフ**）: (1) `<データ>\latency.on` を空のファイルとして作る（`New-Item <データ>\latency.on`）。アプリが測定を決めるのは、そのアプリで ikari を最初に使うときなので、**測りたいアプリを開き直す**（TIP の DLL は各アプリの中で動くので、環境変数 `IKARI_TIP_LATENCY=1` はアプリに見えないことがある。ファイルなら、どのアプリにも効く）。(2) 項目 14 の操作（読みを打って Space で変換、確定）を、アプリごとに 200 回以上行う。(3) `.\latency.ps1` で表を見る。(4) 終わったら `latency.on` を消す（消すまで、開き直したアプリは測り続ける）。
+- 何が出るか: `<データ>\logs\tip-latency.log` に、200 件ごと（と、入力を離れるとき）に 1 行ずつ追記される。`latency.ps1` は、プロセスと種類ごとの最後の行を、ミリ秒の表にする。`request` = 要求を送ってから返事を受けるまで（パイプの往復 + エンジンの処理。要求の種類は混ざる）、`key` = キーを受けてから `TsfOp` を実行し終わるまで（TIP の内側。`request` を含む。候補窓の描画は含まない）、`first_connect` = 最初の接続の試行から最初の成功まで。各行は直近 1000 件の最小、中央値（`p50`）、`p95`、最大。**入力した文字や読みは、ログに入らない**（数字と種類と失敗の数だけ）。
+- 期待する結果: `key` の p95 が 16ms 以下（NFR-02。Space から 1 ページ目まで。p99 は出さない）。`request` の中央値が数 ms 以下の見込み（根拠はない。**測ってみないと分からない**）。`key` と `request` の差が TIP の内側（キーの読み、編集セッション）の時間。`engine.log` の所要時間との差が、パイプの往復。
+- うまくいかないとき: ログができないなら、(1) `latency.on` の場所が `status.ps1` の `DataDir` と同じか、(2) アプリを開き直したか、(3) 200 件に届いたか（少ない間は、入力を離れたときに書く）を確かめる。数字と、操作の内容（読みの長さ、LM なし、アプリの名前）を記録する。測定そのもののコスト（200 件に 1 回、キーの処理のあとにファイルへ追記する）が気になるなら、その旨も記録する。
 
 #### 項目 19: AltGr とショートカット
 
@@ -410,4 +412,4 @@ ikari のコミット（git rev-parse --short HEAD）:
 - [ADR 0040](adr/0040-windows-feasibility.md)（Windows の方針、§6 の未検証の事項、§7 の W5）、[ADR 0058](adr/0058-offline-resource-install.md)（リソースの配置。§14 の Windows への持ち越し）
 - issue: #331（この手順書）、#81（Windows 対応）、#128（開発環境）
 - PR（確認待ちの出どころ）: #315（W1-b）、#318（W2-b）、#326（W4-s2）、#329（再接続）、#330（W5-a）
-- スクリプト: [../windows/dev/common.ps1](../windows/dev/common.ps1)、[build.ps1](../windows/dev/build.ps1)、[install-data.ps1](../windows/dev/install-data.ps1)、[register.ps1](../windows/dev/register.ps1)、[unregister.ps1](../windows/dev/unregister.ps1)、[start-engine.ps1](../windows/dev/start-engine.ps1)、[status.ps1](../windows/dev/status.ps1)
+- スクリプト: [../windows/dev/common.ps1](../windows/dev/common.ps1)、[build.ps1](../windows/dev/build.ps1)、[install-data.ps1](../windows/dev/install-data.ps1)、[register.ps1](../windows/dev/register.ps1)、[unregister.ps1](../windows/dev/unregister.ps1)、[start-engine.ps1](../windows/dev/start-engine.ps1)、[status.ps1](../windows/dev/status.ps1)、[latency.ps1](../windows/dev/latency.ps1)

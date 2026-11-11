@@ -445,3 +445,47 @@ fn a_missed_notification_is_repeated_when_the_dead_connection_is_used() {
         vec![(handle, DownKind::Invalidated); 2]
     );
 }
+
+/// 測定の点が配線されている（S1）。時計は呼ばれるたびに 100µs 進む。
+#[test]
+fn meter_records_first_connect_and_requests() {
+    use crate::latency::{LineSink, Ticks};
+    use std::sync::atomic::AtomicU64;
+
+    struct Step(AtomicU64);
+    impl Ticks for Step {
+        fn now_us(&self) -> u64 {
+            self.0.fetch_add(100, Ordering::SeqCst)
+        }
+        fn unix_secs(&self) -> u64 {
+            0
+        }
+    }
+    struct Lines(Arc<Mutex<Vec<String>>>);
+    impl LineSink for Lines {
+        fn write_lines(&self, lines: &[String]) {
+            self.0.lock().unwrap().extend_from_slice(lines);
+        }
+    }
+
+    let written = Arc::new(Mutex::new(Vec::new()));
+    let meter = Arc::new(Meter::new(
+        Box::new(Step(AtomicU64::new(0))),
+        Box::new(Lines(Arc::clone(&written))),
+        1,
+    ));
+    let mut f = fixture(None);
+    f.transport = f.transport.with_meter(Arc::clone(&meter));
+    let handle = f.transport.connect().unwrap();
+    assert_eq!(f.transport.request(handle, b"a", long()).unwrap(), b"re:a");
+    meter.flush_all();
+    let lines = written.lock().unwrap().clone();
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!(
+        lines[0].contains("kind=request n=1 window=1 err=0"),
+        "{lines:?}"
+    );
+    assert!(lines[1].contains("kind=first_connect n=1"), "{lines:?}");
+    // 入力の本体は行に入らない
+    assert!(lines.iter().all(|l| !l.contains("re:a")));
+}
