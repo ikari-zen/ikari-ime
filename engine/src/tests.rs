@@ -166,20 +166,37 @@ fn mock_stack(mock: &Arc<MockLm>, learning_path: Option<&Path>) -> Stack {
     }
 }
 
+/// 時間に依存するテスト用の、倍率（`IKARI_TEST_TIME_SCALE`）を掛けた LM の締め切り。
+/// 倍率 1 では `LmBudget::default()` と同じ
+fn test_budget() -> LmBudget {
+    let b = LmBudget::default();
+    LmBudget {
+        base: ikari_testtime::scaled(b.base),
+        per_char: ikari_testtime::scaled(b.per_char),
+        max: ikari_testtime::scaled(b.max),
+    }
+}
+
+/// 倍率を掛けた、Space からの待ち時間。倍率 1 では `DEFAULT_CONVERT_WAIT`
+fn test_wait() -> Duration {
+    ikari_testtime::scaled(DEFAULT_CONVERT_WAIT)
+}
+
 fn engine_with(mock: &Arc<MockLm>, learning_path: Option<&Path>) -> Engine {
     Engine::from_parts(EngineParts {
         stack: mock_stack(mock, learning_path),
         rebuild: None,
         data_dir: None,
         lm_requested: true,
-        lm_budget: LmBudget::default(),
-        convert_wait: DEFAULT_CONVERT_WAIT,
+        lm_budget: test_budget(),
+        convert_wait: test_wait(),
         lock: None,
     })
 }
 
+/// `delay_ms` は倍率を掛けて使う
 fn engine(delay_ms: u64) -> (Engine, Arc<MockLm>) {
-    let mock = MockLm::new(Duration::from_millis(delay_ms));
+    let mock = MockLm::new(ikari_testtime::ms(delay_ms));
     (engine_with(&mock, None), mock)
 }
 

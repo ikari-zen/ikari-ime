@@ -25,5 +25,6 @@ jiff.workspace = true
 libc = "0.2"
 
 [dev-dependencies]
+ikari-testtime.workspace = true
 ikari-dict-builder.workspace = true
 tempfile.workspace = true

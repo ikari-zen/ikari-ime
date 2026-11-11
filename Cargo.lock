@@ -541,6 +541,7 @@ dependencies = [
  "ikari-resource",
  "ikari-runmark",
  "ikari-stack",
+ "ikari-testtime",
  "jiff",
  "libc",
  "prost",
@@ -592,6 +593,7 @@ name = "ikari-lm"
 version = "0.1.0"
 dependencies = [
  "ikari-core",
+ "ikari-testtime",
  "llama-cpp-2",
  "tempfile",
 ]
@@ -655,6 +657,10 @@ dependencies = [
  "ikari-core",
  "ikari-lm",
 ]
+
+[[package]]
+name = "ikari-testtime"
+version = "0.1.0"
 
 [[package]]
 name = "indexmap"
