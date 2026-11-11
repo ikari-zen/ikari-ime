@@ -31,6 +31,9 @@ jobs:
         run: |
           cargo install cargo-about --version 0.9.3 --locked --features cli
           cargo about --version
+      # ライセンス一覧の検査は --offline で、全クレート（ほかの OS 向けのものも）が手元のレジストリに要る
+      - name: 依存を取得する
+        run: cargo fetch --locked
       # check.sh は、道具がないと警告だけで検査を飛ばす。CI では飛ばさせない
       - name: gitleaks を入れる（秘密と個人情報の検査）
         run: |
