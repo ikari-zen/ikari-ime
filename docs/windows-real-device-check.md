@@ -64,7 +64,7 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 
 | 何 | 既定 | 変えるとき |
 | --- | --- | --- |
-| データのディレクトリ | `%APPDATA%\ikari-ime`（`IKARI_USER_DIR` があればそちら） | 置き場所が `%LOCALAPPDATA%` に決まったら（#330 の質問 1）、エンジンを直してから `common.ps1` の 1 行を直す |
+| データのディレクトリ | `%LOCALAPPDATA%\ikari-ime`（`IKARI_USER_DIR` があればそちら。2026-11-12 決定、#333） | エンジンの決め方（`core/src/user/dir.rs`）と同じにする。以前に `%APPDATA%\ikari-ime` に置いた開発用のデータは、手で `%LOCALAPPDATA%\ikari-ime` に移すか、消す |
 | エンジンの exe | `target\release\ikari-engine-host.exe` | パッケージ名は `ikari-engine-host` で、ADR などが呼ぶ `ikari-engine.exe` ではありません |
 | TIP の DLL | ビルドの結果 `target\release\ikari_tip.dll`。登録するのは `%LOCALAPPDATA%\ikari-ime-dev\tip\` に作る**コピー**（アプリが読み込んだ DLL を、ビルドが上書きしないため） | |
 
@@ -83,7 +83,7 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 | 5 | 設定アプリで入力方式を足す | 「設定 > 時刻と言語 > 言語と地域 > 日本語 > 言語のオプション > キーボードを追加する」で「ikari」を足し、入力方式の切り替えで選ぶ（名前と場所は Windows の版で違います） |
 | 状態 | `.\status.ps1` | エンジンのプロセス、パイプの名前、登録、データのファイル、ログの末尾を表示する（何も変えない） |
 
-**すでに `%APPDATA%\ikari-ime` に学習がある環境では**、`install-data.ps1` は辞書とモデルのファイルだけを置き、そのほかには触りません。それでも、確かめたいデータがあるなら、先に `IKARI_USER_DIR` を空のフォルダに向けて試してください（ユーザー環境変数にして、エンジンとアプリを起動し直します。TIP は、アプリの中でこの変数を読みます）。
+**すでに `%LOCALAPPDATA%\ikari-ime` に学習がある環境では**、`install-data.ps1` は辞書とモデルのファイルだけを置き、そのほかには触りません。それでも、確かめたいデータがあるなら、先に `IKARI_USER_DIR` を空のフォルダに向けて試してください（ユーザー環境変数にして、エンジンとアプリを起動し直します。TIP は、アプリの中でこの変数を読みます）。
 
 ## 3. ログの場所と、困ったとき
 
@@ -401,7 +401,7 @@ ikari のコミット（git rev-parse --short HEAD）:
 1. エンジンを止める: コンソールで Ctrl+C、または `.\start-engine.ps1 -Action stop`（確認が出る）。
 2. 管理者の PowerShell で `.\unregister.ps1 -RemoveFiles`（確認が出る。DLL の登録を解除し、`%LOCALAPPDATA%\ikari-ime-dev\tip\` の中のコピーだけを消す）。使用中で消せなかったら、アプリを閉じるか、サインアウトして、もう一度。
 3. Windows の入力方式の一覧から、「ikari」が消えていることを確かめる（残っていたら、「言語のオプション」から削除する）。
-4. データ: `<データ>`（`%APPDATA%\ikari-ime` など）は、**自動では消しません**。要らなければ、中身を確かめて、手で削除してください（学習のファイルが入っています）。
+4. データ: `<データ>`（`%LOCALAPPDATA%\ikari-ime` など）は、**自動では消しません**。要らなければ、中身を確かめて、手で削除してください（学習のファイルが入っています）。
 5. ビルドの成果物: リポジトリの `target\` を消せば戻ります（`cargo clean`）。
 6. 確実に戻したいときは、準備のときのスナップショットに戻します。
 

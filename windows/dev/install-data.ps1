@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
   Puts the dictionary and the model into the data directory ($DataDir in common.ps1:
-  IKARI_USER_DIR, else %APPDATA%\ikari-ime). The same layout as "cargo xtask data install".
+  IKARI_USER_DIR, else %LOCALAPPDATA%\ikari-ime). The same layout as "cargo xtask data install".
 .PARAMETER Src
   A folder laid out like the repository's data\ folder:
       <Src>\build\dict\grammar.bin, system.dict, vectors.bin   (required)

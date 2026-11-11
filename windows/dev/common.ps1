@@ -13,10 +13,10 @@ $ErrorActionPreference = 'Stop'
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
 # Data directory (dict\, models\, logs\, settings.tsv, learning files).
-# It must be the same place the engine and the TIP use: IKARI_USER_DIR, else %APPDATA%\ikari-ime
-# (core::user::dir). ADR 0058 s14 and ADR 0040 s2.7 assume %LOCALAPPDATA%; the decision is open (#330, question 1).
-# If the decision changes, change the engine first, then this one line.
-$DefaultDataDir = Join-Path $env:APPDATA 'ikari-ime'
+# It must be the same place the engine and the TIP use: IKARI_USER_DIR, else %LOCALAPPDATA%\ikari-ime
+# (core::user::dir; decided 2026-11-12, #333). Not Roaming: the dictionary is over 600MB and must not sync.
+# Data once put in %APPDATA%\ikari-ime for development: move it by hand to %LOCALAPPDATA%\ikari-ime, or delete it.
+$DefaultDataDir = Join-Path $env:LOCALAPPDATA 'ikari-ime'
 if ($env:IKARI_USER_DIR) { $DataDir = $env:IKARI_USER_DIR } else { $DataDir = $DefaultDataDir }
 
 # cargo output

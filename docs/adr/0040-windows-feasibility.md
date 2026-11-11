@@ -18,7 +18,7 @@
   - `core/src/user/util.rs:5`（`DirBuilderExt`、`OpenOptionsExt`、`PermissionsExt`。0700 / 0600）、`core/src/user/learning.rs` のテスト（`PermissionsExt`）
   - `engine/src/lock.rs:7`、`engine/src/log.rs:18`、`engine/src/lib.rs:480`、`engine/src/rss.rs`（macOS の libc）
   - `runmark`（`signal` が `cfg(unix)` だけ。Windows ではクラッシュの記録が働かない。ADR 0051）
-  - `core/src/user/dir.rs`（macOS と XDG だけ。`%APPDATA%` / `%LOCALAPPDATA%` の分岐がない）
+  - `core/src/user/dir.rs`（macOS と XDG だけ。`%LOCALAPPDATA%` の分岐がない。#305 で足した）
   - テストの `std::os::unix::fs::symlink`: `engine/src/tests.rs`、`engine/src/tests/model_check.rs`、`engine-ffi/src/lib.rs`、`import/src/io.rs`
   - `shell-core/src/settings/store.rs` と `eval/src/rss.rs` は `cfg(unix)` で分けてある
 - ファイルの改行と BOM: BOM を外しているのは `dict-builder/src/town.rs` だけ。`split('\n')` で行に分ける箇所があり、CRLF だと行末に CR が残る（`xtask/src/eval/snapshot.rs:613`、`shell-core/src/settings/file.rs:19`。後者は行末の CR を保って書き戻す）。`.lines()` は CRLF を扱える。
@@ -193,7 +193,7 @@ ikari-engine.exe（windows/engine-host。Rust、ユーザーのセッション�
 
 | 段階 | issue（ブランチ） | 持つファイル | Mac / CI で検証 | 実機の確認待ち |
 | --- | --- | --- | --- | --- |
-| **W0 コア** | W0-a パスと権限（並行） | `core/src/user/{util,dir}.rs`、`shell-core/src/settings/store.rs` | `%APPDATA%\ikari-ime` の分岐の単体テスト（`resolve_with` に OS を渡す形）、`cargo check --target` | なし |
+| **W0 コア** | W0-a パスと権限（並行） | `core/src/user/{util,dir}.rs`、`shell-core/src/settings/store.rs` | `%LOCALAPPDATA%\ikari-ime` の分岐の単体テスト（`resolve_with` に OS を渡す形）、`cargo check --target` | なし |
 | | W0-b エンジンと記録（並行） | `engine/src/{lock,log,lib,rss}.rs`、`engine/Cargo.toml`、`runmark/` | `cargo check --target`。`runmark` は Windows では記録を「不明」にして通す（クラッシュの記録は W4） | なし |
 | | W0-c テストと門（W0-a・b の後） | テストの symlink の 4 か所、`core/src/user/learning.rs` のテスト、`eval/src/rss.rs`、`xtask/src/check*`、spec と architecture | `check` に `cargo check --target`。S0 を実測し、通らない crate を対象から外す | なし |
 | | W0-d ファイルの形式（W0-a の後。W0-b・c と並行） | 新しい `textfile/`、ファイルを読む箇所（`core/src/user/` の読み込み、`shell-core/src/settings/{file,parse}.rs`、`dict-builder/src/town.rs`、`xtask/src/eval/snapshot.rs`、`import/`） | 読むファイルごとの LF・CRLF・BOM つきの 3 通りのテスト（§2.9） | なし |
@@ -230,6 +230,7 @@ ikari-engine.exe（windows/engine-host。Rust、ユーザーのセッション�
 ## 9. 決まったこと
 - 2026-10-30: **TIP は Rust**（T-a）。**状態機械は macOS と共有**（`shell-core`。ADR 0041）。**開発は miniPC の上の x64 の Windows 11 の VM**（#128。旧 Q5）。
 - 2026-11-05: **Windows 版が配れたら 1.0.0**（NFR-41）。旧 Q1 の「1.0 に Windows を含めない」は改めた。
+- 2026-11-12 ユーザー決定: データの置き場所は `%LOCALAPPDATA%\ikari-ime`（Local。辞書が 600MB 超でローミングの同期に向かない。ログ、ロック、辞書・モデル、学習、ユーザー辞書、設定をすべてここに置く。別の PC への持ち出しはエクスポートとインポート（#92）。#333）。
 - 2026-11-11:
   - **優先順位**: Windows の実装が全タスクで最優先。変換の質は空いた時間。Rust への移行（#138）は完了。旧版の「Windows は移行の後」（旧 §2.1 の順序）は改めた。
   - **開発環境**: miniPC の上の x64 の VM（再確認）。#81 の本文の Mac の Parallels（ARM）案は採らない。
