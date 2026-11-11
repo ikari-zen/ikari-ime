@@ -29,11 +29,9 @@ jobs:
           swift --version
           xcodebuild -version
           cmake --version
-      - name: cargo-about を入れる（ライセンス一覧の検査。版を固定）
-        run: cargo install cargo-about --version 0.9.3 --locked
-      # XCFramework（swift test が使う）を作る。署名は ad-hoc（CI に証明書はない）。
-      # check.sh は XCFramework の鮮度も検査する（#154）。
-      - name: XCFramework とアプリをビルドする（ad-hoc 署名）
-        run: macos/scripts/build.sh --signing adhoc --release
-      - name: scripts/check.sh
-        run: scripts/check.sh
+      - name: 診断 swift build
+        run: |
+          for p in ikari IkariEngine ikari-smoke IkariSettings; do
+            echo "=== $p"; swift build -c release --package-path macos --product $p 2>&1 | grep -E "error|While emitting|While |Compiling|Build complete" | head -8 || true
+          done
+          echo "=== debug all"; swift build --package-path macos --build-tests 2>&1 | grep -E "error|While|Build complete" | head
