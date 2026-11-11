@@ -11,7 +11,7 @@
 //   tsInputMethodCharacterRepertoireKey = [Hira, Kana, Latn]
 //   ComponentInputModeDict             = 入力モード1つ（.Japanese「あ」）。アイコン付き（ADR 0005 §15.2-1）
 //   IkariSigningMode                   = team | adhoc                              （AppContext が XPC の署名要件に使う）
-// Resources には macos/Resources/keymap/*.tsv を `keymap/` ディレクトリごと、アイコンの PDF を入れる。
+// Resources には shell-core/resources/keymap/*.tsv を `keymap/` ディレクトリごと、アイコンの PDF を入れる。
 import AppKit
 import Foundation
 import IkariXPC

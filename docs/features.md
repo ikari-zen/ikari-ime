@@ -86,7 +86,7 @@ ikari-ime が今できること、まだできないこと、それぞれを決�
 
 | 機能 | 状態 | ADR | 補足 |
 | --- | --- | --- | --- |
-| キー割り当てのプリセット（`keymap.preset`：`macos`、`ms-ime`、`atok`） | 実装済み | [0004](adr/0004-phase2-macos.md) §6.3、[契約](phase2-contract.md) §4 | 操作ごとに上書きできる（`keymap.<操作>`）。プリセットは [macos.tsv](../macos/Resources/keymap/macos.tsv)、[ms-ime.tsv](../macos/Resources/keymap/ms-ime.tsv)、[atok.tsv](../macos/Resources/keymap/atok.tsv)（ATOK 風。#62。MS-IME 風を土台に、半角英数が Ctrl+@、再変換が Ctrl+Shift+Y。ATOK だけの操作は含めない） |
+| キー割り当てのプリセット（`keymap.preset`：`macos`、`ms-ime`、`atok`） | 実装済み | [0004](adr/0004-phase2-macos.md) §6.3、[契約](phase2-contract.md) §4 | 操作ごとに上書きできる（`keymap.<操作>`）。プリセットは [macos.tsv](../shell-core/resources/keymap/macos.tsv)、[ms-ime.tsv](../shell-core/resources/keymap/ms-ime.tsv)、[atok.tsv](../shell-core/resources/keymap/atok.tsv)（ATOK 風。#62。MS-IME 風を土台に、半角英数が Ctrl+@、再変換が Ctrl+Shift+Y。ATOK だけの操作は含めない） |
 | 字種変換（F6 ひらがな、F7 全角カタカナ、F8 半角カタカナ、F9 全角英数、F10 半角英数） | 実装済み | [0004](adr/0004-phase2-macos.md) §6.3 | 割り当てはプリセットで変えられる。F6〜F10 のないキーボードには別のキーを割り当てる |
 | 入力モードの切り替え（`mode.toggle`、`mode.english`、`mode.japanese`） | 実装済み | [0026](adr/0026-english-mode-and-key-stats.md) §5.3 | 既定では割り当てなし。英数キー・かなキーは macOS の切り替えに任せる |
 | 定型文（テンプレート） | 予定 | spec「基本原則」（柱 3） | ADR はまだない |

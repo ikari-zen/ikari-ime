@@ -404,8 +404,8 @@ mod tests {
     use super::*;
     use crate::types::Modifiers;
 
-    const MACOS: &str = include_str!("../../../macos/Resources/keymap/macos.tsv");
-    const MS_IME: &str = include_str!("../../../macos/Resources/keymap/ms-ime.tsv");
+    const MACOS: &str = include_str!("../../resources/keymap/macos.tsv");
+    const MS_IME: &str = include_str!("../../resources/keymap/ms-ime.tsv");
 
     #[test]
     fn mode_ids_map_to_modes() {

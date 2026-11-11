@@ -710,7 +710,7 @@ fn new_shell(settings: &str, log: Arc<Mutex<EngineLog>>) -> Result<Shell, String
     let config = ShellConfig {
         shell_version: SHELL_VERSION.into(),
         settings: SettingsSource::Inline(settings.to_owned()),
-        resources_dir: Path::new(env!("CARGO_MANIFEST_DIR")).join("../macos/Resources"),
+        resources_dir: Path::new(env!("CARGO_MANIFEST_DIR")).join("resources"),
     };
     Shell::new(
         config,
