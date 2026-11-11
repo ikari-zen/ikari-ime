@@ -604,9 +604,9 @@ impl SettingsValues {
 mod tests {
     use super::*;
 
-    const MACOS: &str = include_str!("../../../macos/Resources/keymap/macos.tsv");
-    const MS_IME: &str = include_str!("../../../macos/Resources/keymap/ms-ime.tsv");
-    const ATOK: &str = include_str!("../../../macos/Resources/keymap/atok.tsv");
+    const MACOS: &str = include_str!("../../resources/keymap/macos.tsv");
+    const MS_IME: &str = include_str!("../../resources/keymap/ms-ime.tsv");
+    const ATOK: &str = include_str!("../../resources/keymap/atok.tsv");
 
     fn presets() -> KeymapPresetTable {
         KeymapPresetTable::new(|preset| {

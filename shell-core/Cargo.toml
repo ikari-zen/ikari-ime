@@ -7,6 +7,7 @@ description = "殻の OS に依存しない処理（状態機械、エンジン�
 
 [dependencies]
 ikari-input.workspace = true
+ikari-textfile.workspace = true
 ikari-proto.workspace = true
 ikari-runmark.workspace = true
 prost.workspace = true

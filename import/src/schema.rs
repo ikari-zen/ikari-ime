@@ -23,7 +23,6 @@ pub const MAX_FILE_BYTES: u64 = 50 * 1024 * 1024;
 const TYPE_HEADER: &str = "header";
 const TYPE_SENTENCE: &str = "sentence";
 const TYPE_DOC_BREAK: &str = "doc_break";
-const UTF8_BOM: &str = "\u{feff}";
 const CODE_FENCE: &str = "```";
 
 /// 取り込んだ 1 文。`reading` は `normalize_key` 済み。
@@ -223,7 +222,7 @@ pub fn parse_jsonl(bytes: &[u8]) -> Result<Parsed, SchemaError> {
         });
     }
     let text = std::str::from_utf8(bytes).map_err(|_| SchemaError::NotUtf8)?;
-    let text = text.strip_prefix(UTF8_BOM).unwrap_or(text);
+    let text = ikari_textfile::strip_bom(text);
 
     let mut prompt_version: Option<String> = None;
     let mut sentences = Vec::new();
@@ -402,6 +401,16 @@ mod tests {
         let p = parse_jsonl(text.as_bytes()).unwrap();
         assert_eq!(p.sentences.len(), 1);
         assert_eq!(p.drops.total(), 0);
+    }
+
+    #[test]
+    fn lf_crlf_and_bom_files_read_the_same() {
+        let lf = format!("{HEADER}\n{}\n", sentence("かな", "かな"));
+        for (v, text) in ikari_textfile::testing::read_variants(&lf) {
+            let p = parse_jsonl(text.as_bytes()).unwrap_or_else(|e| panic!("{v:?}: {e:?}"));
+            assert_eq!(p.sentences.len(), 1, "{v:?}");
+            assert_eq!(p.drops.total(), 0, "{v:?}");
+        }
     }
 
     #[test]

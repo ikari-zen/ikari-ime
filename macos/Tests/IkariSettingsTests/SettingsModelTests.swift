@@ -6,11 +6,11 @@ import Testing
 
 @testable import IkariSettings
 
-/// リポジトリの `macos/Resources/keymap/*.tsv`（build.sh が設定アプリのバンドルに置くものと同じ）
+/// リポジトリの `shell-core/resources/keymap/*.tsv`（build.sh が設定アプリのバンドルに置くものと同じ）
 func repositoryPresets() -> KeymapPresetTable {
     let root = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        .appendingPathComponent("Resources/keymap")
+        .deletingLastPathComponent().appendingPathComponent("shell-core/resources/keymap")
     return KeymapPresetTable { preset in
         try? String(contentsOf: root.appendingPathComponent("\(preset.rawValue).tsv"), encoding: .utf8)
     }

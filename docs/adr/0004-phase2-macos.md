@@ -307,7 +307,7 @@ enum ErrorCode { ERROR_CODE_UNSPECIFIED = 0; SCHEMA_MISMATCH = 1; BAD_REQUEST = 
   | z＋キー | ローマ字表の行として合成器が処理する（変更なし） | — |
 
 - **最後のページで Space を押したとき**（spec の未決事項）は、**先頭のページに戻る**案を既定にする（§12-3）。`settings.tsv` の `paging.wrap` で切り替えられるようにする。
-- **キー割り当て**: プリセットは `macos/Resources/keymap/{ms-ime,macos}.tsv`（spec の表のとおり）。`settings.tsv` の `keymap.preset` で選び、`keymap.<操作>=<キー>` で個別に上書きする。
+- **キー割り当て**: プリセットは `shell-core/resources/keymap/{ms-ime,macos}.tsv`（spec の表のとおり）。`settings.tsv` の `keymap.preset` で選び、`keymap.<操作>=<キー>` で個別に上書きする。
 - **入力方式**: `settings.tsv` の `input.method=romaji|kana`。かな入力は、物理キーの keyCode を `JisKey` の番号に対応付ける（キーボードの配列には依存しない）。
 
 ### 6.4 候補ウィンドウ（`CandidatePanel`、spec の配置と候補リストの節）

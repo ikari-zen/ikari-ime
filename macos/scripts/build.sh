@@ -1,7 +1,7 @@
 #!/bin/bash
 # ikari.app をビルドして署名する（ADR 0004 §9.2）。
 #
-#   macos/scripts/build.sh [--signing team|adhoc] [--release|--debug] [--no-lm] [--skip-rust] [--allow-stub]
+#   macos/scripts/build.sh [--signing team|adhoc] [--release|--debug] [--no-lm] [--skip-rust] [--allow-stub] [--frameworks-only]
 #
 #   --signing team   Apple Development 証明書（チームID（`lib.sh` の `TEAM_ID`））で署名する。既定
 #   --signing adhoc  ad-hoc 署名（署名要件は identifier の一致だけになる）
@@ -9,6 +9,7 @@
 #   --no-lm          エンジンに llama.cpp（Metal）を入れない（cmake が使えないとき、LM が要らないとき）
 #   --skip-rust      cargo と XCFramework の作成を飛ばし、macos/Frameworks/ にあるものを使う
 #   --allow-stub     XCFramework がなくてもビルドする（FFI なしのスタブのエンジンになる。インストールしてはいけない）
+#   --frameworks-only  XCFramework（macos/Frameworks/）だけ作って終わる。Swift のビルド、組み立て、署名はしない（CI の swift test 用）
 #
 # 出力: target/macos/<release|debug>-<team|adhoc>/ikari.app
 # 環境変数: IKARI_SIGN_IDENTITY で署名の ID（ハッシュまたは名前）を指定できる（team のとき。チームIDは検証する）
@@ -21,6 +22,7 @@ CONFIG=release
 ENGINE_FEATURES=lm-metal
 SKIP_RUST=0
 ALLOW_STUB=0
+FRAMEWORKS_ONLY=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --signing) SIGNING="${2:-}"; shift ;;
@@ -28,12 +30,14 @@ while [[ $# -gt 0 ]]; do
     --no-lm) ENGINE_FEATURES="" ;;
     --skip-rust) SKIP_RUST=1 ;;
     --allow-stub) ALLOW_STUB=1 ;;
-    -h | --help) sed -n '2,16p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    --frameworks-only) FRAMEWORKS_ONLY=1 ;;
+    -h | --help) sed -n '2,15p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) parse_common_flag "$1" || die "不明な引数: $1" ;;
   esac
   shift
 done
 validate_signing
+[[ "$FRAMEWORKS_ONLY" -eq 0 || "$SKIP_RUST" -eq 0 ]] || die "--frameworks-only と --skip-rust は同時に使えません"
 
 OUT="$(bundle_out_dir)"
 APP="$OUT/$APP_NAME"
@@ -158,7 +162,7 @@ build_swift() {
 
 # 設定アプリ「ikari 設定」を Contents/Helpers/ に置く（ADR 0005 §2、§6.2）。
 # Resources: アプリのアイコン（macos/Resources/settings/AppIcon.icns）、ライセンス表示（NFR-43）、
-# キー割り当てのプリセット（上書きが「プリセットと同じ」かを画面が判定するため。殻の Resources/keymap と同じファイル）
+# キー割り当てのプリセット（上書きが「プリセットと同じ」かを画面が判定するため。shell-core/resources/keymap。OS 共通のプリセット）
 assemble_settings_app() {
   local resources="$SETTINGS/Contents/Resources"
   cp "$TEMPLATES/IkariSettings.Info.plist" "$SETTINGS/Contents/Info.plist"
@@ -173,8 +177,8 @@ assemble_settings_app() {
   # 「ライセンス」画面は THIRD_PARTY_NOTICES を 1 つ表示するので、Rust 依存の一覧（cargo xtask licenses の生成物）を後ろにつないで置く（#242）
   [[ -f "$IKARI_ROOT/THIRD_PARTY_LICENSES_RUST.md" ]] || die "THIRD_PARTY_LICENSES_RUST.md がありません（cargo xtask licenses）"
   { cat "$IKARI_ROOT/THIRD_PARTY_NOTICES.md"; printf "\n\n"; cat "$IKARI_ROOT/THIRD_PARTY_LICENSES_RUST.md"; } > "$resources/THIRD_PARTY_NOTICES.md"
-  [[ -d "$IKARI_MACOS_DIR/Resources/keymap" ]] || die "macos/Resources/keymap がありません"
-  cp -R "$IKARI_MACOS_DIR/Resources/keymap" "$resources/keymap"
+  [[ -d "$IKARI_ROOT/shell-core/resources/keymap" ]] || die "shell-core/resources/keymap がありません"
+  cp -R "$IKARI_ROOT/shell-core/resources/keymap" "$resources/keymap"
 }
 
 assemble_bundle() {
@@ -207,10 +211,10 @@ assemble_bundle() {
 
   assemble_settings_app
 
-  # Resources: keymap のプリセットなど。icons/ は直下に平らに置く（Info.plist のアイコン名は直下を指す）
+  # Resources: keymap のプリセット（OS 共通。shell-core/resources/keymap）と、macOS 固有のもの。icons/ は直下に平らに置く（Info.plist のアイコン名は直下を指す）
   local res="$IKARI_MACOS_DIR/Resources"
+  cp -R "$IKARI_ROOT/shell-core/resources/keymap" "$APP/Contents/Resources/keymap"
   if [[ -d "$res" ]]; then
-    [[ ! -d "$res/keymap" ]] || cp -R "$res/keymap" "$APP/Contents/Resources/keymap"
     [[ ! -d "$res/icons" ]] || find "$res/icons" -type f -exec cp {} "$APP/Contents/Resources/" \;
     find "$res" -maxdepth 1 -type f -exec cp {} "$APP/Contents/Resources/" \;
     # モードの表示名（ja.lproj / en.lproj の InfoPlist.strings）はディレクトリごと置く（ADR 0005 §3.3）
@@ -328,6 +332,11 @@ verify_settings_app() {
 
 # ---------------------------------------------------------------- 実行
 
+if [[ "$FRAMEWORKS_ONLY" -eq 1 ]]; then
+  build_rust
+  log "完了（--frameworks-only）: $FRAMEWORKS"
+  exit 0
+fi
 resolve_identity
 if [[ "$SKIP_RUST" -eq 0 ]]; then
   build_rust

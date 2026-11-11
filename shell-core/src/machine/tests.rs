@@ -222,7 +222,7 @@ struct Harness {
 
 fn keymap(preset: &str) -> Arc<Keymap> {
     let path = format!(
-        "{}/../macos/Resources/keymap/{preset}.tsv",
+        "{}/resources/keymap/{preset}.tsv",
         env!("CARGO_MANIFEST_DIR")
     );
     let tsv = std::fs::read_to_string(path).unwrap();

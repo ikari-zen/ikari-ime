@@ -15,8 +15,12 @@ const COMMENT_PREFIX: char = '#';
 /// - 区切りの tab や改行を含むキー・値は、別の行を混ぜられるので無視する（ファイルに書かない）。
 /// - 結果の検証（警告が増えたら書かない）は呼び出す側（`rewrite`）が行う。
 pub(super) fn update_text(text: &str, set: &[SettingsEntry], reset: &[String]) -> String {
-    // 改行の流儀を保つ。最後の要素は、末尾が改行で終わるときだけ空文字列になる
-    let mut lines: Vec<String> = text.split('\n').map(str::to_string).collect();
+    // BOM は書き戻さない（読み手は BOM つきでも読める。ADR 0040 §2.9）
+    let text = ikari_textfile::strip_bom(text);
+    // 改行は元のファイルに合わせる（CRLF が 1 つでもあれば CRLF、なければ LF。新規は LF）
+    let newline = ikari_textfile::newline_for(text);
+    let ends_with_newline = text.ends_with('\n');
+    let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
 
     for key in reset.iter().filter(|key| is_writable_key(key)) {
         lines.retain(|line| key_of(line) != Some(key.as_str()));
@@ -27,38 +31,30 @@ pub(super) fn update_text(text: &str, set: &[SettingsEntry], reset: &[String]) -
         .iter()
         .filter(|entry| is_writable_key(&entry.key) && is_writable_value(&entry.value))
     {
-        let new_line =
-            |carriage: &str| format!("{}{SEPARATOR}{}{carriage}", entry.key, entry.value);
+        let new_line = format!("{}{SEPARATOR}{}", entry.key, entry.value);
         if let Some(index) = lines
             .iter()
             .rposition(|line| key_of(line) == Some(entry.key.as_str()))
         {
-            // 行末の CR（CRLF のファイル）は残す
-            let carriage = if lines[index].ends_with('\r') {
-                "\r"
-            } else {
-                ""
-            };
-            lines[index] = new_line(carriage);
+            lines[index] = new_line;
         } else if let Some(index) = appended
             .iter()
             .rposition(|line| key_of(line) == Some(entry.key.as_str()))
         {
-            appended[index] = new_line("");
+            appended[index] = new_line;
         } else {
-            appended.push(new_line(""));
+            appended.push(new_line);
         }
     }
-    if appended.is_empty() {
-        return lines.join("\n");
-    }
 
-    // 末尾が改行で終わっていれば最後の要素は空。足す前に取り除き、足したあとで改行を付ける
-    if lines.last().is_some_and(String::is_empty) {
-        lines.pop();
-    }
+    // 足した行があれば、最後は必ず改行で終える。なければ元の末尾の改行の有無を保つ
+    let terminate = ends_with_newline || !appended.is_empty();
     lines.extend(appended);
-    lines.join("\n") + "\n"
+    let mut result = lines.join(newline);
+    if terminate && !lines.is_empty() {
+        result.push_str(newline);
+    }
+    result
 }
 
 /// `parse_tsv` と同じ規則で、行のキーを取り出す。注釈、空行、tab のない行は `None`
@@ -208,6 +204,91 @@ mod tests {
                 &[]
             ),
             "input.method\tkana\r\npaging.size\t3\r\n"
+        );
+    }
+
+    // --- 今の挙動を固めるテスト（W0-d。`split('\n')` を直す前） ---
+
+    #[test]
+    fn characterize_crlf_replace_drops_no_cr_and_leaves_no_cr_in_the_value() {
+        let result = update(
+            "input.method\tromaji\r\npaging.size\t3\r\n",
+            &[("paging.size", "9")],
+            &[],
+        );
+        assert_eq!(result, "input.method\tromaji\r\npaging.size\t9\r\n");
+        let parsed = crate::settings::validate(&result).unwrap();
+        assert!(parsed.issues.is_empty());
+        assert_eq!(parsed.snapshot.page_size, 9);
+    }
+
+    #[test]
+    fn characterize_crlf_reset_removes_the_whole_line() {
+        assert_eq!(
+            update(
+                "# keep\r\npaging.size\t3\r\ninput.method\tkana\r\n",
+                &[],
+                &["paging.size"]
+            ),
+            "# keep\r\ninput.method\tkana\r\n"
+        );
+    }
+
+    #[test]
+    fn crlf_file_gets_crlf_for_appended_lines() {
+        // 直す前は、足した行だけ LF になっていた（混ざる）
+        assert_eq!(
+            update("input.method\tkana\r\n", &[("paging.size", "2")], &[]),
+            "input.method\tkana\r\npaging.size\t2\r\n"
+        );
+        // 末尾に改行がない CRLF のファイル
+        assert_eq!(
+            update("a\tb\r\ninput.method\tkana", &[("paging.size", "2")], &[]),
+            "a\tb\r\ninput.method\tkana\r\npaging.size\t2\r\n"
+        );
+    }
+
+    #[test]
+    fn bom_on_the_first_key_is_matched_and_not_written_back() {
+        // 直す前は、BOM つきの最初の行はキーとして一致せず、同じキーの行が足されていた
+        assert_eq!(
+            update("\u{feff}paging.size\t3\n", &[("paging.size", "9")], &[]),
+            "paging.size\t9\n"
+        );
+    }
+
+    #[test]
+    fn new_files_are_written_with_lf_and_existing_newlines_are_kept() {
+        use ikari_textfile::testing::{ALL_VARIANTS, Variant, variant};
+        let original = "# notes\ninput.method\tromaji\npaging.size\t3\n";
+        for v in ALL_VARIANTS {
+            let result = update(
+                &variant(original, v),
+                &[("paging.size", "9"), ("paging.wrap", "false")],
+                &[],
+            );
+            // BOM は落とす。改行は元に合わせる
+            let expected_variant = match v {
+                Variant::Lf | Variant::BomLf => Variant::Lf,
+                Variant::Crlf | Variant::BomCrlf => Variant::Crlf,
+            };
+            assert_eq!(
+                result,
+                variant(
+                    "# notes\ninput.method\tromaji\npaging.size\t9\npaging.wrap\tfalse\n",
+                    expected_variant
+                ),
+                "{v:?}"
+            );
+        }
+        assert_eq!(update("", &[("paging.size", "9")], &[]), "paging.size\t9\n");
+    }
+
+    #[test]
+    fn rewriting_a_crlf_file_with_reset_keeps_crlf() {
+        assert_eq!(
+            update("a\tb\r\npaging.size\t3\r\n", &[], &["paging.size"]),
+            "a\tb\r\n"
         );
     }
 

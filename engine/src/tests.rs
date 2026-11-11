@@ -330,6 +330,19 @@ fn hello_reports_version_label_and_lm_state() {
 const DICT_DIR_ENV: &str = "IKARI_DICT_DIR";
 const MODEL_ENV: &str = "IKARI_ZENZ_MODEL";
 
+/// `src` を指す symlink を `dst` に作る（#[ignore] の実データのテスト用。Windows ではフォルダと
+/// ファイルで作り分ける。作るには特権か開発者モードが要る）。
+fn symlink_path(src: &Path, dst: &Path) {
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(src, dst).unwrap();
+    #[cfg(windows)]
+    if src.is_dir() {
+        std::os::windows::fs::symlink_dir(src, dst).unwrap();
+    } else {
+        std::os::windows::fs::symlink_file(src, dst).unwrap();
+    }
+}
+
 /// `IKARI_DICT_DIR` の辞書を `dict/` に見せるデータのディレクトリを作る。
 fn real_data_dir(tag: &str) -> PathBuf {
     let dict = std::env::var_os(DICT_DIR_ENV)
@@ -337,7 +350,7 @@ fn real_data_dir(tag: &str) -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| panic!("{DICT_DIR_ENV} is not set (required by #[ignore] tests)"));
     let dir = temp_dir(tag);
-    std::os::unix::fs::symlink(dict, UserDir::new(&dir).dict_dir()).unwrap();
+    symlink_path(&dict, &UserDir::new(&dir).dict_dir());
     dir
 }
 
@@ -382,7 +395,10 @@ fn open_real(tag: &str) -> (Engine, PathBuf, bool) {
     let use_lm = cfg!(feature = "lm") && model.is_some();
     if let Some(model) = model.filter(|_| use_lm) {
         std::fs::create_dir_all(dir.join(MODELS_DIR_NAME)).unwrap();
-        std::os::unix::fs::symlink(model, dir.join(MODELS_DIR_NAME).join(MODEL_FILE_NAME)).unwrap();
+        symlink_path(
+            Path::new(&model),
+            &dir.join(MODELS_DIR_NAME).join(MODEL_FILE_NAME),
+        );
     }
     let e = Engine::open(&EngineConfig {
         data_dir: dir.to_string_lossy().into_owned(),

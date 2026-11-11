@@ -130,9 +130,9 @@ pub fn tighten_files(dir: &Path) {
     }
 }
 
-/// ファイルを読む。なければ None。
+/// ファイルを読む（先頭の BOM は外す。ADR 0040 §2.9）。なければ None。
 pub fn read_optional(path: &Path) -> Result<Option<String>, UserDataError> {
-    match fs::read_to_string(path) {
+    match ikari_textfile::read_to_string(path) {
         Ok(s) => Ok(Some(s)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e.into()),
