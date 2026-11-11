@@ -92,10 +92,10 @@
   - [ ] Code scanning（CodeQL。`.github/workflows/codeql.yml` が main への push と PR、週 1 回で動く）の最初の結果を確かめる
 - [ ] **ブランチ保護**（Settings → Rules → Rulesets、または Branches）。今は、main への直接のコミットと push を、手元の `.githooks/`（`git config core.hooksPath .githooks` で有効）と、Claude Code のフックで止めている。これらは手元でしか効かないので、GitHub の設定でも止める。
   - [ ] main への直接の push を禁止する（PR を必須にする）。
-  - [ ] 必要なチェックに、CodeQL を入れる。`scripts/check.sh`（fmt、clippy、テスト）は、手元で流す検査で、GitHub では動かない。必要なチェックには入れられないので、作者が PR ごとに `CHECK_EXIT=0` を確かめる（今の運用。2026-11-10 作者決定：公開時はこのまま。CI で流す案は、公開後に #290 で扱う。公開後は macOS ランナーが無料になる）。
+  - [x] 必要なチェックに `check`（`.github/workflows/ci.yml`。macOS ランナーで `scripts/check.sh` 全体を流す）を入れた（2026-11-11 作者決定。#290）。最新の main を取り込んだものだけ通す（strict）。Ruleset「protect main」に例外（バイパス）は置かない（作者も、`check` が通っていないものはマージできない）。手元の `CHECK_EXIT=0` の確認は、引き続き行う。
   - [ ] マージの方法は squash だけにする（Settings → General → Pull Requests）。マージ後にブランチを自動で消す。
   - [ ] force push と、main の削除を禁止する。
-- [ ] **CI を足す**（#290）。ブランチ保護と上の設定が済んだら、macOS ランナーで `scripts/check.sh` 全体を流す workflow を試す。通ったものを、main の必要なチェックに入れる。
+- [x] **CI を足した**（#290、PR #292）。macOS ランナーで `scripts/check.sh` 全体が通る。テストの時間は `IKARI_TEST_TIME_SCALE=5`（CONTRIBUTING.md）。
 - [ ] リポジトリの説明（About）とトピックを設定する。例: 説明は「文脈を使って同音異義語を選び分ける日本語入力メソッド（macOS）」、トピックは `ime`、`japanese`、`macos`、`input-method`、`rust`、`swift`。
 - [ ] Issue テンプレート（`.github/ISSUE_TEMPLATE/`。不具合の報告、作業の項目）が、ログインしていない人にも見える形で出ること。`blank_issues_enabled` は今 `true`（テンプレートなしの Issue も可）。このままにする（2026-11-10 作者決定）。
 - [ ] **Discussions は使わない**（Settings → General → Features で Discussions がオフのまま）。質問と提案は Issue で受ける。
