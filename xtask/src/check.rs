@@ -43,6 +43,12 @@ pub struct Args {
     /// swift test を飛ばす（macOS 以外では常に飛ばす）
     #[arg(long)]
     no_swift: bool,
+    /// Rust 側（文書の検査、ライセンス、fmt、clippy、cargo test）だけ流す。CI の ubuntu の job 用（記録しない）
+    #[arg(long, conflicts_with_all = ["swift_only", "docs_only"])]
+    rust_only: bool,
+    /// XCFramework の鮮度の検査と swift test だけ流す。CI の macOS の job 用（macOS のみ。記録しない）
+    #[arg(long, conflicts_with_all = ["rust_only", "docs_only", "no_swift"])]
+    swift_only: bool,
 }
 
 struct Plan {
@@ -52,6 +58,8 @@ struct Plan {
     eval: Option<PathBuf>,
     docs_only: bool,
     swift: bool,
+    rust_only: bool,
+    swift_only: bool,
 }
 
 pub fn run(args: Args) -> Result<(), XtaskError> {
@@ -60,13 +68,19 @@ pub fn run(args: Args) -> Result<(), XtaskError> {
     if !args.no_swift && !swift {
         warn("macOS ではないので swift test を飛ばします（SCOPE=no-swift）");
     }
+    if args.swift_only && !swift {
+        eprintln!("error: --swift-only は macOS でだけ使えます");
+        std::process::exit(2);
+    }
     let plan = Plan {
         lm: args.lm || args.real,
         real: args.real,
         perf: args.perf,
         eval: args.eval,
         docs_only: args.docs_only,
-        swift,
+        swift: swift && !args.rust_only,
+        rust_only: args.rust_only,
+        swift_only: args.swift_only,
     };
     let result = steps(&root, &plan);
     let code = match &result {
@@ -76,8 +90,8 @@ pub fn run(args: Args) -> Result<(), XtaskError> {
             failure.code
         }
     };
-    // --docs-only は一部の検査しか流さないので記録しない
-    if !plan.docs_only {
+    // --docs-only、--rust-only、--swift-only は一部の検査しか流さないので記録しない（フルの記録と取り違えさせない）
+    if !plan.docs_only && !plan.rust_only && !plan.swift_only {
         let scope = if plan.swift { "full" } else { "no-swift" };
         record::write(&root, code, scope);
     }
@@ -90,6 +104,13 @@ pub fn run(args: Args) -> Result<(), XtaskError> {
 }
 
 fn steps(root: &Path, plan: &Plan) -> Result<(), Failure> {
+    if plan.swift_only {
+        // 古い XCFramework のまま swift test が通ったり落ちたりしないよう、先に鮮度を確かめる（#148）
+        frameworks::verify(root)?;
+        swift_test(root)?;
+        log("完了（--swift-only）");
+        return Ok(());
+    }
     let consts = LibConsts::load(root).map_err(|e| Failure::new(e.to_string()))?;
     docs::links(root)?;
     docs::model_name(root, &consts)?;
