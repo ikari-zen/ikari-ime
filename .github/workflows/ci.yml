@@ -1,5 +1,6 @@
 # PR と main への push ごとに scripts/check.sh を 2 つの job に分けて流す（#290、#295）。
 #   rust  ubuntu。文書の検査、ライセンス、fmt、clippy、cargo test（--rust-only）
+#   windows windows-latest。cargo test --workspace（LM なし。必須ではない。#316）
 #   check macOS。XCFramework のビルドと swift test（--swift-only）。Swift は Linux では作れない
 # ブランチ保護の「必要なチェック」に check を入れてある（job の名前を変えない）。rust は必須ではないが、check と同じく通らないものはマージしない。
 # 公開リポジトリでは GitHub ホストのランナーが無料。macOS は混むので、macOS で流すものを Swift だけに絞る。
@@ -26,6 +27,9 @@ jobs:
         run: |
           rustc --version
           cargo --version
+      # check.sh が Windows 向けの cargo check（型と借用の検査。ADR 0040 §2.6）を流すので、ターゲットを足す
+      - name: Windows のターゲットを足す
+        run: rustup target add x86_64-pc-windows-msvc
       # Swatinem/rust-cache v2.9.3（コミットの SHA で固定）。~/.cargo のレジストリと target を覚える
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
       # actions/cache v6.1.0（コミットの SHA で固定）。cargo-about のコンパイル（約 65 秒）を省く
@@ -60,6 +64,26 @@ jobs:
         env:
           IKARI_TEST_TIME_SCALE: "5"
         run: scripts/check.sh --rust-only
+
+  # Windows（x86_64-pc-windows-msvc）で cargo test --workspace（LM なし）を流す（ADR 0040 W1-d、#316）。
+  # 必須のチェックではない（ルールセットに入れない。動きが安定してから、必須にするかをユーザーに聞く）。
+  # LM（llama-cpp-2）は feature を付けないのでビルドしない。fmt と clippy は rust（ubuntu）が見る。
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: ツールの版を表示する
+        run: |
+          rustc --version
+          cargo --version
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+      # rust と同じ理由で時間を 5 倍にする（CONTRIBUTING.md）
+      - name: cargo test --workspace
+        env:
+          IKARI_TEST_TIME_SCALE: "5"
+        # 1 つ落ちても、ほかの crate の結果を見られるようにする
+        run: cargo test --workspace --no-fail-fast
 
   check:
     runs-on: macos-latest

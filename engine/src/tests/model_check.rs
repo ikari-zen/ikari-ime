@@ -98,6 +98,8 @@ fn rejection_is_logged_with_the_file_name_and_a_reason_only() {
 
 // ---- 普通のファイルでないもの、シンボリックリンク ----
 
+// Windows では symlink の作成に特権（開発者モード）が要るので、Unix だけで確かめる
+#[cfg(unix)]
 #[test]
 fn symlink_to_correct_model_passes_and_to_broken_model_is_rejected() {
     let (dir, good) = model_at("model-link", GOOD);
@@ -125,17 +127,21 @@ fn directory_and_fifo_are_rejected_without_blocking() {
         select_lm_model(true, &sub, NAME, &known()),
         (None, Some(ModelReject::Unreadable))
     );
-    let fifo = dir.join("fifo.gguf");
-    let status = std::process::Command::new("mkfifo")
-        .arg(&fifo)
-        .status()
-        .expect("run mkfifo");
-    assert!(status.success());
-    // open すると書き手が来るまで止まる。止まらずに返ること（種類を先に見る）
-    assert_eq!(
-        select_lm_model(true, &fifo, NAME, &known()),
-        (None, Some(ModelReject::Unreadable))
-    );
+    // FIFO は Unix にしかない（Windows の CI の Git の mkfifo は普通のファイルを作ってしまう）
+    #[cfg(unix)]
+    {
+        let fifo = dir.join("fifo.gguf");
+        let status = std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .expect("run mkfifo");
+        assert!(status.success());
+        // open すると書き手が来るまで止まる。止まらずに返ること（種類を先に見る）
+        assert_eq!(
+            select_lm_model(true, &fifo, NAME, &known()),
+            (None, Some(ModelReject::Unreadable))
+        );
+    }
     let _ = std::fs::remove_dir_all(dir);
 }
 

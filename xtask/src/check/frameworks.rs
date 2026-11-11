@@ -373,7 +373,8 @@ mod tests {
                 p.strip_prefix(dir.path())
                     .unwrap()
                     .to_string_lossy()
-                    .into_owned()
+                    // 区切りは OS による（Windows は \）
+                    .replace('\\', "/")
             })
             .collect();
         assert_eq!(names, ["Cargo.toml", "src/lib.rs"]);
