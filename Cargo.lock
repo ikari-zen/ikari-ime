@@ -575,6 +575,7 @@ dependencies = [
  "ikari-testtime",
  "prost",
  "tempfile",
+ "windows-sys",
 ]
 
 [[package]]
