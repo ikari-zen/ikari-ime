@@ -3,10 +3,41 @@ name = "ikari-tip"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Windows の TIP（各アプリに入る DLL）。OS に依存しない純粋な部分（keys、ops）は Mac でテストする（ADR 0040 §2.2）。COM の層は W2-b"
+description = "Windows の TIP（各アプリに入る DLL）。OS に依存しない純粋な部分（keys、ops、transport）は Mac でテストする（ADR 0040 §2.2）。COM の層は src/com（cfg(windows)）"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 ikari-shell-core.workspace = true
+ikari-pipe.workspace = true
+
+# TSF の COM の層（src/com。ADR 0040 §2.2、§3.1）。Windows のビルドにだけ入る（Mac の成果物とライセンスの一覧には入らない）。
+# `#[implement]`（`windows-core`）は COM のオブジェクトを Rust の型で作る（参照カウントと QueryInterface を crate が持つ）。
+# 0.62 では `windows` の feature ではなく `windows-core` に常にあるので、同じ版で並べる。
+# features は使う API の名前空間だけ（全アプリのプロセスに入る DLL なので、増やすときは理由を書く）。
+[target.'cfg(windows)'.dependencies]
+windows-core = "0.62.2"
+windows = { version = "0.62.2", features = [
+    # BOOL、HRESULT、HMODULE、RECT など
+    "Win32_Foundation",
+    # IClassFactory
+    "Win32_System_Com",
+    # OutputDebugStringW
+    "Win32_System_Diagnostics_Debug",
+    # GetModuleFileNameW、DisableThreadLibraryCalls
+    "Win32_System_LibraryLoader",
+    # CLSID の InprocServer32 の登録
+    "Win32_System_Registry",
+    # DLL_PROCESS_ATTACH
+    "Win32_System_SystemServices",
+    # ToUnicodeEx、GetKeyboardState、GetKeyboardLayout
+    "Win32_UI_Input_KeyboardAndMouse",
+    # ITf*（TSF）
+    "Win32_UI_TextServices",
+    # SetTimer、KillTimer
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[dev-dependencies]
+ikari-testtime.workspace = true
