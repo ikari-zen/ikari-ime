@@ -57,7 +57,6 @@ const H_MACHIAZA_ID: &str = "machiaza_id";
 // 郵便番号の変換表（ABR「町字・郵便番号変換表」）の列
 const H_POST_CODE: &str = "post_code";
 const H_DELETE_DATE: &str = "dlt_date";
-const BOM: char = '\u{feff}';
 const CSV_SEPARATOR: char = ',';
 const CSV_QUOTE: char = '"';
 
@@ -637,7 +636,7 @@ fn collect_pairs(path: &Path, want_ids: bool) -> Result<Collected, BuildError> {
     if read_line_at(&mut reader, &mut line, path, lineno)? == 0 {
         return Err(input_error(path, 1, "empty file"));
     }
-    let header_text = line.strip_prefix(BOM).unwrap_or(&line).to_string();
+    let header_text = ikari_textfile::strip_bom(&line).to_string();
     let header: Vec<&str> = header_text.split(CSV_SEPARATOR).collect();
     let i_type = column_index(&header, H_TYPE, path)?;
     let i_status = column_index(&header, H_STATUS, path)?;
@@ -961,7 +960,7 @@ fn build_postal_table(
     if read_line_at(&mut reader, &mut line, path, lineno)? == 0 {
         return Err(input_error(path, 1, "empty file"));
     }
-    let header_text = line.strip_prefix(BOM).unwrap_or(&line).to_string();
+    let header_text = ikari_textfile::strip_bom(&line).to_string();
     let header: Vec<&str> = header_text.split(CSV_SEPARATOR).collect();
     let i_lg = column_index(&header, H_LG_CODE, path)?;
     let i_id = column_index(&header, H_MACHIAZA_ID, path)?;

@@ -12,6 +12,7 @@ lm-metal = ["lm", "ikari-stack/lm-metal"]
 
 [dependencies]
 ikari-core.workspace = true
+ikari-textfile.workspace = true
 ikari-stack.workspace = true
 ikari-proto.workspace = true
 ikari-runmark.workspace = true

@@ -155,7 +155,7 @@ pub fn parse(text: &str) -> Settings {
 
 /// 読めなければ既定値。
 pub fn load(data_dir: &Path) -> Settings {
-    std::fs::read_to_string(data_dir.join(SETTINGS_FILE_NAME))
+    ikari_textfile::read_to_string(data_dir.join(SETTINGS_FILE_NAME))
         .map(|text| parse(&text))
         .unwrap_or_default()
 }
@@ -176,6 +176,22 @@ mod tests {
                 ..Settings::default()
             }
         );
+    }
+
+    #[test]
+    fn load_reads_lf_crlf_and_bom_files() {
+        let dir =
+            std::env::temp_dir().join(format!("ikari-engine-settings-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for (v, text) in
+            ikari_textfile::testing::read_variants("engine.lm\toff\nengine.idle_unload_secs\t60\n")
+        {
+            std::fs::write(dir.join(SETTINGS_FILE_NAME), text).unwrap();
+            let s = load(&dir);
+            assert_eq!(s.lm, Some(false), "{v:?}");
+            assert_eq!(s.idle_unload_secs, Some(60), "{v:?}");
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
