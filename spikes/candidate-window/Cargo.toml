@@ -1,0 +1,30 @@
+# 捨てるスパイク（ADR 0040 §2.4、issue #319）。main に入れない。ワークスペースには入れない。
+[package]
+name = "candidate-window-spike"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# 親のワークスペースに入らない独立したプロジェクトにする
+[workspace]
+
+[dependencies]
+
+[target.'cfg(windows)'.dependencies]
+wry = "0.53"
+tao = "0.34"
+windows-core = "0.61" # #[implement] マクロが要る
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Com",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Performance",
+    "Win32_System_ProcessStatus",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+    "Win32_UI_HiDpi",
+    "Win32_UI_TextServices",
+    "Win32_UI_WindowsAndMessaging",
+] }
