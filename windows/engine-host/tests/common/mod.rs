@@ -43,8 +43,8 @@ pub fn fixture_dict_dir() -> &'static Path {
     .path()
 }
 
-/// 辞書を置いたデータのディレクトリで、LM なしのエンジンを開く。
-pub fn open_engine() -> (Engine, tempfile::TempDir) {
+/// fixture の辞書を `dict/` に置いたデータのディレクトリ。
+pub fn data_dir_with_dict() -> tempfile::TempDir {
     let data = tempfile::tempdir().unwrap();
     let dict = UserDir::new(data.path()).dict_dir();
     std::fs::create_dir_all(&dict).unwrap();
@@ -52,6 +52,12 @@ pub fn open_engine() -> (Engine, tempfile::TempDir) {
         let entry = entry.unwrap();
         std::fs::copy(entry.path(), dict.join(entry.file_name())).unwrap();
     }
+    data
+}
+
+/// 辞書を置いたデータのディレクトリで、LM なしのエンジンを開く。
+pub fn open_engine() -> (Engine, tempfile::TempDir) {
+    let data = data_dir_with_dict();
     let engine = Engine::open(&EngineConfig {
         data_dir: data.path().to_string_lossy().into_owned(),
         enable_lm: false,
