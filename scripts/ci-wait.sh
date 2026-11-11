@@ -56,13 +56,15 @@ while :; do
 
   if [ -n "$rows" ] && [ "$pending" = "0" ]; then
     if [ -z "$failed" ]; then
-      # 再実行の直後は、新しい実行が登録される前の「失敗も待ちもない」を見ることがある。少し置いて、もう一度確かめる
+      # 再実行の直後は、実行中のジョブが一覧から消えていることがある。一覧ではなく、GitHub が決める
+      # マージの状態（必須のチェックが全部通ると CLEAN。必須でない失敗だけなら UNSTABLE）で確かめる
       sleep 20
-      rows2=$(gh pr checks "$pr" --json name,bucket --jq '.[] | [.name, .bucket] | @tsv' 2>/dev/null || true)
-      if [ -n "$rows2" ] && ! printf '%s\n' "$rows2" | awk -F'\t' '$2!="pass" && $2!="skipping"' | grep -q .; then
-        echo "全部通った（#$pr head=${head}）"
-        exit 0
-      fi
+      state=$(gh pr view "$pr" --json mergeStateStatus --jq .mergeStateStatus 2>/dev/null || true)
+      case "$state" in
+        CLEAN|UNSTABLE|HAS_HOOKS)
+          echo "全部通った（#$pr head=${head} 状態=$state）"
+          exit 0 ;;
+      esac
       continue
     fi
     # 失敗した各ジョブの run を調べる。全部が GitHub 側の都合なら再実行する
