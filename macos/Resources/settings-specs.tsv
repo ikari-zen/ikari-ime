@@ -1,0 +1,36 @@
+input.method	enum:romaji|kana	input_method	input	romaji	immediate
+keymap.preset	enum:macos|ms-ime|atok	keymap_preset	input	macos	immediate
+keymap.convert.hiragana	key_chord	keymap_actions	input		immediate
+keymap.convert.fullwidth_katakana	key_chord	keymap_actions	input		immediate
+keymap.convert.halfwidth_katakana	key_chord	keymap_actions	input		immediate
+keymap.convert.fullwidth_alnum	key_chord	keymap_actions	input		immediate
+keymap.convert.halfwidth_alnum	key_chord	keymap_actions	input		immediate
+keymap.segment.focus_left	key_chord	keymap_actions	input		immediate
+keymap.segment.focus_right	key_chord	keymap_actions	input		immediate
+keymap.segment.shrink	key_chord	keymap_actions	input		immediate
+keymap.segment.expand	key_chord	keymap_actions	input		immediate
+keymap.candidate.next	key_chord	keymap_actions	input		immediate
+keymap.candidate.previous	key_chord	keymap_actions	input		immediate
+keymap.reconvert	key_chord	keymap_actions	input		immediate
+keymap.mode.toggle	key_chord	keymap_actions	input		immediate
+keymap.mode.english	key_chord	keymap_actions	input		immediate
+keymap.mode.japanese	key_chord	keymap_actions	input		immediate
+keymap.clause.delete	key_chord	keymap_actions	input		immediate
+keymap.clause.delete_preview	key_chord	keymap_actions	input		immediate
+keymap.clause.undo	key_chord	keymap_actions	input		immediate
+paging.wrap	bool	candidate	conversion	true	immediate
+paging.size	int:1..9	candidate	conversion	3	immediate
+candidate.hide_when_confident	bool	candidate	conversion	on	immediate
+clause.min_chars	int:1..10	clause_delete	conversion	3	immediate
+engine.lm	bool	language_model	conversion	on	engine_restart
+engine.idle_unload_secs	int:0..86400	language_model	conversion	300	engine_restart
+engine.lm_deadline_ms	int:50..2000	language_model	conversion	300	engine_restart
+engine.convert_wait_ms	int:0..200	language_model	conversion	30	engine_restart
+emoji.shortcode	bool	emoji_shortcode	conversion	off	immediate
+emoji.small_letters	bool	emoji_shortcode	conversion	off	immediate
+emoji.shortcode_exclude	bundle_id_list	emoji_shortcode	conversion	com.apple.Terminal,com.googlecode.iterm2,com.github.wez.wezterm,com.mitchellh.ghostty	immediate
+postal.japanese	bool	postal	conversion	on	engine_restart
+postal.te_prefix	bool	postal	conversion	off	engine_restart
+postal.english	bool	postal	conversion	off	immediate
+unicode.notation	bool	unicode_notation	conversion	off	engine_restart
+date.weekday_dates	bool	weekday_dates	conversion	off	engine_restart
