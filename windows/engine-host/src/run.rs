@@ -3,7 +3,7 @@
 //! macOS の `IkariEngineService`（`main.swift`）に相当する。`main` は、ここの関数を呼んで、`cfg(windows)` の
 //! 部分（パイプの受け口、Ctrl+C の受け取り）をつなぐだけ。判断の置き場所: Rust。判断は engine。ここは起動と配線だけ。
 //!
-//! - データのディレクトリ: `--data-dir`、`IKARI_USER_DIR`、`%APPDATA%\ikari-ime` の順（`UserDir::resolve_with`）。
+//! - データのディレクトリ: `--data-dir`、`IKARI_USER_DIR`、`%LOCALAPPDATA%\ikari-ime` の順（`UserDir::resolve_with`）。
 //!   辞書は `<データ>/dict/`、モデルは `<データ>/models/`、ログは `<データ>/logs/`、設定は `<データ>/settings.tsv`
 //!   （どれも `Engine::open` が決める配置。ここでは別の場所を持たない）。
 //! - 二重起動の防止: `Engine::open` が `engine.lock`（`EngineLock`）を取る。取れなければ、すでに動いているとして
@@ -94,7 +94,7 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Result<Options, Us
 /// 起動できなかった理由。
 #[derive(Debug)]
 pub enum StartError {
-    /// データのディレクトリが決まらない（`%APPDATA%` がない、など）
+    /// データのディレクトリが決まらない（`%LOCALAPPDATA%` がない、など）
     NoDataDir,
     /// 別のエンジンが `engine.lock` を持っている。失敗ではなく、静かに終わる
     AlreadyRunning,
@@ -125,7 +125,7 @@ impl fmt::Display for StartError {
     }
 }
 
-/// データのディレクトリを決める（`UserDir::resolve`。引数、`IKARI_USER_DIR`、`%APPDATA%\ikari-ime` の順）。
+/// データのディレクトリを決める（`UserDir::resolve`。引数、`IKARI_USER_DIR`、`%LOCALAPPDATA%\ikari-ime` の順）。
 /// 環境と OS を差し込む `resolve_with` は、`HostOs` が `ikari_core::user` から出ていないので使えない
 /// （各分岐は core のテストが見ている）。
 pub fn resolve_data_dir(explicit: Option<&Path>) -> Result<UserDir, StartError> {

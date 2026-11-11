@@ -88,6 +88,7 @@ ikari-engine.exe（windows/engine-host。ユーザーのセッションで常駐
 候補窓、設定画面（方式は ADR 0040 §2.4、§2.5 のスパイクで決める）
 ```
 
+- データの置き場所: `%LOCALAPPDATA%\ikari-ime`（`IKARI_USER_DIR` があればそちら。`core/src/user/dir.rs`。2026-11-12 決定）。ログ、ロック、辞書・モデル、学習、設定は同じ下に置き、同期しない。
 - 依存の向きは `windows/tip → pipe`、`windows/tip → shell-core`、`windows/engine-host → pipe`、`windows/engine-host → engine` の一方向。
 - 検証: Mac で `cargo check --workspace --tests --target x86_64-pc-windows-msvc`（`scripts/check.sh` に入っている。LM なし。外す crate は今ない）。CI の job `windows`（`windows-latest`。`cargo test --workspace`、LM なし。必須ではない）。キー入力と画面は実機（VM）。
 
