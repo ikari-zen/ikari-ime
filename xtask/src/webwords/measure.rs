@@ -486,10 +486,14 @@ mod tests {
 
     #[test]
     fn out_dir_must_not_overlap_real_data() {
-        let forbidden = vec![
-            PathBuf::from("/repo/data"),
-            PathBuf::from("/home/u/Library/Application Support/ikari-ime"),
-        ];
+        // 本番の forbidden_dirs と同じく絶対パスにする（Windows では "/repo" にドライブが付く）
+        let forbidden: Vec<PathBuf> = [
+            "/repo/data",
+            "/home/u/Library/Application Support/ikari-ime",
+        ]
+        .iter()
+        .map(|p| std::path::absolute(p).unwrap())
+        .collect();
         assert!(check_out_dir(Path::new("/repo/data/build/x"), &forbidden).is_err());
         assert!(check_out_dir(Path::new("/repo"), &forbidden).is_err());
         assert!(

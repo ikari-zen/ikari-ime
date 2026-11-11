@@ -8,6 +8,8 @@ mod ingest;
 mod learning;
 mod profile;
 mod recent;
+#[cfg(test)]
+mod text_variants_tests;
 mod transfer;
 mod util;
 

@@ -346,6 +346,8 @@ mod tests {
     use super::*;
 
     use std::path::PathBuf;
+    // 子プロセスを使うテストは Unix だけ（シグナルの処理が cfg(unix) のため）
+    #[cfg(unix)]
     use std::process::{Command, Stdio};
 
     /// 前回の印の中身（`body`）を置いて `begin` した判定
@@ -532,7 +534,12 @@ mod tests {
         println!("{READY}");
         match mode.as_str() {
             "segv" => unsafe { std::ptr::null_mut::<u8>().write_volatile(0) },
-            "abort" => std::process::abort(),
+            "abort" => {
+                // 終わりの時刻（印の更新時刻）は、Linux ではカーネルの粗い時計で付き、起動の時刻（start_ms）より
+                // 数 ms 前になることがある。すぐ落ちると up_s が None になり、テストが揺れるので、少し待つ
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                std::process::abort()
+            }
             "panic" => {
                 install_panic_hook(Box::new(|thread, loc| {
                     println!("panic thread={thread} loc={loc}");

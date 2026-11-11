@@ -10,5 +10,18 @@ publish = false
 # 名前付きパイプの OS 層（`cfg(windows)`。W1-b）以外は OS に依存しない。`shell-core` には依存しない。
 [dependencies]
 
+# 名前付きパイプの OS 層（`src/os/windows.rs`）だけが使う。Win32 の関数と型の宣言だけで、実行時の層を持たない
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_Pipes",
+    "Win32_System_RemoteDesktop",
+    "Win32_System_Threading",
+] }
+
 [dev-dependencies]
 ikari-testtime.workspace = true
