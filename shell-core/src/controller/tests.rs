@@ -43,7 +43,7 @@ impl TextAccess for NoText {
 }
 
 fn resources() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../macos/Resources")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources")
 }
 
 fn shell(settings: SettingsSource, resources_dir: PathBuf) -> Shell {

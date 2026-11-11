@@ -1,6 +1,6 @@
 //! キー割り当て（今の `Keymap.swift`。macOS の keyCode の表 `KeyCodes.swift` は OS 側に残す。レーン L-A1）。
 //!
-//! 修飾キーは契約の `Modifiers` を使う。プリセットの TSV（`macos/Resources/keymap/*.tsv`）は呼び出し側が読んで渡す。
+//! 修飾キーは契約の `Modifiers` を使う。プリセットの TSV（`shell-core/resources/keymap/*.tsv`）は呼び出し側が読んで渡す。
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -477,9 +477,9 @@ fn remove_bindings(
 mod tests {
     use super::*;
 
-    const MACOS: &str = include_str!("../../macos/Resources/keymap/macos.tsv");
-    const MS_IME: &str = include_str!("../../macos/Resources/keymap/ms-ime.tsv");
-    const ATOK: &str = include_str!("../../macos/Resources/keymap/atok.tsv");
+    const MACOS: &str = include_str!("../resources/keymap/macos.tsv");
+    const MS_IME: &str = include_str!("../resources/keymap/ms-ime.tsv");
+    const ATOK: &str = include_str!("../resources/keymap/atok.tsv");
 
     fn chord(text: &str) -> KeyChord {
         KeyChord::parse(text).unwrap()

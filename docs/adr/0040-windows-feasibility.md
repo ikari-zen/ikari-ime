@@ -22,7 +22,7 @@
   - テストの `std::os::unix::fs::symlink`: `engine/src/tests.rs`、`engine/src/tests/model_check.rs`、`engine-ffi/src/lib.rs`、`import/src/io.rs`
   - `shell-core/src/settings/store.rs` と `eval/src/rss.rs` は `cfg(unix)` で分けてある
 - ファイルの改行と BOM: BOM を外しているのは `dict-builder/src/town.rs` だけ。`split('\n')` で行に分ける箇所があり、CRLF だと行末に CR が残る（`xtask/src/eval/snapshot.rs:613`、`shell-core/src/settings/file.rs:19`。後者は行末の CR を保って書き戻す）。`.lines()` は CRLF を扱える。
-- キー割り当てのプリセットの TSV は `macos/Resources/keymap/` にある（`shell-core/src/keymap.rs` がテストで読む）。
+- キー割り当てのプリセットの TSV は `shell-core/resources/keymap/` にある（W2 で `macos/Resources/keymap/` から移した）（`shell-core/src/keymap.rs` がテストで読む）。
 - `lm` は `llama-cpp-2` の CPU 版で、ビルドに cmake が要る（feature なしならビルドしない）。
 - CI（`.github/workflows/ci.yml`）は `macos-latest` だけ。`scripts/check.sh` は `cargo xtask check` の包み（ADR 0043）。
 - spec の「リポジトリ構成」は「`windows/`（TSFの殻、C++）」のまま（§4 で直す）。
@@ -127,7 +127,7 @@ ikari-engine.exe（windows/engine-host。Rust、ユーザーのセッション�
 すべて Rust（`shell-core`、`pipe`、`windows/engine-host`、`windows/tip` の `keys`・`ops`、`textfile`）。TIP の `com/` は TSF の呼び出しと `TsfOp` の実行だけ、候補窓と設定画面は描くだけで、どれも判断を持たない。
 
 ### 2.9 ファイルの形式を共通にする（W0-d）
-- **書くときは UTF-8、改行は LF**（BOM を付けない）。**例外: すでに CRLF のファイルを書き換えるときは、CRLF のまま書く**（2026-11-11 ユーザー決定。利用者が手で CRLF にしたものを勝手に変えない）。新しく作るファイルは常に LF。判定は、書き換え前のファイルに `\r\n` があるかどうか（なければ LF）。**読むときは LF でも CRLF でも、BOM つきでも読める**ようにする。Windows のメモ帳などで編集されたファイルを、そのまま読めるようにするため。
+- **書くときは UTF-8、改行は LF**（BOM を付けない）。**例外: すでに CRLF のファイルを書き換えるときは、CRLF のまま書く**（2026-11-11 ユーザー決定。利用者が手で CRLF にしたものを勝手に変えない）。新しく作るファイルは常に LF。判定は、書き換え前のファイルに `\r\n` があるかどうか（なければ LF）。**この例外の適用は設定（`settings.tsv`）だけ**（2026-11-12 ユーザー決定。W0-d #303）。学習、プロファイル、ユーザー辞書、取り込みは、ikari が毎回全体を作り直して書くので、常に LF で書く（手で CRLF にしたものも、書き換えで LF になる。許容する）。**読むときは LF でも CRLF でも、BOM つきでも読める**ようにする。Windows のメモ帳などで編集されたファイルを、そのまま読めるようにするため。
 - BOM を外す共通の関数を 1 つ置く。置き場所は新しい小さな crate `textfile`（`strip_bom` と、BOM を外して読む関数）。`core`、`shell-core`、`dict-builder`、`xtask` のどれからも使えて、依存の向きを増やさないため。`dict-builder/src/town.rs` の BOM の処理もこれに替える。
 - 行に分けるのは `.lines()`（CRLF を扱える）にする。直す点: `xtask/src/eval/snapshot.rs:613` の `split('\n')`、`shell-core/src/settings/file.rs:19` の `split('\n')`。後者は行末の CR を保って書き戻しているので、今の挙動（BOM つきのとき最初のキーが読めるか、CRLF の行の値に CR が残らないか、足した行の改行）を先にテストで固め、書き戻しは今の挙動（CRLF を保つ）を、上の例外の規則として残し、新しく作るときは LF にする。
 - **読むファイルごとに「LF」「CRLF」「BOM つき」の 3 通りの共通テスト**を足す。対象: 設定（`settings.tsv`）、学習、プロファイル、ユーザー辞書、取り込み（`ingest_*.tsv`、取り込みの JSONL）、キー割り当てのプリセット、ほかにユーザーが手で編集しうるもの（W0-d の最初に一覧を作る）。3 通りを作る補助はテスト用に `textfile` に置く。
@@ -203,7 +203,7 @@ ikari-engine.exe（windows/engine-host。Rust、ユーザーのセッション�
 | | W1-c 常駐のエンジン（並行） | `windows/engine-host/` | Mac: 受け付けの繰り返しと `Engine::handle` の結合（テスト用の辞書） | なし |
 | | W1-d Windows の CI のジョブ（W1-a〜c の後） | `.github/workflows/ci.yml` | `windows-latest` で `cargo test --workspace`（LM なし）と W1-b のテスト、パイプの上で `Convert` が 1 往復。必須にはしない | S1 の概算 |
 | **W2 TIP の最小** | W2-0 契約コミット | `windows/tip/` の骨組み、`TsfOp` | ビルド | — |
-| | W2-a キーと動作の変換（並行。W1 を待たない） | `windows/tip/src/{keys,ops}.rs`、キー割り当てのプリセットを OS 共通の場所へ（今は `macos/Resources/keymap/`） | Mac: VK と修飾、配列によらない文字（どの配列でも動く）、`ShellAction` → `TsfOp` の表のテスト | なし |
+| | W2-a キーと動作の変換（並行。W1 を待たない） | `windows/tip/src/{keys,ops}.rs`、キー割り当てのプリセットを OS 共通の場所へ（`macos/Resources/keymap/` から `shell-core/resources/keymap/` へ移した） | Mac: VK と修飾、配列によらない文字（どの配列でも動く）、`ShellAction` → `TsfOp` の表のテスト | なし |
 | | W2-b COM の層（並行。Opus） | `windows/tip/src/com/`、`EngineTransport` と `TextAccess` の適合 | `cargo check --target`。CI: `DllRegisterServer` と解除 | 登録、Notepad で読み → Space → 1 位の確定、S1 の本測定、S2、S3（起動）、落ちたときに固まらないか |
 | **W3 候補窓** | W3-0 スパイク（main に入れない） | 捨てるブランチと手順書 | ビルド | S10（§2.4）。結果を本 ADR に追記し、ユーザーが方式を決める |
 | | W3-a 本実装 | 決めた方式の crate（`windows/candidate/` など） | 内容と配置は `shell-core` の既存のテスト | 表示、選択、ページ、高 DPI、2 枚のモニタ |

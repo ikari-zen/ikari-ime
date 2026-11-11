@@ -191,8 +191,19 @@ fn meta_value(meta: &str, name: &str) -> String {
         .to_owned()
 }
 
+/// golden の TSV から (context, reading) を取り出す。コメント、タブのない行、読みが空の行は飛ばす。
+/// context が空の行がある（タブで分ける）。
+fn golden_cases(text: &str) -> Vec<(&str, &str)> {
+    text.lines()
+        .filter(|line| !line.starts_with('#'))
+        .filter_map(|line| line.split_once('\t'))
+        .filter(|(_, reading)| !reading.is_empty())
+        .collect()
+}
+
 fn read_text(path: &Path) -> String {
-    std::fs::read_to_string(path).unwrap_or_default()
+    // BOM つきでも読む（ADR 0040 §2.9）
+    ikari_textfile::read_to_string(path).unwrap_or_default()
 }
 
 fn head_commit(root: &Path) -> Result<String, Failure> {
@@ -610,17 +621,7 @@ impl Snapshot {
         let golden_out = self.out.join("cli").join("golden.txt");
         write(&golden_out, "")?;
         let user_dir = tmp.join("user");
-        for line in text.split('\n') {
-            // タブで分ける（context が空の行がある）。コメントとタブのない行は飛ばす
-            if line.starts_with('#') {
-                continue;
-            }
-            let Some((context, reading)) = line.split_once('\t') else {
-                continue;
-            };
-            if reading.is_empty() {
-                continue;
-            }
+        for (context, reading) in golden_cases(&text) {
             let _ = std::fs::remove_dir_all(&user_dir);
             std::fs::create_dir_all(&user_dir)
                 .map_err(|e| die(format!("{} を作れません: {e}", user_dir.display())))?;
@@ -1269,6 +1270,34 @@ mod tests {
     use super::*;
 
     const REPORT: &str = "| 区分 | 件数 | 1位 | 3位以内 | 平均 | x |\n|---|---|---|---|---|---|\n| 全体 | 120 | 100 | 0.90 | 0.5 | 0.8 |\n| warm | 1 | 2 | 0.123 |\n- LM: 呼び出し 12 / 時間切れ 3 (budget)\n";
+
+    #[test]
+    fn golden_cases_skip_comments_and_blank_readings() {
+        let text = "# c\n前\tよみ\n\tだけ\ntab なし\n前\t\n";
+        assert_eq!(golden_cases(text), vec![("前", "よみ"), ("", "だけ")]);
+    }
+
+    #[test]
+    fn golden_cases_read_lf_crlf_and_bom_files() {
+        // 直す前は CRLF のファイルだと読みの末尾に CR が残っていた
+        for (v, text) in ikari_textfile::testing::read_variants("# c\n前\tよみ\n\tだけ\n") {
+            // BOM は read_text が外す。ここでは本文だけを渡す
+            let body = ikari_textfile::strip_bom(&text);
+            assert_eq!(
+                golden_cases(body),
+                vec![("前", "よみ"), ("", "だけ")],
+                "{v:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn read_text_strips_the_bom() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("golden.tsv");
+        std::fs::write(&path, "\u{feff}前\tよみ\r\n").unwrap();
+        assert_eq!(golden_cases(&read_text(&path)), vec![("前", "よみ")]);
+    }
 
     #[test]
     fn reads_report_fields_like_awk() {

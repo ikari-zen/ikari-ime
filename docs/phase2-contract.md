@@ -75,7 +75,7 @@ Swift の定数は `macos/Sources/IkariXPC/Identifiers.swift`（`IkariIdentifier
 `修飾キー+キー`。修飾キーは `ctrl`、`shift`、`option`、`command`。キーは小文字で、1文字のキー（`j`、`;`）、`space`、`enter`、`escape`、`backspace`、`left`、`right`、`up`、`down`、`f1`〜`f20`。例: `ctrl+j`、`f6`、`shift+space`、`shift+left`、`ctrl+shift+r`。
 `left` / `right` は ←/→（kVK_LeftArrow 123、kVK_RightArrow 124）。↑↓ は kVK_DownArrow 125、kVK_UpArrow 126（ADR 0014 が ADR 0006 §16-11 の「割り当てない」を置き換えた）。`left` / `right` は文節の軸、`up` / `down` は候補の軸。
 
-### 4.2 プリセット（`macos/Resources/keymap/{macos,ms-ime,atok}.tsv`）
+### 4.2 プリセット（`shell-core/resources/keymap/{macos,ms-ime,atok}.tsv`）
 形式は `キー<TAB>操作`。F6〜F10 はどのプリセットにも入れる（spec の字種変換）。
 
 | 操作 | F キー | macos（既定） | ms-ime | atok |

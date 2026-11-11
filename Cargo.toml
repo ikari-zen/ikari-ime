@@ -2,8 +2,8 @@
 resolver = "2"
 members = [
     "core", "cli", "dict-builder", "dict-format", "resource", "eval", "import", "lm",
-    "input", "stack", "runmark", "testtime", "proto", "engine", "engine-ffi", "shell-ffi", "shell-core", "xtask",
-    "pipe", "windows/engine-host",
+    "input", "textfile", "stack", "runmark", "testtime", "proto", "engine", "engine-ffi", "shell-ffi", "shell-core", "xtask",
+    "pipe", "windows/engine-host", "windows/tip",
 ]
 # default-members は置かない（refactor-plan-2026-10 §9 P4）。lm と engine-ffi も feature を付けなければ
 # llama.cpp をビルドしないので、`cargo test` が両 crate の単体テストを飛ばさない。
@@ -38,6 +38,7 @@ ikari-dict-builder = { path = "dict-builder" }
 ikari-import = { path = "import" }
 ikari-lm = { path = "lm" }
 ikari-input = { path = "input" }
+ikari-textfile = { path = "textfile" }
 ikari-stack = { path = "stack" }
 ikari-runmark = { path = "runmark" }
 ikari-testtime = { path = "testtime" }
