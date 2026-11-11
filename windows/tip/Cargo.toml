@@ -31,6 +31,9 @@ windows = { version = "0.62.2", features = [
     "Win32_System_Registry",
     # DLL_PROCESS_ATTACH
     "Win32_System_SystemServices",
+    # VARIANT（入力モードの compartment の値。W4。`Win32_System_Com` と `Win32_System_Ole` も要る）
+    "Win32_System_Ole",
+    "Win32_System_Variant",
     # ToUnicodeEx、GetKeyboardState、GetKeyboardLayout
     "Win32_UI_Input_KeyboardAndMouse",
     # ITf*（TSF）

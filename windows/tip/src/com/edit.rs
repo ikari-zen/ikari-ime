@@ -9,6 +9,7 @@
 use std::cell::RefCell;
 use std::mem::ManuallyDrop;
 
+use ikari_shell_core::english::InputMode;
 use ikari_shell_core::{SelectedText, SurroundingText, TextAccess, TimerId, Utf16Len, Utf16Range};
 use windows::Win32::Foundation::{E_UNEXPECTED, RECT};
 use windows::Win32::UI::TextServices::{
@@ -274,6 +275,11 @@ pub trait Timers {
     fn cancel(&self, id: TimerId);
 }
 
+/// 入力モードの表示（`TsfOp::ShowInputMode`。`indicator` に渡す。テキストサービスが実装する）。
+pub trait ModeSink {
+    fn show(&self, mode: InputMode);
+}
+
 /// 文書に触れる口（編集セッションの中だけ）。
 pub struct Doc<'a> {
     pub ec: u32,
@@ -288,6 +294,7 @@ pub struct Exec<'a> {
     /// この TIP の合成（なければ `None`）。実行に合わせて更新する
     pub composition: &'a mut Option<ITfComposition>,
     pub timers: &'a dyn Timers,
+    pub modes: &'a dyn ModeSink,
 }
 
 impl Exec<'_> {
@@ -342,8 +349,9 @@ impl Exec<'_> {
             TsfOp::RestoreText { text, replacing } => self.restore(text, *replacing),
             TsfOp::ScheduleTimer { id, after_ms } => self.timers.schedule(*id, *after_ms),
             TsfOp::CancelTimer { id } => self.timers.cancel(*id),
-            // TODO(W4): 入力モードの compartment（GUID_COMPARTMENT_KEYBOARD_INPUTMODE_CONVERSION など）
-            TsfOp::SelectMode { .. } => log::event("select mode (not yet)"),
+            TsfOp::ShowInputMode { mode } => self.modes.show(*mode),
+            // `shell-core` は `SelectMode` を出さない（頼みは `Shell::take_mode_request`。`mode::settle` が通知に返す）
+            TsfOp::SelectMode { .. } => log::event("select mode ignored"),
             // TODO(W4-s): 設定画面
             TsfOp::OpenSettings { .. } => log::event("open settings (not yet)"),
             // Windows の設定画面は engine-host とつなぐ（ADR 0040 §2.5）。TIP には中継の口がない
