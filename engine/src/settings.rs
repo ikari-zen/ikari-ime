@@ -155,7 +155,7 @@ pub fn parse(text: &str) -> Settings {
 
 /// 読めなければ既定値。
 pub fn load(data_dir: &Path) -> Settings {
-    std::fs::read_to_string(data_dir.join(SETTINGS_FILE_NAME))
+    ikari_textfile::read_to_string(data_dir.join(SETTINGS_FILE_NAME))
         .map(|text| parse(&text))
         .unwrap_or_default()
 }

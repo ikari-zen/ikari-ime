@@ -128,7 +128,7 @@ impl SettingsBackend {
                 .path()
                 .parent()
                 .map(|dir| dir.join(ROMAJI_FILE_NAME))
-                .and_then(|path| std::fs::read_to_string(path).ok())
+                .and_then(|path| ikari_textfile::read_to_string(path).ok())
                 .map_or_else(RomajiSource::builtin, |text| RomajiSource::custom(&text)),
             Self::Inline { .. } => RomajiSource::builtin(),
         }
@@ -141,7 +141,8 @@ pub(crate) fn load_keymap(resources_dir: &Path, settings: &SettingsSnapshot) -> 
         "{}.{KEYMAP_EXTENSION}",
         preset_name(settings.keymap_preset)
     ));
-    let preset = std::fs::read_to_string(path).unwrap_or_else(|_| FUNCTION_KEYS_ONLY_PRESET.into());
+    let preset =
+        ikari_textfile::read_to_string(path).unwrap_or_else(|_| FUNCTION_KEYS_ONLY_PRESET.into());
     let keymap = Keymap::from_settings(&preset, &settings.keymap_overrides)
         .or_else(|_| Keymap::from_settings(FUNCTION_KEYS_ONLY_PRESET, &settings.keymap_overrides))
         .unwrap_or_default();
