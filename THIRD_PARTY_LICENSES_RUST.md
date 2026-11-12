@@ -229,9 +229,9 @@ limitations under the License.
 - ikari-stack 0.1.0
 - ikari-textfile 0.1.0
 - itoa 1.0.18（https://github.com/dtolnay/itoa）
-- libc 0.2.190（https://github.com/rust-lang/libc）
-- llama-cpp-2 0.1.160（https://github.com/utilityai/llama-cpp-rs）
-- llama-cpp-sys-2 0.1.160（https://github.com/utilityai/llama-cpp-rs）
+- libc 0.2.191（https://github.com/rust-lang/libc）
+- llama-cpp-2 0.1.161（https://github.com/utilityai/llama-cpp-rs）
+- llama-cpp-sys-2 0.1.161（https://github.com/utilityai/llama-cpp-rs）
 - miniz_oxide 0.9.1（https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide）
 - pin-project-lite 0.2.17（https://github.com/taiki-e/pin-project-lite）
 - proc-macro2 1.0.107（https://github.com/dtolnay/proc-macro2）
@@ -540,7 +540,7 @@ limitations under the License.
 
 - cfg-if 1.0.5（https://github.com/rust-lang/cfg-if）
 - either 1.19.0（https://github.com/rayon-rs/either）
-- flate2 1.1.10（https://github.com/rust-lang/flate2-rs）
+- flate2 1.1.11（https://github.com/rust-lang/flate2-rs）
 - itertools 0.13.0（https://github.com/rust-itertools/itertools）
 - once_cell 1.21.4（https://github.com/matklad/once_cell）
 - prost 0.14.4（https://github.com/tokio-rs/prost）
@@ -1560,8 +1560,8 @@ DEALINGS IN THE SOFTWARE.
 ## MIT（4 個）
 
 - fst 0.4.7（https://github.com/BurntSushi/fst）
-- jiff 0.2.38（https://github.com/BurntSushi/jiff）
-- jiff-core 0.1.1（https://github.com/BurntSushi/jiff）
+- jiff 0.2.43（https://github.com/BurntSushi/jiff）
+- jiff-core 0.1.5（https://github.com/BurntSushi/jiff）
 - memchr 2.8.3（https://github.com/BurntSushi/memchr）
 
 ````text
