@@ -90,11 +90,16 @@ fn default_dest(env: &DestEnv, os: &str) -> Result<(PathBuf, bool), Failure> {
             .ok_or_else(no_home)?
             .join(MACOS_SUPPORT_DIR)
             .join(APP_DIR_NAME),
-        "windows" => match (&env.local_appdata, &env.home) {
-            (Some(local_appdata), _) => local_appdata.join(APP_DIR_NAME),
-            (None, Some(home)) => home.join("AppData/Local").join(APP_DIR_NAME),
-            (None, None) => return Err(no_home()),
-        },
+        // `ikari_core::user::dir` と同じく、LOCALAPPDATA が無いときは推測せずに失敗にする（HOME からは作らない）
+        "windows" => env
+            .local_appdata
+            .as_ref()
+            .ok_or_else(|| {
+                Failure::new(
+                    "置き場所を決められません（LOCALAPPDATA がありません）。--dest で指定してください",
+                )
+            })?
+            .join(APP_DIR_NAME),
         _ => match (&env.xdg_data_home, &env.home) {
             (Some(xdg), _) => xdg.join(APP_DIR_NAME),
             (None, Some(home)) => home.join(XDG_DATA_FALLBACK).join(APP_DIR_NAME),
@@ -288,6 +293,8 @@ mod tests {
             default_dest(&win, "windows").unwrap().0,
             Path::new("C:/Local/ikari-ime")
         );
+        // LOCALAPPDATA が無ければ、HOME があっても推測せずに失敗にする
+        assert!(default_dest(&e, "windows").is_err());
     }
 
     #[test]

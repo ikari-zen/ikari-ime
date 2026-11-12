@@ -27,6 +27,10 @@ windows = { version = "0.62.2", features = [
     "Win32_System_Diagnostics_Debug",
     # GetModuleFileNameW、DisableThreadLibraryCalls
     "Win32_System_LibraryLoader",
+    # CoTaskMemFree（入力スコープの一覧の解放。secure な欄の判定）
+    # VARIANT（ITfReadOnlyProperty::GetValue の戻り値）の型は、この 2 つがあるときだけ使える
+    "Win32_System_Ole",
+    "Win32_System_Variant",
     # CLSID の InprocServer32 の登録
     "Win32_System_Registry",
     # DLL_PROCESS_ATTACH

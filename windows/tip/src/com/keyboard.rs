@@ -11,7 +11,7 @@
 //!   付けないと、デッドキーのたまりを TIP が先に消費し、アプリが受け取る文字が変わる。
 //!   デッドキー（戻り値が負）は文字なしにする（アプリに渡り、アプリ側でデッドキーとして合成される）。
 //!
-//! `secure`（パスワード欄）は S8（W4）で見分ける。いまは常に false。
+//! `secure`（パスワード欄）は、ここでは false にする（編集セッションの `ec` が要るので、`field` が `service` で足す）。
 
 use windows::Win32::Foundation::{LPARAM, WPARAM};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -49,7 +49,7 @@ impl KeyPress {
             modifiers: self.modifiers,
             text: &self.text,
             is_repeat: self.is_repeat,
-            // TODO(S8、W4): secure な入力欄の見分け
+            // 入力スコープの読み取りは編集セッションの中（`field`）。`service` が `Key` に足す
             secure: false,
         }
     }

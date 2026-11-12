@@ -40,7 +40,7 @@ use super::dll::DllRef;
 use super::edit::{self, Doc, Exec, ModeSink, Timers, TsfText};
 use super::guard::guard;
 use super::indicator::Indicator;
-use super::{host, keyboard, log, timer};
+use super::{field, host, keyboard, log, timer};
 use crate::keys;
 use crate::latency::Kind;
 use crate::mode::{self, ModeTracker};
@@ -254,6 +254,13 @@ fn dispatch_and_run_inner(
     let shell = shell.as_mut()?;
     // 英数・かなキーは、OS の役として TIP がモードを替える（`mode`）
     let requested_mode = mode::requested_by_event(&event);
+    // secure な欄（パスワード、PIN）かは、打鍵のたびに読んで `Key` に入れる（`shell-core` も打鍵のたびに見る。
+    // 判断は `shell-core`: secure なら素通し、合成しない、周辺テキストを読まない、学習と診断に回さない）。
+    // `shell-core` が周辺テキストを読むのは `dispatch` の中なので、読む前に伝える。読めなければ通常（`secure` の doc）
+    let mut event = event;
+    if let (ShellEvent::Key(input), Some((ec, context))) = (&mut event, doc) {
+        input.secure = input.secure || field::is_secure(ec, context);
+    }
     let mut actions = match doc {
         Some((ec, context)) => {
             let mut text = TsfText {
@@ -331,7 +338,8 @@ fn ensure_active(this: &ComObject<TextService>) -> bool {
             None,
             ShellEvent::Activate {
                 bundle_id: name,
-                // TODO(S8、W4): secure な入力欄
+                // 編集セッションがなく、入力スコープは読めない。secure は打鍵のたびに `Key` で伝える
+                // （`shell-core` は打鍵のたびに見る。`Activate` の時点では周辺テキストも読まない）
                 secure: false,
             },
         );
