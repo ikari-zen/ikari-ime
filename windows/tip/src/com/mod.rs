@@ -10,6 +10,7 @@
 //!   `ITfThreadMgrEventSink`）
 //! - `edit`: 編集セッション（`ITfEditSession`）と、`TsfOp` の実行、`TextAccess` の実装
 //! - `field`: 今の入力欄が secure（パスワード、PIN）かを、入力スコープから読む（判定の表は `secure`）
+//! - `indicator`: 入力モードの表示（compartment の書き込みと通知、言語バーのボタン。`TsfOp::ShowInputMode`。W4）
 //! - `keyboard`: キーの押下 → `keys::RawKey`（`ToUnicodeEx` で配列によらない文字を取る）
 //! - `timer`: `TsfOp::ScheduleTimer` の実行（スレッドのタイマー）
 //! - `host`: `Shell` を作る（設定と資源の場所、トランスポート）
@@ -35,6 +36,7 @@ mod field;
 mod guard;
 mod guids;
 mod host;
+mod indicator;
 mod keyboard;
 mod log;
 mod register;
