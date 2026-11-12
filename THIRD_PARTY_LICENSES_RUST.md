@@ -1,6 +1,6 @@
 # Rust 依存クレートのライセンス
 
-ikari.app に入る Rust の成果物（`ikari-engine-ffi`、`ikari-shell-ffi`）が静的に含む依存クレート（61 個）のライセンスです。`cargo xtask licenses` で作ります（cargo-about。設定は `about.toml`）。手で書き換えないでください。
+ikari.app に入る Rust の成果物（`ikari-engine-ffi`、`ikari-shell-ffi`）が静的に含む依存クレート（62 個）のライセンスです。`cargo xtask licenses` で作ります（cargo-about。設定は `about.toml`）。手で書き換えないでください。
 
 ビルドのときだけ使うもの、テストだけで使うもの、配らない道具（cli、dict-builder、評価、xtask）は含みません。同じ本文のライセンスはまとめてあります。
 
@@ -322,13 +322,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ````
 
-## Apache-2.0（5 個）
+## Apache-2.0（7 個）
 
-- block-buffer 0.10.4（https://github.com/RustCrypto/utils）
-- cpufeatures 0.2.17（https://github.com/RustCrypto/utils）
-- crypto-common 0.1.7（https://github.com/RustCrypto/traits）
-- digest 0.10.7（https://github.com/RustCrypto/traits）
-- sha2 0.10.9（https://github.com/RustCrypto/hashes）
+- block-buffer 0.12.1（https://github.com/RustCrypto/utils）
+- const-oid 0.10.3（https://github.com/RustCrypto/formats）
+- cpufeatures 0.3.1（https://github.com/RustCrypto/utils）
+- crypto-common 0.2.2（https://github.com/RustCrypto/traits）
+- digest 0.11.3（https://github.com/RustCrypto/traits）
+- hybrid-array 0.4.15（https://github.com/RustCrypto/hybrid-array）
+- sha2 0.11.1（https://github.com/RustCrypto/hashes）
 
 ````text
                               Apache License
@@ -1584,34 +1586,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
-````
-
-## MIT（1 個）
-
-- generic-array 0.14.7（https://github.com/fizyk20/generic-array.git）
-
-````text
-The MIT License (MIT)
-
-Copyright (c) 2015 Bartłomiej Kamiński
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
 ````
 
 ## MIT（1 個）

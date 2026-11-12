@@ -63,7 +63,11 @@ mod tests {
         // 8KB のバッファをまたぐ長さでも、一括と同じ値になる
         let data = vec![0x5au8; READ_BUFFER_BYTES * 3 + 17];
         let streamed = sha256_reader(&data[..]).unwrap();
-        let whole = format!("{:x}", Sha256::digest(&data));
+        // sha2 0.11 のダイジェストは `LowerHex` を持たないので、1 バイトずつ十六進にする
+        let whole: String = Sha256::digest(&data)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
         assert_eq!(streamed, whole);
     }
 }
