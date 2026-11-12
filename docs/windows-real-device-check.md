@@ -24,7 +24,7 @@ Windows 版の ikari（TIP、常駐のエンジン、名前付きパイプ）は
 | Rust（`rustup`。`stable-x86_64-pc-windows-msvc`） | ビルド | `rustup default stable-x86_64-pc-windows-msvc` |
 | Visual Studio Build Tools（「C++ によるデスクトップ開発」） | リンカー（`link.exe`）と Windows SDK | Rust のインストーラが案内します |
 | Git | リポジトリの取得 | |
-| cmake | **今回は要りません**（LM なしのビルド。LM を足す S4 のときだけ） | |
+| cmake | LM なしのビルドでは要りません。項目 37・38（S4。LM つき）のときだけ | <https://cmake.org/download/>（PATH に通す） |
 | Sysinternals DebugView | TIP のログを見る（`OutputDebugString`） | TIP は、ログをファイルに書きません |
 | 確認するアプリ | Notepad、Edge、Chrome、VS Code（[ADR 0040](adr/0040-windows-feasibility.md) §6 の S2）。あれば Word | |
 
@@ -140,8 +140,10 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 | 34 | 設定画面の方式のスパイク | ADR 0040 §2.5 | S11 |
 | 35 | 英語のモードの切り替えと、打鍵の素通し | #339 | S8 |
 | 36 | モードの表示（タスクバーの入力インジケーター、compartment） | #339 | — |
+| 37 | LM つきのエンジンのビルドと起動（既定オフ、オンにする） | ADR 0040 §2.6 | S4 |
+| 38 | LM の 1 回の時間（`ikari-eval`） | ADR 0040 §6 | S4 |
 
-この文書の範囲に入らないもの: **S4**（LM の時間。LM ありのビルドと cmake が要る。W4 の別の手順で）、**S6**（ARM。1.0.0 の後）、W3-a と W4-s3 の画面の確認（実装がまだない）、W6（セキュリティレビュー）。
+この文書の範囲に入らないもの: **S6**（ARM。1.0.0 の後）、W3-a と W4-s3 の画面の確認（実装がまだない）、W6（セキュリティレビュー）。
 
 ## 5. 確認項目
 
@@ -385,6 +387,21 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 - 場所: ブランチ `spike/w4-s0-settings-ui`。手順書は [spikes/settings-ui/README.md](https://github.com/ikari-zen/ikari-ime/blob/spike/w4-s0-settings-ui/spikes/settings-ui/README.md)（WebView2 と Slint の 2 つの最小の実装）。
 - 期待する結果: 手順書の表の雛形に、見た目、起動の速さ、画面の入力欄で ikari 自身を使って日本語が打てるか、を書く。結果は、ユーザーが方式を決め、ADR 0040 §2.5 に追記する。
 - うまくいかないとき: 手順書に従う。Slint のライセンス（GPL-3.0 など 3 択）は、ユーザーの決定が要る（手順書の比較の表）。
+
+### 5.7 LM（S4。cmake が要る）
+
+#### 項目 37: LM つきのエンジンのビルドと起動
+
+- 前提: cmake が PATH にある（`cmake --version`）。`<データ>\models\zenz-v3.2-small-Q5_K_M.gguf` がある（`install-data.ps1` は、持ち込み先の `raw\zenz\` にあれば置く）。
+- やること: (a) `.\build.ps1 -Lm`（cmake がなければここで止まる）。(b) LM をオンにしないまま `.\start-engine.ps1`、変換する。(c) エンジンを止め、`<データ>\settings.tsv` に `engine.lm` を `true` にする行を足して（書式は既存の行にそろえる）、起動し直す。変換する。(d) モデルを一時的に別の名前に替えて、起動し直す。
+- 期待する結果（**見込み**）: (a) ビルドが通る（CI の `windows` job の最後の step が同じビルド）。(b) LM なしで今までどおり動く。(c) 起動のログに LM を使う旨が出て、同音異義語の並びが LM なしと変わりうる（`cargo run --release -p ikari-cli --features lm` で同じ文を試せる）。(d) 照合に通らず LM なしで動き、理由がログに出る（落ちない）。
+- うまくいかないとき: (a) の失敗は、cmake の版、Build Tools の C++ と Windows SDK、`libclang`（`bindgen`）の有無、エラーの先頭 30 行を記録する。(c) で変換が遅くなる・固まるなら、項目 38 を先に。
+
+#### 項目 38: LM の 1 回の時間と、先行計算の 300ms の中で効く割合（S4）
+
+- やること: リポジトリの根で `cargo run --release -p ikari-eval --features lm -- --ranker full --set eval\sets\homophones-ext.tsv --lm <データ>\models\zenz-v3.2-small-Q5_K_M.gguf --dict <データ>\dict`。続けて、`--lm-budget-ms 300`（既定）と、`--lm` なしの結果を比べる。出力の LM の時間（1 回の平均と p99）、時間切れの割合、1 位の変化を記録する。
+- 期待する結果: 数字を得ることが目的で、期待値は置かない（[ADR 0040](adr/0040-windows-feasibility.md) §2.6。この数字で、LM の既定をオフのままにするかを決める）。Mac の同じセットの数字（`eval/reports/README.md`）と並べる。
+- うまくいかないとき: CPU の機種（VM の割り当てコア数、AVX2 の有無）を記録する。VM の CPU が実機と大きく違うと、数字が使えない。可能なら実機でも 1 回測る。
 
 ## 6. 結果の記録の書き方
 
