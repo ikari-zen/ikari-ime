@@ -13,10 +13,19 @@ ikari-pipe.workspace = true
 ikari-engine.workspace = true
 ikari-shell-core.workspace = true
 prost.workspace = true
+ikari-core.workspace = true
+
+# Ctrl+C などの受け取り（`src/ctrl.rs`）だけが使う。Win32 の宣言だけで、実行時の層を持たない（pipe と同じ）
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_System_Console"] }
+
+[features]
+# コンソールの窓を出さない（`windows_subsystem = "windows"`）。標準エラーは見えなくなる（失敗は logs/start-failure.log）。
+# ログオン時の起動（W5）のビルドで付ける。既定はオフ（開発では端末で動かす）
+hide-console = []
 
 [dev-dependencies]
 ikari-testtime.workspace = true
 ikari-proto.workspace = true
 ikari-dict-builder.workspace = true
-ikari-core.workspace = true
 tempfile.workspace = true

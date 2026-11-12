@@ -20,3 +20,15 @@ pub fn guard<T>(where_: &'static str, fallback: T, f: impl FnOnce() -> T) -> T {
         }
     }
 }
+
+/// `guard` の、`Result` を返す入口用。panic したら `E_UNEXPECTED`（呼び出し側には「失敗」として見える）。
+pub fn guard_result<T>(
+    where_: &'static str,
+    f: impl FnOnce() -> windows_core::Result<T>,
+) -> windows_core::Result<T> {
+    guard(
+        where_,
+        Err(windows::Win32::Foundation::E_UNEXPECTED.into()),
+        f,
+    )
+}

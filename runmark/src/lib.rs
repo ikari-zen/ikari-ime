@@ -18,6 +18,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(unix)]
 mod signal;
+#[cfg(windows)]
+mod signal_win;
 
 /// 場所を絞り込めなかったときの語（`sanitize_location` の戻り。ADR 0051 §5.3）
 pub const EXTERNAL_LOCATION: &str = "external";
@@ -47,10 +49,10 @@ const SIG_KEY: &str = "sig=";
 /// 正常な終わりの行
 const EXIT_CLEAN_LINE: &[u8] = b"exit=clean\n";
 /// 終わらせるシグナルの行の頭（このあとにシグナルの番号と改行）
-#[cfg_attr(not(unix), allow(dead_code))]
+#[cfg_attr(not(any(unix, windows)), allow(dead_code))]
 const EXIT_TERM_LINE_PREFIX: &str = "exit=term sig=";
 /// 致命的なシグナルの行の頭
-#[cfg_attr(not(unix), allow(dead_code))]
+#[cfg_attr(not(any(unix, windows)), allow(dead_code))]
 const EXIT_CRASH_LINE_PREFIX: &str = "exit=crash sig=";
 
 /// panic の hook が渡すスレッドの語（名前のないスレッド、形の外れた名前）
@@ -130,6 +132,11 @@ impl RunMark {
             use std::os::fd::AsRawFd;
             signal::set_mark_fd(file.as_raw_fd());
         }
+        #[cfg(windows)]
+        {
+            use std::os::windows::io::AsRawHandle;
+            signal_win::set_mark_handle(file.as_raw_handle());
+        }
         (RunMark { file: Some(file) }, prev)
     }
 
@@ -148,6 +155,11 @@ impl Drop for RunMark {
         if let Some(file) = &self.file {
             use std::os::fd::AsRawFd;
             signal::clear_mark_fd(file.as_raw_fd());
+        }
+        #[cfg(windows)]
+        if let Some(file) = &self.file {
+            use std::os::windows::io::AsRawHandle;
+            signal_win::clear_mark_handle(file.as_raw_handle());
         }
     }
 }
@@ -267,12 +279,14 @@ fn recreate(path: &Path) -> Option<File> {
     OpenOptions::new().append(true).open(path).ok()
 }
 
-/// 終わらせるシグナルと致命的なシグナルの処理を入れる（`cfg(unix)` のみ。プロセスの入口で 1 回）。
+/// 終わらせるシグナルと致命的なシグナルの処理を入れる（Unix はシグナル、Windows は未処理の例外とコンソールの通知。`signal_win`。プロセスの入口で 1 回）。
 /// 2 回目からは何もしない。処理は今の印（最後に `begin` した `RunMark`）に `exit=term sig=N` /
 /// `exit=crash sig=N` を足し、前の処理に戻して終わり方を変えない（クラッシュレポートも作られる）。
 pub fn install_signal_handlers() {
     #[cfg(unix)]
     signal::install();
+    #[cfg(windows)]
+    signal_win::install();
 }
 
 /// panic の記録の送り先。引数は `(thread の語, 絞り込んだ場所)`（メッセージは渡さない）
@@ -346,8 +360,8 @@ mod tests {
     use super::*;
 
     use std::path::PathBuf;
-    // 子プロセスを使うテストは Unix だけ（シグナルの処理が cfg(unix) のため）
-    #[cfg(unix)]
+    // 子プロセスを使うテストは Unix と Windows だけ（シグナルの処理が `cfg(unix)` と `cfg(windows)` のため）
+    #[cfg(any(unix, windows))]
     use std::process::{Command, Stdio};
 
     /// 前回の印の中身（`body`）を置いて `begin` した判定
@@ -531,6 +545,15 @@ mod tests {
         let path = PathBuf::from(std::env::var(CHILD_PATH).unwrap());
         let (_mark, _) = RunMark::begin(&path);
         install_signal_handlers();
+        // 落ちたときに OS のエラーの窓を出さない（テストが止まらないように）
+        #[cfg(windows)]
+        // SAFETY: プロセスのエラーモードを設定するだけ
+        unsafe {
+            use windows_sys::Win32::System::Diagnostics::Debug::{
+                SEM_FAILCRITICALERRORS, SEM_NOGPFAULTERRORBOX, SetErrorMode,
+            };
+            SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+        }
         println!("{READY}");
         match mode.as_str() {
             "segv" => unsafe { std::ptr::null_mut::<u8>().write_volatile(0) },
@@ -559,7 +582,7 @@ mod tests {
     }
 
     /// 子を起動して `ready` まで待つ。戻りは子と、`ready` のあとの標準出力の行
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     fn spawn_child(
         mode: &str,
         path: &Path,
@@ -644,5 +667,18 @@ mod tests {
             .unwrap_or_else(|| panic!("{out:?}"));
         assert!(rest.parse::<u32>().is_ok(), "{out:?}");
         assert!(!out.iter().any(|l| l.contains("secret")), "{out:?}");
+    }
+
+    /// 例外コードのアクセス違反（`0xC0000005`）が、`exit=crash sig=5` として次の起動で読める
+    #[cfg(windows)]
+    #[test]
+    fn access_violation_is_recorded_as_crash() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("child.run");
+        let (mut child, _lines) = spawn_child("segv", &path);
+        let status = child.wait().unwrap();
+        assert!(!status.success(), "{status:?}");
+        let p = RunMark::begin(&path).1.unwrap();
+        assert_eq!((p.exit, p.sig), (Exit::Crash, Some(5)), "{p:?}");
     }
 }

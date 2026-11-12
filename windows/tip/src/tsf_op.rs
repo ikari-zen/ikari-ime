@@ -2,6 +2,7 @@
 //!
 //! COM の層は、`ops::OpsTranslator` が返した列を**順に**実行する。`ShellAction` の各形が、ここのどれか（または何も要らない）に対応する。
 
+use ikari_shell_core::english::InputMode;
 use ikari_shell_core::{CandidatePanelModel, ConnId, MarkedText, SettingsTab, TimerId, Utf16Range};
 
 /// COM の層が実行する 1 つの操作。
@@ -35,6 +36,10 @@ pub enum TsfOp {
     CancelTimer { id: TimerId },
     /// 入力モードを選んでもらう（値はモードの ID）
     SelectMode { mode_id: String },
+    /// 今の入力モードを OS に見せる（compartment の書き込みと言語バーのボタンの更新。W4）。
+    /// `mode::ModeTracker` が、変わったときだけ出す。`SelectMode`（`shell-core` から OS への頼み）とは別で、
+    /// こちらは `shell-core` が決めた結果の表示
+    ShowInputMode { mode: InputMode },
     /// 設定画面を開く
     OpenSettings { tab: Option<SettingsTab> },
     /// 設定画面へ枠を返す

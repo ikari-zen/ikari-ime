@@ -103,7 +103,7 @@ ADR 0034 は「殻は自分でファイルに書かない」とした。理由�
 - `sigaction` で `SA_RESETHAND | SA_ONSTACK` を付け、前の処理（あれば）を保存する。処理の中では印に書いたあと、**前の処理に戻してシグナルを送り直す**。プロセスの終わり方（終了コード、クラッシュレポートの作成）は今と同じにする。
 - macOS のクラッシュレポート（ReportCrash）は Mach の例外ポートで受けるので、シグナルの処理を足しても `.ips` は作られる（推測。§7 のスパイクで確かめる。作られなくなるなら、致命的なシグナルの処理は入れず `unknown` に寄せる）。
 - 代わりのスタック（`sigaltstack`）は、入口のスレッドに 1 つ用意する。ほかのスレッドのスタックの溢れは `unknown` になってよい。
-- `unsafe` と `libc`（すでに `Cargo.lock` にある）は `runmark` の `#[cfg(unix)]` のモジュールに閉じる。Windows（ADR 0040）では、のちに `SetUnhandledExceptionFilter` で同じ印を書く（この ADR では作らない）。
+- `unsafe` と `libc`（すでに `Cargo.lock` にある）は `runmark` の `#[cfg(unix)]` のモジュールに閉じる。Windows（ADR 0040）では、`runmark/src/signal_win.rs`（`cfg(windows)`）が同じ印を書く（W4）。致命的な例外は `SetUnhandledExceptionFilter` で `exit=crash sig=N`（N は例外コード NTSTATUS の下位 28 bit。アクセス違反 `0xC0000005` は 5）、終わらせる通知は `SetConsoleCtrlHandler` で `exit=term sig=N`（N は `CTRL_*_EVENT` の番号）。`__fastfail`（`abort()` など）は例外の処理を通らないので、`unknown` になる。`unsafe` と `windows-sys` はこのモジュールに閉じる。
 
 ---
 

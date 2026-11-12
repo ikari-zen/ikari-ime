@@ -580,6 +580,7 @@ dependencies = [
  "ikari-testtime",
  "prost",
  "tempfile",
+ "windows-sys",
 ]
 
 [[package]]
@@ -656,6 +657,7 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "tempfile",
+ "windows-sys",
 ]
 
 [[package]]
