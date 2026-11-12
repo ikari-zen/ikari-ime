@@ -37,7 +37,7 @@ impl EngineLock {
         let path = UserDir::new(data_dir).engine_lock();
         let mut options = OpenOptions::new();
         options.create(true).truncate(false).write(true);
-        // Windows では、ユーザーのフォルダ（%APPDATA%）の ACL に任せる（権限のビットはない）
+        // Windows では、ユーザーのフォルダ（%LOCALAPPDATA%）の ACL に任せる（権限のビットはない）
         #[cfg(unix)]
         std::os::unix::fs::OpenOptionsExt::mode(&mut options, ikari_core::user::PRIVATE_FILE_MODE);
         // `File::try_lock` は Windows では LockFileEx（排他）。プロセスが死ねば解放される

@@ -23,7 +23,7 @@ jiff = "0.2"
 flate2 = "1"
 # webwords classify（行ごとの正規表現、規則表の正規表現。ADR 0055）
 regex = "1"
-sha2 = "0.10"
+sha2 = "0.11"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 llama-cpp-2 = "0.1.159"

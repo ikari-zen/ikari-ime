@@ -173,13 +173,10 @@ fn server_going_away_notifies_once_with_the_handle() {
         *f.recorder.0.lock().unwrap(),
         vec![(first, DownKind::Invalidated)]
     );
-    assert_eq!(
-        f.transport.request(first, b"x", long()),
-        Err(TransportError::Unavailable)
-    );
     // 切れた接続を閉じても、もう一度は知らせない
     f.transport.close(first);
     assert!(f.down.recv_timeout(short()).is_err());
+    assert_eq!(f.recorder.0.lock().unwrap().len(), 1);
     // 別の接続は生きている
     assert_eq!(f.transport.request(second, b"y", long()).unwrap(), b"re:y");
 }
@@ -243,4 +240,252 @@ fn client_errors_map_to_transport_errors() {
 fn engine_link_is_a_down_target() {
     fn assert_target<T: DownTarget>() {}
     assert_target::<EngineLink>();
+}
+
+/// 接続を開く順に、成功（`true`）か失敗（`false`）を返すコネクタ。開いた回数を数える
+struct Scripted {
+    inner: MemConnector,
+    script: Mutex<Vec<bool>>,
+    opens: std::sync::atomic::AtomicUsize,
+}
+
+impl Scripted {
+    fn new(inner: MemConnector, script: &[bool]) -> Self {
+        Self {
+            inner,
+            script: Mutex::new(script.iter().rev().copied().collect()),
+            opens: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+
+    fn opens(&self) -> usize {
+        self.opens.load(Ordering::SeqCst)
+    }
+}
+
+impl Connector for Arc<Scripted> {
+    type Conn = MemDuplex;
+
+    fn open(&self) -> Option<(MemDuplex, Option<u32>)> {
+        self.opens.fetch_add(1, Ordering::SeqCst);
+        // 台本が尽きたあとは、つなぐ
+        let ok = self.script.lock().unwrap().pop().unwrap_or(true);
+        if !ok {
+            return None;
+        }
+        Some((self.inner.connect()?, None))
+    }
+}
+
+/// 返事をするサーバーを動かし、接続ごとの切る手段を返す
+fn echo_server() -> (MemConnector, mpsc::Receiver<Arc<dyn ikari_pipe::Shutdown>>) {
+    let (mut listener, connector) = mem::listener();
+    let (kill_tx, kill) = mpsc::channel();
+    thread::spawn(move || {
+        while let Ok(Some(duplex)) = listener.accept() {
+            let (reader, writer, shutdown) = duplex.split();
+            let _ = kill_tx.send(Arc::clone(&shutdown));
+            thread::spawn(move || {
+                serve_connection(Rejoined(reader, writer, shutdown), |body| {
+                    let mut reply = b"re:".to_vec();
+                    reply.extend_from_slice(body);
+                    Some(reply)
+                });
+            });
+        }
+    });
+    (connector, kill)
+}
+
+fn backoff_initial() -> Duration {
+    ikari_testtime::scaled(Duration::from_millis(100))
+}
+
+fn backoff_max() -> Duration {
+    ikari_testtime::scaled(Duration::from_millis(400))
+}
+
+#[test]
+fn keys_before_the_engine_starts_are_unavailable_then_it_connects() {
+    // 起動前（2 回つながらない）→ 起動後
+    let (connector, _kill) = echo_server();
+    let scripted = Arc::new(Scripted::new(connector, &[false, false]));
+    let transport = PipeTransport::with_backoff(
+        Arc::clone(&scripted),
+        DownSink::new(),
+        backoff_initial(),
+        backoff_max(),
+    );
+    assert_eq!(transport.connect(), Err(TransportError::Unavailable));
+    thread::sleep(backoff_initial() * 2);
+    assert_eq!(transport.connect(), Err(TransportError::Unavailable));
+    thread::sleep(backoff_initial() * 4);
+    let handle = transport.connect().unwrap();
+    assert_eq!(scripted.opens(), 3);
+    assert_eq!(transport.request(handle, b"ok", long()).unwrap(), b"re:ok");
+}
+
+#[test]
+fn failed_connect_is_not_retried_during_the_backoff() {
+    let (connector, _kill) = echo_server();
+    let scripted = Arc::new(Scripted::new(connector, &[false]));
+    // 控えている間は、OS（コネクタ）を呼ばない。長く控えるので、テストの間は明かない
+    let hold = ikari_testtime::scaled(Duration::from_secs(60));
+    let transport = PipeTransport::with_backoff(Arc::clone(&scripted), DownSink::new(), hold, hold);
+    assert_eq!(transport.connect(), Err(TransportError::Unavailable));
+    for _ in 0..5 {
+        assert_eq!(transport.connect(), Err(TransportError::Unavailable));
+    }
+    assert_eq!(scripted.opens(), 1);
+}
+
+#[test]
+fn backoff_grows_up_to_the_cap_and_resets_on_success() {
+    let t0 = Instant::now();
+    let mut backoff = Backoff::new(Duration::from_millis(100), Duration::from_millis(350));
+    assert!(backoff.ready(t0));
+    let mut delays = Vec::new();
+    for _ in 0..4 {
+        backoff.failed(t0);
+        let at = backoff.not_before.unwrap();
+        delays.push(at - t0);
+        assert!(!backoff.ready(t0));
+        assert!(backoff.ready(at));
+    }
+    assert_eq!(
+        delays,
+        [100, 200, 350, 350].map(Duration::from_millis).to_vec()
+    );
+    backoff.succeeded();
+    assert!(backoff.ready(t0));
+    backoff.failed(t0);
+    assert_eq!(backoff.not_before.unwrap() - t0, Duration::from_millis(100));
+}
+
+#[test]
+fn every_reconnect_gets_a_new_generation_and_one_notification() {
+    // つなぐ → 切れる → つなぎ直す、を繰り返す。世代は毎回変わり、通知は切れた接続ごとに 1 回
+    let f = fixture(None);
+    let mut handles = Vec::new();
+    for round in 0..3 {
+        let handle = f.transport.connect().unwrap();
+        assert!(!handles.contains(&handle));
+        handles.push(handle);
+        let kill = f.kill.recv_timeout(long()).unwrap();
+        assert_eq!(f.transport.request(handle, b"x", long()).unwrap(), b"re:x");
+        kill.shutdown();
+        f.down.recv_timeout(long()).unwrap();
+        assert!(f.down.recv_timeout(short()).is_err(), "round {round}");
+        f.transport.close(handle);
+    }
+    assert_eq!(
+        *f.recorder.0.lock().unwrap(),
+        handles
+            .iter()
+            .map(|h| (*h, DownKind::Invalidated))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn request_in_flight_returns_when_the_server_goes_away() {
+    // 受けて返事をしないサーバー。要求を待っている間に切れたら、時間切れまで待たずに戻る
+    let (mut listener, connector) = mem::listener();
+    let (tx, rx) = mpsc::channel();
+    let server = thread::spawn(move || {
+        let duplex = listener.accept().unwrap().unwrap();
+        let (reader, writer, shutdown) = duplex.split();
+        tx.send(Arc::clone(&shutdown)).unwrap();
+        (reader, writer, shutdown)
+    });
+    let transport = Arc::new(PipeTransport::new(
+        MemOpen {
+            connector: Mutex::new(Some(connector)),
+            pid: None,
+        },
+        DownSink::new(),
+    ));
+    let handle = transport.connect().unwrap();
+    let _server_side = server.join().unwrap();
+    let kill = rx.recv_timeout(long()).unwrap();
+    let waiting = {
+        let transport = Arc::clone(&transport);
+        thread::spawn(move || {
+            let started = Instant::now();
+            let result = transport.request(
+                handle,
+                b"x",
+                ikari_testtime::scaled(Duration::from_secs(30)),
+            );
+            (result, started.elapsed())
+        })
+    };
+    thread::sleep(short());
+    kill.shutdown();
+    let (result, elapsed) = waiting.join().unwrap();
+    assert_eq!(result, Err(TransportError::Unavailable));
+    assert!(elapsed < ikari_testtime::scaled(Duration::from_secs(10)));
+}
+
+#[test]
+fn a_missed_notification_is_repeated_when_the_dead_connection_is_used() {
+    // 切れたのが `EngineLink` に記録される前だと、最初の通知は捨てられる。使われたら、もう一度知らせる
+    let f = fixture(None);
+    let handle = f.transport.connect().unwrap();
+    let kill = f.kill.recv_timeout(long()).unwrap();
+    kill.shutdown();
+    f.down.recv_timeout(long()).unwrap();
+    assert_eq!(
+        f.transport.request(handle, b"x", long()),
+        Err(TransportError::Unavailable)
+    );
+    f.down.recv_timeout(long()).unwrap();
+    assert_eq!(
+        *f.recorder.0.lock().unwrap(),
+        vec![(handle, DownKind::Invalidated); 2]
+    );
+}
+
+/// 測定の点が配線されている（S1）。時計は呼ばれるたびに 100µs 進む。
+#[test]
+fn meter_records_first_connect_and_requests() {
+    use crate::latency::{LineSink, Ticks};
+    use std::sync::atomic::AtomicU64;
+
+    struct Step(AtomicU64);
+    impl Ticks for Step {
+        fn now_us(&self) -> u64 {
+            self.0.fetch_add(100, Ordering::SeqCst)
+        }
+        fn unix_secs(&self) -> u64 {
+            0
+        }
+    }
+    struct Lines(Arc<Mutex<Vec<String>>>);
+    impl LineSink for Lines {
+        fn write_lines(&self, lines: &[String]) {
+            self.0.lock().unwrap().extend_from_slice(lines);
+        }
+    }
+
+    let written = Arc::new(Mutex::new(Vec::new()));
+    let meter = Arc::new(Meter::new(
+        Box::new(Step(AtomicU64::new(0))),
+        Box::new(Lines(Arc::clone(&written))),
+        1,
+    ));
+    let mut f = fixture(None);
+    f.transport = f.transport.with_meter(Arc::clone(&meter));
+    let handle = f.transport.connect().unwrap();
+    assert_eq!(f.transport.request(handle, b"a", long()).unwrap(), b"re:a");
+    meter.flush_all();
+    let lines = written.lock().unwrap().clone();
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!(
+        lines[0].contains("kind=request n=1 window=1 err=0"),
+        "{lines:?}"
+    );
+    assert!(lines[1].contains("kind=first_connect n=1"), "{lines:?}");
+    // 入力の本体は行に入らない
+    assert!(lines.iter().all(|l| !l.contains("re:a")));
 }

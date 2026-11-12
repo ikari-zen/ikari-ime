@@ -24,21 +24,26 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+use ikari_shell_core::english::InputMode;
 use ikari_shell_core::{SelectedText, Shell, ShellEvent, SurroundingText, TextAccess, TimerId};
 use windows::Win32::Foundation::{E_UNEXPECTED, LPARAM, WPARAM};
 use windows::Win32::UI::TextServices::{
-    ITfComposition, ITfCompositionSink, ITfCompositionSink_Impl, ITfContext, ITfDocumentMgr,
-    ITfKeyEventSink, ITfKeyEventSink_Impl, ITfKeystrokeMgr, ITfSource, ITfTextInputProcessor_Impl,
-    ITfTextInputProcessorEx, ITfTextInputProcessorEx_Impl, ITfThreadMgr, ITfThreadMgrEventSink,
-    ITfThreadMgrEventSink_Impl, TF_ES_ASYNCDONTCARE, TF_ES_READWRITE, TF_ES_SYNC,
+    ITfCompartmentEventSink, ITfCompartmentEventSink_Impl, ITfComposition, ITfCompositionSink,
+    ITfCompositionSink_Impl, ITfContext, ITfDocumentMgr, ITfKeyEventSink, ITfKeyEventSink_Impl,
+    ITfKeystrokeMgr, ITfSource, ITfTextInputProcessor_Impl, ITfTextInputProcessorEx,
+    ITfTextInputProcessorEx_Impl, ITfThreadMgr, ITfThreadMgrEventSink, ITfThreadMgrEventSink_Impl,
+    TF_ES_ASYNCDONTCARE, TF_ES_READWRITE, TF_ES_SYNC,
 };
 use windows_core::{BOOL, ComObject, GUID, IUnknownImpl, Interface, Ref, implement};
 
 use super::dll::DllRef;
-use super::edit::{self, Doc, Exec, Timers, TsfText};
+use super::edit::{self, Doc, Exec, ModeSink, Timers, TsfText};
 use super::guard::guard;
-use super::{host, keyboard, log, timer};
+use super::indicator::Indicator;
+use super::{field, host, keyboard, log, timer};
 use crate::keys;
+use crate::latency::Kind;
+use crate::mode::{self, ModeTracker};
 use crate::ops::OpsTranslator;
 
 /// `ActivateEx` の旗（使わない）
@@ -65,6 +70,8 @@ struct State {
     /// `Shell` を作れなかった（資源が読めない、など）。キーのたびに作り直さない（次の `ActivateEx` でもう一度試す）
     shell_unavailable: bool,
     translator: OpsTranslator,
+    /// OS に表示したモード（変わったときだけ表示する。`Shell` を作り直したら捨てる）
+    modes: ModeTracker,
     /// この TIP の合成
     composition: Option<ITfComposition>,
     /// 食べたと答えたキー
@@ -79,10 +86,16 @@ struct State {
     ITfTextInputProcessorEx,
     ITfKeyEventSink,
     ITfCompositionSink,
-    ITfThreadMgrEventSink
+    ITfThreadMgrEventSink,
+    ITfCompartmentEventSink
 )]
 pub struct TextService {
     state: RefCell<State>,
+    /// 入力モードの表示（`ActivateEx` で作り、`Deactivate` で外す）。`state` とは別にして、`dispatch` の最中
+    /// （`state` を借りている間）の表示と、compartment の通知（書き込みの最中に来る）が、借用でぶつからないようにする
+    indicator: RefCell<Option<Indicator>>,
+    /// 自分の compartment の書き込みの間だけ立てる（そのときの通知を読み捨てる）
+    writing_mode: Cell<bool>,
     _dll: DllRef,
 }
 
@@ -90,6 +103,8 @@ impl TextService {
     pub fn new() -> Self {
         Self {
             state: RefCell::new(State::default()),
+            indicator: RefCell::new(None),
+            writing_mode: Cell::new(false),
             _dll: DllRef::new(),
         }
     }
@@ -129,6 +144,25 @@ impl Timers for ServiceTimers<'_> {
 
     fn cancel(&self, id: TimerId) {
         timer::cancel(self.0, id);
+    }
+}
+
+/// `TsfOp::ShowInputMode` を、このテキストサービスの表示（`indicator`）に渡す
+struct ServiceModes<'a>(&'a ComObject<TextService>);
+
+impl ModeSink for ServiceModes<'_> {
+    fn show(&self, mode: InputMode) {
+        let service = self.0;
+        let Ok(indicator) = service.indicator.try_borrow() else {
+            log::event("mode display re-entered");
+            return;
+        };
+        if let Some(indicator) = indicator.as_ref() {
+            // 書き込みで来る自分の通知を、`OnChange` が読み捨てる
+            service.writing_mode.set(true);
+            indicator.show(mode);
+            service.writing_mode.set(false);
+        }
     }
 }
 
@@ -213,11 +247,21 @@ fn dispatch_and_run_inner(
     let State {
         shell,
         translator,
+        modes,
         composition,
         ..
     } = &mut *state;
     let shell = shell.as_mut()?;
-    let actions = match doc {
+    // 英数・かなキーは、OS の役として TIP がモードを替える（`mode`）
+    let requested_mode = mode::requested_by_event(&event);
+    // secure な欄（パスワード、PIN）かは、打鍵のたびに読んで `Key` に入れる（`shell-core` も打鍵のたびに見る。
+    // 判断は `shell-core`: secure なら素通し、合成しない、周辺テキストを読まない、学習と診断に回さない）。
+    // `shell-core` が周辺テキストを読むのは `dispatch` の中なので、読む前に伝える。読めなければ通常（`secure` の doc）
+    let mut event = event;
+    if let (ShellEvent::Key(input), Some((ec, context))) = (&mut event, doc) {
+        input.secure = input.secure || field::is_secure(ec, context);
+    }
+    let mut actions = match doc {
         Some((ec, context)) => {
             let mut text = TsfText {
                 ec,
@@ -228,9 +272,14 @@ fn dispatch_and_run_inner(
         }
         None => shell.dispatch(event, &mut NoText),
     };
-    let ops = translator.translate_all(&actions);
+    // `shell-core` が頼んだモード（キー割り当て）と、英数・かなキーの行き先を、OS からの通知として返す
+    actions.extend(mode::settle(shell, requested_mode));
+    let mut ops = translator.translate_all(&actions);
+    // モードが変わっていれば（または最初なら）表示する
+    ops.extend(modes.sync(shell.input_mode()));
     let sink: ITfCompositionSink = this.to_interface();
     let timers = ServiceTimers(this);
+    let mode_sink = ServiceModes(this);
     let mut exec = Exec {
         doc: doc.map(|(ec, context)| Doc {
             ec,
@@ -239,6 +288,7 @@ fn dispatch_and_run_inner(
         }),
         composition,
         timers: &timers,
+        modes: &mode_sink,
     };
     Some(exec.run(&ops))
 }
@@ -247,6 +297,8 @@ fn poison(this: &ComObject<TextService>) {
     let shell = match this.state.try_borrow_mut() {
         Ok(mut state) => {
             state.translator.reset();
+            // 作り直した `Shell` は日本語から始まる。次の表示で OS の値を合わせる
+            state.modes.reset();
             state.active = false;
             state.eaten_key = None;
             state.shell.take()
@@ -274,6 +326,8 @@ fn ensure_active(this: &ComObject<TextService>) -> bool {
             Ok(mut state) => {
                 state.shell_unavailable = shell.is_none();
                 state.shell = shell;
+                // 新しい `Shell` は日本語から始まる。次の表示で OS の値を合わせる
+                state.modes.reset();
             }
             Err(_) => return false,
         }
@@ -284,7 +338,8 @@ fn ensure_active(this: &ComObject<TextService>) -> bool {
             None,
             ShellEvent::Activate {
                 bundle_id: name,
-                // TODO(S8、W4): secure な入力欄
+                // 編集セッションがなく、入力スコープは読めない。secure は打鍵のたびに `Key` で伝える
+                // （`shell-core` は打鍵のたびに見る。`Activate` の時点では周辺テキストも読まない）
                 secure: false,
             },
         );
@@ -380,11 +435,22 @@ impl TextService_Impl {
             .map_err(|_| E_UNEXPECTED)?
             .key_sink_advised = true;
 
+        // 入力モードの表示（compartment と言語バーのボタン）。なくても入力はできるので、失敗しても続ける
+        let compartment_sink: ITfCompartmentEventSink = self.to_interface();
+        match Indicator::install(thread_mgr, client_id, &compartment_sink) {
+            Ok(indicator) => {
+                *self.indicator.try_borrow_mut().map_err(|_| E_UNEXPECTED)? = Some(indicator)
+            }
+            Err(e) => log::error("mode indicator install failed", &e),
+        }
+
         let shell = host::create_shell();
         {
             let mut state = self.state.try_borrow_mut().map_err(|_| E_UNEXPECTED)?;
             state.shell_unavailable = shell.is_none();
             state.shell = shell;
+            // 新しい `Shell` は日本語から始まる。次の表示で OS の値を合わせる
+            state.modes.reset();
         }
         // 文書にフォーカスがあれば、入力先を知らせる
         if focused_context(&self.this()).is_some() {
@@ -394,9 +460,20 @@ impl TextService_Impl {
     }
 
     fn deactivate(&self) {
+        // 測定の残りを書き出す（オフなら何もしない）
+        host::meter().flush_all();
         let this = self.this();
         leave_client(&this);
         timer::cancel_all(&this);
+        // 通知の登録とボタンを外す（錠の外で。外す間に来る通知は、`indicator` がないので読み捨てられる）
+        let indicator = self
+            .indicator
+            .try_borrow_mut()
+            .ok()
+            .and_then(|mut slot| slot.take());
+        if let Some(mut indicator) = indicator {
+            indicator.remove();
+        }
         let (thread_mgr, cookie, key_sink, client_id, shell) = match self.state.try_borrow_mut() {
             Ok(mut state) => (
                 state.thread_mgr.take(),
@@ -462,6 +539,9 @@ impl TextService_Impl {
         if !ensure_active(&this) {
             return false;
         }
+        // 往復時間の測定（S1）。キーを受けてから、返った操作を実行し終わるまで。オフなら分岐 1 つ
+        let meter = host::meter();
+        let stamp = meter.start();
         let Some(press) = keyboard::read(wparam, lparam) else {
             return false;
         };
@@ -469,13 +549,17 @@ impl TextService_Impl {
         let Some(event) = keys::key_event(&press.raw()) else {
             return false;
         };
-        let eaten = run_event(&this, Some(context), event, Mode::Sync).unwrap_or(false);
+        let outcome = run_event(&this, Some(context), event, Mode::Sync);
+        meter.finish(Kind::Key, stamp, outcome.is_some());
+        let eaten = outcome.unwrap_or(false);
         if eaten
             && test
             && let Ok(mut state) = self.state.try_borrow_mut()
         {
             state.eaten_key = Some(id);
         }
+        // 書き出しは、キーの処理が終わったあと（測った時間に入れない）
+        meter.flush_if_due();
         eaten
     }
 }
@@ -641,6 +725,42 @@ impl ITfThreadMgrEventSink_Impl for TextService_Impl {
 
     fn OnPopContext(&self, _context: Ref<ITfContext>) -> windows_core::Result<()> {
         Ok(())
+    }
+}
+
+impl ITfCompartmentEventSink_Impl for TextService_Impl {
+    /// 入力モードの compartment が変わった（言語バーのクリック、IME のオン・オフ、ほかのアプリや OS の操作）。
+    /// 値を `mode` の表で読み、`shell-core` に通知する。自分の書き込みの通知は読み捨てる
+    fn OnChange(&self, guid: *const GUID) -> windows_core::Result<()> {
+        guard("panic in OnChange (compartment)", Ok(()), || {
+            if guid.is_null() || self.writing_mode.get() {
+                return Ok(());
+            }
+            // SAFETY: null でない（上で確かめた）。TSF が渡した GUID への参照
+            let guid = unsafe { *guid };
+            let mode = match self.indicator.try_borrow() {
+                Ok(indicator) => indicator
+                    .as_ref()
+                    .and_then(|indicator| indicator.read(&guid)),
+                Err(_) => None,
+            };
+            let Some(mode) = mode else {
+                return Ok(());
+            };
+            let this = self.this();
+            let context = focused_context(&this);
+            run_event(
+                &this,
+                context.as_ref(),
+                ShellEvent::InputModeChanged {
+                    mode_id: mode.mode_id().to_owned(),
+                    // TODO(S8、W4): secure な入力欄
+                    secure: false,
+                },
+                Mode::Async,
+            );
+            Ok(())
+        })
     }
 }
 

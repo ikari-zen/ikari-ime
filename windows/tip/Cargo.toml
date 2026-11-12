@@ -27,10 +27,17 @@ windows = { version = "0.62.2", features = [
     "Win32_System_Diagnostics_Debug",
     # GetModuleFileNameW、DisableThreadLibraryCalls
     "Win32_System_LibraryLoader",
+    # CoTaskMemFree（入力スコープの一覧の解放。secure な欄の判定）
+    # VARIANT（ITfReadOnlyProperty::GetValue の戻り値）の型は、この 2 つがあるときだけ使える
+    "Win32_System_Ole",
+    "Win32_System_Variant",
     # CLSID の InprocServer32 の登録
     "Win32_System_Registry",
     # DLL_PROCESS_ATTACH
     "Win32_System_SystemServices",
+    # VARIANT（入力モードの compartment の値。W4。`Win32_System_Com` と `Win32_System_Ole` も要る）
+    "Win32_System_Ole",
+    "Win32_System_Variant",
     # ToUnicodeEx、GetKeyboardState、GetKeyboardLayout
     "Win32_UI_Input_KeyboardAndMouse",
     # ITf*（TSF）
