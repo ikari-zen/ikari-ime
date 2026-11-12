@@ -1,6 +1,7 @@
 # PR と main への push ごとに scripts/check.sh を 2 つの job に分けて流す（#290、#295）。
 #   rust  ubuntu。文書の検査、ライセンス、fmt、clippy、cargo test（--rust-only）
 #   windows windows-latest。cargo test --workspace（LM なし。必須ではない。#316）
+#   windows-artifact windows-latest。実機（VM）に持ち込む release ビルドを artifact に保存する（必須ではない）
 #   check macOS。XCFramework のビルドと swift test（--swift-only）。Swift は Linux では作れない
 # ブランチ保護の「必要なチェック」に check を入れてある（job の名前を変えない）。rust は必須ではないが、check と同じく通らないものはマージしない。
 # 公開リポジトリでは GitHub ホストのランナーが無料。macOS は混むので、macOS で流すものを Swift だけに絞る。
@@ -89,6 +90,37 @@ jobs:
       # 実機での時間の測定は docs/windows-real-device-check.md の項目 38
       - name: LM つきのエンジンをビルドする
         run: cargo build -p ikari-engine-host --features lm
+
+  # 実機（VM）で試すための release ビルド（エンジンの exe と TIP の DLL）と、`windows/dev` のスクリプトを、1 つの artifact に入れる。
+  # VM で Rust を入れてビルドしなくて済む（遅い機械での手間を避ける）。配置はリポジトリと同じ（`windows/dev/common.ps1` が
+  # `..\..` を根として `target\release\` と `shell-core\resources\keymap` を見る）ので、展開したままスクリプトが動く。
+  # LM なし。配る人向けのビルドではない（インストーラと署名は W5 の残り）。必須のチェックではない。
+  windows-artifact:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+      - name: release ビルド（エンジンと TIP）
+        run: cargo build --release -p ikari-engine-host -p ikari-tip
+      # PR では GitHub が作るマージ用のコミットが `github.sha` になるので、PR の先頭のコミットを使う（探せる SHA にする）
+      - name: artifact の中身を集める
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          mkdir -p dist/target/release dist/windows dist/shell-core/resources
+          cp target/release/ikari-engine-host.exe target/release/ikari_tip.dll dist/target/release/
+          cp -r windows/dev dist/windows/dev
+          cp -r shell-core/resources/keymap dist/shell-core/resources/keymap
+          cp docs/windows-real-device-check.md dist/windows-real-device-check.md
+          echo "${SOURCE_SHA}" > dist/COMMIT
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ikari-windows-dev-${{ github.event.pull_request.head.sha || github.sha }}
+          path: dist
+          if-no-files-found: error
+          retention-days: 14
 
   check:
     runs-on: macos-latest

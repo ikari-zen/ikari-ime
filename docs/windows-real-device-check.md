@@ -37,6 +37,19 @@ cd ikari-ime
 
 別の版を試すときは、ブランチを `git switch` で替えます。PowerShell のスクリプトの実行が止められるときは、そのウィンドウだけ `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` にします（システムの設定は変えません）。
 
+#### 1.3.1 VM でビルドしない場合（CI の成果物を持ち込む）
+
+遅い機械では、VM に Rust と Build Tools を入れてビルドする代わりに、CI（`windows-artifact` job）が作った release ビルドを持ち込めます（LM なし。Rust、Build Tools、cmake、git は要りません）。
+
+Mac で（`gh` にログインしておく）:
+
+```sh
+gh run list --branch <ブランチ> --workflow ci.yml --limit 1      # 実行の番号を探す（成功しているもの）
+gh run download <番号> -n ikari-windows-dev-<コミットの SHA> -D ikari-windows-dev
+```
+
+`ikari-windows-dev` を VM に持ち込み（`scp` など）、その中の `windows\dev` で、`build.ps1` を飛ばして `install-data.ps1` 以降を流します。中身はリポジトリと同じ配置（`target\release\`、`windows\dev\`、`shell-core\resources\keymap`）で、`COMMIT` に元のコミット（PR なら先頭のコミット、main なら main のコミット）の SHA が入っています（結果の記録に書いてください）。項目 1 のうち、ビルドと `cargo test` は CI の結果で代えます。
+
 ### 1.4 データ（辞書とモデル）
 
 辞書は約 650MB です。**Windows の上で作る手順は、試していません**（`cargo xtask data fetch` と `cargo xtask dict` が Windows で動くかは未確認。取得は `curl`、展開は `tar`（と、ものによって `unzip`、`xz`）に頼っています）。**Mac で作ったデータを持ち込む**のを標準の手順にします。
