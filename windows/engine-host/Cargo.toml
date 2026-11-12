@@ -23,6 +23,9 @@ windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_System_
 # コンソールの窓を出さない（`windows_subsystem = "windows"`）。標準エラーは見えなくなる（失敗は logs/start-failure.log）。
 # ログオン時の起動（W5）のビルドで付ける。既定はオフ（開発では端末で動かす）
 hide-console = []
+# LM（zenz。llama.cpp、CPU）を入れる。cmake と C++ のビルド環境が要る。入れても既定はオフ（設定の `engine.lm` で使う。
+# Windows の既定は LM なし。ADR 0040 §2.6）。ビルドは `windows/dev/build.ps1 -Lm`
+lm = ["ikari-engine/lm"]
 
 [dev-dependencies]
 ikari-testtime.workspace = true

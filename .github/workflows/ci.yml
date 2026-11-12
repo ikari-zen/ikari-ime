@@ -67,7 +67,8 @@ jobs:
 
   # Windows（x86_64-pc-windows-msvc）で cargo test --workspace（LM なし）を流す（ADR 0040 W1-d、#316）。
   # 必須のチェックではない（ルールセットに入れない。動きが安定してから、必須にするかをユーザーに聞く）。
-  # LM（llama-cpp-2）は feature を付けないのでビルドしない。fmt と clippy は rust（ubuntu）が見る。
+  # テストは LM（llama-cpp-2）の feature を付けない。LM つきのエンジンは、最後の step でビルドだけ確かめる。
+  # fmt と clippy は rust（ubuntu）が見る。
   windows:
     runs-on: windows-latest
     timeout-minutes: 45
@@ -84,6 +85,10 @@ jobs:
           IKARI_TEST_TIME_SCALE: "5"
         # 1 つ落ちても、ほかの crate の結果を見られるようにする
         run: cargo test --workspace --no-fail-fast
+      # LM つきのエンジンが Windows でビルドできるか（llama.cpp。ADR 0040 W4 / S4）。実行はしない（モデルがない）。
+      # 実機での時間の測定は docs/windows-real-device-check.md の項目 38
+      - name: LM つきのエンジンをビルドする
+        run: cargo build -p ikari-engine-host --features lm
 
   check:
     runs-on: macos-latest
