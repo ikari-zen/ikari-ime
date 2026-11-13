@@ -264,14 +264,21 @@ impl Inner {
     }
 
     /// ワーカーが LM の読み込みを終えたときの `lm_load`（所要 us、失敗なら `err=lm_load_failed`）
-    pub(crate) fn lm_load_line(log: &EngineLog, started: Instant, loaded: bool) {
+    /// `devices` は登録された LM のデバイスの要約（`cpu,vulkan:IntegratedGpu`。固定の語だけ。ADR 0059 §2.3）
+    pub(crate) fn lm_load_line(
+        log: &EngineLog,
+        started: Instant,
+        loaded: bool,
+        devices: Option<&str>,
+    ) {
         let micros = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
+        let note = devices.map(|d| format!("devices={d}"));
         log.record_note(
             KIND_LM_LOAD,
             micros,
             if loaded { "ready" } else { "failed" },
             (!loaded).then_some(ERR_LM_LOAD_FAILED),
-            None,
+            note.as_deref(),
         );
     }
 }

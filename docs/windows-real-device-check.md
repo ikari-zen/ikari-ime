@@ -39,7 +39,7 @@ cd ikari-ime
 
 #### 1.3.1 VM でビルドしない場合（CI の成果物を持ち込む）
 
-遅い機械では、VM に Rust と Build Tools を入れてビルドする代わりに、CI（`windows-artifact` job）が作った release ビルドを持ち込めます（LM なし。Rust、Build Tools、cmake、git は要りません）。
+遅い機械では、VM に Rust と Build Tools を入れてビルドする代わりに、CI（`windows-artifact` job）が作った release ビルドを持ち込めます（`ikari-engine-host.exe` は LM つき、`ikari-engine-host-nolm.exe` は LM なし。Rust、Build Tools、cmake、git は要りません。LM は設定でオンにするまで使われません）。
 
 Mac で（`gh` にログインしておく）:
 

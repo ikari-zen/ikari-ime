@@ -11,6 +11,7 @@ pub mod carry;
 pub mod compare;
 pub mod gates;
 pub mod holdout;
+pub mod lm_timing;
 pub mod ops;
 pub mod reach;
 pub mod reading;

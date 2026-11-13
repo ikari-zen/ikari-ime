@@ -18,8 +18,8 @@ mod llama;
 
 pub use config::{ModelKind, ZenzConfig};
 pub use prompt::{PromptInput, build_prompt, build_prompt_for, tail_chars};
-pub use ranker::{LmStats, ZenzRanker};
+pub use ranker::{LmStats, LmTimings, ZenzRanker};
 pub use scorer::LmScorer;
 
 #[cfg(feature = "llama")]
-pub use llama::{LlamaScorer, ModelInfo};
+pub use llama::{GPU_ENV, LlamaScorer, ModelInfo, devices};
