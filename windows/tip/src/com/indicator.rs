@@ -314,16 +314,21 @@ impl Indicator {
     pub fn show(&self, mode: InputMode) {
         let values = mode::values_of(mode);
         let writes = [
-            (&GUID_COMPARTMENT_KEYBOARD_OPENCLOSE, i32::from(values.open)),
+            (
+                &GUID_COMPARTMENT_KEYBOARD_OPENCLOSE,
+                i32::from(values.open),
+                "compartment SetValue failed (OPENCLOSE)",
+            ),
             (
                 &GUID_COMPARTMENT_KEYBOARD_INPUTMODE_CONVERSION,
                 // 変換モードの bit は 31 bit に収まる（`mode::conversion`）
                 i32::try_from(values.conversion).unwrap_or_default(),
+                "compartment SetValue failed (CONVERSION)",
             ),
         ];
-        for (guid, value) in writes {
+        for (guid, value, message) in writes {
             if let Err(e) = write_i32(&self.compartments, self.client_id, guid, value) {
-                log::error("compartment SetValue failed", &e);
+                log::error(message, &e);
             }
         }
         self.item.mode.set(mode);
