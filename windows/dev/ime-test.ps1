@@ -3,10 +3,11 @@
   Drives a Notepad check of ikari without looking at the screen (UI Automation). Run it in the DESKTOP session via run-in-session.ps1.
   -Mode Prepare : launch Notepad if needed, focus + clear its edit control, activate the ikari profile (TSF, this session).
   -Mode Activate: only the activation of the ikari profile (+ open status), on the running Notepad.
+  -Mode Release : switch back to Microsoft IME (the ikari TIP is deactivated, which also flushes its latency measurements).
   -Mode Read    : write the edit control's text, and the active profile, to $OutFile (UTF-8).
   Keys are sent from outside (virsh send-key on the host).
 #>
-param([ValidateSet('Prepare', 'Activate', 'Read')][string]$Mode = 'Read', [string]$OutFile = 'C:\ikari-dev\ime-test.txt')
+param([ValidateSet('Prepare', 'Activate', 'Release', 'Read')][string]$Mode = 'Read', [string]$OutFile = 'C:\ikari-dev\ime-test.txt')
 
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type -TypeDefinition @'
@@ -91,6 +92,7 @@ if ($Mode -in 'Prepare','Activate') {
     Start-Sleep 1
     $lines.Add('open status=' + [ImeCtl]::SetOpen($true))
 }
+if ($Mode -eq 'Release') { $lines.Add('release hr=' + ('{0:X8}' -f [Tsf]::Activate('{03B5835F-F03C-411B-9CE2-AA23E1171E36}', '{A76C93D9-5523-4E90-AAFA-4DB112F9AC76}'))); Start-Sleep 1 }
 $lines.Add('active: ' + [Tsf]::Active())
 $doc = Get-NotepadDoc
 if ($doc) {
