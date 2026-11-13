@@ -23,6 +23,7 @@ serde_json.workspace = true
 # zenz（llama.cpp）を使う。cmake が必要（ADR 0002 §13.2）
 lm = ["ikari-stack/lm"]
 lm-metal = ["lm", "ikari-stack/lm-metal"]
+lm-vulkan = ["lm", "ikari-stack/lm-vulkan"]
 
 [dev-dependencies]
 ikari-dict-builder.workspace = true

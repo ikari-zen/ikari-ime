@@ -44,6 +44,18 @@ impl LmHandle for ZenzHandle {
     fn is_loaded(&self) -> bool {
         self.ranker.stats().loaded
     }
+
+    fn timings(&self) -> LmTimings {
+        let t = self.ranker.timings();
+        LmTimings {
+            inference: t.inference,
+            loads: t.loads,
+        }
+    }
+
+    fn devices(&self) -> Option<String> {
+        ikari_lm::devices()
+    }
 }
 
 #[cfg(not(feature = "lm"))]

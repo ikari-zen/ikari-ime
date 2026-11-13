@@ -254,6 +254,21 @@ pub trait LmHandle: Send + Sync {
     fn warm_up(&self);
     fn stats(&self) -> LmStats;
     fn is_loaded(&self) -> bool;
+    /// 推論 1 回と読み込み 1 回の所要（スパイク。ADR 0059 §2.1）。測らない実装は空
+    fn timings(&self) -> LmTimings {
+        LmTimings::default()
+    }
+    /// 登録されたデバイスの要約（`cpu,vulkan:IntegratedGpu`。スパイク。ADR 0059 §2.3）。読み込む前は None
+    fn devices(&self) -> Option<String> {
+        None
+    }
+}
+
+/// 推論と読み込みの所要（`ikari_lm::LmTimings` の写し。`ikari-lm` を知らずに使うため）
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LmTimings {
+    pub inference: Vec<Duration>,
+    pub loads: Vec<Duration>,
 }
 
 pub struct Stack {

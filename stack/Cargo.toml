@@ -9,6 +9,7 @@ default = []
 # zenz（llama.cpp）を使う。cmake が必要（ADR 0002 §13.2）
 lm = ["dep:ikari-lm", "ikari-lm/llama"]
 lm-metal = ["lm", "ikari-lm/metal"]
+lm-vulkan = ["lm", "ikari-lm/vulkan"]
 
 [dependencies]
 ikari-core.workspace = true

@@ -524,6 +524,21 @@ fn warm_up_loads_the_model_and_scores_once_without_touching_the_rates() {
 }
 
 #[test]
+fn timings_record_each_load_and_each_finished_inference() {
+    let state = mock(&[]);
+    *lock(&state.load_delay) = ikari_testtime::ms(30);
+    *lock(&state.delay) = ikari_testtime::ms(10);
+    let r = ZenzRanker::new(loader(&state), cfg(WARM_UP_TEST_BUDGET_MS, 60_000));
+    assert_eq!(r.timings(), LmTimings::default());
+    r.warm_up();
+    let t = r.timings();
+    assert_eq!((t.loads.len(), t.inference.len()), (1, 1));
+    // 読み込みと採点の時間は、モックの遅れ以上（待ちではなくワーカーの中で測る）
+    assert!(t.loads[0] >= ikari_testtime::ms(30), "{t:?}");
+    assert!(t.inference[0] >= ikari_testtime::ms(10), "{t:?}");
+}
+
+#[test]
 fn warm_up_after_idle_unload_reloads_the_model() {
     let state = mock(&[("a", 1.0)]);
     let r = ZenzRanker::new(loader(&state), cfg(30, 60));

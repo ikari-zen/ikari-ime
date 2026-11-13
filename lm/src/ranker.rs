@@ -76,6 +76,18 @@ struct Shared {
     late: Mutex<Option<(RequestKey, Scored)>>,
     /// 最後に送った要求のキー（同じ要求を重ねて送らないため）
     inflight: Mutex<Option<RequestKey>>,
+    /// 推論と読み込みの所要（スパイク。ADR 0059 §2.1 の NF-1・NF-3）
+    timings: Mutex<LmTimings>,
+}
+
+/// 推論 1 回（`LmScorer::nll`）と読み込み 1 回（`loader`）の所要。ワーカーの中で測る（待ちの時間を含まない）。
+/// 時間切れで捨てられた採点も、ワーカーが終えたものは入る（締め切りに関係なく推論そのものの時間）
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LmTimings {
+    /// 終えた順。成功した採点だけ
+    pub inference: Vec<Duration>,
+    /// 成功した読み込み
+    pub loads: Vec<Duration>,
 }
 
 /// 動作の統計（eval のレポートと、モックのテストで使う）
@@ -138,6 +150,7 @@ impl ZenzRanker {
             loaded: AtomicBool::new(false),
             late: Mutex::new(None),
             inflight: Mutex::new(None),
+            timings: Mutex::new(LmTimings::default()),
         });
         let (tx, rx) = mpsc::channel::<Request>();
         let worker = {
@@ -180,6 +193,11 @@ impl ZenzRanker {
             inference_errors: c.inference_errors.load(Ordering::Relaxed),
             loaded: self.shared.loaded.load(Ordering::Acquire),
         }
+    }
+
+    /// 推論と読み込みの所要の写し
+    pub fn timings(&self) -> LmTimings {
+        lock(&self.shared.timings).clone()
     }
 
     /// 採点する候補の表記（重複なし。Rewriter の候補は除く）
@@ -467,8 +485,10 @@ fn worker_loop(rx: Receiver<Request>, loader: LmLoader, shared: Arc<Shared>, cfg
         if scorer.is_none() {
             let blocked = last_load_failure.is_some_and(|t| t.elapsed() < cfg.load_retry);
             if !blocked {
+                let began = Instant::now();
                 match loader() {
                     Ok(s) => {
+                        lock(&shared.timings).loads.push(began.elapsed());
                         scorer = Some(s);
                         last_load_failure = None;
                         shared.loaded.store(true, Ordering::Release);
@@ -486,8 +506,10 @@ fn worker_loop(rx: Receiver<Request>, loader: LmLoader, shared: Arc<Shared>, cfg
             continue;
         };
 
+        let began = Instant::now();
         match s.nll(&req.prompt, &req.candidates) {
             Ok(nlls) if nlls.len() == req.candidates.len() => {
+                lock(&shared.timings).inference.push(began.elapsed());
                 counters.completed.fetch_add(1, Ordering::Relaxed);
                 let scored: Scored = Arc::new(req.candidates.iter().cloned().zip(nlls).collect());
                 // 待っている人がいれば渡す。もういなければ（時間切れ）、次の同じ変換のために残す

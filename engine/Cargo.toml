@@ -9,6 +9,7 @@ default = []
 # zenz（llama.cpp）を使う（ADR 0004 §3.1）
 lm = ["ikari-stack/lm"]
 lm-metal = ["lm", "ikari-stack/lm-metal"]
+lm-vulkan = ["lm", "ikari-stack/lm-vulkan"]
 
 [dependencies]
 ikari-core.workspace = true
