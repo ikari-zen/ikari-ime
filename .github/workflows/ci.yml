@@ -146,6 +146,9 @@ jobs:
       # https://vulkan.lunarg.com/sdk/sha/<版>/windows/vulkansdk-windows-X64-<版>.exe.json）
       VULKAN_SDK_VERSION: "1.4.363.1"
       VULKAN_SDK_SHA256: "c02932bd9a968b22d404536108adaacac908c081cd6b0113f5bfefc523dd0a6a"
+      # vulkan-shaders-gen（内側の CMake）のビルドのフォルダは深い。rc.exe が manifest.rc で RC2136 を出して落ちた
+      # （2・3 回目の run）。パスの長さが原因という推測で、target を短くする
+      CARGO_TARGET_DIR: C:\t
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Vulkan SDK のキャッシュ
@@ -180,6 +183,8 @@ jobs:
           "VULKAN_SDK=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "$sdk\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+        with:
+          workspaces: ". -> C:\\t"
       # Ninja のとき、vulkan-shaders-gen（内側の CMake）はコンパイラの環境（INCLUDE、LIB）を cmake crate から受け取らず、
       # コンパイラの検査で落ちた（2 回目の run。rc.exe の RC2136）。vcvars64 の環境を job に書き出す
       - name: MSVC の環境を設定する（vcvars64）
@@ -210,20 +215,22 @@ jobs:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
+          # target は CARGO_TARGET_DIR（C:\t）
+          rel="$(cygpath -u "$CARGO_TARGET_DIR")/release"
           out=dist/target/release
           mkdir -p "$out/backends"
-          cp target/release/ikari-engine-host.exe target/release/ikari-eval.exe "$out/"
+          cp "$rel/ikari-engine-host.exe" "$rel/ikari-eval.exe" "$out/"
           # ggml と llama の本体（build script が OUT_DIR/bin から target/release に写したもの）
-          cp target/release/*.dll "$out/"
+          cp "$rel"/*.dll "$out/"
           # バックエンド（OUT_DIR/backends。target には写らない）。feature の組み合わせで build のフォルダが複数ありうるので、
           # ggml-vulkan を含むものを使う
           backends=""
-          for d in target/release/build/llama-cpp-sys-2-*/out/backends; do
+          for d in "$rel"/build/llama-cpp-sys-2-*/out/backends; do
             if ls "$d"/ggml-vulkan*.dll >/dev/null 2>&1; then backends="$d"; fi
           done
           if [ -z "$backends" ]; then
-            echo "no ggml-vulkan DLL under target/release/build/llama-cpp-sys-2-*/out/backends" >&2
-            ls -la target/release/build/llama-cpp-sys-2-*/out/ || true
+            echo "no ggml-vulkan DLL under $rel/build/llama-cpp-sys-2-*/out/backends" >&2
+            ls -la "$rel"/build/llama-cpp-sys-2-*/out/ || true
             exit 1
           fi
           echo "backends from: $backends"
