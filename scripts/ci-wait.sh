@@ -8,7 +8,7 @@
 #
 # 再実行するのは、GitHub 側の都合で失敗したものだけ（ランナーを確保できない、ランナーが落ちた）。
 # テストなどの本物の失敗は再実行せず、失敗したジョブの名前と URL を出して終わる。
-# 終了コード: 0 = 全部通った、1 = 本物の失敗、2 = 再実行の上限、3 = 待ち時間の上限、64 = 使い方の誤り。
+# 終了コード: 0 = 全部通った、1 = 本物の失敗、2 = 再実行の上限、3 = 待ち時間の上限、4 = PR がマージ済みか閉じている、64 = 使い方の誤り。
 # 出力は、状態が変わったときと最後だけ（1 行ずつ）。
 set -u
 
@@ -43,6 +43,11 @@ reruns=0
 last=""
 while :; do
   head=$(gh pr view "$pr" --json headRefOid --jq '.headRefOid[0:7]' 2>/dev/null) || { echo "PR #$pr を読めない（gh の認証か番号）" >&2; exit 64; }
+  # マージ済み・閉じた PR は、待っても何も変わらない
+  pr_state=$(gh pr view "$pr" --json state --jq .state 2>/dev/null || true)
+  case "$pr_state" in
+    MERGED|CLOSED) echo "[$(date +%H:%M)] #${pr} は ${pr_state}。待つのをやめる"; exit 4 ;;
+  esac
   # name、bucket（pass / fail / pending / skipping / cancel）、link を、タブ区切りで
   rows=$(gh pr checks "$pr" --json name,bucket,link --jq '.[] | [.name, .bucket, .link] | @tsv' 2>/dev/null || true)
   if [ -z "$rows" ]; then
