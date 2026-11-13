@@ -342,10 +342,21 @@ impl Indicator {
     /// compartment の今の値から読んだモード。値がなければ `None`
     pub fn read(&self, guid: &GUID) -> Option<InputMode> {
         if *guid == GUID_COMPARTMENT_KEYBOARD_OPENCLOSE {
-            read_i32(&self.compartments, guid).map(|value| mode::from_open(value != 0))
+            let value = read_i32(&self.compartments, guid)?;
+            log::event(if value != 0 {
+                "read OPENCLOSE: open"
+            } else {
+                "read OPENCLOSE: closed"
+            });
+            Some(mode::from_open(value != 0))
         } else if *guid == GUID_COMPARTMENT_KEYBOARD_INPUTMODE_CONVERSION {
-            read_i32(&self.compartments, guid)
-                .map(|value| mode::from_conversion(u32::try_from(value).unwrap_or_default()))
+            let value = read_i32(&self.compartments, guid)?;
+            log::event(if u32::try_from(value).unwrap_or_default() & mode::conversion::NATIVE != 0 {
+                "read CONVERSION: native"
+            } else {
+                "read CONVERSION: alphanumeric"
+            });
+            Some(mode::from_conversion(u32::try_from(value).unwrap_or_default()))
         } else {
             None
         }
