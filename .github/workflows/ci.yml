@@ -94,7 +94,7 @@ jobs:
   # 実機（VM）で試すための release ビルド（エンジンの exe と TIP の DLL）と、`windows/dev` のスクリプトを、1 つの artifact に入れる。
   # VM で Rust を入れてビルドしなくて済む（遅い機械での手間を避ける）。配置はリポジトリと同じ（`windows/dev/common.ps1` が
   # `..\..` を根として `target\release\` と `shell-core\resources\keymap` を見る）ので、展開したままスクリプトが動く。
-  # LM なし。配る人向けのビルドではない（インストーラと署名は W5 の残り）。必須のチェックではない。
+  # exe は LM つき（`-nolm` が LM なし）。配る人向けのビルドではない（インストーラと署名は W5 の残り）。必須のチェックではない。
   windows-artifact:
     runs-on: windows-latest
     timeout-minutes: 45
@@ -103,6 +103,13 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
       - name: release ビルド（エンジンと TIP）
         run: cargo build --release -p ikari-engine-host -p ikari-tip
+      # 実機の項目 37・38（LM の時間。ADR 0059 の GPU のスパイクの下準備）用に、LM つきのエンジンも作る。LM なしの exe は
+      # 上書きされるので、先に別の名前で取っておく
+      - name: LM なしのエンジンを取っておく
+        shell: bash
+        run: cp target/release/ikari-engine-host.exe target/release/ikari-engine-host-nolm.exe
+      - name: release ビルド（LM つきのエンジン）
+        run: cargo build --release -p ikari-engine-host --features lm
       # PR では GitHub が作るマージ用のコミットが `github.sha` になるので、PR の先頭のコミットを使う（探せる SHA にする）
       - name: artifact の中身を集める
         shell: bash
@@ -110,7 +117,8 @@ jobs:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           mkdir -p dist/target/release dist/windows dist/shell-core/resources
-          cp target/release/ikari-engine-host.exe target/release/ikari_tip.dll dist/target/release/
+          # ikari-engine-host.exe は LM つき（上の順で作った）。LM なしは -nolm。LM つきは、モデルが無ければ LM なしと同じに動く
+          cp target/release/ikari-engine-host.exe target/release/ikari-engine-host-nolm.exe target/release/ikari_tip.dll dist/target/release/
           cp -r windows/dev dist/windows/dev
           cp -r shell-core/resources/keymap dist/shell-core/resources/keymap
           cp docs/windows-real-device-check.md dist/windows-real-device-check.md
