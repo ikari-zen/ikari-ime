@@ -2,10 +2,11 @@
 .SYNOPSIS
   Drives a Notepad check of ikari without looking at the screen (UI Automation). Run it in the DESKTOP session via run-in-session.ps1.
   -Mode Prepare : launch Notepad if needed, focus + clear its edit control, activate the ikari profile (TSF, this session).
+  -Mode Activate: only the activation of the ikari profile (+ open status), on the running Notepad.
   -Mode Read    : write the edit control's text, and the active profile, to $OutFile (UTF-8).
   Keys are sent from outside (virsh send-key on the host).
 #>
-param([ValidateSet('Prepare', 'Read')][string]$Mode = 'Read', [string]$OutFile = 'C:\ikari-dev\ime-test.txt')
+param([ValidateSet('Prepare', 'Activate', 'Read')][string]$Mode = 'Read', [string]$OutFile = 'C:\ikari-dev\ime-test.txt')
 
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type -TypeDefinition @'
@@ -46,6 +47,22 @@ public static class Tsf {
 }
 '@
 
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class ImeCtl {
+    [DllImport("imm32.dll")] static extern IntPtr ImmGetDefaultIMEWnd(IntPtr hwnd);
+    [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr hwnd, uint msg, IntPtr w, IntPtr l);
+    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+    // WM_IME_CONTROL (0x283), IMC_SETOPENSTATUS (6) / IMC_GETOPENSTATUS (5): open = Japanese mode, closed = English (TIP mode.rs)
+    public static long SetOpen(bool open) {
+        IntPtr w = ImmGetDefaultIMEWnd(GetForegroundWindow());
+        SendMessage(w, 0x283, (IntPtr)6, (IntPtr)(open ? 1 : 0));
+        return (long)SendMessage(w, 0x283, (IntPtr)5, IntPtr.Zero);
+    }
+}
+'@
+
 $IkariClsid = '{83A140BE-DECB-4358-867B-7B77D6541276}'
 $IkariProfile = '{35EAB916-5717-4CFA-8991-7264079FD1C1}'
 
@@ -60,21 +77,25 @@ function Get-NotepadDoc {
 
 $lines = New-Object System.Collections.Generic.List[string]
 if ($Mode -eq 'Prepare') {
-    if (-not (Get-NotepadDoc)) { Start-Process notepad.exe | Out-Null; Start-Sleep 3 }
+    # Win11 Notepad restores the previous tabs, so a plain "clear" is not enough: close it, drop its saved state, start fresh.
+    Get-Process notepad -ErrorAction SilentlyContinue | Stop-Process -Force
+    Start-Sleep 1
+    Get-ChildItem "$env:LOCALAPPDATA\Packages\Microsoft.WindowsNotepad_*\LocalState" -Recurse -File -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+    Start-Process notepad.exe | Out-Null
+    Start-Sleep 3
     $doc = Get-NotepadDoc
-    if (-not $doc) { $lines.Add('no notepad document') } else {
-        $doc.SetFocus()
-        $vp = $doc.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
-        $vp.SetValue('')
-        $lines.Add('cleared')
+    if (-not $doc) { $lines.Add('no notepad document') } else { $doc.SetFocus(); $lines.Add('fresh notepad') }
     }
+if ($Mode -in 'Prepare','Activate') {
     $lines.Add('activate hr=' + ('{0:X8}' -f [Tsf]::Activate($IkariClsid, $IkariProfile)))
     Start-Sleep 1
+    $lines.Add('open status=' + [ImeCtl]::SetOpen($true))
 }
 $lines.Add('active: ' + [Tsf]::Active())
 $doc = Get-NotepadDoc
 if ($doc) {
     $tp = $doc.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern)
     $lines.Add('text: [' + $tp.DocumentRange.GetText(-1) + ']')
+    try { $doc.SetFocus() } catch { }   # give the focus back, so the next keys go to Notepad
 }
 $lines | Set-Content -Encoding UTF8 $OutFile
