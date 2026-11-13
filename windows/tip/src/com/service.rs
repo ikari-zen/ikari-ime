@@ -96,6 +96,9 @@ pub struct TextService {
     indicator: RefCell<Option<Indicator>>,
     /// 自分の compartment の書き込みの間だけ立てる（そのときの通知を読み捨てる）
     writing_mode: Cell<bool>,
+    /// 起動したあと、最初の文書のフォーカスで、モードを日本語に合わせる（OS はアプリの新しいスレッドを「閉」で始める
+    /// ことがあり、起動時に書いた「開」が上書きされるため。実機で確認）
+    initial_mode_pending: Cell<bool>,
     _dll: DllRef,
 }
 
@@ -105,6 +108,7 @@ impl TextService {
             state: RefCell::new(State::default()),
             indicator: RefCell::new(None),
             writing_mode: Cell::new(false),
+            initial_mode_pending: Cell::new(true),
             _dll: DllRef::new(),
         }
     }
@@ -455,6 +459,7 @@ impl TextService_Impl {
         // 新しい `Shell` は日本語から始まるので、OS の「開」にも合わせる（新しいプロセスの OS の既定は「閉」で、
         // 何もしないと、その通知（`OnChange`）に従って英語のモードで始まってしまう。実機で確認）
         ModeSink::show(&ServiceModes(&self.this()), InputMode::Japanese);
+        self.initial_mode_pending.set(true);
         // 文書にフォーカスがあれば、入力先を知らせる
         if focused_context(&self.this()).is_some() {
             ensure_active(&self.this());
@@ -725,6 +730,9 @@ impl ITfThreadMgrEventSink_Impl for TextService_Impl {
             leave_client(&this);
             if focus.is_some() {
                 ensure_active(&this);
+                if self.initial_mode_pending.replace(false) {
+                    ModeSink::show(&ServiceModes(&this), InputMode::Japanese);
+                }
             }
             Ok(())
         })
