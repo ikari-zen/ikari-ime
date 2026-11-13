@@ -755,6 +755,10 @@ impl ITfCompartmentEventSink_Impl for TextService_Impl {
             let Some(mode) = mode else {
                 return Ok(());
             };
+            log::event(match mode {
+                InputMode::Japanese => "compartment changed: japanese",
+                InputMode::English => "compartment changed: english",
+            });
             let this = self.this();
             let context = focused_context(&this);
             run_event(
