@@ -452,6 +452,9 @@ impl TextService_Impl {
             // 新しい `Shell` は日本語から始まる。次の表示で OS の値を合わせる
             state.modes.reset();
         }
+        // 新しい `Shell` は日本語から始まるので、OS の「開」にも合わせる（新しいプロセスの OS の既定は「閉」で、
+        // 何もしないと、その通知（`OnChange`）に従って英語のモードで始まってしまう。実機で確認）
+        ModeSink::show(&ServiceModes(&self.this()), InputMode::Japanese);
         // 文書にフォーカスがあれば、入力先を知らせる
         if focused_context(&self.this()).is_some() {
             ensure_active(&self.this());
