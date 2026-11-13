@@ -96,6 +96,9 @@ pub struct TextService {
     indicator: RefCell<Option<Indicator>>,
     /// 自分の compartment の書き込みの間だけ立てる（そのときの通知を読み捨てる）
     writing_mode: Cell<bool>,
+    /// 起動したあと、最初の文書のフォーカスで、モードを日本語に合わせる（OS はアプリの新しいスレッドの IME を
+    /// 「閉」で始めることがあり、起動時に書いた「開」が上書きされるため。実機（Windows 11）で確認）
+    initial_mode_pending: Cell<bool>,
     _dll: DllRef,
 }
 
@@ -105,6 +108,7 @@ impl TextService {
             state: RefCell::new(State::default()),
             indicator: RefCell::new(None),
             writing_mode: Cell::new(false),
+            initial_mode_pending: Cell::new(true),
             _dll: DllRef::new(),
         }
     }
@@ -452,6 +456,10 @@ impl TextService_Impl {
             // 新しい `Shell` は日本語から始まる。次の表示で OS の値を合わせる
             state.modes.reset();
         }
+        // 新しい `Shell` は日本語から始まるので、OS の「開」にも合わせる。ただし新しいプロセスでは、このあとで OS が
+        // 「閉」に書き換えることがある（最初の文書のフォーカスで、もう一度合わせる。`initial_mode_pending`）
+        ModeSink::show(&ServiceModes(&self.this()), InputMode::Japanese);
+        self.initial_mode_pending.set(true);
         // 文書にフォーカスがあれば、入力先を知らせる
         if focused_context(&self.this()).is_some() {
             ensure_active(&self.this());
@@ -714,6 +722,19 @@ impl ITfThreadMgrEventSink_Impl for TextService_Impl {
             leave_client(&this);
             if focus.is_some() {
                 ensure_active(&this);
+                if self.initial_mode_pending.replace(false) {
+                    // `Shell` にも日本語を伝える（OS の表示だけ合わせても、`Shell` が英語のままだと打鍵が素通しになる）
+                    let context = focused_context(&this);
+                    run_event(
+                        &this,
+                        context.as_ref(),
+                        ShellEvent::InputModeChanged {
+                            mode_id: InputMode::Japanese.mode_id().to_owned(),
+                            secure: false,
+                        },
+                        Mode::Async,
+                    );
+                }
             }
             Ok(())
         })
