@@ -2,6 +2,7 @@
 #   rust  ubuntu。文書の検査、ライセンス、fmt、clippy、cargo test（--rust-only）
 #   windows windows-latest。cargo test --workspace（LM なし。必須ではない。#316）
 #   windows-artifact windows-latest。実機（VM）に持ち込む release ビルドを artifact に保存する（必須ではない）
+#   windows-vulkan-artifact windows-latest。スパイク（ADR 0059 §3）。Vulkan の LM のビルドを artifact に保存する（必須ではない）
 #   check macOS。XCFramework のビルドと swift test（--swift-only）。Swift は Linux では作れない
 # ブランチ保護の「必要なチェック」に check を入れてある（job の名前を変えない）。rust は必須ではないが、check と同じく通らないものはマージしない。
 # 公開リポジトリでは GitHub ホストのランナーが無料。macOS は混むので、macOS で流すものを Swift だけに絞る。
@@ -131,6 +132,99 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ikari-windows-dev-${{ github.event.pull_request.head.sha || github.sha }}
+          path: dist
+          if-no-files-found: error
+          retention-days: 14
+
+  # スパイク（ADR 0059 §3。main に入れない）: LM を Vulkan の動的なバックエンドでビルドし、実機（VM）で CPU と GPU の
+  # 推論時間を測るための artifact を作る。バックエンドの DLL は exe の隣の `backends\` に置く（§2.3）。必須のチェックではない。
+  windows-vulkan-artifact:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    env:
+      # LunarG の Vulkan SDK。版と sha256 を固定する（sha256 は LunarG が公開する値。
+      # https://vulkan.lunarg.com/sdk/sha/<版>/windows/vulkansdk-windows-X64-<版>.exe.json）
+      VULKAN_SDK_VERSION: "1.4.363.1"
+      VULKAN_SDK_SHA256: "c02932bd9a968b22d404536108adaacac908c081cd6b0113f5bfefc523dd0a6a"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Vulkan SDK のキャッシュ
+        id: vulkan-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: C:\VulkanSDK\${{ env.VULKAN_SDK_VERSION }}
+          key: vulkan-sdk-${{ env.VULKAN_SDK_VERSION }}-${{ runner.os }}
+      # 取得したインストーラは、sha256 を照合してから実行する。無人のオプションは LunarG の Getting Started（Windows）のとおり
+      - name: Vulkan SDK を入れる
+        if: steps.vulkan-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        timeout-minutes: 20
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $v = $env:VULKAN_SDK_VERSION
+          $file = "vulkansdk-windows-X64-$v.exe"
+          $installer = Join-Path $env:RUNNER_TEMP $file
+          Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/$v/windows/$file" -OutFile $installer
+          $actual = (Get-FileHash -Algorithm SHA256 $installer).Hash.ToLowerInvariant()
+          if ($actual -ne $env:VULKAN_SDK_SHA256) {
+            throw "Vulkan SDK sha256 mismatch: expected $env:VULKAN_SDK_SHA256, got $actual"
+          }
+          $p = Start-Process -FilePath $installer -Wait -PassThru -ArgumentList @(
+            '--root', "C:\VulkanSDK\$v", '--accept-licenses', '--default-answer', '--confirm-command', 'install')
+          if ($p.ExitCode -ne 0) { throw "Vulkan SDK installer exited with $($p.ExitCode)" }
+      - name: VULKAN_SDK を設定する
+        shell: pwsh
+        run: |
+          $sdk = "C:\VulkanSDK\$env:VULKAN_SDK_VERSION"
+          if (-not (Test-Path "$sdk\Bin\glslc.exe")) { throw "glslc.exe not found under $sdk\Bin" }
+          "VULKAN_SDK=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "$sdk\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+      - name: release ビルド（Vulkan の LM つきのエンジンと評価ツール）
+        run: cargo build --release -p ikari-engine-host -p ikari-eval --features ikari-engine-host/lm-vulkan,ikari-eval/lm-vulkan
+      - name: artifact の中身を集める
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          out=dist/target/release
+          mkdir -p "$out/backends"
+          cp target/release/ikari-engine-host.exe target/release/ikari-eval.exe "$out/"
+          # ggml と llama の本体（build script が OUT_DIR/bin から target/release に写したもの）
+          cp target/release/*.dll "$out/"
+          # バックエンド（OUT_DIR/backends。target には写らない）。feature の組み合わせで build のフォルダが複数ありうるので、
+          # ggml-vulkan を含むものを使う
+          backends=""
+          for d in target/release/build/llama-cpp-sys-2-*/out/backends; do
+            if ls "$d"/ggml-vulkan*.dll >/dev/null 2>&1; then backends="$d"; fi
+          done
+          if [ -z "$backends" ]; then
+            echo "no ggml-vulkan DLL under target/release/build/llama-cpp-sys-2-*/out/backends" >&2
+            ls -la target/release/build/llama-cpp-sys-2-*/out/ || true
+            exit 1
+          fi
+          echo "backends from: $backends"
+          cp "$backends"/*.dll "$out/backends/"
+          mkdir -p dist/eval && cp -r eval/sets dist/eval/sets
+          echo "${SOURCE_SHA}" > dist/COMMIT
+          # 中身と大きさ（ADR 0059 §6 の (c)）
+          (cd dist && find . -type f \( -name '*.dll' -o -name '*.exe' \) -printf '%s\t%p\n' | sort -k2) > dist/MANIFEST.tsv
+          cat dist/MANIFEST.tsv
+      # exe と DLL が vulkan-1.dll に直接依存していないか（ADR 0059 §1.2 の推測の確認）。失敗しても artifact は作る
+      - name: DLL の依存を書き出す
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $dumpbin = Get-ChildItem "$vs\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe" | Select-Object -First 1
+          Get-ChildItem dist\target\release -Recurse -Include *.exe,*.dll | ForEach-Object {
+            "== $($_.FullName.Substring((Resolve-Path dist).Path.Length + 1))"
+            & $dumpbin.FullName /nologo /dependents $_.FullName | Select-String -Pattern '\.dll' | ForEach-Object { $_.Line.Trim() }
+          } | Tee-Object -FilePath dist\DEPENDENTS.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ikari-windows-vulkan-${{ github.event.pull_request.head.sha || github.sha }}
           path: dist
           if-no-files-found: error
           retention-days: 14
