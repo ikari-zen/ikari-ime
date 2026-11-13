@@ -731,7 +731,17 @@ impl ITfThreadMgrEventSink_Impl for TextService_Impl {
             if focus.is_some() {
                 ensure_active(&this);
                 if self.initial_mode_pending.replace(false) {
-                    ModeSink::show(&ServiceModes(&this), InputMode::Japanese);
+                    // `Shell` にも日本語を伝える（OS の表示だけ合わせても、`Shell` が英語のままだと打鍵が素通しになる）
+                    let context = focused_context(&this);
+                    run_event(
+                        &this,
+                        context.as_ref(),
+                        ShellEvent::InputModeChanged {
+                            mode_id: InputMode::Japanese.mode_id().to_owned(),
+                            secure: false,
+                        },
+                        Mode::Async,
+                    );
                 }
             }
             Ok(())
