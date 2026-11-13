@@ -220,21 +220,30 @@ jobs:
           out=dist/target/release
           mkdir -p "$out/backends"
           cp "$rel/ikari-engine-host.exe" "$rel/ikari-eval.exe" "$out/"
-          # ggml と llama の本体（build script が OUT_DIR/bin から target/release に写したもの）
-          cp "$rel"/*.dll "$out/"
-          # バックエンド（OUT_DIR/backends。target には写らない）。feature の組み合わせで build のフォルダが複数ありうるので、
-          # ggml-vulkan を含むものを使う
-          backends=""
-          for d in "$rel"/build/llama-cpp-sys-2-*/out/backends; do
-            if ls "$d"/ggml-vulkan*.dll >/dev/null 2>&1; then backends="$d"; fi
+          # 調べる用: llama-cpp-sys-2 の OUT_DIR（build/ の中を除く）と target/release 直下の DLL
+          echo "== DLLs in $rel"; find "$rel" -maxdepth 1 -name '*.dll' || true
+          for o in "$rel"/build/llama-cpp-sys-2-*/out; do
+            echo "== DLLs in $o"; find "$o" -path "$o/build" -prune -o -name '*.dll' -print || true
           done
-          if [ -z "$backends" ]; then
+          # 使う OUT_DIR: feature の組み合わせで build のフォルダが複数ありうるので、backends に ggml-vulkan を含むもの
+          sysout=""
+          for o in "$rel"/build/llama-cpp-sys-2-*/out; do
+            if ls "$o"/backends/ggml-vulkan*.dll >/dev/null 2>&1; then sysout="$o"; fi
+          done
+          if [ -z "$sysout" ]; then
             echo "no ggml-vulkan DLL under $rel/build/llama-cpp-sys-2-*/out/backends" >&2
-            ls -la "$rel"/build/llama-cpp-sys-2-*/out/ || true
             exit 1
           fi
-          echo "backends from: $backends"
-          cp "$backends"/*.dll "$out/backends/"
+          echo "OUT_DIR: $sysout"
+          # ggml と llama の本体（OUT_DIR の build/ と backends/ 以外にある DLL。exe の隣に置く）
+          find "$sysout" \( -path "$sysout/build" -o -path "$sysout/backends" \) -prune -o -name '*.dll' -print \
+            | while read -r f; do cp "$f" "$out/"; done
+          # バックエンド（OUT_DIR/backends。target には写らない）
+          cp "$sysout"/backends/*.dll "$out/backends/"
+          if ! ls "$out"/llama*.dll >/dev/null 2>&1; then
+            echo "llama*.dll was not collected" >&2
+            exit 1
+          fi
           mkdir -p dist/eval && cp -r eval/sets dist/eval/sets
           echo "${SOURCE_SHA}" > dist/COMMIT
           # 中身と大きさ（ADR 0059 §6 の (c)）
