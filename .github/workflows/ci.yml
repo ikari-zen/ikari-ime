@@ -180,8 +180,14 @@ jobs:
           "VULKAN_SDK=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "$sdk\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+      # Visual Studio のジェネレータでは、ggml-vulkan の vulkan-shaders-gen（ExternalProject）のインストールが
+      # `Not a file: …/vulkan-shaders-gen-build/cmake_install.cmake` で落ちた（最初の run）。Ninja にする
       - name: release ビルド（Vulkan の LM つきのエンジンと評価ツール）
-        run: cargo build --release -p ikari-engine-host -p ikari-eval --features ikari-engine-host/lm-vulkan,ikari-eval/lm-vulkan
+        env:
+          CMAKE_GENERATOR: Ninja
+        run: |
+          ninja --version
+          cargo build --release -p ikari-engine-host -p ikari-eval --features ikari-engine-host/lm-vulkan,ikari-eval/lm-vulkan
       - name: artifact の中身を集める
         shell: bash
         env:
