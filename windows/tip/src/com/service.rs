@@ -533,16 +533,19 @@ impl TextService_Impl {
             }
         }
         let Some(context) = context else {
+            log::event("key: no context");
             return false;
         };
         let this = self.this();
         if !ensure_active(&this) {
+            log::event("key: not active (no shell or Activate failed)");
             return false;
         }
         // 往復時間の測定（S1）。キーを受けてから、返った操作を実行し終わるまで。オフなら分岐 1 つ
         let meter = host::meter();
         let stamp = meter.start();
         let Some(press) = keyboard::read(wparam, lparam) else {
+            log::event("key: unreadable");
             return false;
         };
         // 修飾キーだけの押下は送らない（アプリへ）
@@ -550,6 +553,11 @@ impl TextService_Impl {
             return false;
         };
         let outcome = run_event(&this, Some(context), event, Mode::Sync);
+        log::event(match outcome {
+            None => "key: not run (no shell, re-entered, no session, or panic)",
+            Some(false) => "key: run, passed through",
+            Some(true) => "key: run, eaten",
+        });
         meter.finish(Kind::Key, stamp, outcome.is_some());
         let eaten = outcome.unwrap_or(false);
         if eaten
