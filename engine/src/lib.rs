@@ -15,6 +15,7 @@
 
 mod admin;
 mod cache;
+mod connection;
 pub mod context_limits;
 mod convert;
 mod ctx_trace;
@@ -63,6 +64,7 @@ use crate::cache::{
     CacheEntry, CacheKey, CacheOutcome, ConversionTable, Job, MissReason, PrefetchCache,
     PrefetchContext, PrefetchQueue, SharedConversion, lock as lock_mutex,
 };
+use crate::connection::ConnectionIds;
 use crate::context_limits::ContextLimits;
 use crate::convert::candidate_kind;
 use crate::data::{DataWatch, SaveState, load_emoji_reply};
@@ -70,6 +72,7 @@ use crate::log::{EngineLog, LOG_DIR_NAME, RUN_MARK_FILE_NAME};
 use crate::segments::{LookJob, LookaheadQueue, RealSeam, SegEntry, SegmentSeam, layout_reply};
 use crate::session::Session;
 
+pub use crate::connection::{Connection, ConnectionId};
 pub use crate::diag::install_crash_handlers;
 pub use crate::lock::{EngineLock, LockError};
 pub use crate::settings::{SETTINGS_FILE_NAME, Settings};
@@ -327,6 +330,7 @@ impl Engine {
             }),
             stop: (Mutex::new(false), Condvar::new()),
             next_conversion: AtomicU64::new(1),
+            connections: ConnectionIds::new(),
             lm_requested,
             lm_budget,
             convert_wait,
@@ -370,23 +374,40 @@ impl Engine {
 
     /// Envelope（protobuf のバイト列）を受けて Envelope を返す。決して panic せず、エラーも Envelope で返す。
     pub fn handle(&self, req: &[u8]) -> Vec<u8> {
+        self.inner.handle_frame(ConnectionId::DEFAULT, req)
+    }
+}
+
+impl Inner {
+    /// `Engine::handle` と `Connection::handle` の共通の本体。`conn` は契約だけの段階では使わない
+    /// （キーの置き換えはレーン A。ADR 0064 §8 の 2）。
+    fn handle_frame(&self, _conn: ConnectionId, req: &[u8]) -> Vec<u8> {
         let started = Instant::now();
-        let done = self.inner.process(req);
+        let done = self.process(req);
         let micros = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
         // 成功した `DiagEvent` は、`diag` が事象そのものの行を書く（要求の行は重ねて書かない）
         if done.kind != diag::KIND_DIAG {
-            self.inner.diag.count_request();
+            self.diag.count_request();
         }
         if done.kind != diag::KIND_DIAG || done.error.is_some() {
-            self.inner.log.record_note(
+            self.log.record_note(
                 done.kind,
                 micros,
-                self.inner.lm_state_name(),
+                self.lm_state_name(),
                 done.error,
                 done.note.as_deref(),
             );
         }
         done.reply
+    }
+}
+
+impl Engine {
+    /// 新しい接続の口を作る。接続の番号はエンジンが振る（殻は知らない。ADR 0064 §4.1 の K1）。
+    /// engine-host は、パイプの接続ごとにこれを 1 つ取り、その接続の枠をすべて `Connection::handle` に渡す。
+    /// 契約だけの段階では、キーはまだ（接続, セッション）になっていない（レーン A。ADR 0064 §8 の 2）。
+    pub fn connect(&self) -> Connection {
+        Connection::new(Arc::clone(&self.inner), self.inner.connections.next())
     }
 }
 
@@ -458,6 +479,8 @@ struct Inner {
     save: Mutex<SaveState>,
     stop: (Mutex<bool>, Condvar),
     next_conversion: AtomicU64,
+    /// 接続の番号の払い出し（ADR 0064 §4）
+    connections: ConnectionIds,
     lm_requested: bool,
     lm_budget: LmBudget,
     /// Space で計算中の先行計算を待つ上限
