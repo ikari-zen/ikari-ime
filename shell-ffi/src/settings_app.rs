@@ -231,6 +231,7 @@ fn intent_from_pb(kind: Option<app::intent::Kind>) -> Result<SettingsIntent, i32
         K::PostalEnglish(v) => I::PostalEnglish(v),
         K::PostalTePrefix(v) => I::PostalTePrefix(v),
         K::CandidateHideWhenConfident(v) => I::CandidateHideWhenConfident(v),
+        K::DeveloperLmStatus(v) => I::DeveloperLmStatus(v),
         K::UnicodeNotation(v) => I::UnicodeNotation(v),
         K::DateWeekdayDates(v) => I::DateWeekdayDates(v),
         K::EmojiSmallLetters(v) => I::EmojiSmallLetters(v),

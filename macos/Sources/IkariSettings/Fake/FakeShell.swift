@@ -48,6 +48,7 @@ struct FakeState: Sendable {
         "unicode.notation": "off",
         "date.weekday_dates": "off",
         "candidate.hide_when_confident": "on",
+        "developer.lm_status": "off",
         "emoji.shortcode_exclude": SettingsValues.defaults.emojiShortcodeExclude.joined(separator: ","),
     ]
     static let posOptions: [(name: String, needsConjType: Bool)] = [

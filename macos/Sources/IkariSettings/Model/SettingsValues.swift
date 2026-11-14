@@ -57,6 +57,8 @@ struct SettingsValues: Equatable, Sendable {
     var dateWeekdayDates = false
     /// `candidate.hide_when_confident`。確信が高い変換では候補一覧を出さない
     var candidateHideWhenConfident = false
+    /// `developer.lm_status`。開発者向け。候補窓に LM の様子を 1 行出す（ADR 0061）
+    var developerLmStatus = false
 
     /// 何も書いていないときの値（`defaults` と同じ）
     init() {
@@ -96,6 +98,7 @@ struct SettingsValues: Equatable, Sendable {
         unicodeNotation = message.unicodeNotation
         dateWeekdayDates = message.dateWeekdayDates
         candidateHideWhenConfident = message.candidateHideWhenConfident
+        developerLmStatus = message.developerLmStatus
     }
 
     /// `keymap_overrides` の「割り当てを外す」の値（shell-core の `VALUE_NONE`。proto の約束）

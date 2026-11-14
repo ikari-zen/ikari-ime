@@ -42,6 +42,7 @@ private let keymapPrefix = "keymap."
         case "paging.wrap": await model.setPagingWrap(flipped)
         case "paging.size": await model.setPageSize(try otherInt(row))
         case "candidate.hide_when_confident": await model.setCandidateHideWhenConfident(flipped)
+        case "developer.lm_status": await model.setDeveloperLmStatus(flipped)
         case "clause.min_chars": await model.setClauseMinChars(try otherInt(row))
         case "engine.lm": await model.setLMEnabled(flipped)
         case "engine.idle_unload_secs": await model.setIdleUnloadSecs(try otherInt(row))

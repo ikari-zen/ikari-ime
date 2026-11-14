@@ -116,6 +116,8 @@ message Intent {
     ikari.shell.v1.Empty reset_emoji_shortcode_exclude = 22;
     KeymapIntent keymap = 23;
     int64 clause_min_chars = 24;
+    // 開発者向け: 候補窓に LM の様子を出す（ADR 0061）
+    bool developer_lm_status = 25;
   }
 }
 
