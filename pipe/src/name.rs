@@ -5,6 +5,9 @@ const NAME_PREFIX: &str = r"\\.\pipe\ikari-ime-engine-v1-";
 /// 設定画面のパイプの名前の先頭。エンジンのパイプとは別のパイプにする（ADR 0040 §2.5。アクセスの制御を別々に持つため）。
 /// 名前の先頭がエンジンのものと一致しないので、同じ SID とセッションでも衝突しない。
 pub const SETTINGS_NAME_PREFIX: &str = r"\\.\pipe\ikari-ime-settings-v1-";
+/// 候補窓（`ikari-candidate.exe`）のパイプの名前の先頭（ADR 0062 §5.3、§7.2）。TIP → 候補窓の片道。
+/// エンジン、設定画面のパイプとは別（先頭が一致しないので、同じ SID とセッションでも衝突しない）。
+pub const CANDIDATE_NAME_PREFIX: &str = r"\\.\pipe\ikari-ime-candidate-v1-";
 /// SID の長さの上限（文字数）。`S-1-5-21-` と 4 つの部分の SID でも 60 文字ほど。パイプの名前の上限（256）に収める。
 const MAX_SID_CHARS: usize = 184;
 
@@ -28,6 +31,12 @@ pub fn pipe_name(sid: &str, session_id: u32) -> Result<String, PipeNameError> {
 /// `sid` の規則は `pipe_name` と同じ。
 pub fn settings_pipe_name(sid: &str, session_id: u32) -> Result<String, PipeNameError> {
     named(SETTINGS_NAME_PREFIX, sid, session_id)
+}
+
+/// `\\.\pipe\ikari-ime-candidate-v1-<sid>-s<session>`。TIP が候補窓につなぐパイプの名前。
+/// `sid` の規則は `pipe_name` と同じ。
+pub fn candidate_pipe_name(sid: &str, session_id: u32) -> Result<String, PipeNameError> {
+    named(CANDIDATE_NAME_PREFIX, sid, session_id)
 }
 
 fn named(prefix: &str, sid: &str, session_id: u32) -> Result<String, PipeNameError> {
@@ -66,6 +75,19 @@ mod tests {
         assert!(!NAME_PREFIX.starts_with(SETTINGS_NAME_PREFIX));
         assert!(!SETTINGS_NAME_PREFIX.starts_with(NAME_PREFIX));
         assert_ne!(settings_pipe_name(SID, 1), settings_pipe_name(SID, 2));
+    }
+
+    #[test]
+    fn candidate_name_has_its_own_prefix_and_never_collides_with_the_others() {
+        assert_eq!(
+            candidate_pipe_name(SID, 2).unwrap(),
+            r"\\.\pipe\ikari-ime-candidate-v1-S-1-5-21-1004336348-1177238915-682003330-512-s2"
+        );
+        assert_ne!(candidate_pipe_name(SID, 2), pipe_name(SID, 2));
+        assert_ne!(candidate_pipe_name(SID, 2), settings_pipe_name(SID, 2));
+        assert!(CANDIDATE_NAME_PREFIX.starts_with(r"\\.\pipe\"));
+        assert_eq!(candidate_pipe_name("x", 1), Err(PipeNameError::InvalidSid));
+        assert_ne!(candidate_pipe_name(SID, 1), candidate_pipe_name(SID, 2));
     }
 
     #[test]

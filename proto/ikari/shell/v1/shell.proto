@@ -66,6 +66,7 @@ message MarkedText {
   bool delete_target = 7;   // フォーカスしている文節を削除の対象として見せる（ADR 0050 §3.4）
 }
 
+// プロセス間で使う（Windows の TIP と候補窓。candidate.proto が取り込む。ADR 0062 §7.2）。追加だけ: 番号を再利用しない、意味を変えない
 enum CandidateKind {
   CANDIDATE_KIND_UNSPECIFIED = 0;
   CANDIDATE_KIND_DICTIONARY = 1;
@@ -75,8 +76,10 @@ enum CandidateKind {
   CANDIDATE_KIND_LITERAL = 5;
 }
 
+// プロセス間で使う（Windows の TIP と候補窓。candidate.proto が取り込む。ADR 0062 §7.2）。追加だけ: 番号を再利用しない、意味を変えない
 message CandidateItem { string surface = 1; string annotation = 2; CandidateKind kind = 3; string label = 4; }
 
+// プロセス間で使う（Windows の TIP と候補窓。candidate.proto が取り込む。ADR 0062 §7.2）。追加だけ: 番号を再利用しない、意味を変えない
 message CandidatePanelModel {
   repeated CandidateItem candidates = 1;
   uint32 selected = 2;
@@ -160,6 +163,7 @@ message BridgeFrame { uint64 conn = 1; bytes frame = 2; }
 // OS が入力モードを替えた（macOS の setValue(_:forTag: kTextServiceInputModePropertyTag)。値はモードの ID）
 message InputModeChanged { string mode_id = 1; bool secure = 2; }
 
+// プロセス間で使う（Windows の TIP と候補窓。candidate.proto が取り込む。ADR 0062 §7.2）。追加だけ: 番号を再利用しない、意味を変えない
 enum PanelSide {
   PANEL_SIDE_UNSPECIFIED = 0;
   PANEL_SIDE_BELOW = 1;
@@ -245,6 +249,8 @@ message ShellActions { repeated ShellAction actions = 1; }
 // ---------------------------------------------------------------- 候補ウィンドウの配置（ikari_panel_*。状態を持たない。L-E で追加）
 // 座標は AppKit と同じ（左下が原点、y は上向き）
 
+// プロセス間で使う（Windows の TIP と候補窓。candidate.proto が取り込む。ADR 0062 §7.2）。追加だけ: 番号を再利用しない、意味を変えない
+// 座標系は使う側が決める（macOS の配置は左下が原点・y 上向き。候補窓の契約は物理の画面座標・y 下向き。candidate.proto）
 message Rect { double x = 1; double y = 2; double width = 3; double height = 4; }
 
 // ikari_panel_resolve_anchor の入力。取れなかったものは省く

@@ -11,6 +11,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 ikari-shell-core.workspace = true
 ikari-pipe.workspace = true
+ikari-candidate.workspace = true
 
 # TSF の COM の層（src/com。ADR 0040 §2.2、§3.1）。Windows のビルドにだけ入る（Mac の成果物とライセンスの一覧には入らない）。
 # `#[implement]`（`windows-core`）は COM のオブジェクトを Rust の型で作る（参照カウントと QueryInterface を crate が持つ）。

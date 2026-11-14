@@ -26,5 +26,8 @@ pub mod server;
 pub use client::{Client, ClientError};
 pub use duplex::{Duplex, Listener, Shutdown};
 pub use frame::{Frame, FrameError, FrameKind, MAX_FRAME_LEN};
-pub use name::{PipeNameError, SETTINGS_NAME_PREFIX, pipe_name, settings_pipe_name};
+pub use name::{
+    CANDIDATE_NAME_PREFIX, PipeNameError, SETTINGS_NAME_PREFIX, candidate_pipe_name, pipe_name,
+    settings_pipe_name,
+};
 pub use server::{Server, serve_connection};

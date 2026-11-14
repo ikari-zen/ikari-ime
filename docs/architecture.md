@@ -25,6 +25,7 @@ ikari-ime の今の構成を 1 か所にまとめた地図。判断の理由は�
 | `pipe` | TIP と常駐のエンジンをつなぐ、枠つきの双方向の流れ（枠の符号化、要求と返事の多重化、時間切れ、クライアントとサーバー）。標準ライブラリだけ。名前付きパイプの OS 層は `cfg(windows)`（W1-b）。`shell-core` に依存しない | [0040 §2.2、§5](adr/0040-windows-feasibility.md) |
 | `windows/engine-host`（`ikari-engine-host`） | Windows の常駐のエンジン（exe は `ikari-engine-host.exe`）。`pipe::Server` で受けた枠を `Engine::handle` に渡す。受け付けの繰り返しは OS に依存しない | [0040 §2.2](adr/0040-windows-feasibility.md) |
 | `windows/tip`（`ikari-tip`） | Windows の TIP（各アプリに入る DLL。cdylib）。キー（VK → `ShellEvent`）、動作の列 → TSF の操作、secure の判定、モードの写し、`pipe::Client` を `EngineTransport` に合わせる輸送は OS に依存せず Mac でテストする。TSF の COM の層は `src/com`（`cfg(windows)`、`unsafe` はここだけ） | [0040 §2.2、§2.8](adr/0040-windows-feasibility.md) |
+| `windows/candidate`（`ikari-candidate`） | Windows の候補窓の核（契約の骨組み。中身はスタブ。ADR 0062）。TIP → 候補窓の命令（`proto/ikari/candidate/v1/candidate.proto`）の型、行の高さ（固定の関数）、横の位置、画面（C#）が呼ぶ C の ABI（`include/ikari_candidate.h`）。TIP の送り口は `windows/tip/src/candidate_send.rs` | [0062](adr/0062-windows-candidate-window.md) |
 | `runmark`（`ikari-runmark`） | 起動中の印と、前回の終わり方の判定（`exit=clean|term|crash`）。`engine` と `shell-core`、`shell-ffi` が使う | [0051](adr/0051-crash-exit-record.md) |
 | `textfile`（`ikari-textfile`） | テキストファイルの形式の共通部分（UTF-8・LF で書き、LF・CRLF・BOM つきを読む）。標準ライブラリだけ | [0040 §2.9](adr/0040-windows-feasibility.md) |
 | `testtime`（`ikari-testtime`） | 時間に依存するテストの倍率（`IKARI_TEST_TIME_SCALE`）。テストでだけ使う | — |
@@ -42,8 +43,9 @@ core, dict-format ← import
 core, stack, import（+ lm optional）← cli, eval
 input, proto ← shell-core ← shell-ffi（staticlib）
 proto ← engine
-engine, pipe ← windows/engine-host
+engine, pipe, shell-core, core ← windows/engine-host（shell-core は設定のパイプのため。core はデータの置き場所の決め方）
 shell-core, pipe ← windows/tip
+shell-core, pipe, proto ← windows/candidate（windows/tip も使う）
 textfile ← core, dict-builder, engine, import, shell-core, xtask
 runmark ← engine, shell-core, shell-ffi
 resource ← engine
@@ -87,18 +89,19 @@ IkariEngine.xpc（同梱の XPC サービス。App Sandbox、ネットワーク�
 - 英語のモードの郵便番号（ADR 0032 §9.1、設定 `postal.english`、既定 off）: 語頭の `te` + 数字 7 桁を殻の `PostalMachine`（`shell-core/src/postal/`）がためて、7 桁目で候補ウィンドウを自動で出す（下線なし。選ぶのは ↑/↓ だけ）。住所は、殻が主スレッドの外で `PostalLookupRequest` をエンジンへ 1 回送り（shell-core の `engine`。待ちの上限は暫定で 1 秒）、エンジンが `postal.tsv` の表（`stack().postal`）を引いて返す。返事が来たとき状態が同じ（同じコードと同じ候補の通し番号）なら候補に足し、違えば捨てる。設定アプリからは中継しない（shell-core の `bridge/relay_policy.rs`）。同じ状態機械が、`u+` + 16 進 4〜6 桁（設定 `unicode.notation`、既定 off。issue #28）も扱う。4 桁目で候補（そのまま、その文字）が出て、桁が増えるたびに更新する。問い合わせはなく、10FFFF を超える並び・制御文字・未割り当ては出さない。`u` の次は `+` が要る（`use`、`unit` などは素通し）。
 - 確信度が高い変換（#69、設定 `candidate.hide_when_confident`、既定 on。2026-10-28 ユーザー決定）: エンジンが、読み全体の候補の 1 位と 2 位の最終スコアの差を見て、閾値以上なら `ConvertReply.confident = true` を返す（閾値は LM なし 5000、LM あり 10000。暫定。`convert` の行の `gap=` `confident=` で実利用の分布を見て見直す）。殻は、設定がオンで confident、1 文節のとき、最初の Space で 1 位だけを下線つきで出し、候補ウィンドウは出さない。もう一度 Space、↓、↑、数字キーで一覧を出す（選択は 0 番のまま）。Enter、Esc、BackSpace、文字入力は今までどおり。
 
-## 2.1 Windows のプロセスの構成（[ADR 0040 §2.2](adr/0040-windows-feasibility.md)。今あるのは `pipe`、`windows/engine-host`、`windows/tip`（COM の層まで）。候補窓（[0062](adr/0062-windows-candidate-window.md)）と設定画面はまだない）
+## 2.1 Windows のプロセスの構成（[ADR 0040 §2.2](adr/0040-windows-feasibility.md)。今あるのは `pipe`、`windows/engine-host`、`windows/tip`、候補窓の契約（`windows/candidate` のスタブ。[0062](adr/0062-windows-candidate-window.md)）。候補窓の画面と設定画面はまだない）
 
 ```
 アプリのプロセス（各アプリ）
   └─ ikari_tip.dll（windows/tip。Rust、cdylib。TSF の COM は cfg(windows) の薄い層。判断は shell-core）
        │ 名前付きパイプ（枠 + Envelope。pipe::Client）
 ikari-engine-host.exe（windows/engine-host。ユーザーのセッションで常駐。pipe::Server → engine。ADR などの `ikari-engine.exe` はこれ）
-候補窓、設定画面（方式は ADR 0040 §2.4、§2.5 のスパイクで決める）
+候補窓（windows/candidate。WinUI 3 の別プロセス `ikari-candidate.exe`。engine-host が起動して見張る。TIP から片道のパイプで送る。ADR 0062。契約と TIP の送り口は入っていて、画面と起動はこれから）
+設定画面（方式は ADR 0040 §2.5 のスパイクで決める）
 ```
 
 - データの置き場所: `%LOCALAPPDATA%\ikari-ime`（`IKARI_USER_DIR` があればそちら。`core/src/user/dir.rs`。2026-11-12 決定）。ログ、ロック、辞書・モデル、学習、設定は同じ下に置き、同期しない。
-- 依存の向きは `windows/tip → pipe`、`windows/tip → shell-core`、`windows/engine-host → pipe`、`windows/engine-host → engine` の一方向。
+- 依存の向きは `windows/tip → pipe`、`windows/tip → shell-core`、`windows/engine-host → pipe`、`windows/engine-host → engine`、`windows/engine-host → shell-core`（設定のパイプ）、`windows/engine-host → core`（データの置き場所）の一方向。
 - 検証: Mac で `cargo check --workspace --tests --target x86_64-pc-windows-msvc`（`scripts/check.sh` に入っている。LM なし。外す crate は今ない）。CI の job `windows`（`windows-latest`。`cargo test --workspace`、LM なし。必須ではない）。キー入力と画面は実機（VM）。
 
 ## 3. データの置き場所
@@ -146,5 +149,6 @@ ikari-engine-host.exe（windows/engine-host。ユーザーのセッションで�
 | [0005](adr/0005-macos-settings-and-indicator.md) | ON/OFF 表示、入力メニュー、設定アプリ、ユーザー辞書と学習の管理、管理のメッセージ |
 | [0026](adr/0026-english-mode-and-key-stats.md) | 英語のモード（英数キーで入る、打鍵は素通し）、モードの切り替え、英語の文脈、入力の統計（B45）、直接入力の Unicode |
 
+- 上の表は初期の 6 本だけ。**すべての ADR の一覧と状態は [adr/README.md](adr/README.md)（索引）**。0006 以降の決定（Windows は 0040〜0042、0059〜0064 など）はそちらを見る。
 - ユーザーの指摘と、それを受けた決定は [user-feedback.md](user-feedback.md) にまとめてある（具体例つき）。
 - 今のタスク（ユーザーが要るものと、Claude が進められるもの）は GitHub の issue と Project。
