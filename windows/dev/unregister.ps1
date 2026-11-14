@@ -35,8 +35,8 @@ if (-not (Test-IsAdmin)) { throw 'Run this script in an administrator PowerShell
 if (-not (Confirm-Action 'Go ahead?' $Force.IsPresent)) { Write-Step 'Cancelled.'; return }
 
 Write-Step "regsvr32 /u /s $TipDllInstalled"
-& $Regsvr32 /u /s $TipDllInstalled
-$code = $LASTEXITCODE
+# regsvr32 is a GUI-subsystem exe: `&` does not set $LASTEXITCODE (see register.ps1).
+$code = (Start-Process -FilePath $Regsvr32 -ArgumentList '/u', '/s', ('"{0}"' -f $TipDllInstalled) -Wait -PassThru).ExitCode
 if ($code -ne 0) {
     throw "regsvr32 /u failed with exit code $code (3 = DLL did not load, 4 = no DllUnregisterServer, 5 = it returned an error)."
 }
