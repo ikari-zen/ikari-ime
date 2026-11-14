@@ -22,7 +22,7 @@ Write-Step 'Engine process'
 $ours = @(Get-OurEngineProcesses)
 if ($ours.Count -eq 0) { Write-Note 'Not running (this build).' }
 foreach ($p in $ours) { Write-Note ("PID {0}  started {1}  working set {2:N0} MB" -f $p.Id, $p.StartTime, ($p.WorkingSet64 / 1MB)) }
-$others = @(Get-Process -Name ([IO.Path]::GetFileNameWithoutExtension($EngineExeName)) -ErrorAction SilentlyContinue | Where-Object { $ours.Id -notcontains $_.Id })
+$others = @(Get-Process -Name ([IO.Path]::GetFileNameWithoutExtension($EngineExeName)), ([IO.Path]::GetFileNameWithoutExtension($EngineHiddenExe)) -ErrorAction SilentlyContinue | Where-Object { $ours.Id -notcontains $_.Id })
 foreach ($p in $others) { Write-Warn "Another $EngineExeName is running: PID $($p.Id) (not touched by these scripts)" }
 
 Write-Step 'Named pipes (name only; not opened)'

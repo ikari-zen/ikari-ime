@@ -90,6 +90,33 @@ if ($Mode -eq 'Prepare') {
     Start-Sleep 3
     $doc = Get-NotepadDoc
     if (-not $doc) { $lines.Add('no notepad document') } else { $doc.SetFocus(); $lines.Add('fresh notepad') }
+    # Deleting LocalState is not enough (#376): the previous text can still come back (tab restore, timing). So empty the
+    # edit control for sure, and verify. This runs BEFORE the ikari profile is activated below, so nothing that is sent
+    # here goes through the TIP and the TSF session is not disturbed. Order: UI Automation ValuePattern (no keys), and only
+    # if the control does not take it, Ctrl+A + Delete to the focused Notepad (SendKeys, still before activation).
+    if ($doc) {
+        $cleared = $false
+        for ($i = 0; $i -lt 5 -and -not $cleared; $i++) {
+            $doc = Get-NotepadDoc
+            if (-not $doc) { Start-Sleep 1; continue }
+            try { $doc.SetFocus() } catch { }
+            $usedValue = $false
+            try {
+                $vp = $doc.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+                if (-not $vp.Current.IsReadOnly) { $vp.SetValue(''); $usedValue = $true }
+            } catch { }
+            Start-Sleep -Milliseconds 500
+            $text = $doc.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern).DocumentRange.GetText(-1)
+            if ($text.Length -gt 0) {
+                Add-Type -AssemblyName System.Windows.Forms
+                [System.Windows.Forms.SendKeys]::SendWait('^a{DEL}')
+                Start-Sleep -Milliseconds 500
+                $text = $doc.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern).DocumentRange.GetText(-1)
+            }
+            $cleared = ($text.Length -eq 0)
+            $lines.Add("clear try=$($i + 1) value_pattern=$usedValue empty=$cleared")
+        }
+    }
     }
 if ($Mode -in 'Prepare','Activate') {
     $lines.Add('activate hr=' + ('{0:X8}' -f [Tsf]::Activate($IkariClsid, $IkariProfile)))
