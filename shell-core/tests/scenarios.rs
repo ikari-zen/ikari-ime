@@ -12,6 +12,7 @@ use ikari_proto::v1;
 use ikari_proto::v1::envelope::Body;
 use ikari_shell_core::controller::BackgroundMode;
 use ikari_shell_core::english::InputMode;
+use ikari_shell_core::menu::EngineLmState;
 use ikari_shell_core::panel::PanelSide;
 use ikari_shell_core::scenario::{
     self, EngineScript, HostCall, ScenarioSurrounding, ScriptLayout, ScriptPage,
@@ -19,8 +20,8 @@ use ikari_shell_core::scenario::{
 };
 use ikari_shell_core::{
     CandidateItem, CandidateKind, Clock, EngineError, EngineErrorCode, EngineTransport,
-    SelectedText, SettingsSource, Shell, ShellConfig, ShellEvent, SurroundingText, TextAccess,
-    TransportError, TransportHandle,
+    LmDeviceInfo, LmReportInfo, LmVerdictInfo, SelectedText, SettingsSource, Shell, ShellConfig,
+    ShellEvent, SurroundingText, TextAccess, TransportError, TransportHandle,
 };
 use prost::Message;
 use serde_json::{Map, Value, json};
@@ -444,7 +445,42 @@ fn convert_reply(page: &ScriptPage) -> v1::ConvertReply {
         lm_applied: page.lm_applied,
         confident: page.confident,
         layout: page.layout.as_ref().map(layout_reply),
+        lm_report: page.lm_report.as_ref().map(lm_report_reply),
         ..Default::default()
+    }
+}
+
+fn lm_report_reply(report: &LmReportInfo) -> v1::LmReport {
+    v1::LmReport {
+        verdict: match report.verdict {
+            LmVerdictInfo::Unspecified => v1::LmVerdict::Unspecified,
+            LmVerdictInfo::Applied => v1::LmVerdict::LmApplied,
+            LmVerdictInfo::TimedOut => v1::LmVerdict::LmTimedOut,
+            LmVerdictInfo::NotScored => v1::LmVerdict::LmNotScored,
+            LmVerdictInfo::PrefetchLate => v1::LmVerdict::LmPrefetchLate,
+            LmVerdictInfo::NoPrefetch => v1::LmVerdict::LmNoPrefetch,
+            LmVerdictInfo::Secure => v1::LmVerdict::LmSecure,
+            LmVerdictInfo::Unavailable => v1::LmVerdict::LmUnavailable,
+        } as i32,
+        wait_micros: report.wait_micros,
+        infer_micros: report.infer_micros,
+        lm_deadline_micros: report.lm_deadline_micros,
+        convert_wait_micros: report.convert_wait_micros,
+        device: match report.device {
+            LmDeviceInfo::Unspecified => v1::LmDevice::Unspecified,
+            LmDeviceInfo::Cpu => v1::LmDevice::Cpu,
+            LmDeviceInfo::Gpu => v1::LmDevice::Gpu,
+        } as i32,
+        calls: report.calls,
+        timeouts: report.timeouts,
+        late_hits: report.late_hits,
+        lm_state: match report.lm_state {
+            None | Some(EngineLmState::Unspecified) => v1::LmState::Unspecified,
+            Some(EngineLmState::Disabled) => v1::LmState::LmDisabled,
+            Some(EngineLmState::Loading) => v1::LmState::LmLoading,
+            Some(EngineLmState::Ready) => v1::LmState::LmReady,
+            Some(EngineLmState::Failed) => v1::LmState::LmFailed,
+        } as i32,
     }
 }
 

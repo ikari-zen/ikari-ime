@@ -89,6 +89,7 @@ fn apply_line(
         KEY_CANDIDATE_HIDE_WHEN_CONFIDENT => {
             set_switch(value, &mut settings.candidate_hide_when_confident)
         }
+        KEY_DEVELOPER_LM_STATUS => set_switch(value, &mut settings.developer_lm_status),
         KEY_INPUT_METHOD => ok(input_method_from_name(value)
             .map(|method| settings.input_method = method)
             .is_some()),
@@ -213,6 +214,7 @@ pub fn is_known_key(key: &str) -> bool {
         | KEY_UNICODE_NOTATION
         | KEY_DATE_WEEKDAY_DATES
         | KEY_CANDIDATE_HIDE_WHEN_CONFIDENT
+        | KEY_DEVELOPER_LM_STATUS
         | KEY_CLAUSE_MIN_CHARS => true,
         _ => key
             .strip_prefix(KEY_KEYMAP_PREFIX)
@@ -321,6 +323,10 @@ pub fn effective_entries(settings: &SettingsSnapshot) -> Vec<(String, String)> {
                 switch_value(settings.candidate_hide_when_confident).into(),
             ),
             (KEY_CLAUSE_MIN_CHARS, settings.clause_min_chars.to_string()),
+            (
+                KEY_DEVELOPER_LM_STATUS,
+                switch_value(settings.developer_lm_status).into(),
+            ),
         ]
         .map(|(key, value)| (key.to_string(), value)),
     );
@@ -538,6 +544,7 @@ mod tests {
         let mut shell_only = base.clone();
         shell_only.postal_english = true;
         shell_only.emoji_shortcode = true;
+        shell_only.developer_lm_status = true;
         shell_only.candidate_hide_when_confident = false;
         assert!(!engine_settings_differ(&base, &shell_only));
     }
@@ -598,6 +605,7 @@ mod tests {
             "date.weekday_dates=off".into(),
             "candidate.hide_when_confident=on".into(),
             "clause.min_chars=3".into(),
+            "developer.lm_status=off".into(),
         ];
         assert_eq!(entries, expected);
     }
