@@ -30,3 +30,18 @@ pub fn hresult(message: &'static str, code: HRESULT) {
     // HRESULT は符号つきの 32 ビット。16 進で読むのが通例なので、ビット列のまま出す
     write(&format!("{PREFIX}{message} (hr=0x{:08X})\n", code.0 as u32));
 }
+
+/// 前回出した入力スコープの値（同じ並びを打鍵のたびに出さないため）
+static LAST_SCOPES: std::sync::Mutex<Vec<i32>> = std::sync::Mutex::new(Vec::new());
+
+/// 読んだ入力スコープの値（数値だけ。欄の内容は含まない）を、前回と違うときだけ 1 行出す。secure の判定の調査用。
+pub fn input_scopes(scopes: &[i32]) {
+    let Ok(mut last) = LAST_SCOPES.lock() else {
+        return;
+    };
+    if last.as_slice() == scopes {
+        return;
+    }
+    *last = scopes.to_vec();
+    write(&format!("{PREFIX}input scopes={scopes:?}\n"));
+}
