@@ -335,6 +335,17 @@ impl Indicator {
         self.item.notify();
     }
 
+    /// 診断用。compartment の種類（固定の文）と、今の値（読めなければ `None`）
+    pub fn describe(&self, guid: &GUID) -> (&'static str, Option<i32>) {
+        if *guid == GUID_COMPARTMENT_KEYBOARD_OPENCLOSE {
+            ("openclose", read_i32(&self.compartments, guid))
+        } else if *guid == GUID_COMPARTMENT_KEYBOARD_INPUTMODE_CONVERSION {
+            ("conversion", read_i32(&self.compartments, guid))
+        } else {
+            ("other", None)
+        }
+    }
+
     /// compartment の今の値から読んだモード。値がなければ `None`
     pub fn read(&self, guid: &GUID) -> Option<InputMode> {
         if *guid == GUID_COMPARTMENT_KEYBOARD_OPENCLOSE {

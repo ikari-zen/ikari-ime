@@ -25,6 +25,17 @@ pub fn error(message: &'static str, error: &windows_core::Error) {
     hresult(message, error.code());
 }
 
+/// compartment の変更の通知 1 件（診断用。#371）。種類と結果は固定の文、値は compartment の数値
+/// （入力の内容ではない）。
+pub fn compartment(kind: &'static str, value: Option<i32>, outcome: &'static str) {
+    match value {
+        Some(value) => write(&format!(
+            "{PREFIX}OnChange {kind} value={value} {outcome}\n"
+        )),
+        None => write(&format!("{PREFIX}OnChange {kind} value=none {outcome}\n")),
+    }
+}
+
 /// HRESULT を出す。
 pub fn hresult(message: &'static str, code: HRESULT) {
     // HRESULT は符号つきの 32 ビット。16 進で読むのが通例なので、ビット列のまま出す
