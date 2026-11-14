@@ -92,7 +92,7 @@ fn utf16(text: &str) -> Vec<u16> {
 }
 
 /// 既定の選択（キャレット）の範囲。
-fn default_selection(ec: u32, context: &ITfContext) -> Option<ITfRange> {
+pub(super) fn default_selection(ec: u32, context: &ITfContext) -> Option<ITfRange> {
     let mut selection = [TF_SELECTION::default()];
     let mut fetched = 0u32;
     // SAFETY: `selection` は 1 要素の書ける配列、`fetched` は書ける場所。`ec` はこのセッションのもの
