@@ -73,7 +73,18 @@ message ConvertReply { uint64 conversion_id = 1; uint32 page_index = 2; repeated
                        SegmentLayout layout = 7;
                        // 読み全体の候補の 1 位と 2 位の最終スコアの差が、閾値以上（#69。LM の有無で閾値が違う）。Convert の返事だけで意味を持つ
                        // （Page の返事では false）。殻は、設定がオンのとき、true なら 1 位だけを出して一覧を出さない。古いエンジンは false
-                       bool confident = 8; }   // 新しいエンジンは Convert の返事に常に入れる（focused = 0）。ない（古いエンジン）なら殻は1文節として扱う
+                       bool confident = 8;
+                       // 開発者向けの表示とログのための、その変換の LM の様子（ADR 0061）。振る舞いには使わない。
+                       // 新しいエンジンは Convert の返事に常に入れる（Page の返事には入れない）。ない（古いエンジン）なら殻は表示しない
+                       LmReport lm_report = 9; }   // 新しいエンジンは Convert の返事に常に入れる（focused = 0）。ない（古いエンジン）なら殻は1文節として扱う
+// ---- LM の様子（ADR 0061 §5.3。時間は us）----
+enum LmVerdict { LM_VERDICT_UNSPECIFIED = 0; LM_APPLIED = 1; LM_TIMED_OUT = 2; LM_NOT_SCORED = 3;
+                 LM_PREFETCH_LATE = 4; LM_NO_PREFETCH = 5; LM_SECURE = 6; LM_UNAVAILABLE = 7; }
+enum LmDevice { LM_DEVICE_UNSPECIFIED = 0; LM_DEVICE_CPU = 1; LM_DEVICE_GPU = 2; }
+// 開発者向けの表示とログのための、その変換の LM の様子（ADR 0061）。振る舞いには使わない
+message LmReport { LmVerdict verdict = 1; uint32 wait_micros = 2; uint32 infer_micros = 3;
+                   uint32 lm_deadline_micros = 4; uint32 convert_wait_micros = 5; LmDevice device = 6;
+                   uint32 calls = 7; uint32 timeouts = 8; uint32 late_hits = 9; LmState lm_state = 10; }
 message Commit { uint64 conversion_id = 1; uint32 candidate_index = 2; }   // 生成済みの列の中の位置（ページをまたいだ通し番号）
 message CommitText { uint64 session_id = 1; string reading = 2; string surface = 3; }
 message Cancel { uint64 conversion_id = 1; }

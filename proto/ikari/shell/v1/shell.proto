@@ -82,6 +82,8 @@ message CandidatePanelModel {
   uint32 selected = 2;
   string annotation = 3;
   uint32 reserved_rows = 4;
+  // 開発者向けの 1 行（ADR 0061）。空なら行を出さない。殻は中身を解釈せず、注釈の下に小さく描くだけ
+  string developer_note = 5;
 }
 
 // ---------------------------------------------------------------- メニュー
@@ -289,6 +291,7 @@ message SettingsSnapshot {
   bool date_weekday_dates = 18;
   bool candidate_hide_when_confident = 19;
   uint32 clause_min_chars = 20;
+  bool developer_lm_status = 21;
 }
 
 enum SettingsIssueKind {

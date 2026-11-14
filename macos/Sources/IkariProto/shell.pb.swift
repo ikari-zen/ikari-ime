@@ -738,6 +738,9 @@ public nonisolated struct Ikari_Shell_V1_CandidatePanelModel: Sendable {
 
   public var reservedRows: UInt32 = 0
 
+  /// 開発者向けの 1 行（ADR 0061）。空なら行を出さない。殻は中身を解釈せず、注釈の下に小さく描くだけ
+  public var developerNote: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1686,6 +1689,11 @@ public nonisolated struct Ikari_Shell_V1_SettingsSnapshot: @unchecked Sendable {
     set {_uniqueStorage()._clauseMinChars = newValue}
   }
 
+  public var developerLmStatus: Bool {
+    get {_storage._developerLmStatus}
+    set {_uniqueStorage()._developerLmStatus = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -2220,7 +2228,7 @@ nonisolated extension Ikari_Shell_V1_CandidateItem: SwiftProtobuf.Message, Swift
 
 nonisolated extension Ikari_Shell_V1_CandidatePanelModel: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".CandidatePanelModel"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}candidates\0\u{1}selected\0\u{1}annotation\0\u{3}reserved_rows\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}candidates\0\u{1}selected\0\u{1}annotation\0\u{3}reserved_rows\0\u{3}developer_note\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2232,6 +2240,7 @@ nonisolated extension Ikari_Shell_V1_CandidatePanelModel: SwiftProtobuf.Message,
       case 2: try { try decoder.decodeSingularUInt32Field(value: &self.selected) }()
       case 3: try { try decoder.decodeSingularStringField(value: &self.annotation) }()
       case 4: try { try decoder.decodeSingularUInt32Field(value: &self.reservedRows) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self.developerNote) }()
       default: break
       }
     }
@@ -2250,6 +2259,9 @@ nonisolated extension Ikari_Shell_V1_CandidatePanelModel: SwiftProtobuf.Message,
     if self.reservedRows != 0 {
       try visitor.visitSingularUInt32Field(value: self.reservedRows, fieldNumber: 4)
     }
+    if !self.developerNote.isEmpty {
+      try visitor.visitSingularStringField(value: self.developerNote, fieldNumber: 5)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -2258,6 +2270,7 @@ nonisolated extension Ikari_Shell_V1_CandidatePanelModel: SwiftProtobuf.Message,
     if lhs.selected != rhs.selected {return false}
     if lhs.annotation != rhs.annotation {return false}
     if lhs.reservedRows != rhs.reservedRows {return false}
+    if lhs.developerNote != rhs.developerNote {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -3864,7 +3877,7 @@ nonisolated extension Ikari_Shell_V1_PanelPlacement: SwiftProtobuf.Message, Swif
 
 nonisolated extension Ikari_Shell_V1_SettingsSnapshot: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SettingsSnapshot"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}input_method\0\u{3}keymap_preset\0\u{3}keymap_overrides\0\u{3}paging_wrap\0\u{3}page_size\0\u{3}engine_lm\0\u{3}engine_idle_unload_secs\0\u{3}engine_lm_deadline_ms\0\u{3}engine_convert_wait_ms\0\u{4}\u{2}emoji_shortcode\0\u{3}emoji_shortcode_exclude\0\u{3}emoji_small_letters\0\u{3}postal_japanese\0\u{3}postal_english\0\u{3}postal_te_prefix\0\u{3}unicode_notation\0\u{3}date_weekday_dates\0\u{3}candidate_hide_when_confident\0\u{3}clause_min_chars\0\u{b}context_shared_exclude\0\u{c}\u{a}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}input_method\0\u{3}keymap_preset\0\u{3}keymap_overrides\0\u{3}paging_wrap\0\u{3}page_size\0\u{3}engine_lm\0\u{3}engine_idle_unload_secs\0\u{3}engine_lm_deadline_ms\0\u{3}engine_convert_wait_ms\0\u{4}\u{2}emoji_shortcode\0\u{3}emoji_shortcode_exclude\0\u{3}emoji_small_letters\0\u{3}postal_japanese\0\u{3}postal_english\0\u{3}postal_te_prefix\0\u{3}unicode_notation\0\u{3}date_weekday_dates\0\u{3}candidate_hide_when_confident\0\u{3}clause_min_chars\0\u{3}developer_lm_status\0\u{b}context_shared_exclude\0\u{c}\u{a}\u{1}")
 
   fileprivate class _StorageClass {
     var _inputMethod: Ikari_Shell_V1_InputMethodKind = .unspecified
@@ -3886,6 +3899,7 @@ nonisolated extension Ikari_Shell_V1_SettingsSnapshot: SwiftProtobuf.Message, Sw
     var _dateWeekdayDates: Bool = false
     var _candidateHideWhenConfident: Bool = false
     var _clauseMinChars: UInt32 = 0
+    var _developerLmStatus: Bool = false
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -3915,6 +3929,7 @@ nonisolated extension Ikari_Shell_V1_SettingsSnapshot: SwiftProtobuf.Message, Sw
       _dateWeekdayDates = source._dateWeekdayDates
       _candidateHideWhenConfident = source._candidateHideWhenConfident
       _clauseMinChars = source._clauseMinChars
+      _developerLmStatus = source._developerLmStatus
     }
   }
 
@@ -3952,6 +3967,7 @@ nonisolated extension Ikari_Shell_V1_SettingsSnapshot: SwiftProtobuf.Message, Sw
         case 18: try { try decoder.decodeSingularBoolField(value: &_storage._dateWeekdayDates) }()
         case 19: try { try decoder.decodeSingularBoolField(value: &_storage._candidateHideWhenConfident) }()
         case 20: try { try decoder.decodeSingularUInt32Field(value: &_storage._clauseMinChars) }()
+        case 21: try { try decoder.decodeSingularBoolField(value: &_storage._developerLmStatus) }()
         default: break
         }
       }
@@ -4017,6 +4033,9 @@ nonisolated extension Ikari_Shell_V1_SettingsSnapshot: SwiftProtobuf.Message, Sw
       if _storage._clauseMinChars != 0 {
         try visitor.visitSingularUInt32Field(value: _storage._clauseMinChars, fieldNumber: 20)
       }
+      if _storage._developerLmStatus != false {
+        try visitor.visitSingularBoolField(value: _storage._developerLmStatus, fieldNumber: 21)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -4045,6 +4064,7 @@ nonisolated extension Ikari_Shell_V1_SettingsSnapshot: SwiftProtobuf.Message, Sw
         if _storage._dateWeekdayDates != rhs_storage._dateWeekdayDates {return false}
         if _storage._candidateHideWhenConfident != rhs_storage._candidateHideWhenConfident {return false}
         if _storage._clauseMinChars != rhs_storage._clauseMinChars {return false}
+        if _storage._developerLmStatus != rhs_storage._developerLmStatus {return false}
         return true
       }
       if !storagesAreEqual {return false}
