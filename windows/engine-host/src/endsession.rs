@@ -1,9 +1,12 @@
-//! ログオフ・シャットダウンの通知（`WM_QUERYENDSESSION`、`WM_ENDSESSION`）を、メッセージ専用ウィンドウで受ける
+//! ログオフ・シャットダウンの通知（`WM_QUERYENDSESSION`、`WM_ENDSESSION`）を、非表示の最上位ウィンドウで受ける
 //! （`cfg(windows)`。Windows の CI か実機で確かめる）。
 //!
-//! コンソールのないビルド（`hide-console`）には、コンソールの制御イベント（`ctrl.rs`）が届かない。見えないウィンドウ
-//! （`HWND_MESSAGE`。画面にも Alt+Tab にも出ない）を専用スレッドで作ってメッセージを回し、終了の通知が来たら、
-//! `ctrl.rs` と同じ止める合図を送る。後始末（学習の保存、`exit=clean` の記録）は `main` の流れが行う（判断は Rust の側）。
+//! コンソールのないビルド（`hide-console`）には、コンソールの制御イベント（`ctrl.rs`）が届かない。見えないウィンドウを
+//! 専用スレッドで作ってメッセージを回し、終了の通知が来たら、`ctrl.rs` と同じ止める合図を送る。
+//! ウィンドウは、親も持ち主もない通常の最上位（`WS_OVERLAPPED`、`WS_VISIBLE` なし）。表示されず、タスクバーにも出ない。
+//! メッセージ専用ウィンドウ（`HWND_MESSAGE`）は、ブロードキャストの `WM_QUERYENDSESSION` / `WM_ENDSESSION` を受けない
+//! ので使わない（#372。#385 の実機で `exit=clean` が書かれなかった）。
+//! 後始末（学習の保存、`exit=clean` の記録）は `main` の流れが行う。反応の判断は `session_end.rs`（判断は Rust の側）。
 //!
 //! `unsafe` はこのファイルの Win32 の呼び出しだけ。
 
@@ -12,21 +15,34 @@
 use std::io;
 use std::ptr;
 use std::sync::mpsc;
+use std::sync::{OnceLock, Weak};
 use std::thread;
 
+use ikari_engine::Engine;
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, HWND_MESSAGE, MSG,
-    RegisterClassW, TranslateMessage, WM_ENDSESSION, WM_QUERYENDSESSION, WNDCLASSW,
+    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, MSG, RegisterClassW,
+    TranslateMessage, WM_ENDSESSION, WM_QUERYENDSESSION, WNDCLASSW, WS_OVERLAPPED,
 };
 
-use crate::ctrl;
+use crate::{ctrl, session_end};
+
+// 判断の側（`session_end`）の定数が、OS の値と同じであることの確認（ずれたらビルドが止まる）
+const _: () = {
+    use windows_sys::Win32::UI::WindowsAndMessaging as wm;
+    assert!(session_end::WM_QUERYENDSESSION == WM_QUERYENDSESSION);
+    assert!(session_end::WM_ENDSESSION == WM_ENDSESSION);
+    assert!(session_end::ENDSESSION_CLOSEAPP == wm::ENDSESSION_CLOSEAPP);
+    assert!(session_end::ENDSESSION_CRITICAL == wm::ENDSESSION_CRITICAL);
+    assert!(session_end::ENDSESSION_LOGOFF == wm::ENDSESSION_LOGOFF);
+};
+
+/// 診断の行を書く先（`Engine` を生かし続けないよう、弱い参照）。ウィンドウの手続きから使う
+static ENGINE: OnceLock<Weak<Engine>> = OnceLock::new();
 
 /// ウィンドウクラス名（UTF-16。終端つき）。`w!` を使わず、ASCII だけを広げる
 const CLASS_NAME: [u16; 22] = ascii_to_utf16(b"IkariEngineEndSession\0");
-/// `WM_QUERYENDSESSION` への返事。終わってよい
-const ALLOW_END: LRESULT = 1;
 
 const fn ascii_to_utf16<const N: usize>(bytes: &[u8; N]) -> [u16; N] {
     let mut out = [0u16; N];
@@ -38,8 +54,29 @@ const fn ascii_to_utf16<const N: usize>(bytes: &[u8; N]) -> [u16; N] {
     out
 }
 
-/// 専用スレッドでメッセージ専用ウィンドウを作り、メッセージを回す。作れなかったときはエラー（動きは続けてよい）。
-pub fn spawn() -> io::Result<()> {
+/// `engine.log` に 1 行書く（`host <note>`）。`Engine` がすでに落ちていれば何もしない
+fn record(note: &str) {
+    if let Some(engine) = ENGINE.get().and_then(Weak::upgrade) {
+        engine.record_host_event(note);
+    }
+}
+
+/// 専用スレッドで非表示の最上位ウィンドウを作り、メッセージを回す。作れなかったときはエラー（動きは続けてよい）。
+/// 作成の成否は `engine.log` に書く（`window=created` / `window=failed os_error=N`）。
+pub fn spawn(engine: Weak<Engine>) -> io::Result<()> {
+    let _ = ENGINE.set(engine);
+    let result = spawn_thread();
+    match &result {
+        Ok(()) => record("window=created kind=toplevel"),
+        Err(e) => record(&format!(
+            "window=failed os_error={}",
+            e.raw_os_error().unwrap_or(0)
+        )),
+    }
+    result
+}
+
+fn spawn_thread() -> io::Result<()> {
     let (tx, rx) = mpsc::channel();
     thread::Builder::new()
         .name("ikari-endsession".to_owned())
@@ -78,12 +115,12 @@ fn create_window() -> io::Result<()> {
             0,
             CLASS_NAME.as_ptr(),
             CLASS_NAME.as_ptr(),
+            WS_OVERLAPPED,
             0,
             0,
             0,
             0,
-            0,
-            HWND_MESSAGE,
+            ptr::null_mut(),
             ptr::null_mut(),
             instance,
             ptr::null(),
@@ -113,17 +150,14 @@ unsafe extern "system" fn window_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
-    match message {
-        WM_QUERYENDSESSION => ALLOW_END,
-        WM_ENDSESSION => {
-            // wparam が 0 なら、終了は取りやめになった（止めない）
-            if wparam != 0 {
-                ctrl::signal_stop();
-                ctrl::wait_finished();
-            }
-            0
-        }
+    let Some(reaction) = session_end::react(message, wparam, lparam) else {
         // SAFETY: 受け取った引数をそのまま渡す
-        _ => unsafe { DefWindowProcW(hwnd, message, wparam, lparam) },
+        return unsafe { DefWindowProcW(hwnd, message, wparam, lparam) };
+    };
+    record(&reaction.note);
+    if reaction.stop {
+        ctrl::signal_stop();
+        ctrl::wait_finished();
     }
+    reaction.result as LRESULT
 }
