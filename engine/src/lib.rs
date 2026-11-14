@@ -406,6 +406,12 @@ impl Inner {
 }
 
 impl Engine {
+    /// 常駐の殻の出来事（ウィンドウの作成、ログオフの通知など）を `engine.log` に 1 行書く（`host <note>`）。
+    /// `note` は固定の語と数だけにすること（ユーザーの文字を入れない）。キューに入れるだけ。
+    pub fn record_host_event(&self, note: &str) {
+        self.inner.note_host(note);
+    }
+
     /// 新しい接続の口を作る。接続の番号はエンジンが振る（殻は知らない。ADR 0064 §4.1 の K1）。
     /// engine-host は、パイプの接続ごとにこれを 1 つ取り、その接続の枠をすべて `Connection::handle` に渡す。
     /// セッションのキーは（接続, `session_id`）なので、別の接続が同じ `session_id` を使っても混ざらない。

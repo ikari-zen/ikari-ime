@@ -20,6 +20,8 @@ const KIND_LM_LOAD: &str = "lm_load";
 const KIND_LM_UNLOAD: &str = "lm_unload";
 const KIND_STAT: &str = "stat";
 const KIND_PREV_EXIT: &str = "prev_exit";
+/// 常駐の殻（engine-host）が知らせる出来事（ウィンドウ、ログオフの通知。#372）
+const KIND_HOST: &str = "host";
 const KIND_PANIC: &str = "panic";
 
 const KIND_LM_REJECT: &str = "lm_reject";
@@ -254,6 +256,12 @@ impl Inner {
         }
         self.log
             .record_note(KIND_PREV_EXIT, 0, self.lm_state_name(), None, Some(&note));
+    }
+
+    /// 殻（engine-host）の出来事の行。`note` は固定の語と数だけ（ユーザーの文字を入れない）
+    pub(crate) fn note_host(&self, note: &str) {
+        self.log
+            .record_note(KIND_HOST, 0, self.lm_state_name(), None, Some(note));
     }
 
     /// `Engine` を閉じるとき、LM が読み込まれていたら `lm_unload reason=shutdown`

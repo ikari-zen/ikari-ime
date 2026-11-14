@@ -19,6 +19,7 @@ pub mod ctrl;
 #[cfg(windows)]
 pub mod endsession;
 pub mod run;
+pub mod session_end;
 pub mod settings_pipe;
 
 use std::io;

@@ -83,8 +83,8 @@ fn windows_main() -> u8 {
         eprintln!("ikari-engine: cannot install the Ctrl+C handler: {e}");
     }
     if cfg!(feature = "hide-console") {
-        // コンソールがなく、制御イベントが届かない。ログオフ・シャットダウンはメッセージ専用ウィンドウで受ける（#372）
-        if let Err(e) = endsession::spawn() {
+        // コンソールがなく、制御イベントが届かない。ログオフ・シャットダウンは非表示の最上位ウィンドウで受ける（#372）
+        if let Err(e) = endsession::spawn(Arc::downgrade(&started.engine)) {
             eprintln!("ikari-engine: cannot watch the session end: {e}");
         }
     }
