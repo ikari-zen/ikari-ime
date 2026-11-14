@@ -30,6 +30,8 @@ struct Shared {
     conns: Vec<Conn>,
     /// 要求の返事を待たせる（並行のテスト）。`Some` なら、要求ごとにここから 1 つ受けるまで返さない
     gate: Option<mpsc::Receiver<()>>,
+    /// `true` の間、`connect` は `Unavailable` を返す（つなぎ直しの失敗）
+    connect_fails: bool,
 }
 
 /// 替え玉のトランスポート。受け取った Envelope を記録し、`respond` が返事を決める（`None` は時間切れ）。
@@ -41,6 +43,9 @@ struct FakeTransport {
 impl EngineTransport for FakeTransport {
     fn connect(&self) -> Result<TransportHandle, TransportError> {
         let mut shared = self.shared.lock().unwrap();
+        if shared.connect_fails {
+            return Err(TransportError::Unavailable);
+        }
         let handle = 10 + shared.conns.len() as u64;
         shared.conns.push(Conn {
             handle,
@@ -666,6 +671,105 @@ fn three_crashes_in_a_suspension_window_stop_calling_the_engine_for_five_minutes
     h.advance(SUSPENSION + SEC);
     assert!(!h.link.is_suspended());
     h.link.convert(sample_request(), SEC).unwrap();
+}
+
+#[test]
+fn consecutive_reply_timeouts_suspend_like_crashes() {
+    let h = Harness::new();
+    h.link.convert(sample_request(), SEC).unwrap();
+    h.respond(|_| None);
+    for _ in 0..HUNG_TIMEOUT_LIMIT {
+        assert!(!h.link.is_suspended());
+        assert_eq!(
+            h.link.convert(sample_request(), MS),
+            Err(EngineError::Timeout)
+        );
+        h.advance(Duration::from_secs(1));
+    }
+    assert!(h.link.is_suspended());
+    assert_eq!(
+        h.link.convert(sample_request(), MS),
+        Err(EngineError::Unavailable)
+    );
+    h.advance(SUSPENSION + SEC);
+    assert!(!h.link.is_suspended());
+}
+
+#[test]
+fn a_success_between_timeouts_restarts_the_count() {
+    let h = Harness::new();
+    h.link.convert(sample_request(), SEC).unwrap();
+    for _ in 0..HUNG_TIMEOUT_LIMIT * 2 {
+        h.respond(|_| None);
+        assert_eq!(
+            h.link.convert(sample_request(), MS),
+            Err(EngineError::Timeout)
+        );
+        h.respond(|request| default_response(request, "1.0"));
+        h.link.convert(sample_request(), SEC).unwrap();
+    }
+    assert!(!h.link.is_suspended());
+}
+
+#[test]
+fn timeouts_spread_over_more_than_a_minute_do_not_suspend() {
+    let h = Harness::new();
+    h.link.convert(sample_request(), SEC).unwrap();
+    h.respond(|_| None);
+    for _ in 0..HUNG_TIMEOUT_LIMIT * 2 {
+        assert_eq!(
+            h.link.convert(sample_request(), MS),
+            Err(EngineError::Timeout)
+        );
+        h.advance(Duration::from_secs(40));
+    }
+    assert!(!h.link.is_suspended());
+}
+
+#[test]
+fn consecutive_reconnect_failures_suspend_and_a_success_restarts_the_count() {
+    let h = Harness::new();
+    h.link.convert(sample_request(), SEC).unwrap();
+    h.down(DownKind::Invalidated);
+    h.shared.lock().unwrap().connect_fails = true;
+    for _ in 0..RECONNECT_FAIL_LIMIT - 1 {
+        assert_eq!(
+            h.link.convert(sample_request(), SEC),
+            Err(EngineError::Unavailable)
+        );
+        h.advance(SEC);
+    }
+    assert!(!h.link.is_suspended());
+    // つながれば数え直す
+    h.shared.lock().unwrap().connect_fails = false;
+    h.link.convert(sample_request(), SEC).unwrap();
+    h.down(DownKind::Invalidated);
+    h.shared.lock().unwrap().connect_fails = true;
+    for _ in 0..RECONNECT_FAIL_LIMIT - 1 {
+        assert_eq!(
+            h.link.convert(sample_request(), SEC),
+            Err(EngineError::Unavailable)
+        );
+    }
+    assert!(!h.link.is_suspended());
+    assert_eq!(
+        h.link.convert(sample_request(), SEC),
+        Err(EngineError::Unavailable)
+    );
+    assert!(h.link.is_suspended());
+}
+
+#[test]
+fn connect_failures_before_the_first_connection_are_not_counted() {
+    let h = Harness::new();
+    h.shared.lock().unwrap().connect_fails = true;
+    for _ in 0..RECONNECT_FAIL_LIMIT * 2 {
+        assert_eq!(
+            h.link.convert(sample_request(), SEC),
+            Err(EngineError::Unavailable)
+        );
+    }
+    assert!(!h.link.is_suspended());
 }
 
 #[test]

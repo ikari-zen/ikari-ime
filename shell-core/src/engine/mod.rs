@@ -55,6 +55,13 @@ use crate::types::{EngineError, EngineErrorCode};
 pub const CRASH_LIMIT: usize = 3;
 /// 落ちた回数を数える期間
 pub const CRASH_WINDOW: Duration = Duration::from_secs(60);
+/// 返事の時間切れがこの数、間に成功をはさまずに続いたら、固まったとみなして休む（#404）。
+/// 時間切れ 1 回は遅い変換（LM の初回など）でも起きるので、連続で見る。**未計測の仮置き**（`CRASH_LIMIT` と同じ値を流用）。
+pub const HUNG_TIMEOUT_LIMIT: usize = CRASH_LIMIT;
+/// 一度つないだあとのつなぎ直しの失敗が、間に成功をはさまずにこの数、`CRASH_WINDOW` の中で続いたら休む（#404）。
+/// TIP 側の `Backoff`（最大 1 秒間隔）で試行は 1 秒に 1 回ほどなので、10 回は固まりが 10 秒ほど続いた目安。
+/// エンジンの再起動中（数秒）で休止に入らないよう、落ちた回数より大きくした。**未計測の仮置き**
+pub const RECONNECT_FAIL_LIMIT: usize = 10;
 /// 休む長さ
 pub const SUSPENSION: Duration = Duration::from_secs(300);
 /// 終了の頼み（`Shutdown`）の返事と、終了の確認を待つ上限
@@ -95,6 +102,10 @@ struct LinkState {
     expecting_exit: bool,
     down_events: u64,
     crash_times: Vec<Duration>,
+    /// 成功をはさまない返事の時間切れの時刻（成功か休止で空にする。#404）
+    timeout_times: Vec<Duration>,
+    /// 成功をはさまない、つなぎ直しの失敗の時刻（#404）
+    reconnect_fail_times: Vec<Duration>,
     suspended_until: Option<Duration>,
     observed_engine_version: Option<String>,
     /// 前回の `sh_engine` を送ってからの事象の数（ADR 0034 §4.2）
@@ -115,21 +126,58 @@ impl LinkState {
                 return Err(EngineError::Unavailable);
             }
             self.suspended_until = None;
-            self.crash_times.clear();
+            self.clear_failures();
         }
         Ok(())
     }
 
+    fn clear_failures(&mut self) {
+        self.crash_times.clear();
+        self.timeout_times.clear();
+        self.reconnect_fail_times.clear();
+    }
+
     fn record_crash(&mut self, now: Duration) {
-        self.crash_times.push(now);
-        self.crash_times
-            .retain(|time| now.saturating_sub(*time) <= CRASH_WINDOW);
-        if self.crash_times.len() >= CRASH_LIMIT {
-            self.suspended_until = Some(now + SUSPENSION);
-            self.crash_times.clear();
-            self.counts.breaker_open += 1;
+        if push_within_window(&mut self.crash_times, now) >= CRASH_LIMIT {
+            self.open_breaker(now);
         }
     }
+
+    /// 返事の時間切れ。固まったエンジンを、落ちたと同じに数える（#404）
+    fn record_timeout(&mut self, now: Duration) {
+        if push_within_window(&mut self.timeout_times, now) >= HUNG_TIMEOUT_LIMIT {
+            self.open_breaker(now);
+        }
+    }
+
+    /// つなぎ直し（一度つないだあと）の失敗。最初のつなぎ（エンジンの起動待ち）は数えない
+    fn record_reconnect_failure(&mut self, now: Duration) {
+        if !self.connected_once {
+            return;
+        }
+        if push_within_window(&mut self.reconnect_fail_times, now) >= RECONNECT_FAIL_LIMIT {
+            self.open_breaker(now);
+        }
+    }
+
+    /// 返事が来た、またはつながった。固まりの連続を数え直す
+    fn record_alive(&mut self) {
+        self.timeout_times.clear();
+        self.reconnect_fail_times.clear();
+    }
+
+    fn open_breaker(&mut self, now: Duration) {
+        self.suspended_until = Some(now + SUSPENSION);
+        self.clear_failures();
+        self.counts.breaker_open += 1;
+    }
+}
+
+/// 時刻を足し、期間の外を捨てて、残った数を返す
+fn push_within_window(times: &mut Vec<Duration>, now: Duration) -> usize {
+    times.push(now);
+    times.retain(|time| now.saturating_sub(*time) <= CRASH_WINDOW);
+    times.len()
 }
 
 /// エンジンへの口。
@@ -485,12 +533,20 @@ impl EngineLink {
         let handle = match current {
             Some(handle) => handle,
             None => {
-                let handle = self.transport.connect().map_err(transport_error)?;
+                let connected = self.transport.connect();
                 let mut state = lock(&self.state);
+                let handle = match connected {
+                    Ok(handle) => handle,
+                    Err(error) => {
+                        state.record_reconnect_failure(now);
+                        return Err(transport_error(error));
+                    }
+                };
                 if state.connected_once {
                     state.counts.reconnect += 1;
                 }
                 state.connected_once = true;
+                state.reconnect_fail_times.clear();
                 state.current = Some(handle);
                 handle
             }
@@ -578,7 +634,12 @@ impl EngineLink {
     fn round_trip_once(&self, timeout: Duration, body: &Body) -> Result<v1::Envelope, EngineError> {
         let result = self.exchange(timeout, body);
         if result == Err(EngineError::Timeout) {
-            lock(&self.state).counts.timeout += 1;
+            let now = self.clock.now();
+            let mut state = lock(&self.state);
+            state.counts.timeout += 1;
+            state.record_timeout(now);
+        } else if result.is_ok() {
+            lock(&self.state).record_alive();
         }
         let envelope = result?;
         if codec::is_error(&envelope, v1::ErrorCode::EngineNotReady) {
