@@ -1,7 +1,10 @@
 //! スレッドごとの LM 計測の記録（ADR 0061 §4.1）。
 //!
-//! 契約（レーン 0）。型と関数の宣言だけで、中身はスタブ（`begin` は何もせず、`take` は既定値を返す）。
-//! 実装はレーン 1a。
+//! `ZenzRanker::rank` を呼んだスレッドの thread-local に足す。`begin` を呼ばないスレッドでも足すだけで、
+//! だれも読まない（費用は `Instant::now()` 数回と `Cell` の書き込み）。計測は結果にも順位にも影響しない。
+
+use std::cell::Cell;
+use std::time::Duration;
 
 use crate::scorer::LmDevice;
 
@@ -22,10 +25,92 @@ pub struct LmTrace {
     pub device: LmDevice,
 }
 
-/// このスレッドの記録を 0 にする（スタブ: 何もしない）。
-pub fn begin() {}
+thread_local! {
+    static TRACE: Cell<LmTrace> = const {
+        Cell::new(LmTrace {
+            calls: 0,
+            timeouts: 0,
+            late_hits: 0,
+            wait_micros: 0,
+            infer_micros: 0,
+            device: LmDevice::Unknown,
+        })
+    };
+}
 
-/// このスレッドの記録を取り出して 0 にする（スタブ: 既定値を返す）。
+/// このスレッドの記録を 0 にする。
+pub fn begin() {
+    TRACE.with(|t| t.set(LmTrace::default()));
+}
+
+/// このスレッドの記録を取り出して 0 にする。
 pub fn take() -> LmTrace {
-    LmTrace::default()
+    TRACE.with(|t| t.replace(LmTrace::default()))
+}
+
+fn update(f: impl FnOnce(&mut LmTrace)) {
+    TRACE.with(|t| {
+        let mut v = t.get();
+        f(&mut v);
+        t.set(v);
+    });
+}
+
+fn micros(d: Duration) -> u64 {
+    u64::try_from(d.as_micros()).unwrap_or(u64::MAX)
+}
+
+/// 採点の対象があり締め切りのある `rank` の呼び出し（`LmStats.calls` と同じ）。
+pub(crate) fn record_call(device: LmDevice) {
+    update(|t| {
+        t.calls = t.calls.saturating_add(1);
+        t.device = device;
+    });
+}
+
+pub(crate) fn record_timeout(waited: Duration) {
+    update(|t| {
+        t.timeouts = t.timeouts.saturating_add(1);
+        t.wait_micros = t.wait_micros.saturating_add(micros(waited));
+    });
+}
+
+pub(crate) fn record_reply(waited: Duration, infer: Duration) {
+    update(|t| {
+        t.wait_micros = t.wait_micros.saturating_add(micros(waited));
+        t.infer_micros = t.infer_micros.saturating_add(micros(infer));
+    });
+}
+
+pub(crate) fn record_late_hit(infer: Duration) {
+    update(|t| {
+        t.late_hits = t.late_hits.saturating_add(1);
+        t.infer_micros = t.infer_micros.saturating_add(micros(infer));
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn begin_and_take_reset() {
+        begin();
+        record_call(LmDevice::Cpu);
+        record_reply(Duration::from_micros(5), Duration::from_micros(3));
+        let t = take();
+        assert_eq!((t.calls, t.wait_micros, t.infer_micros), (1, 5, 3));
+        assert_eq!(t.device, LmDevice::Cpu);
+        assert_eq!(take(), LmTrace::default());
+    }
+
+    #[test]
+    fn threads_are_separate() {
+        begin();
+        record_call(LmDevice::Cpu);
+        std::thread::spawn(|| assert_eq!(take(), LmTrace::default()))
+            .join()
+            .unwrap();
+        assert_eq!(take().calls, 1);
+    }
 }

@@ -20,7 +20,7 @@ use llama_cpp_2::model::params::kv_overrides::ParamOverrideValue;
 use llama_cpp_2::token::LlamaToken;
 
 use crate::error::LmError;
-use crate::scorer::{LmLoader, LmScorer};
+use crate::scorer::{LmDevice, LmLoader, LmScorer};
 
 /// KV キャッシュ全体のトークン数（プロンプトと、同時に評価する候補の合計）
 const CONTEXT_TOKENS: u32 = 4096;
@@ -279,6 +279,16 @@ impl LlamaScorer {
 }
 
 impl LmScorer for LlamaScorer {
+    /// 今ある選択（`load_model` の `n_gpu_layers`）を返す。Metal の初期化が黙って CPU に落ちるかは未確認
+    /// （ADR 0061 §4.2）。Windows の Vulkan（ADR 0059）が入ったら、その選択の結果を返す。
+    fn device(&self) -> LmDevice {
+        if cfg!(feature = "metal") {
+            LmDevice::Gpu
+        } else {
+            LmDevice::Cpu
+        }
+    }
+
     fn nll(&mut self, prompt: &str, candidates: &[String]) -> Result<Vec<f32>, LmError> {
         let err =
             |what: &str, e: &dyn std::fmt::Display| LmError::Inference(format!("{what}: {e}"));

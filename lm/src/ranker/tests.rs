@@ -794,3 +794,73 @@ fn long_left_context_is_truncated_to_the_tail() {
     assert!(prompts[0].contains(expected_tail));
     assert!(!prompts[0].contains(&long));
 }
+
+// ---- 計測（ADR 0061 §4.1）----
+
+#[test]
+fn trace_records_wait_infer_and_device_for_an_on_time_call() {
+    let state = mock(&[("品詞", 2.0), ("瀕死", 5.0)]);
+    *lock(&state.delay) = ikari_testtime::ms(40);
+    let r = ZenzRanker::new(loader(&state), cfg(5000, 60_000));
+    let fx = Fixture::new();
+    let ctx = Context::new().with_left_text("ctx");
+    r.warm_up(); // 読み込みを済ませて、装置を確定させる
+    trace::begin();
+    let mut cands = vec![dict_cand("瀕死", 5000), dict_cand("品詞", 5100)];
+    fx.rank(&r, &ctx, "ひんし", &mut cands);
+    let t = trace::take();
+    assert_eq!((t.calls, t.timeouts, t.late_hits), (1, 0, 0));
+    assert_eq!(t.device, LmDevice::Cpu);
+    let floor = ikari_testtime::ms(40).as_micros() as u64;
+    assert!(t.infer_micros >= floor, "{t:?}");
+    assert!(t.wait_micros >= t.infer_micros, "{t:?}");
+    assert_eq!(r.stats().device, LmDevice::Cpu);
+    assert_eq!(trace::take(), trace::LmTrace::default(), "take resets");
+}
+
+#[test]
+fn trace_counts_timeout_and_late_hit_and_ignores_other_threads() {
+    let state = mock(&[("品詞", 2.0), ("瀕死", 5.0)]);
+    *lock(&state.delay) = ikari_testtime::ms(200);
+    let r = ZenzRanker::new(loader(&state), cfg(30, 60_000));
+    let fx = Fixture::new();
+    let ctx = Context::new().with_left_text("ctx");
+    let mk = || vec![dict_cand("瀕死", 5000), dict_cand("品詞", 5100)];
+
+    trace::begin();
+    fx.rank(&r, &ctx, "ひんし", &mut mk());
+    let t = trace::take();
+    assert_eq!(
+        (t.calls, t.timeouts, t.late_hits, t.infer_micros),
+        (1, 1, 0, 0)
+    );
+    assert!(t.wait_micros > 0, "{t:?}");
+
+    assert!(wait_until(|| lock(&r.shared.late).is_some()));
+    // 別のスレッドの rank は、このスレッドの記録に混ざらない
+    thread::scope(|s| {
+        s.spawn(|| fx.rank(&r, &ctx, "べつ", &mut mk()));
+    });
+    trace::begin();
+    fx.rank(&r, &ctx, "ひんし", &mut mk());
+    let t = trace::take();
+    assert_eq!((t.calls, t.timeouts, t.late_hits), (1, 0, 1));
+    let floor = ikari_testtime::ms(200).as_micros() as u64;
+    assert!(t.infer_micros >= floor, "{t:?}");
+}
+
+#[test]
+fn trace_counts_expired_and_skips_declined() {
+    let state = mock(&[("a", 1.0)]);
+    let r = ZenzRanker::new(loader(&state), cfg(1000, 60_000));
+    let fx = Fixture::new();
+    let ctx = Context::new();
+    trace::begin();
+    fx.rank_until(&r, &ctx, "x", &mut [dict_cand("a", 0)], None);
+    assert_eq!(trace::take().calls, 0, "no deadline is not a call");
+    let now = Some(Instant::now());
+    fx.rank_until(&r, &ctx, "x", &mut [dict_cand("a", 0)], now);
+    let t = trace::take();
+    assert_eq!((t.calls, t.timeouts, t.wait_micros), (1, 1, 0));
+    assert_eq!(t.device, LmDevice::Unknown, "model not loaded yet");
+}
