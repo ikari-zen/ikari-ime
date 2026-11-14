@@ -26,12 +26,17 @@ pub const IS_ALPHANUMERIC_PIN: i32 = 65;
 /// `IS_ALPHANUMERIC_PIN_SET`
 pub const IS_ALPHANUMERIC_PIN_SET: i32 = 66;
 
+/// `IS_PRIVATE`。Chromium 系（Edge、Chrome）は、`<input type=password>` の入力スコープに `IS_PASSWORD` ではなく
+/// これを返す（`ui/base/ime/win/tsf_input_scope.cc`）。2026-11-14 ユーザー決定で secure に含める（#369）。
+pub const IS_PRIVATE: i32 = 61;
+
 /// secure な欄を表す入力スコープ
-const SECURE_SCOPES: [i32; 4] = [
+const SECURE_SCOPES: [i32; 5] = [
     IS_PASSWORD,
     IS_NUMERIC_PIN,
     IS_ALPHANUMERIC_PIN,
     IS_ALPHANUMERIC_PIN_SET,
+    IS_PRIVATE,
 ];
 
 /// 欄の入力スコープの読み取りの結果。
@@ -68,6 +73,12 @@ mod tests {
         for scope in SECURE_SCOPES {
             assert!(is_secure(ScopeReading::Scopes(&[scope])), "{scope}");
         }
+    }
+
+    #[test]
+    fn private_scope_from_chromium_is_secure() {
+        assert!(is_secure(ScopeReading::Scopes(&[IS_PRIVATE])));
+        assert!(is_secure(ScopeReading::Scopes(&[IS_DEFAULT, IS_PRIVATE])));
     }
 
     #[test]
