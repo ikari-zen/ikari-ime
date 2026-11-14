@@ -61,6 +61,10 @@ public static class ImeCtl {
         SendMessage(w, 0x283, (IntPtr)6, (IntPtr)(open ? 1 : 0));
         return (long)SendMessage(w, 0x283, (IntPtr)5, IntPtr.Zero);
     }
+    public static long GetOpen() {
+        IntPtr w = ImmGetDefaultIMEWnd(GetForegroundWindow());
+        return (long)SendMessage(w, 0x283, (IntPtr)5, IntPtr.Zero);
+    }
 }
 '@
 
@@ -94,6 +98,7 @@ if ($Mode -in 'Prepare','Activate') {
 }
 if ($Mode -eq 'Release') { $lines.Add('release hr=' + ('{0:X8}' -f [Tsf]::Activate('{03B5835F-F03C-411B-9CE2-AA23E1171E36}', '{A76C93D9-5523-4E90-AAFA-4DB112F9AC76}'))); Start-Sleep 1 }
 $lines.Add('active: ' + [Tsf]::Active())
+if ($Mode -eq 'Read') { $lines.Add('open now=' + [ImeCtl]::GetOpen()) }
 $doc = Get-NotepadDoc
 if ($doc) {
     $tp = $doc.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern)
