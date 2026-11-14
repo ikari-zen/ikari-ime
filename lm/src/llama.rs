@@ -8,6 +8,8 @@
 use std::num::NonZeroU32;
 use std::path::Path;
 use std::sync::OnceLock;
+#[cfg(feature = "vulkan")]
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use llama_cpp_2::LogOptions;
 use llama_cpp_2::context::LlamaContext;
@@ -20,6 +22,7 @@ use llama_cpp_2::model::params::kv_overrides::ParamOverrideValue;
 use llama_cpp_2::token::LlamaToken;
 
 use crate::error::LmError;
+use crate::placement::{self, GpuState};
 use crate::scorer::{LmDevice, LmLoader, LmScorer};
 
 /// KV キャッシュ全体のトークン数（プロンプトと、同時に評価する候補の合計）
@@ -42,7 +45,17 @@ const PROMPT_SEQ: i32 = 0;
 /// 設定すると llama.cpp のログを標準エラーに出す
 pub const LOG_ENV: &str = "IKARI_LM_LOG";
 
+#[cfg(all(feature = "metal", feature = "vulkan"))]
+compile_error!("ikari-lm: features `metal` and `vulkan` cannot be enabled together");
+
+/// バックエンドの DLL を置くフォルダ（exe の隣。ADR 0059 §2.3）
+#[cfg(feature = "vulkan")]
+const BACKENDS_DIR_NAME: &str = "backends";
+
 static BACKEND: OnceLock<Result<LlamaBackend, String>> = OnceLock::new();
+/// GPU での読み込みに失敗したら立てる。この起動の間は、読み直し（アイドル明け）でも GPU を試さない（ADR 0059 §2.4）
+#[cfg(feature = "vulkan")]
+static GPU_DISABLED: AtomicBool = AtomicBool::new(false);
 
 fn backend() -> Result<&'static LlamaBackend, LmError> {
     let b = BACKEND.get_or_init(|| {
@@ -50,9 +63,124 @@ fn backend() -> Result<&'static LlamaBackend, LmError> {
         if std::env::var_os(LOG_ENV).is_none() {
             llama_cpp_2::send_logs_to_tracing(LogOptions::default().with_logs_enabled(false));
         }
-        LlamaBackend::init().map_err(|e| e.to_string())
+        #[cfg(feature = "vulkan")]
+        load_dynamic_backends();
+        let b = LlamaBackend::init().map_err(|e| e.to_string());
+        placement::set_devices(device_summary());
+        b
     });
     b.as_ref().map_err(|e| LmError::Load(e.clone()))
+}
+
+/// exe の隣の `backends` フォルダからバックエンドの DLL を読む（無い・読めなくても黙って続く。結果は
+/// `device_summary` で見る）。`load_backends()`（ビルド機のパス）は使わない（ADR 0059 §2.3）
+#[cfg(feature = "vulkan")]
+fn load_dynamic_backends() {
+    let Some(dir) = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|p| p.join(BACKENDS_DIR_NAME)))
+    else {
+        return;
+    };
+    // `load_backends_from_path` は UTF-8 でない・NUL を含むパスで panic するので、先に弾く
+    if dir.to_str().is_some_and(|s| !s.contains('\0')) {
+        llama_cpp_2::llama_backend::load_backends_from_path(&dir);
+    }
+}
+
+/// `cpu,vulkan:IntegratedGpu` の形（backend 名を小文字に、CPU 以外は種類を添える）。デバイスが無ければ `none`
+fn device_summary() -> String {
+    use llama_cpp_2::LlamaBackendDeviceType as T;
+    let parts: Vec<String> = llama_cpp_2::list_llama_ggml_backend_devices()
+        .iter()
+        .map(|d| {
+            let backend = d.backend.to_lowercase();
+            match d.device_type {
+                T::Cpu => backend,
+                other => format!("{backend}:{other:?}"),
+            }
+        })
+        .collect();
+    if parts.is_empty() {
+        "none".to_owned()
+    } else {
+        parts.join(",")
+    }
+}
+
+/// どのデバイスで読むか
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Placement {
+    /// 既定（`metal` なら全層を GPU、それ以外は CPU）。デバイスの指定をしない
+    #[cfg_attr(feature = "vulkan", allow(dead_code))]
+    Default,
+    /// CPU だけ（GPU のデバイスを渡さない）
+    #[cfg_attr(not(feature = "vulkan"), allow(dead_code))]
+    CpuOnly,
+    /// 指定の GPU のデバイス（`list_llama_ggml_backend_devices` の index）に全層を載せる
+    #[cfg_attr(not(feature = "vulkan"), allow(dead_code))]
+    Gpu(usize),
+}
+
+/// 載せる先を決める。`want_gpu` は設定（`engine.lm_gpu`）。環境変数 `IKARI_LM_GPU` があれば上書きする
+#[cfg(feature = "vulkan")]
+fn choose_placement(want_gpu: bool) -> (Placement, GpuState) {
+    use llama_cpp_2::LlamaBackendDeviceType as T;
+    let env = std::env::var(placement::GPU_ENV).ok();
+    let (want, off) = match placement::env_override(env.as_deref()) {
+        Some(on) => (on, GpuState::OffEnv),
+        None => (want_gpu, GpuState::OffSetting),
+    };
+    if !want {
+        return (Placement::CpuOnly, off);
+    }
+    if GPU_DISABLED.load(Ordering::Acquire) {
+        return (Placement::CpuOnly, GpuState::OffAfterFailure);
+    }
+    // Gpu を IntegratedGpu より先に、同じ種類なら列挙の最初
+    let devices = llama_cpp_2::list_llama_ggml_backend_devices();
+    let pick = |t: T| devices.iter().find(|d| d.device_type == t).map(|d| d.index);
+    match pick(T::Gpu).or_else(|| pick(T::IntegratedGpu)) {
+        Some(i) => (Placement::Gpu(i), GpuState::On),
+        None => (Placement::CpuOnly, GpuState::NoGpu),
+    }
+}
+
+#[cfg(not(feature = "vulkan"))]
+fn choose_placement(_want_gpu: bool) -> (Placement, GpuState) {
+    (Placement::Default, GpuState::NotBuilt)
+}
+
+impl Placement {
+    fn params(self) -> Result<LlamaModelParams, LmError> {
+        let base = LlamaModelParams::default();
+        let dev_err = |e: llama_cpp_2::LlamaCppError| LmError::Load(format!("devices: {e}"));
+        match self {
+            Placement::Default => {
+                let n_gpu_layers = if cfg!(feature = "metal") { u32::MAX } else { 0 };
+                Ok(base.with_n_gpu_layers(n_gpu_layers))
+            }
+            // 空の一覧（NULL で終わる配列だけ）を渡す = llama.cpp の `--device none` と同じ。
+            // 渡さないと、Vulkan が登録されているだけで既定の選択が GPU を拾う（ADR 0059 §2.4）
+            Placement::CpuOnly => Ok(base
+                .with_devices(&[])
+                .map_err(dev_err)?
+                .with_n_gpu_layers(0)),
+            Placement::Gpu(i) => Ok(base
+                .with_devices(&[i])
+                .map_err(dev_err)?
+                .with_n_gpu_layers(u32::MAX)),
+        }
+    }
+
+    fn device(self) -> LmDevice {
+        match self {
+            Placement::Gpu(_) => LmDevice::Gpu,
+            Placement::CpuOnly => LmDevice::Cpu,
+            Placement::Default if cfg!(feature = "metal") => LmDevice::Gpu,
+            Placement::Default => LmDevice::Cpu,
+        }
+    }
 }
 
 /// 読み込んだモデルについて、プロンプトの作り方に効く事実（診断用。実モデルのテストで確かめる）
@@ -79,6 +207,8 @@ pub struct LlamaScorer {
     bos: Option<LlamaToken>,
     n_threads: i32,
     pre_tokenizer_fallback: bool,
+    /// 読み込んだ装置（`LmScorer::device`）
+    device: LmDevice,
 }
 
 // SAFETY の根拠: `ctx` は `model`（Box でアドレスが動かない）を借りている。`LlamaContext<'static>` は
@@ -86,13 +216,36 @@ pub struct LlamaScorer {
 // ワーカースレッドの中で作って、その中だけで使う（他のスレッドへ渡さない）。
 
 impl LlamaScorer {
-    /// GGUF を読み込む。Metal が有効なら全層を GPU に載せる。
+    /// GGUF を読み込む。GPU を使ってよい設定（`load_with(path, true)`）。
     pub fn load(path: &Path) -> Result<Self, LmError> {
+        Self::load_with(path, true)
+    }
+
+    /// GGUF を読み込む。Metal が有効なら全層を GPU に載せる。Vulkan のビルドでは、`use_gpu` が真で
+    /// GPU のデバイスがあれば GPU に載せ、読み込みに失敗したら CPU で読み直す（ADR 0059 §2.4）。
+    pub fn load_with(path: &Path, use_gpu: bool) -> Result<Self, LmError> {
         if !path.exists() {
             return Err(LmError::Load(format!("{} does not exist", path.display())));
         }
         let backend = backend()?;
-        let (model, pre_tokenizer_fallback) = Self::load_model(backend, path)?;
+        let (placement, state) = choose_placement(use_gpu);
+        placement::set_gpu(state);
+        match Self::load_on(backend, path, placement) {
+            Ok(scorer) => Ok(scorer),
+            // GPU で読めなければ、その場で CPU だけで読み直す。この起動の間は、以後も CPU で読む
+            Err(_) if matches!(placement, Placement::Gpu(_)) => {
+                #[cfg(feature = "vulkan")]
+                GPU_DISABLED.store(true, Ordering::Release);
+                placement::set_gpu(GpuState::FallbackLoadFailed);
+                Self::load_on(backend, path, Placement::CpuOnly)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// `placement` に載せて、モデルとコンテキストを作る
+    fn load_on(backend: &LlamaBackend, path: &Path, placement: Placement) -> Result<Self, LmError> {
+        let (model, pre_tokenizer_fallback) = Self::load_model(backend, path, placement)?;
         let model = Box::new(model);
         let n_threads = std::thread::available_parallelism().map_or(4, |n| n.get().min(8)) as i32;
         let cparams = LlamaContextParams::default()
@@ -118,6 +271,7 @@ impl LlamaScorer {
             bos,
             n_threads,
             pre_tokenizer_fallback,
+            device: placement.device(),
         })
     }
 
@@ -126,9 +280,12 @@ impl LlamaScorer {
     /// zenz の GGUF は `tokenizer.ggml.pre = gpt2-small-japanese-char` を持つが、llama.cpp はこの名前を
     /// 知らず、読み込みに失敗する。zenz は文字単位の BPE（マージは1文字のバイト列をまとめるだけ）なので、
     /// 前処理の分割の違いは結果に影響しない。そこで、失敗したときだけ KV の上書きで `default` として読み直す。
-    fn load_model(backend: &LlamaBackend, path: &Path) -> Result<(LlamaModel, bool), LmError> {
-        let n_gpu_layers = if cfg!(feature = "metal") { u32::MAX } else { 0 };
-        let plain = LlamaModelParams::default().with_n_gpu_layers(n_gpu_layers);
+    fn load_model(
+        backend: &LlamaBackend,
+        path: &Path,
+        placement: Placement,
+    ) -> Result<(LlamaModel, bool), LmError> {
+        let plain = placement.params()?;
         if let Ok(model) = LlamaModel::load_from_file(backend, path, &plain) {
             return Ok((model, false));
         }
@@ -137,8 +294,7 @@ impl LlamaScorer {
         for (dst, src) in value.iter_mut().zip(FALLBACK_PRE_TOKENIZER.bytes()) {
             *dst = src as std::os::raw::c_char;
         }
-        let mut params =
-            std::pin::pin!(LlamaModelParams::default().with_n_gpu_layers(n_gpu_layers));
+        let mut params = std::pin::pin!(placement.params()?);
         let key = std::ffi::CString::new(PRE_TOKENIZER_KEY).expect("key has no NUL");
         params
             .as_mut()
@@ -148,11 +304,16 @@ impl LlamaScorer {
             .map_err(|e| LmError::Load(format!("{}: {e}", path.display())))
     }
 
-    /// `load` を呼ぶローダー（`ZenzRanker::new` に渡す）
+    /// `load` を呼ぶローダー（`ZenzRanker::new` に渡す）。GPU を使ってよい設定
     pub fn loader(path: impl Into<std::path::PathBuf>) -> LmLoader {
+        Self::loader_with(path, true)
+    }
+
+    /// `load_with` を呼ぶローダー。`use_gpu` は設定 `engine.lm_gpu`（`ZenzConfig::gpu`）
+    pub fn loader_with(path: impl Into<std::path::PathBuf>, use_gpu: bool) -> LmLoader {
         let path = path.into();
         std::sync::Arc::new(move || {
-            let s = LlamaScorer::load(&path)?;
+            let s = LlamaScorer::load_with(&path, use_gpu)?;
             Ok(Box::new(s) as Box<dyn LmScorer>)
         })
     }
@@ -279,14 +440,10 @@ impl LlamaScorer {
 }
 
 impl LmScorer for LlamaScorer {
-    /// 今ある選択（`load_model` の `n_gpu_layers`）を返す。Metal の初期化が黙って CPU に落ちるかは未確認
-    /// （ADR 0061 §4.2）。Windows の Vulkan（ADR 0059）が入ったら、その選択の結果を返す。
+    /// 読み込んだときの選択を返す。Metal の初期化が黙って CPU に落ちるかは未確認（ADR 0061 §4.2）。
+    /// Vulkan は、GPU での読み込みに失敗して CPU で読み直したときは `Cpu`（ADR 0059 §2.4）
     fn device(&self) -> LmDevice {
-        if cfg!(feature = "metal") {
-            LmDevice::Gpu
-        } else {
-            LmDevice::Cpu
-        }
+        self.device
     }
 
     fn nll(&mut self, prompt: &str, candidates: &[String]) -> Result<Vec<f32>, LmError> {

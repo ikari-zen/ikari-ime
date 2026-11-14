@@ -75,6 +75,7 @@ fn lm_overrides(common: &CommonArgs) -> LmOverrides {
     return LmOverrides {
         budget_ms: common.lm_budget_ms,
         idle_unload_secs: None,
+        gpu: None,
     };
     #[cfg(not(feature = "lm"))]
     {

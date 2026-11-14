@@ -49,6 +49,10 @@ pub use load::{
 const LM_KEY_PREFIX: &str = "zenz.";
 const KEY_LM_BUDGET_MS: &str = "zenz.budget_ms";
 const KEY_LM_IDLE_UNLOAD_SECS: &str = "zenz.idle_unload_secs";
+const KEY_LM_GPU: &str = "zenz.gpu";
+/// `zenz.gpu` の値（`ZenzConfig::from_kv` の書き方）
+const VALUE_GPU_ON: &str = "on";
+const VALUE_GPU_OFF: &str = "off";
 
 /// 組み立てに使うパス。
 #[derive(Clone, Debug, Default)]
@@ -157,6 +161,8 @@ pub struct LmOverrides {
     pub budget_ms: Option<u64>,
     /// 使われなくなってからモデルを解放するまでの秒数（`zenz.idle_unload_secs`）
     pub idle_unload_secs: Option<u64>,
+    /// GPU を使う（`zenz.gpu`。設定 `engine.lm_gpu`。Vulkan のビルドだけで効く。ADR 0059 §2.5）
+    pub gpu: Option<bool>,
 }
 
 impl LmOverrides {
@@ -167,6 +173,10 @@ impl LmOverrides {
         }
         if let Some(secs) = self.idle_unload_secs {
             kv.insert(KEY_LM_IDLE_UNLOAD_SECS.to_owned(), secs.to_string());
+        }
+        if let Some(gpu) = self.gpu {
+            let value = if gpu { VALUE_GPU_ON } else { VALUE_GPU_OFF };
+            kv.insert(KEY_LM_GPU.to_owned(), value.to_owned());
         }
     }
 }
@@ -261,6 +271,10 @@ pub trait LmHandle: Send + Sync {
     /// いま読み込まれているモデルの装置（読まれていなければ `Unknown`。ADR 0061）
     fn device(&self) -> LmDevice {
         LmDevice::Unknown
+    }
+    /// `lm_load` のログに足す固定の語（GPU の扱いとデバイスの一覧。ADR 0059 §2.3）。なければ None
+    fn load_note(&self) -> Option<String> {
+        None
     }
 }
 

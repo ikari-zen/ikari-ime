@@ -198,6 +198,7 @@ pub fn build(
         lm: LmOverrides {
             budget_ms: opts.lm_budget_ms,
             idle_unload_secs: None,
+            gpu: None,
         },
         mode: AssemblyMode::Eval,
         no_analyzer: opts.no_analyzer,

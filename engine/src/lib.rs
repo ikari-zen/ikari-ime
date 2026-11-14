@@ -171,6 +171,7 @@ pub fn stack_options(idle_unload_secs: u32, budget: LmBudget) -> StackOptions {
             // 待ちの長さは変換 1 回ごとの締め切りで決まる。ZenzRanker の `budget` は上限として最大に合わせる
             budget_ms: Some(budget.max.as_millis() as u64),
             idle_unload_secs: Some(unload),
+            gpu: None,
         },
         profile: ProfileSel::User,
         convert: ConvertOptions {
@@ -229,6 +230,7 @@ impl Engine {
             ..LmBudget::default()
         };
         let mut opts = stack_options(idle_unload_secs, lm_budget);
+        opts.lm.gpu = Some(settings.lm_gpu_or_default());
         // 住所 ↔ 郵便番号の設定（表は <dict>/postal.tsv。ADR 0032）
         opts.postal = PostalOptions {
             japanese: settings.postal_japanese_or_default(),

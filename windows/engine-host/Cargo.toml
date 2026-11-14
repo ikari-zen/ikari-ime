@@ -26,6 +26,9 @@ hide-console = []
 # LM（zenz。llama.cpp、CPU）を入れる。cmake と C++ のビルド環境が要る。入れても既定はオフ（設定の `engine.lm` で使う。
 # Windows の既定は LM なし。ADR 0040 §2.6）。ビルドは `windows/dev/build.ps1 -Lm`
 lm = ["ikari-engine/lm"]
+# LM を Vulkan（GPU）で動かす（ADR 0059 §2.2）。`lm` を含む。ビルドに Vulkan SDK が要る。バックエンドの DLL は
+# exe の隣の `backends\` に置く（`windows/dev/build.ps1 -LmVulkan` が写す）。GPU が使えない機械では自動で CPU に落ちる
+lm-vulkan = ["lm", "ikari-engine/lm-vulkan"]
 
 [dev-dependencies]
 ikari-testtime.workspace = true
