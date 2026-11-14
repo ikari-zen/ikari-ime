@@ -37,7 +37,7 @@ fn commit_text(e: &Engine, reading: &str, surface: &str) {
 }
 
 fn history_len(e: &Engine) -> usize {
-    lock_mutex(&e.inner.sessions)[&1].history.len()
+    lock_mutex(&e.inner.sessions)[&sk(1)].history.len()
 }
 
 fn learned_len(e: &Engine) -> usize {

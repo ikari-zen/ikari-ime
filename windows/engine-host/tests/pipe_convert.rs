@@ -1,5 +1,6 @@
 //! 実際の Windows の名前付きパイプの上で、`Engine::handle` に `Convert` が往復する結合テスト（W1-d）。
 //! `serve.rs` のメモリ上の流れと同じ中身を、`NamedPipeListener` と `connect_duplex` で確かめる。
+//! Windows でしか動かない（Mac では回らない。CI の windows のジョブが流す）。
 
 #![cfg(windows)]
 
@@ -142,5 +143,18 @@ fn the_server_keeps_accepting_after_a_client_disconnects() {
         drop(next);
     }
 
+    host.stop();
+}
+
+/// 2 本の名前付きパイプの接続が同じ `session_id` を使っても混ざらない（ADR 0064 §4.4 の 2）
+#[test]
+fn two_named_pipe_connections_with_the_same_session_id_do_not_mix() {
+    let (engine, _data) = open_engine();
+    let host = Host::start(engine);
+    let a = host.connect();
+    let b = host.connect();
+    assert_connections_with_the_same_session_id_stay_apart(&a, &b);
+    drop(a);
+    drop(b);
     host.stop();
 }

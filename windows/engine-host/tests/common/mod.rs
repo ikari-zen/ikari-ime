@@ -115,3 +115,65 @@ pub fn convert(client: &Client, session: u64) -> pb::ConvertReply {
         other => panic!("unexpected: {other:?}"),
     }
 }
+
+pub fn end_session(client: &Client, session: u64) {
+    let reply = call(
+        client,
+        3,
+        envelope::Body::EndSession(pb::EndSession {
+            session_id: session,
+        }),
+    );
+    assert!(matches!(reply, envelope::Body::Ack(_)), "{reply:?}");
+}
+
+/// 変換の 1 ページ目を引く（返事の本体をそのまま返す。別の接続からなら `UNKNOWN_CONVERSION`）
+pub fn page(client: &Client, conversion_id: u64) -> envelope::Body {
+    call(
+        client,
+        4,
+        envelope::Body::Page(pb::PageRequest {
+            conversion_id,
+            index: 0,
+        }),
+    )
+}
+
+pub fn error_code(body: &envelope::Body) -> pb::ErrorCode {
+    match body {
+        envelope::Body::Error(e) => pb::ErrorCode::try_from(e.code).expect("known error code"),
+        other => panic!("expected an error, got {other:?}"),
+    }
+}
+
+/// 2 本の接続が同じ `session_id` を使っても混ざらないこと（ADR 0064 D1・D2、§4.4 の 2）。
+/// `serve.rs`（メモリ上の流れ）と `pipe_convert.rs`（名前付きパイプ）が同じ中身を流す
+pub fn assert_connections_with_the_same_session_id_stay_apart(a: &Client, b: &Client) {
+    begin_session(a, SESSION);
+    begin_session(b, SESSION);
+    // A の変換は、B からは引けない（変換の表は作った接続からだけ受ける）
+    let ra = convert(a, SESSION);
+    assert_eq!(
+        error_code(&page(b, ra.conversion_id)),
+        pb::ErrorCode::UnknownConversion
+    );
+    assert!(matches!(
+        page(a, ra.conversion_id),
+        envelope::Body::PageReply(_)
+    ));
+    // A が終わっても、B の同じ番号のセッションは動き続ける
+    end_session(a, SESSION);
+    assert!(!convert(b, SESSION).candidates.is_empty());
+    let reply = call(
+        a,
+        5,
+        envelope::Body::Convert(pb::Convert {
+            session_id: SESSION,
+            reading: READING.into(),
+            context: None,
+            context_rev: 0,
+            page_size: 0,
+        }),
+    );
+    assert_eq!(error_code(&reply), pb::ErrorCode::UnknownSession);
+}

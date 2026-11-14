@@ -128,6 +128,7 @@ mod tests {
             shell_version: "test".into(),
             settings: SettingsSource::Inline(String::new()),
             resources_dir: std::path::PathBuf::new(),
+            engine_owner: true,
         };
         let mut shell = Shell::new(
             config,

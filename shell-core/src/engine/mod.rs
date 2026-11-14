@@ -143,6 +143,8 @@ pub struct EngineLink {
     clock: Arc<dyn Clock>,
     /// 前回の判定と panic の数（ADR 0051）。panic の hook から触るので `state` とは別の錠にする
     crash: Mutex<crash_record::CrashRecord>,
+    /// エンジンと一緒に入れ替わる殻か。`false` は、版が違ってもエンジンへ `Shutdown` を送らない（ADR 0064 D4）
+    engine_owner: bool,
 }
 
 impl EngineLink {
@@ -158,7 +160,15 @@ impl EngineLink {
             exited: Condvar::new(),
             clock,
             crash: Mutex::new(crash_record::CrashRecord::default()),
+            engine_owner: true,
         }
+    }
+
+    /// `ShellConfig::engine_owner` を入れる（既定は `true`）。
+    #[must_use]
+    pub fn with_engine_owner(mut self, engine_owner: bool) -> Self {
+        self.engine_owner = engine_owner;
+        self
     }
 
     /// 版の照合とエンジンの起動の前倒し（今の `hello`）。
@@ -176,6 +186,11 @@ impl EngineLink {
             let reply = codec::hello(self.round_trip(timeout, &body)?)?;
             lock(&self.state).observed_engine_version = Some(reply.engine_version.clone());
             if reply.engine_version == shell_version {
+                return Ok(reply);
+            }
+            if !self.engine_owner {
+                // エンジンを止めてよいのはエンジンと一緒に入れ替わる者だけ。版の違いは `observed_engine_version`
+                // （診断）に残し、返事をそのまま使って共存する（ADR 0064 §6.1 の V1）
                 return Ok(reply);
             }
             // 入れ替えた直後に古いエンジンが残っている。止めて、新しい版を起動し直す（ADR 0004 §5.2）

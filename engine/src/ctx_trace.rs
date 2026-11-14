@@ -10,6 +10,8 @@ use std::time::Instant;
 
 use ikari_proto::v1 as pb;
 
+use crate::connection::SessionKey;
+
 /// セッションごとに最後に見た周辺テキストと番号
 struct Seen {
     rev: u64,
@@ -37,8 +39,8 @@ pub struct FilledSurrounding {
 
 #[derive(Default)]
 pub struct ContextTrace {
-    seen: HashMap<u64, Seen>,
-    commits: HashMap<u64, LastCommit>,
+    seen: HashMap<SessionKey, Seen>,
+    commits: HashMap<SessionKey, LastCommit>,
 }
 
 fn char_delta(new: &str, old: &str) -> i64 {
@@ -82,7 +84,7 @@ fn change_note(
 impl ContextTrace {
     /// 確定の時刻、文字数、表記、そのとき見ていた left を覚える（メモリだけ。ログには文字数と経過時間だけ）。
     /// secure では呼ばない。表記が空なら補う元にならないので、時刻と文字数だけ覚える
-    pub fn note_commit(&mut self, session: u64, surface: &str) {
+    pub fn note_commit(&mut self, session: SessionKey, surface: &str) {
         let chars = surface.chars().count();
         let left_before = self.seen.get(&session).map(|s| s.left.clone());
         self.commits.insert(
@@ -105,7 +107,7 @@ impl ContextTrace {
     /// 補った left は末尾 `MAX_CONTEXT_CHARS` 字に切る。secure では `note_commit` が呼ばれないので補わない
     pub fn fill_left(
         &self,
-        session: u64,
+        session: SessionKey,
         surrounding: Option<&pb::SurroundingText>,
     ) -> Option<FilledSurrounding> {
         let s = surrounding.filter(|s| s.available)?;
@@ -133,7 +135,7 @@ impl ContextTrace {
     /// 要求の周辺テキストを記録する。番号が前回と違うときだけ、`ctx_change` の行の注記を返す
     pub fn observe(
         &mut self,
-        session: u64,
+        session: SessionKey,
         rev: u64,
         surrounding: Option<&pb::SurroundingText>,
         req: &str,
@@ -177,7 +179,7 @@ impl ContextTrace {
         self.seen.is_empty()
     }
 
-    pub fn remove_session(&mut self, session: u64) {
+    pub fn remove_session(&mut self, session: SessionKey) {
         self.seen.remove(&session);
         self.commits.remove(&session);
     }
@@ -186,6 +188,10 @@ impl ContextTrace {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::connection::ConnectionId;
+
+    const S1: SessionKey = SessionKey::new(ConnectionId::DEFAULT, 1);
+    const S2: SessionKey = SessionKey::new(ConnectionId::DEFAULT, 2);
 
     fn st(left: &str, right: &str, available: bool) -> pb::SurroundingText {
         pb::SurroundingText {
@@ -199,11 +205,11 @@ mod tests {
     fn first_sight_and_same_rev_are_silent() {
         let mut t = ContextTrace::default();
         assert_eq!(
-            t.observe(1, 1, Some(&st("あ", "", true)), "prefetch", 0),
+            t.observe(S1, 1, Some(&st("あ", "", true)), "prefetch", 0),
             None
         );
         assert_eq!(
-            t.observe(1, 1, Some(&st("あ", "", true)), "prefetch", 0),
+            t.observe(S1, 1, Some(&st("あ", "", true)), "prefetch", 0),
             None
         );
     }
@@ -211,15 +217,15 @@ mod tests {
     #[test]
     fn reports_flags_and_char_deltas_only() {
         let mut t = ContextTrace::default();
-        t.observe(1, 1, Some(&st("あ", "い", true)), "prefetch", 0);
+        t.observe(S1, 1, Some(&st("あ", "い", true)), "prefetch", 0);
         let note = t
-            .observe(1, 2, Some(&st("あうえ", "い", true)), "prefetch", 0)
+            .observe(S1, 2, Some(&st("あうえ", "い", true)), "prefetch", 0)
             .unwrap();
         assert_eq!(
             note,
             "rev=2 prev_rev=1 left=1 right=0 avail=0 dleft=+2 dright=+0 req=prefetch reading=0 lext=1 tail=1"
         );
-        let note = t.observe(1, 3, None, "prefetch", 0).unwrap();
+        let note = t.observe(S1, 3, None, "prefetch", 0).unwrap();
         assert_eq!(
             note,
             "rev=3 prev_rev=2 left=1 right=1 avail=1 dleft=-3 dright=-1 req=prefetch reading=0 lext=0 tail=1"
@@ -229,9 +235,9 @@ mod tests {
     #[test]
     fn sessions_are_separate_and_removable() {
         let mut t = ContextTrace::default();
-        t.observe(1, 1, None, "prefetch", 0);
-        assert_eq!(t.observe(2, 5, None, "prefetch", 0), None);
-        t.remove_session(1);
-        assert_eq!(t.observe(1, 9, None, "prefetch", 0), None);
+        t.observe(S1, 1, None, "prefetch", 0);
+        assert_eq!(t.observe(S2, 5, None, "prefetch", 0), None);
+        t.remove_session(S1);
+        assert_eq!(t.observe(S1, 9, None, "prefetch", 0), None);
     }
 }

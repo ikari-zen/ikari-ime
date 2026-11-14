@@ -86,6 +86,52 @@ fn several_connections_share_one_engine_and_run_in_parallel() {
 }
 
 #[test]
+fn two_connections_with_the_same_session_id_do_not_mix() {
+    let (engine, _data) = open_engine();
+    let (connector, host) = spawn_host(Arc::new(engine));
+    let a = Client::new(connector.connect().unwrap(), None);
+    let b = Client::new(connector.connect().unwrap(), None);
+    assert_connections_with_the_same_session_id_stay_apart(&a, &b);
+    drop(a);
+    drop(b);
+    drop(connector);
+    host.join().unwrap();
+}
+
+#[test]
+fn a_dropped_connection_takes_its_conversions_with_it() {
+    let (engine, _data) = open_engine();
+    let (connector, host) = spawn_host(Arc::new(engine));
+    let a = Client::new(connector.connect().unwrap(), None);
+    begin_session(&a, SESSION);
+    let ra = convert(&a, SESSION);
+    drop(a);
+    // つなぎ直した殻は新しい接続になる。前の接続のセッションはもうない（D2。殻は BeginSession を送り直す）
+    let again = Client::new(connector.connect().unwrap(), None);
+    let reply = call(
+        &again,
+        5,
+        envelope::Body::Convert(pb::Convert {
+            session_id: SESSION,
+            reading: READING.into(),
+            context: None,
+            context_rev: 0,
+            page_size: 0,
+        }),
+    );
+    assert_eq!(error_code(&reply), pb::ErrorCode::UnknownSession);
+    assert_eq!(
+        error_code(&page(&again, ra.conversion_id)),
+        pb::ErrorCode::UnknownConversion
+    );
+    begin_session(&again, SESSION);
+    assert!(!convert(&again, SESSION).candidates.is_empty());
+    drop(again);
+    drop(connector);
+    host.join().unwrap();
+}
+
+#[test]
 fn closing_the_listener_closes_open_connections_and_releases_the_engine() {
     let (engine, _data) = open_engine();
     let engine = Arc::new(engine);

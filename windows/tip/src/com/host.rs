@@ -92,6 +92,8 @@ pub fn create_shell() -> Option<Shell> {
         shell_version: env!("CARGO_PKG_VERSION").to_owned(),
         settings,
         resources_dir: resources_dir(),
+        // Windows の TIP は古い殻と新しいエンジンが共存する。エンジンを止めない（ADR 0064 §6.3、D4・D5）
+        engine_owner: false,
     };
     let sink = DownSink::new();
     let transport =
