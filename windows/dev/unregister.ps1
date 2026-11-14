@@ -12,7 +12,7 @@
   The registry keys are removed by the DLL itself (DllUnregisterServer), not by this script. This script never
   runs reg delete or Remove-Item on the registry.
   If an app has the DLL loaded, the files cannot be deleted until the app is closed (or you sign out).
-  Never run on Windows when written: syntax only.
+ 
 #>
 param([switch]$RemoveFiles, [switch]$DryRun, [switch]$Force)
 

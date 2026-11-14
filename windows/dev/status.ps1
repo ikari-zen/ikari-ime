@@ -6,7 +6,7 @@
 .NOTES
   Does not open the pipes (listing only), does not change anything.
   The TIP writes its log with OutputDebugString (not a file): watch it with Sysinternals DebugView.
-  Never run on Windows when written: syntax only.
+ 
 #>
 param([int]$LogLines = 20)
 

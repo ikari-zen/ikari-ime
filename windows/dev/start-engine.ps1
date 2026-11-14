@@ -13,7 +13,7 @@
   5 seconds, the lock is released by the OS. For a normal stop, press Ctrl+C in the engine's console window.
   Only processes whose exe path is exactly the one built here are touched.
   The data directory is $DataDir (common.ps1). The engine needs dict\ there (run install-data.ps1 first).
-  Never run on Windows when written: syntax only.
+ 
 #>
 param(
     [ValidateSet('start', 'stop', 'restart')][string]$Action = 'start',

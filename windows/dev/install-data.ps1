@@ -19,7 +19,7 @@
   Only touches <DataDir>\dict\ and <DataDir>\models\. It never touches the learning files, user dictionary,
   profile or settings.tsv. A file with the same size and SHA-256 is skipped. A different file is written to
   "<name>.new" and then moved over (the engine must be stopped: Windows cannot replace a file that is mapped).
-  Never run on Windows when written: syntax only.
+ 
 #>
 param(
     [string]$Src = (Join-Path $PSScriptRoot '..\..\data'),
