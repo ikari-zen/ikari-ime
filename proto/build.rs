@@ -5,12 +5,14 @@ use std::error::Error;
 
 /// engine.proto（エンジンと殻。ADR 0004 §5.2）、shell.proto（殻の入口と shell-core。ADR 0041 §4.4）、
 /// bridge.proto（設定アプリと殻。ADR 0005 §6.3。Swift は macos/scripts/gen-proto.sh で生成する）、
-/// settings.proto（設定アプリと shell-core。ADR 0041 §2.3）。
-const PROTO_FILES: [&str; 4] = [
+/// settings.proto（設定アプリと shell-core。ADR 0041 §2.3）、
+/// candidate.proto（Windows の TIP と候補窓。ADR 0062 §7.2）。
+const PROTO_FILES: [&str; 5] = [
     "ikari/engine/v1/engine.proto",
     "ikari/shell/v1/shell.proto",
     "ikari/bridge/v1/bridge.proto",
     "ikari/settings/v1/settings.proto",
+    "ikari/candidate/v1/candidate.proto",
 ];
 const PROTO_ROOT: &str = ".";
 

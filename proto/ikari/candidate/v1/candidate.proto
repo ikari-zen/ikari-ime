@@ -1,0 +1,77 @@
+// Windows の TIP と候補窓（ikari-candidate.exe）の間の命令（ADR 0062 §3、§7.2。契約）。
+// 輸送: 名前付きパイプ。TIP から候補窓への片道（pipe の Post の枠。返事はない）。1 つの枠の本体がこの CandidateCommand。
+// 名前は `\\.\pipe\ikari-ime-candidate-v1-<SID>-s<セッション>`（pipe::candidate_pipe_name）。
+// 内容の型（CandidatePanelModel、Rect、PanelSide）は shell.proto のものをそのまま使う（二重に作らない。`developer_note` も届く）。
+// 判断の置き場所: 上下（side）と行の高さの関数の使い方は TIP が決める。候補窓は side に従い、横の位置だけを測った幅で決める。
+syntax = "proto3";
+package ikari.candidate.v1;
+
+import "ikari/shell/v1/shell.proto";
+
+message CandidateCommand {
+  // 接続ごとに 1 から増える（TIP が付ける）。受け手は、受けた最大より小さいものを捨てる
+  uint64 seq = 1;
+  oneof op {
+    Hello hello = 2;
+    Show show = 3;
+    Update update = 4;
+    Hide hide = 5;
+  }
+}
+
+// 接続したらまず 1 回送る（ログ用。窓の状態は変えない）
+message Hello {
+  // この .proto の版。互換を壊す変更で上げる
+  uint32 schema_version = 1;
+  // 送り手のプロセス（TIP が入っているアプリ）の番号
+  uint32 pid = 2;
+}
+
+// 窓を出す。最後に Show を送った接続が窓の持ち主になる（持ち主の接続が切れたら、受け手が窓を隠す）。
+// アンカーは Hide まで動かさない（合成の先頭の 1 文字。ADR 0062 §6.1）
+message Show {
+  // 1 から増える、Show ごとの世代。Update と Hide が、どの Show に対するものかを示す。
+  // 受け手は、現在の世代と違う Update / Hide を捨てる（遅れて届いた古い命令で、新しい窓を消さない）
+  uint64 generation = 1;
+  ikari.shell.v1.CandidatePanelModel model = 2;
+  // 物理の画面座標（左上が原点、y は下向き。単位はピクセル。ADR 0062 §6.3）。合成の先頭の 1 文字の矩形
+  ikari.shell.v1.Rect anchor = 3;
+  // 同じ座標系の、アンカーの画面の作業領域（タスクバーを除く）
+  ikari.shell.v1.Rect work_area = 4;
+  // TIP が決めた上下。受け手は従う（候補を上下逆に並べるかは side で決まる。ADR 0014 §2.2）
+  ikari.shell.v1.PanelSide side = 5;
+  // 画面の倍率（DPI / 96。150% なら 1.5）。行の高さ（DIP）にかけて物理のピクセルにする
+  double scale = 6;
+}
+
+// 選択を動かした・ページを送ったなど、内容だけが変わった。アンカーと作業領域と倍率は Show のまま
+message Update {
+  uint64 generation = 1;
+  ikari.shell.v1.CandidatePanelModel model = 2;
+  // 行数が変わって上下が変わるとき（ふつうは予約の行で変わらない）のために、毎回付ける
+  ikari.shell.v1.PanelSide side = 3;
+}
+
+// 窓を隠す。generation が現在の世代と違えば無視する。0 は「世代を問わず隠す」（TIP が外れるとき、フォーカスが外れたとき）
+message Hide {
+  uint64 generation = 1;
+}
+
+// 候補窓のプロセスの核（Rust）から、画面（C#）に渡す「描く状態」（ADR 0062 §7.3。C の ABI のコールバックでバイト列として渡す）。
+// パイプには流れない（TIP は送らない）。核が、届いた命令の最後だけから作る。画面は、これを描くだけで判断しない
+message RenderState {
+  // false なら窓を隠す（ほかの欄は無視する）。持ち主の接続が切れたときも false にする
+  bool visible = 1;
+  // 描く状態が変わるたびに 1 から増える（画面が古い状態を捨てるため）
+  uint64 revision = 2;
+  // 元になった Show の世代
+  uint64 generation = 3;
+  ikari.shell.v1.CandidatePanelModel model = 4;
+  // TIP が決めた上下
+  ikari.shell.v1.PanelSide side = 5;
+  ikari.shell.v1.Rect anchor = 6;
+  ikari.shell.v1.Rect work_area = 7;
+  double scale = 8;
+  // 上から描く順に、model.candidates の添字を並べる（side が Above のときは逆順。核が決める。ADR 0014 §2.2）
+  repeated uint32 display_order = 9;
+}

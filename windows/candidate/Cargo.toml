@@ -1,0 +1,17 @@
+[package]
+name = "ikari-candidate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Windows の候補窓（ikari-candidate.exe）の核（ADR 0062 §7）。命令の型、行の高さ、横の位置、C の ABI。契約の骨組み（中身はスタブ。レーン L2 が実装する）"
+
+# 純粋な部分は OS に依存しない（Mac でテストする）。TIP（rlib）と候補窓の画面（C#。cdylib の C の ABI）が使う。
+# 依存の向き: windows/tip → windows/candidate → shell-core, pipe, proto（ADR 0062 §7.5）
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ikari-shell-core.workspace = true
+ikari-pipe.workspace = true
+ikari-proto.workspace = true
