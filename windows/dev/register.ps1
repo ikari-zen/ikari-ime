@@ -49,8 +49,8 @@ catch {
 Copy-Item -Path (Join-Path $KeymapSource '*.tsv') -Destination $keymapDest -Force
 
 Write-Step "regsvr32 /s $TipDllInstalled"
-& $Regsvr32 /s $TipDllInstalled
-$code = $LASTEXITCODE
+# regsvr32 is a GUI-subsystem exe: `&` does not wait for it and does not set $LASTEXITCODE.
+$code = (Start-Process -FilePath $Regsvr32 -ArgumentList '/s', ('"{0}"' -f $TipDllInstalled) -Wait -PassThru).ExitCode
 if ($code -ne 0) {
     # regsvr32 exit codes: 3 = LoadLibrary failed, 4 = DllRegisterServer not found, 5 = DllRegisterServer failed
     throw "regsvr32 failed with exit code $code (3 = DLL did not load, 4 = no DllRegisterServer, 5 = DllRegisterServer returned an error). See the 'if it does not work' part of check item 1."
