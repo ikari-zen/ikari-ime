@@ -9,13 +9,16 @@
 //! - 排他の選択（ラジオ）は `MenuItemKind::Radio { group }` で表す。同じ `MenuRadioGroup` の項目は、
 //!   ちょうど 1 つだけ `checked == true` になる（§15.2-3）。チェックは毎回 `state` から作り直す。
 
+use serde::{Deserialize, Serialize};
+
 use crate::types::{
     InputMethodKind, KeymapPreset, MenuCommand, MenuItem, MenuItemKind, MenuModel, MenuRadioGroup,
     SettingsTab,
 };
 
 /// エンジンの LM の状態（`engine.proto` の `LmState`）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum EngineLmState {
     Unspecified,
     Disabled,

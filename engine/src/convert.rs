@@ -338,6 +338,7 @@ impl Inner {
             confident,
             engine_micros: micros_u32(started),
             layout: Some(layout),
+            lm_report: None, // ADR 0061 レーン 1a で入れる
         });
         let mut note = format!(
             "{} gap={gap_note} confident={}",
@@ -404,6 +405,7 @@ impl Inner {
             lm_applied: self.lm_applied_since(before),
             confident: false,
             engine_micros: micros_u32(started),
+            lm_report: None, // Page の返事には入れない（ADR 0061 D7）
             // 区切りだけを添える（文節ごとのページは SegmentPage で引く）
             layout: Some(layout_reply(
                 p.conversion_id,

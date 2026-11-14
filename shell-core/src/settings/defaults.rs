@@ -25,6 +25,7 @@ pub const KEY_UNICODE_NOTATION: &str = "unicode.notation";
 pub const KEY_DATE_WEEKDAY_DATES: &str = "date.weekday_dates";
 pub const KEY_CANDIDATE_HIDE_WHEN_CONFIDENT: &str = "candidate.hide_when_confident";
 pub const KEY_CLAUSE_MIN_CHARS: &str = "clause.min_chars";
+pub const KEY_DEVELOPER_LM_STATUS: &str = "developer.lm_status";
 
 // ---- 値の書き方
 pub const VALUE_ON: &str = "on";
@@ -57,6 +58,8 @@ pub const DEFAULT_UNICODE_NOTATION: bool = false;
 pub const DEFAULT_DATE_WEEKDAY_DATES: bool = false;
 /// 2026-10-28 ユーザー決定（#69）
 pub const DEFAULT_CANDIDATE_HIDE_WHEN_CONFIDENT: bool = true;
+/// 開発者向けの表示は既定でオフ（ADR 0061 §6.1）
+pub const DEFAULT_DEVELOPER_LM_STATUS: bool = false;
 
 /// `clause.min_chars` の範囲。1 = 下限なし（ADR 0050 §5.1。2026-11-05 ユーザー決定）
 pub const CLAUSE_MIN_CHARS_MIN: u32 = 1;
@@ -131,6 +134,7 @@ pub fn default_snapshot() -> SettingsSnapshot {
         date_weekday_dates: DEFAULT_DATE_WEEKDAY_DATES,
         candidate_hide_when_confident: DEFAULT_CANDIDATE_HIDE_WHEN_CONFIDENT,
         clause_min_chars: DEFAULT_CLAUSE_MIN_CHARS,
+        developer_lm_status: DEFAULT_DEVELOPER_LM_STATUS,
     }
 }
 

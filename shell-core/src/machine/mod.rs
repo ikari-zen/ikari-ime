@@ -2422,6 +2422,7 @@ fn panel(
 ) -> CandidatePanelModel {
     let reserved_rows = to_u32(reserved_rows.max(candidates.len()));
     CandidatePanelModel {
+        developer_note: String::new(),
         candidates,
         selected: to_u32(selected),
         annotation,

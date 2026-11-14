@@ -9,6 +9,8 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::menu::EngineLmState;
+
 // ---------------------------------------------------------------- UTF-16
 
 /// UTF-16 の単位の長さ（または文書の先頭からの位置）。`NSRange` と TSF の ACP に合わせる。
@@ -265,6 +267,63 @@ pub struct CandidatePanelModel {
     pub annotation: String,
     /// 位置を決めるときに見込む行の数（ADR 0014 §2.2）。`candidates` の数以上
     pub reserved_rows: u32,
+    /// 開発者向けの 1 行（ADR 0061）。空なら行を出さない。既定（`developer.lm_status` がオフ）では空
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub developer_note: String,
+}
+
+// ---------------------------------------------------------------- LM の様子（ADR 0061）
+
+/// LM の判定（`engine.proto` の `LmVerdict`。ADR 0061 §5.1）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LmVerdictInfo {
+    #[default]
+    Unspecified,
+    Applied,
+    TimedOut,
+    NotScored,
+    PrefetchLate,
+    NoPrefetch,
+    Secure,
+    Unavailable,
+}
+
+/// LM の装置（`engine.proto` の `LmDevice`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LmDeviceInfo {
+    #[default]
+    Unspecified,
+    Cpu,
+    Gpu,
+}
+
+/// 1 回の変換の LM の様子（`engine.proto` の `LmReport` の写し。ADR 0061 §6.2）。時間は us。
+/// 表示のためだけで、振る舞いには使わない。
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LmReportInfo {
+    pub verdict: LmVerdictInfo,
+    #[serde(default)]
+    pub wait_micros: u32,
+    #[serde(default)]
+    pub infer_micros: u32,
+    #[serde(default)]
+    pub lm_deadline_micros: u32,
+    #[serde(default)]
+    pub convert_wait_micros: u32,
+    #[serde(default)]
+    pub device: LmDeviceInfo,
+    #[serde(default)]
+    pub calls: u32,
+    #[serde(default)]
+    pub timeouts: u32,
+    #[serde(default)]
+    pub late_hits: u32,
+    /// `LM_UNAVAILABLE` の中身を言うための状態。ないときは `None`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lm_state: Option<EngineLmState>,
 }
 
 // ---------------------------------------------------------------- メニュー
@@ -593,6 +652,8 @@ pub struct SettingsSnapshot {
     pub candidate_hide_when_confident: bool,
     /// `clause.min_chars`（1..10。ADR 0050）
     pub clause_min_chars: u32,
+    /// `developer.lm_status`（ADR 0061。候補窓に LM の様子を出す。殻だけが読む）
+    pub developer_lm_status: bool,
 }
 
 /// 設定の警告の種類。値の文字列は含めない（ログにユーザーの文字列を残さない）。

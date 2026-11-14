@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::types::{
-    CandidateItem, EngineError, KeyInput, KeyKind, Modifiers, SelectedText, ShellAction,
-    ShellEvent, SurroundingText, Utf16Len, Utf16Range,
+    CandidateItem, EngineError, KeyInput, KeyKind, LmReportInfo, Modifiers, SelectedText,
+    ShellAction, ShellEvent, SurroundingText, Utf16Len, Utf16Range,
 };
 
 fn is_false(value: &bool) -> bool {
@@ -236,6 +236,9 @@ pub struct ScriptPage {
     /// 区切り（`ConvertReply.layout`）。`convert` の返事だけに付ける（L-A2 で足した）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layout: Option<ScriptLayout>,
+    /// LM の様子（`ConvertReply.lm_report`。ADR 0061）。ない（古いエンジン）なら省く
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lm_report: Option<LmReportInfo>,
 }
 
 /// 区切り（`SegmentLayout`）。

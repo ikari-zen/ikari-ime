@@ -5,7 +5,7 @@
 use ikari_proto::v1;
 
 use crate::shortcode::{ShortcodeChoosing, ShortcodeTyping};
-use crate::types::{CandidateItem, CandidateKind, Utf16Range};
+use crate::types::{CandidateItem, CandidateKind, LmReportInfo, Utf16Range};
 
 /// 変換に入る前の状態。読みに戻る（Esc、BackSpace）ときの行き先（ADR 0006 §8.5、§9.5）。
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -35,6 +35,8 @@ pub struct ConversionPage {
     pub engine_micros: u32,
     /// 区切り（`ConvertReply.layout`）。古いエンジンは `None` で、1 文節として扱う
     pub layout: Option<SegmentLayoutInfo>,
+    /// LM の様子（`ConvertReply.lm_report`。ADR 0061）。`convert` の返事だけに付く。古いエンジンは `None`
+    pub lm_report: Option<LmReportInfo>,
 }
 
 impl ConversionPage {
@@ -48,6 +50,7 @@ impl ConversionPage {
             confident: reply.confident,
             engine_micros: reply.engine_micros,
             layout: reply.layout.as_ref().map(SegmentLayoutInfo::from_reply),
+            lm_report: None, // 写しは ADR 0061 レーン 1b
         }
     }
 
@@ -61,6 +64,7 @@ impl ConversionPage {
             confident: false,
             engine_micros: page.engine_micros,
             layout: None,
+            lm_report: None,
         }
     }
 }
