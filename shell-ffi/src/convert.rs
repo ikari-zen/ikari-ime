@@ -10,13 +10,16 @@
 use std::collections::BTreeMap;
 
 use ikari_proto::shell::v1 as pb;
-use ikari_shell_core::panel::{AnchorSource, PanelSide, Rect};
+use ikari_shell_core::panel::{AnchorSource, PanelSide};
+use ikari_shell_core::panel_pb::{PanelConvertError, side_from_pb as core_side_from_pb};
+pub use ikari_shell_core::panel_pb::{
+    panel_from_pb, panel_to_pb, rect_from_pb, rect_to_pb, side_to_pb,
+};
 use ikari_shell_core::{
-    CandidateItem, CandidateKind, CandidatePanelModel, ConnId, InputMethodKind, KeyInput, KeyKind,
-    KeymapPreset, MarkedText, MenuCommand, MenuItem, MenuItemKind, MenuModel, MenuRadioGroup,
-    Modifiers, SelectedText, SettingsChanges, SettingsEntry, SettingsIssue, SettingsIssueKind,
-    SettingsSnapshot, SettingsTab, SettingsValidation, ShellAction, ShellEvent, SurroundingText,
-    TimerId, Utf16Len, Utf16Range,
+    ConnId, InputMethodKind, KeyInput, KeyKind, KeymapPreset, MarkedText, MenuCommand, MenuItem,
+    MenuItemKind, MenuModel, MenuRadioGroup, Modifiers, SelectedText, SettingsChanges,
+    SettingsEntry, SettingsIssue, SettingsIssueKind, SettingsSnapshot, SettingsTab,
+    SettingsValidation, ShellAction, ShellEvent, SurroundingText, TimerId, Utf16Len, Utf16Range,
 };
 
 /// proto のバイト列を型にできなかった理由（ユーザーの文字列は含めない）。
@@ -42,7 +45,19 @@ impl std::fmt::Display for ConvertError {
 
 impl std::error::Error for ConvertError {}
 
+impl From<PanelConvertError> for ConvertError {
+    fn from(error: PanelConvertError) -> Self {
+        match error {
+            PanelConvertError::OutOfRange(field) => Self::OutOfRange(field),
+        }
+    }
+}
+
 type Result<T> = std::result::Result<T, ConvertError>;
+
+pub fn side_from_pb(value: i32) -> Result<PanelSide> {
+    Ok(core_side_from_pb(value)?)
+}
 
 // ---------------------------------------------------------------- バイト列
 
@@ -277,71 +292,6 @@ fn marked_to_pb(marked: &MarkedText) -> pb::MarkedText {
         replacement_range: marked.replacement_range.as_ref().map(range_to_pb),
         underlined: marked.underlined,
         delete_target: marked.delete_target,
-    }
-}
-
-fn candidate_kind_from_pb(kind: i32) -> Result<CandidateKind> {
-    Ok(
-        match enum_value::<pb::CandidateKind>(kind, "CandidateItem.kind")? {
-            pb::CandidateKind::Unspecified => CandidateKind::Unspecified,
-            pb::CandidateKind::Dictionary => CandidateKind::Dictionary,
-            pb::CandidateKind::Hiragana => CandidateKind::Hiragana,
-            pb::CandidateKind::Katakana => CandidateKind::Katakana,
-            pb::CandidateKind::Rewriter => CandidateKind::Rewriter,
-            pb::CandidateKind::Literal => CandidateKind::Literal,
-        },
-    )
-}
-
-fn candidate_kind_to_pb(kind: CandidateKind) -> pb::CandidateKind {
-    match kind {
-        CandidateKind::Unspecified => pb::CandidateKind::Unspecified,
-        CandidateKind::Dictionary => pb::CandidateKind::Dictionary,
-        CandidateKind::Hiragana => pb::CandidateKind::Hiragana,
-        CandidateKind::Katakana => pb::CandidateKind::Katakana,
-        CandidateKind::Rewriter => pb::CandidateKind::Rewriter,
-        CandidateKind::Literal => pb::CandidateKind::Literal,
-    }
-}
-
-fn panel_from_pb(panel: pb::CandidatePanelModel) -> Result<CandidatePanelModel> {
-    let candidates = panel
-        .candidates
-        .into_iter()
-        .map(|item| {
-            Ok(CandidateItem {
-                surface: item.surface,
-                annotation: item.annotation,
-                kind: candidate_kind_from_pb(item.kind)?,
-                label: item.label,
-            })
-        })
-        .collect::<Result<Vec<_>>>()?;
-    Ok(CandidatePanelModel {
-        developer_note: panel.developer_note,
-        candidates,
-        selected: panel.selected,
-        annotation: panel.annotation,
-        reserved_rows: panel.reserved_rows,
-    })
-}
-
-fn panel_to_pb(panel: &CandidatePanelModel) -> pb::CandidatePanelModel {
-    pb::CandidatePanelModel {
-        developer_note: panel.developer_note.clone(),
-        candidates: panel
-            .candidates
-            .iter()
-            .map(|item| pb::CandidateItem {
-                surface: item.surface.clone(),
-                annotation: item.annotation.clone(),
-                kind: candidate_kind_to_pb(item.kind).into(),
-                label: item.label.clone(),
-            })
-            .collect(),
-        selected: panel.selected,
-        annotation: panel.annotation.clone(),
-        reserved_rows: panel.reserved_rows,
     }
 }
 
@@ -691,21 +641,6 @@ fn action_from_pb(action: pb::ShellAction) -> Result<ShellAction> {
 
 // ---------------------------------------------------------------- 候補ウィンドウ（L-E）
 
-pub fn side_from_pb(value: i32) -> Result<PanelSide> {
-    match enum_value::<pb::PanelSide>(value, "PanelSide")? {
-        pb::PanelSide::Unspecified => Err(ConvertError::OutOfRange("PanelSide")),
-        pb::PanelSide::Below => Ok(PanelSide::Below),
-        pb::PanelSide::Above => Ok(PanelSide::Above),
-    }
-}
-
-pub fn side_to_pb(side: PanelSide) -> pb::PanelSide {
-    match side {
-        PanelSide::Below => pb::PanelSide::Below,
-        PanelSide::Above => pb::PanelSide::Above,
-    }
-}
-
 /// UNSPECIFIED は「今回は新しく取っていない」（`None`）
 pub fn source_from_pb(value: i32) -> Result<Option<AnchorSource>> {
     Ok(
@@ -726,19 +661,6 @@ pub fn source_to_pb(source: Option<AnchorSource>) -> pb::AnchorSource {
         Some(AnchorSource::Accessibility) => pb::AnchorSource::Accessibility,
         Some(AnchorSource::LastKnown) => pb::AnchorSource::LastKnown,
         Some(AnchorSource::MouseScreen) => pb::AnchorSource::MouseScreen,
-    }
-}
-
-pub fn rect_from_pb(rect: Option<pb::Rect>) -> Option<Rect> {
-    rect.map(|r| Rect::new(r.x, r.y, r.width, r.height))
-}
-
-pub fn rect_to_pb(rect: &Rect) -> pb::Rect {
-    pb::Rect {
-        x: rect.origin.x,
-        y: rect.origin.y,
-        width: rect.size.width,
-        height: rect.size.height,
     }
 }
 
@@ -818,6 +740,7 @@ pub fn snapshot_from_pb(snapshot: pb::SettingsSnapshot) -> Result<SettingsSnapsh
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ikari_shell_core::{CandidateItem, CandidateKind, CandidatePanelModel};
 
     fn every_event() -> Vec<ShellEvent> {
         let keys = [
