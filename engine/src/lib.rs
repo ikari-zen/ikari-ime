@@ -416,7 +416,9 @@ impl Engine {
     /// engine-host は、パイプの接続ごとにこれを 1 つ取り、その接続の枠をすべて `Connection::handle` に渡す。
     /// セッションのキーは（接続, `session_id`）なので、別の接続が同じ `session_id` を使っても混ざらない。
     pub fn connect(&self) -> Connection {
-        Connection::new(Arc::clone(&self.inner), self.inner.connections.next())
+        let id = self.inner.connections.next();
+        self.inner.note_connection("connect", id);
+        Connection::new(Arc::clone(&self.inner), id)
     }
 }
 

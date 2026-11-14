@@ -463,3 +463,120 @@ fn end_session_and_unknown_session_lines_carry_the_session_number() {
     );
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// 接続の口に Envelope を 1 件送る
+fn send_conn(c: &Connection, body: envelope::Body) {
+    let req = Envelope {
+        schema_version: SCHEMA_VERSION,
+        request_id: 1,
+        body: Some(body),
+    }
+    .encode_to_vec();
+    Envelope::decode(c.handle(&req).as_slice()).expect("reply must decode");
+}
+
+#[test]
+fn connection_lines_carry_the_connection_number() {
+    let (e, _, dir) = logged("diag-conn");
+    let first = e.connect();
+    let second = e.connect();
+    // 同じ session 番号でも、接続の番号で区別できる
+    for c in [&first, &second] {
+        send_conn(
+            c,
+            envelope::Body::BeginSession(pb::BeginSession {
+                session_id: 1,
+                client_bundle_id: BUNDLE_ID.into(),
+                secure: false,
+            }),
+        );
+        send_conn(c, convert_req(1, READING, 0, 0));
+        send_conn(
+            c,
+            envelope::Body::EndSession(pb::EndSession { session_id: 1 }),
+        );
+    }
+    let (first_id, second_id) = (first.id().get(), second.id().get());
+    drop(first);
+    let text = log_of(&e, &dir);
+    let has = |kind: &str, needle: &str| {
+        text.lines()
+            .any(|l| l.split_whitespace().nth(1) == Some(kind) && l.contains(needle))
+    };
+    for id in [first_id, second_id] {
+        assert!(has("connect", &format!("conn={id}")), "{text}");
+        assert!(
+            has("begin_session", &format!("session=1 conn={id} app=")),
+            "{text}"
+        );
+        assert!(
+            has("convert", &format!("session=1 conn={id} conv=")),
+            "{text}"
+        );
+        assert!(
+            has("end_session", &format!("session=1 conn={id}")),
+            "{text}"
+        );
+    }
+    assert!(has("disconnect", &format!("conn={first_id}")), "{text}");
+    // まだつながっている接続の disconnect はない
+    assert!(!has("disconnect", &format!("conn={second_id}")), "{text}");
+    // 接続の行は番号だけ（Bundle ID などを書かない）
+    for line in text
+        .lines()
+        .filter(|l| matches!(l.split_whitespace().nth(1), Some("connect" | "disconnect")))
+    {
+        assert!(
+            line.split_whitespace()
+                .last()
+                .is_some_and(|w| w.starts_with("conn=")),
+            "{line}"
+        );
+    }
+    // 既定の接続（macOS）の行は変わらない: conn= を書かない
+    begin_app(&e, 9, BUNDLE_ID, false);
+    let lines = lines_of(&e, &dir, "begin_session");
+    assert!(
+        lines
+            .last()
+            .is_some_and(|l| l.ends_with("session=9 app=com.example.Editor")),
+        "{lines:?}"
+    );
+    drop(second);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn hello_line_reports_a_different_shell_version_without_free_text() {
+    let (e, _, dir) = logged("diag-skew");
+    let hello = |version: &str| {
+        let r = send(
+            &e,
+            envelope::Body::Hello(pb::Hello {
+                shell_version: version.into(),
+            }),
+        );
+        assert!(matches!(r, envelope::Body::HelloReply(_)), "{r:?}");
+    };
+    hello(env!("CARGO_PKG_VERSION"));
+    hello("");
+    hello("0.0.0-old");
+    hello("ひみつの文字列");
+    let lines = lines_of(&e, &dir, "hello");
+    assert_eq!(lines.len(), 4, "{lines:?}");
+    // 同じ版と空の申告は、今までの行のまま
+    assert!(!lines[0].contains("skew"), "{}", lines[0]);
+    assert!(!lines[1].contains("skew"), "{}", lines[1]);
+    assert!(
+        lines[2].ends_with("peer_version=0.0.0-old skew=1"),
+        "{}",
+        lines[2]
+    );
+    assert!(
+        lines[3].ends_with("peer_version=invalid skew=1"),
+        "{}",
+        lines[3]
+    );
+    assert!(!lines[3].contains("ひみつ"), "{}", lines[3]);
+    let _ = std::fs::remove_dir_all(dir);
+}
