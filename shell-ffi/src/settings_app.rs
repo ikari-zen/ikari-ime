@@ -146,7 +146,7 @@ fn presets_from(texts: &[app::PresetText]) -> Result<KeymapPresetTable, i32> {
 
 fn values_to_pb(values: &SettingsValues) -> pb::SettingsSnapshot {
     pb::SettingsSnapshot {
-        developer_lm_status: false,
+        developer_lm_status: values.developer_lm_status,
         input_method: method_to_pb(values.input_method).into(),
         keymap_preset: preset_to_pb(values.keymap_preset).into(),
         keymap_overrides: values
