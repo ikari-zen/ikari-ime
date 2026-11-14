@@ -6,3 +6,5 @@
 __pycache__/
 *.pyc
 /.gitleaks.local.toml
+/windows/candidate-spike/bin/
+/windows/candidate-spike/obj/

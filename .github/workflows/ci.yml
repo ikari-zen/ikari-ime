@@ -2,6 +2,7 @@
 #   rust  ubuntu。文書の検査、ライセンス、fmt、clippy、cargo test（--rust-only）
 #   windows windows-latest。cargo test --workspace（LM なし。必須ではない。#316）
 #   windows-artifact windows-latest。実機（VM）に持ち込む release ビルドを artifact に保存する（必須ではない）
+#   windows-candidate-spike windows-latest。候補窓のスパイク（C#、WinUI 3）のビルドと artifact（ADR 0062 §8。必須ではない）
 #   check macOS。XCFramework のビルドと swift test（--swift-only）。Swift は Linux では作れない
 # ブランチ保護の「必要なチェック」に check を入れてある（job の名前を変えない）。rust は必須ではないが、check と同じく通らないものはマージしない。
 # 公開リポジトリでは GitHub ホストのランナーが無料。macOS は混むので、macOS で流すものを Swift だけに絞る。
@@ -131,6 +132,43 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ikari-windows-dev-${{ github.event.pull_request.head.sha || github.sha }}
+          path: dist
+          if-no-files-found: error
+          retention-days: 14
+
+  # 候補窓のスパイク（ADR 0062 §8。WinUI 3、C#、パッケージなし・自己完結）をビルドして artifact に入れる。
+  # CI は画面がないので動かさない（ビルドが通ることだけ確かめる）。実機（VM）での手順は PR の説明。必須のチェックではない。
+  windows-candidate-spike:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      # actions/setup-dotnet v6.1.0（コミットの SHA で固定）。.NET 10 は LTS
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73
+        with:
+          global-json-file: windows/candidate-spike/global.json
+      - name: dotnet の版を表示する
+        run: dotnet --info
+      - name: dotnet publish（self-contained、win-x64）
+        run: dotnet publish windows/candidate-spike/CandidateSpike.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -o out/candidate-spike
+      - name: 出力を確かめる
+        shell: bash
+        run: |
+          ls -la out/candidate-spike | head -40
+          test -f out/candidate-spike/candidate-spike.exe
+          du -sh out/candidate-spike
+      - name: artifact の中身を集める
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          mkdir -p dist/windows
+          cp -r out/candidate-spike dist/candidate-spike
+          cp -r windows/dev dist/windows/dev
+          echo "${SOURCE_SHA}" > dist/COMMIT
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: candidate-spike-${{ github.event.pull_request.head.sha || github.sha }}
           path: dist
           if-no-files-found: error
           retention-days: 14
