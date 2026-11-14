@@ -106,11 +106,14 @@ pub fn mode_icon(label: &str) -> windows_core::Result<HICON> {
     };
     let font = Gdi(font.into());
 
+    let pixels = (size * size) as usize;
+    // 黒（透明）から始める
+    // SAFETY: `bits` は `size`x`size` の 32 ビットの DIB の先頭で、`color` が生きている間有効
+    unsafe { std::ptr::write_bytes(bits.cast::<[u8; 4]>(), 0, pixels) };
     draw(&dc, &color, &font, size, label);
     // SAFETY: GDI の描画を DIB に書き出させる（このあと `bits` を読む）
     let _ = unsafe { GdiFlush() };
-    let pixels = (size * size) as usize;
-    // SAFETY: `bits` は `size`x`size` の 32 ビットの DIB の先頭で、`color` が生きている間有効
+    // SAFETY: 同上。GDI の描画は終わっている（`GdiFlush`）
     let buffer = unsafe { std::slice::from_raw_parts_mut(bits.cast::<[u8; 4]>(), pixels) };
     // GDI は透明度を書かない。白で描いた明るさを透明度にし、色はアルファを掛けた値にする（事前乗算）
     for pixel in buffer.iter_mut() {
