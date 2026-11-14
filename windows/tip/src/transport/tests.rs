@@ -505,7 +505,7 @@ fn hung_server() -> (MemConnector, mpsc::Receiver<Arc<dyn ikari_pipe::Shutdown>>
     (connector, kill)
 }
 
-/// #404: 固まったエンジン（返事が来ない）→ 切断 → つなぎ直しの失敗の連続、を `EngineLink` まで通し、
+/// #404: 固まったエンジン（返事が来ない）を `EngineLink` まで通し、
 /// 休止（遮断器）に入って、パイプを呼ばなくなること。
 #[test]
 fn a_hung_engine_that_never_replies_ends_in_suspension() {
@@ -542,42 +542,4 @@ fn a_hung_engine_that_never_replies_ends_in_suspension() {
         Err(ikari_shell_core::EngineError::Unavailable)
     );
     assert_eq!(scripted.opens(), opens);
-}
-
-/// #404: 切れたあと、つなぎ直しが失敗し続けると休止に入る
-#[test]
-fn reconnect_failures_after_a_disconnect_end_in_suspension() {
-    use ikari_shell_core::SystemClock;
-    use ikari_shell_core::engine::RECONNECT_FAIL_LIMIT;
-
-    let (connector, kill) = hung_server();
-    // 最初の 1 回だけつながり、そのあとはつながらない
-    let script: Vec<bool> = std::iter::once(true)
-        .chain(std::iter::repeat_n(false, RECONNECT_FAIL_LIMIT * 4))
-        .collect();
-    let scripted = Arc::new(Scripted::new(connector, &script));
-    let sink = DownSink::new();
-    let transport = PipeTransport::with_backoff(
-        Arc::clone(&scripted),
-        Arc::clone(&sink),
-        Duration::from_millis(1),
-        Duration::from_millis(1),
-    );
-    let link = Arc::new(EngineLink::new(
-        Box::new(transport),
-        Arc::new(SystemClock::new()),
-    ));
-    sink.bind(&link);
-
-    assert!(link.postal_lookup("1000001", short()).is_err());
-    kill.recv_timeout(long()).unwrap().shutdown();
-    thread::sleep(short());
-    for _ in 0..RECONNECT_FAIL_LIMIT * 2 {
-        if link.is_suspended() {
-            break;
-        }
-        assert!(link.postal_lookup("1000001", short()).is_err());
-        thread::sleep(Duration::from_millis(2));
-    }
-    assert!(link.is_suspended(), "つなぎ直しの失敗の連続で休止に入る");
 }

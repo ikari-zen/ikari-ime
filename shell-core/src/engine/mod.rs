@@ -58,10 +58,6 @@ pub const CRASH_WINDOW: Duration = Duration::from_secs(60);
 /// 返事の時間切れがこの数、間に成功をはさまずに続いたら、固まったとみなして休む（#404）。
 /// 時間切れ 1 回は遅い変換（LM の初回など）でも起きるので、連続で見る。**未計測の仮置き**（`CRASH_LIMIT` と同じ値を流用）。
 pub const HUNG_TIMEOUT_LIMIT: usize = CRASH_LIMIT;
-/// 一度つないだあとのつなぎ直しの失敗が、間に成功をはさまずにこの数、`CRASH_WINDOW` の中で続いたら休む（#404）。
-/// TIP 側の `Backoff`（最大 1 秒間隔）で試行は 1 秒に 1 回ほどなので、10 回は固まりが 10 秒ほど続いた目安。
-/// エンジンの再起動中（数秒）で休止に入らないよう、落ちた回数より大きくした。**未計測の仮置き**
-pub const RECONNECT_FAIL_LIMIT: usize = 10;
 /// 休む長さ
 pub const SUSPENSION: Duration = Duration::from_secs(300);
 /// 終了の頼み（`Shutdown`）の返事と、終了の確認を待つ上限
@@ -104,8 +100,6 @@ struct LinkState {
     crash_times: Vec<Duration>,
     /// 成功をはさまない返事の時間切れの時刻（成功か休止で空にする。#404）
     timeout_times: Vec<Duration>,
-    /// 成功をはさまない、つなぎ直しの失敗の時刻（#404）
-    reconnect_fail_times: Vec<Duration>,
     suspended_until: Option<Duration>,
     observed_engine_version: Option<String>,
     /// 前回の `sh_engine` を送ってからの事象の数（ADR 0034 §4.2）
@@ -134,7 +128,6 @@ impl LinkState {
     fn clear_failures(&mut self) {
         self.crash_times.clear();
         self.timeout_times.clear();
-        self.reconnect_fail_times.clear();
     }
 
     fn record_crash(&mut self, now: Duration) {
@@ -150,20 +143,9 @@ impl LinkState {
         }
     }
 
-    /// つなぎ直し（一度つないだあと）の失敗。最初のつなぎ（エンジンの起動待ち）は数えない
-    fn record_reconnect_failure(&mut self, now: Duration) {
-        if !self.connected_once {
-            return;
-        }
-        if push_within_window(&mut self.reconnect_fail_times, now) >= RECONNECT_FAIL_LIMIT {
-            self.open_breaker(now);
-        }
-    }
-
-    /// 返事が来た、またはつながった。固まりの連続を数え直す
+    /// 返事が来た。固まりの連続を数え直す
     fn record_alive(&mut self) {
         self.timeout_times.clear();
-        self.reconnect_fail_times.clear();
     }
 
     fn open_breaker(&mut self, now: Duration) {
@@ -533,20 +515,12 @@ impl EngineLink {
         let handle = match current {
             Some(handle) => handle,
             None => {
-                let connected = self.transport.connect();
+                let handle = self.transport.connect().map_err(transport_error)?;
                 let mut state = lock(&self.state);
-                let handle = match connected {
-                    Ok(handle) => handle,
-                    Err(error) => {
-                        state.record_reconnect_failure(now);
-                        return Err(transport_error(error));
-                    }
-                };
                 if state.connected_once {
                     state.counts.reconnect += 1;
                 }
                 state.connected_once = true;
-                state.reconnect_fail_times.clear();
                 state.current = Some(handle);
                 handle
             }
