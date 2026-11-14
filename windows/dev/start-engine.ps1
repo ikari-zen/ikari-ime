@@ -30,7 +30,7 @@ param(
 function Stop-OurEngine {
     $procs = @(Get-OurEngineProcesses)
     if ($procs.Count -eq 0) { Write-Note 'The engine is not running.'; return }
-    foreach ($p in $procs) { Write-Note "will kill PID $($p.Id)  $EngineExe" }
+    foreach ($p in $procs) { Write-Note "will kill PID $($p.Id)  $($p.Path)" }
     if (-not (Confirm-Action 'Kill it (forced, like a crash)?' $Force.IsPresent)) { Write-Step 'Cancelled.'; return }
     foreach ($p in $procs) { Stop-Process -Id $p.Id -Force }
     Write-Step 'Stopped.'
