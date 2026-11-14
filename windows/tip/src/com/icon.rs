@@ -13,11 +13,11 @@ use std::ffi::c_void;
 use windows::Win32::Foundation::RECT;
 use windows::Win32::Foundation::{COLORREF, E_FAIL, ERROR_SUCCESS};
 use windows::Win32::Graphics::Gdi::{
-    ANTIALIASED_QUALITY, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CLIP_DEFAULT_PRECIS, CreateBitmap,
-    CreateCompatibleDC, CreateDIBSection, CreateFontW, DEFAULT_CHARSET, DIB_RGB_COLORS, DT_CENTER,
-    DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, DeleteDC, DeleteObject, DrawTextW, FW_NORMAL, GdiFlush,
-    HBITMAP, HDC, HFONT, HGDIOBJ, OUT_DEFAULT_PRECIS, SelectObject, SetBkMode, SetTextColor,
-    TRANSPARENT,
+    ANTIALIASED_QUALITY, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLACKNESS, CLIP_DEFAULT_PRECIS,
+    CreateBitmap, CreateCompatibleDC, CreateDIBSection, CreateFontW, DEFAULT_CHARSET,
+    DIB_RGB_COLORS, DT_CENTER, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, DeleteDC, DeleteObject,
+    DrawTextW, FW_NORMAL, GdiFlush, GetDIBits, HBITMAP, HDC, HFONT, HGDIOBJ, OUT_DEFAULT_PRECIS,
+    PatBlt, SelectObject, SetBkMode, SetDIBits, SetTextColor, TRANSPARENT,
 };
 use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -73,16 +73,20 @@ pub fn mode_icon(label: &str) -> windows_core::Result<HICON> {
         },
         ..Default::default()
     };
-    let mut bits: *mut c_void = std::ptr::null_mut();
-    // SAFETY: `info` は呼び出しの間生きている。`bits` は書ける場所
-    let color =
-        Gdi(
-            unsafe { CreateDIBSection(Some(dc.0), &info, DIB_RGB_COLORS, &mut bits, None, 0) }?
-                .into(),
-        );
-    if bits.is_null() {
-        return Err(E_FAIL.into());
-    }
+    // 画素は `GetDIBits`・`SetDIBits` で Rust の `Vec` に写して読み書きする（DIB の生のポインタを触らない）
+    let mut section_bits: *mut c_void = std::ptr::null_mut();
+    // SAFETY: `info` は呼び出しの間生きている。`section_bits` は書ける場所（使わない）
+    let color = Gdi(unsafe {
+        CreateDIBSection(
+            Some(dc.0),
+            &info,
+            DIB_RGB_COLORS,
+            &mut section_bits,
+            None,
+            0,
+        )
+    }?
+    .into());
     // SAFETY: 単色のビットマップを作るだけ（中身は 0）
     let mask = Gdi(unsafe { CreateBitmap(size, size, 1, MASK_BITS_PER_PIXEL, None) }.into());
     // SAFETY: 書体を作るだけ。名前は定数
@@ -106,20 +110,48 @@ pub fn mode_icon(label: &str) -> windows_core::Result<HICON> {
     };
     let font = Gdi(font.into());
 
-    let pixels = (size * size) as usize;
-    // 黒（透明）から始める
-    // SAFETY: `bits` は `size`x`size` の 32 ビットの DIB の先頭で、`color` が生きている間有効
-    unsafe { std::ptr::write_bytes(bits.cast::<[u8; 4]>(), 0, pixels) };
     draw(&dc, &color, &font, size, label);
-    // SAFETY: GDI の描画を DIB に書き出させる（このあと `bits` を読む）
+    // SAFETY: GDI の描画を DIB に書き出させる（このあと画素を読む）
     let _ = unsafe { GdiFlush() };
-    // SAFETY: 同上。GDI の描画は終わっている（`GdiFlush`）
-    let buffer = unsafe { std::slice::from_raw_parts_mut(bits.cast::<[u8; 4]>(), pixels) };
+    let mut buffer = vec![[0u8; 4]; (size * size) as usize];
+    let lines = size as u32;
+    let mut read_info = info;
+    // SAFETY: `buffer` は `size`x`size` の 32 ビットの画素の大きさ。ビットマップは DC から外してある（`draw`）
+    let read = unsafe {
+        GetDIBits(
+            dc.0,
+            HBITMAP(color.0.0),
+            0,
+            lines,
+            Some(buffer.as_mut_ptr().cast()),
+            &mut read_info,
+            DIB_RGB_COLORS,
+        )
+    };
+    if read != size {
+        return Err(E_FAIL.into());
+    }
     // GDI は透明度を書かない。白で描いた明るさを透明度にし、色はアルファを掛けた値にする（事前乗算）
     for pixel in buffer.iter_mut() {
         let coverage = pixel[0].max(pixel[1]).max(pixel[2]);
         let scale = |c: u8| ((u16::from(c) * u16::from(coverage)) / 255) as u8;
         *pixel = [scale(glyph[2]), scale(glyph[1]), scale(glyph[0]), coverage];
+    }
+
+    // SAFETY: 同上。`buffer` は呼び出しの間生きている
+    let written = unsafe {
+        SetDIBits(
+            Some(dc.0),
+            HBITMAP(color.0.0),
+            0,
+            lines,
+            buffer.as_ptr().cast(),
+            &info,
+            DIB_RGB_COLORS,
+        )
+    };
+    if written != size {
+        return Err(E_FAIL.into());
     }
 
     let icon = ICONINFO {
@@ -147,6 +179,8 @@ fn draw(dc: &Dc, color: &Gdi, font: &Gdi, size: i32, label: &str) {
     };
     // SAFETY: `dc` は生きている。`text` と `rect` は呼び出しの間生きている
     unsafe {
+        // 黒（透明）から始める
+        let _ = PatBlt(dc.0, 0, 0, size, size, BLACKNESS);
         SetBkMode(dc.0, TRANSPARENT);
         SetTextColor(dc.0, COLORREF(0x00FF_FFFF));
         DrawTextW(
