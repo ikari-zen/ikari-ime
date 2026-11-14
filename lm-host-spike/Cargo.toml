@@ -1,0 +1,26 @@
+[package]
+name = "ikari-lm-host-spike"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# スパイク（捨てるコード。マージしない）。ADR 0060 Q4: LM の推論を別プロセスに分けたときの差を測る。
+# llama.cpp は feature `llama` のときだけビルドする（`cargo build --workspace` を軽く保つ）。
+[features]
+default = []
+llama = ["ikari-lm/llama"]
+metal = ["llama", "ikari-lm/metal"]
+
+[dependencies]
+ikari-lm.workspace = true
+
+[[bin]]
+name = "ikari-lm-host"
+path = "src/bin/host.rs"
+required-features = ["llama"]
+
+[[bin]]
+name = "lm-host-bench"
+path = "src/bin/bench.rs"
+required-features = ["llama"]
