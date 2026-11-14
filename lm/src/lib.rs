@@ -9,6 +9,7 @@
 
 mod config;
 mod error;
+mod placement;
 mod prompt;
 mod ranker;
 mod scorer;
@@ -18,10 +19,11 @@ pub mod trace;
 mod llama;
 
 pub use config::{ModelKind, ZenzConfig};
+pub use placement::{GPU_ENV, GpuState, devices, gpu_state, log_note};
 pub use prompt::{PromptInput, build_prompt, build_prompt_for, tail_chars};
-pub use ranker::{LmStats, ZenzRanker};
+pub use ranker::{LmStats, LmTimings, ZenzRanker};
 pub use scorer::{LmDevice, LmScorer};
 pub use trace::LmTrace;
 
 #[cfg(feature = "llama")]
-pub use llama::{LlamaScorer, ModelInfo};
+pub use llama::{LlamaScorer, ModelInfo, probe_devices};

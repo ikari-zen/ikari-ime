@@ -59,6 +59,7 @@ Swift の定数は `macos/Sources/IkariXPC/Identifiers.swift`（`IkariIdentifier
 | `paging.size` | `1`〜`9` | `3` | 殻 | 最初に見せる候補数。3 件目の次へ進むと 9 件に広がり、以後は 9 件ずつ（ADR 0014）。エンジンへの `Convert.page_size` はいつも 9（`Settings.enginePageSize`） |
 | `engine.lm` | `on` / `off` | `on` | エンジン | LM（zenz）を使う（`EngineConfig.enable_lm`） |
 | `engine.idle_unload_secs` | 秒（`0` = 解放しない） | `300` | エンジン | アイドル時に LM を解放するまでの秒数（`EngineConfig.idle_unload_secs`） |
+| `engine.lm_gpu` | `on` / `off` | `on` | エンジン | LM を GPU で動かす。Vulkan のビルド（Windows。ADR 0059）だけで効く。GPU があれば使い、GPU も `vulkan-1.dll` も無い機械・初期化に失敗した機械では自動で CPU。`Engine::open` のときだけ読む（変えたらエンジンを起こし直す）。設定画面にはまだ項目がない。開発用に環境変数 `IKARI_LM_GPU`（`1` / `0`）で上書きできる |
 | `engine.lm_deadline_ms` | ミリ秒（50〜2000。範囲外は丸める。暫定） | `300` | エンジン | 先行計算で LM に待てる締め切り（`LmBudget.max`）。`Engine::open` のときだけ読む（変えたらエンジンを起こし直す）。不正な値は既定 |
 | `engine.convert_wait_ms` | ミリ秒（0〜200。`0` = 待たない。範囲外は丸める。暫定） | `30` | エンジン | Space で先行計算の完了を待つ上限。`Engine::open` のときだけ読む（変えたらエンジンを起こし直す）。不正な値は既定 |
 | `dict.pack_it` | `on` / `off` | `on` | エンジン | 同梱の IT の語彙集（`core/assets/packs/it.tsv`。ADR 0012 §4）を使う。変更は次のエンジン起動から。設定画面にはまだ項目がない |

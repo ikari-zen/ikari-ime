@@ -10,6 +10,15 @@ default = []
 # 無効のときは llama.cpp をビルドしない（`cargo build --workspace` を軽く保つ）。
 llama = ["dep:llama-cpp-2"]
 metal = ["llama", "llama-cpp-2/metal"]
+# Vulkan（Windows。ADR 0059 §2.2）。バックエンドを別の DLL にして exe の隣の `backends\` から読む。
+# ビルドに Vulkan SDK（`VULKAN_SDK`）が要る。`metal` とは同時に付けない。`llama` だけのビルドは SDK が要らない
+vulkan = ["llama", "llama-cpp-2/vulkan", "llama-cpp-2/dynamic-backends"]
+
+# 登録された LM のデバイスを 1 行で出す（モデルは要らない。CI と実機の確認用。ADR 0059 §2.6）。
+# exe の隣の `backends` を読むので、エンジンの exe と同じフォルダに置いて動かす
+[[example]]
+name = "devices"
+required-features = ["llama"]
 
 [dependencies]
 ikari-core.workspace = true

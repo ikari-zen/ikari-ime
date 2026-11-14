@@ -273,6 +273,9 @@ fn run_eval(args: RunArgs) -> Result<ExitCode, Box<dyn Error>> {
         lm: setup.lm_report.as_ref().map(|f| f()),
     };
     print!("{}", render_markdown(&summary, &results, &meta));
+    if let Some(f) = &setup.lm_timings {
+        eprintln!("{}", f());
+    }
 
     let mut failures: Vec<String> = Vec::new();
 

@@ -864,3 +864,16 @@ fn trace_counts_expired_and_skips_declined() {
     assert_eq!((t.calls, t.timeouts, t.wait_micros), (1, 1, 0));
     assert_eq!(t.device, LmDevice::Unknown, "model not loaded yet");
 }
+
+#[test]
+fn idle_unload_is_longer_only_on_the_gpu_when_configured() {
+    let mut c = ZenzConfig::default();
+    let cpu = c.idle_unload;
+    // 設定がなければ、装置によらず同じ
+    assert_eq!(idle_unload_for(&c, LmDevice::Gpu), cpu);
+    let long = ikari_testtime::ms(1_800_000);
+    c.idle_unload_gpu = Some(long);
+    assert_eq!(idle_unload_for(&c, LmDevice::Gpu), long);
+    assert_eq!(idle_unload_for(&c, LmDevice::Cpu), cpu);
+    assert_eq!(idle_unload_for(&c, LmDevice::Unknown), cpu);
+}

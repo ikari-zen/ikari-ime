@@ -13,6 +13,7 @@ const SEPARATOR: char = '\t';
 const KEY_LM: &str = "engine.lm";
 const KEY_IDLE_UNLOAD_SECS: &str = "engine.idle_unload_secs";
 const KEY_LM_DEADLINE_MS: &str = "engine.lm_deadline_ms";
+const KEY_LM_GPU: &str = "engine.lm_gpu";
 const KEY_CONVERT_WAIT_MS: &str = "engine.convert_wait_ms";
 const KEY_PACK_IT: &str = "dict.pack_it";
 const KEY_POSTAL_JAPANESE: &str = "postal.japanese";
@@ -33,6 +34,13 @@ pub const DEFAULT_POSTAL_TE_PREFIX: bool = false;
 pub const DEFAULT_UNICODE_NOTATION: bool = false;
 /// `date.weekday_dates` の既定（曜日の読みに直近の日付の候補を足す。#265）
 pub const DEFAULT_DATE_WEEKDAY_DATES: bool = false;
+
+/// `engine.lm_gpu` の既定（GPU があれば使う。なければ CPU。2026-11-14 ユーザー決定。ADR 0059 §2.5）
+pub const DEFAULT_LM_GPU: bool = true;
+
+/// モデルを GPU に載せているとき、`engine.idle_unload_secs` が設定ファイルに無い場合の解放までの秒数（30 分）。
+/// **計測なしの暫定値。ユーザー了承済み（2026-11-14）**（GPU の読み直しは N150 の VM で約 18 秒。ADR 0059）。CPU の既定（300 秒）は変えない
+pub const DEFAULT_IDLE_UNLOAD_GPU_SECS: u32 = 1800;
 
 /// `engine.lm_deadline_ms` の既定（先行計算で LM を待つ締め切り。`LmBudget.max` の既定と同じ）
 pub const DEFAULT_LM_DEADLINE_MS: u32 = 300;
@@ -58,6 +66,8 @@ pub struct Settings {
     pub lm: Option<bool>,
     /// `engine.idle_unload_secs`（0 = 解放しない）
     pub idle_unload_secs: Option<u32>,
+    /// `engine.lm_gpu`（Vulkan のビルドだけで効く。読み取りは `lm_gpu_or_default`）
+    pub lm_gpu: Option<bool>,
     /// `engine.lm_deadline_ms`（書かれた値のまま。丸めは `lm_deadline_or_default`）
     pub lm_deadline_ms: Option<u32>,
     /// `engine.convert_wait_ms`（書かれた値のまま。丸めは `convert_wait_or_default`）
@@ -77,6 +87,20 @@ pub struct Settings {
 }
 
 impl Settings {
+    /// GPU のときの解放までの秒数。設定ファイルの `engine.idle_unload_secs` が明示されていればそれ（GPU でも CPU でも
+    /// 同じ値。`0` = 解放しない）、なければ `DEFAULT_IDLE_UNLOAD_GPU_SECS`。戻り値の `None` は解放しない
+    pub fn idle_unload_gpu_secs(&self) -> Option<u32> {
+        let secs = self
+            .idle_unload_secs
+            .unwrap_or(DEFAULT_IDLE_UNLOAD_GPU_SECS);
+        (secs != 0).then_some(secs)
+    }
+
+    /// LM を GPU で動かすか（既定は真。GPU が使えない機械では、真でも CPU に落ちる）
+    pub fn lm_gpu_or_default(&self) -> bool {
+        self.lm_gpu.unwrap_or(DEFAULT_LM_GPU)
+    }
+
     /// 先行計算で LM を待てる締め切り。範囲外は範囲に丸める
     pub fn lm_deadline_or_default(&self) -> Duration {
         let (lo, hi) = LM_DEADLINE_MS_RANGE;
@@ -130,6 +154,7 @@ pub fn parse(text: &str) -> Settings {
                 VALUE_OFF => settings.lm = Some(false),
                 _ => {}
             },
+            KEY_LM_GPU => settings.lm_gpu = parse_switch(value),
             KEY_PACK_IT => match value {
                 VALUE_ON => settings.pack_it = Some(true),
                 VALUE_OFF => settings.pack_it = Some(false),
@@ -240,6 +265,33 @@ mod tests {
             Some(false)
         );
         assert_eq!(parse("date.weekday_dates\t1\n"), Settings::default());
+    }
+
+    #[test]
+    fn gpu_idle_unload_is_longer_unless_explicit() {
+        assert_eq!(
+            parse("").idle_unload_gpu_secs(),
+            Some(DEFAULT_IDLE_UNLOAD_GPU_SECS)
+        );
+        assert_eq!(
+            parse("engine.idle_unload_secs\t60\n").idle_unload_gpu_secs(),
+            Some(60)
+        );
+        assert_eq!(
+            parse("engine.idle_unload_secs\t0\n").idle_unload_gpu_secs(),
+            None
+        );
+    }
+
+    #[test]
+    fn lm_gpu_defaults_on_and_reads_both_values() {
+        assert!(parse("").lm_gpu_or_default());
+        assert!(!parse("engine.lm_gpu\toff\n").lm_gpu_or_default());
+        assert!(parse("engine.lm_gpu\ton\n").lm_gpu_or_default());
+        assert_eq!(parse("engine.lm_gpu\toff\n").lm_gpu, Some(false));
+        // 書き方が違う値は無視して既定（真）
+        assert_eq!(parse("engine.lm_gpu\t0\n"), Settings::default());
+        assert!(parse("engine.lm_gpu\t0\n").lm_gpu_or_default());
     }
 
     #[test]

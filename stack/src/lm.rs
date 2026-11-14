@@ -11,7 +11,8 @@ pub fn build(path: &Path, kv: &BTreeMap<String, String>) -> Result<LmParts, Stac
         return Err(StackError::LmModelNotFound(path.to_path_buf()));
     }
     let cfg = ZenzConfig::from_kv(kv).map_err(|e| config_err("zenz", e))?;
-    let ranker = Arc::new(ZenzRanker::new(LlamaScorer::loader(path), cfg));
+    let loader = LlamaScorer::loader_with(path, cfg.gpu);
+    let ranker = Arc::new(ZenzRanker::new(loader, cfg));
     let handle = Arc::new(ZenzHandle {
         ranker: Arc::clone(&ranker),
     });
@@ -47,6 +48,22 @@ impl LmHandle for ZenzHandle {
 
     fn device(&self) -> LmDevice {
         self.ranker.device()
+    }
+
+    fn load_note(&self) -> Option<String> {
+        ikari_lm::log_note()
+    }
+
+    fn timings(&self) -> LmTimings {
+        let t = self.ranker.timings();
+        LmTimings {
+            inference: t.inference,
+            loads: t.loads,
+        }
+    }
+
+    fn devices(&self) -> Option<String> {
+        ikari_lm::devices()
     }
 }
 

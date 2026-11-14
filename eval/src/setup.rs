@@ -112,6 +112,9 @@ impl Drop for TempDir {
 /// LM の動作の集計を返す関数
 pub type LmReporter = Arc<dyn Fn() -> LmReport + Send + Sync>;
 
+/// LM の 1 回の推論の所要を、暖機の分を除いて 1 行にする関数（ADR 0059 §2.1）
+pub type LmTimingReporter = Arc<dyn Fn() -> String + Send + Sync>;
+
 pub struct Setup {
     pub converter: Arc<Converter>,
     /// 構成の1行（レポートに出す）
@@ -122,6 +125,8 @@ pub struct Setup {
     pub vectors: Option<Arc<dyn WordVectors>>,
     /// LM の動作の集計（`--lm` のとき）
     pub lm_report: Option<LmReporter>,
+    /// LM の 1 回の推論の所要（`--lm` のとき。標準エラーに出す）
+    pub lm_timings: Option<LmTimingReporter>,
     _temp: Option<TempDir>,
 }
 
@@ -198,6 +203,8 @@ pub fn build(
         lm: LmOverrides {
             budget_ms: opts.lm_budget_ms,
             idle_unload_secs: None,
+            idle_unload_gpu_secs: None,
+            gpu: None,
         },
         mode: AssemblyMode::Eval,
         no_analyzer: opts.no_analyzer,
@@ -240,6 +247,13 @@ pub fn build(
             }
         })
     });
+    // 暖機の採点（読み込みの直後の 1 回）は、温まった推論の集計から除く
+    let lm_timings = stack.lm.clone().map(|lm| -> LmTimingReporter {
+        let skip = lm.timings().inference.len();
+        Arc::new(move || {
+            crate::lm_timing::render_lm_timings(&lm.timings(), skip, lm.devices().as_deref())
+        })
+    });
     let ranker_name = set.as_str();
     Ok(Setup {
         converter: stack.converter,
@@ -248,6 +262,7 @@ pub fn build(
         store: stack.learning,
         vectors: stack.vectors,
         lm_report,
+        lm_timings,
         _temp: temp,
     })
 }

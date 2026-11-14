@@ -49,6 +49,11 @@ pub use load::{
 const LM_KEY_PREFIX: &str = "zenz.";
 const KEY_LM_BUDGET_MS: &str = "zenz.budget_ms";
 const KEY_LM_IDLE_UNLOAD_SECS: &str = "zenz.idle_unload_secs";
+const KEY_LM_GPU: &str = "zenz.gpu";
+const KEY_LM_IDLE_UNLOAD_GPU_SECS: &str = "zenz.idle_unload_gpu_secs";
+/// `zenz.gpu` の値（`ZenzConfig::from_kv` の書き方）
+const VALUE_GPU_ON: &str = "on";
+const VALUE_GPU_OFF: &str = "off";
 
 /// 組み立てに使うパス。
 #[derive(Clone, Debug, Default)]
@@ -157,6 +162,10 @@ pub struct LmOverrides {
     pub budget_ms: Option<u64>,
     /// 使われなくなってからモデルを解放するまでの秒数（`zenz.idle_unload_secs`）
     pub idle_unload_secs: Option<u64>,
+    /// モデルを GPU に載せているときの解放までの秒数（`zenz.idle_unload_gpu_secs`。None なら `idle_unload_secs` と同じ）
+    pub idle_unload_gpu_secs: Option<u64>,
+    /// GPU を使う（`zenz.gpu`。設定 `engine.lm_gpu`。Vulkan のビルドだけで効く。ADR 0059 §2.5）
+    pub gpu: Option<bool>,
 }
 
 impl LmOverrides {
@@ -167,6 +176,13 @@ impl LmOverrides {
         }
         if let Some(secs) = self.idle_unload_secs {
             kv.insert(KEY_LM_IDLE_UNLOAD_SECS.to_owned(), secs.to_string());
+        }
+        if let Some(secs) = self.idle_unload_gpu_secs {
+            kv.insert(KEY_LM_IDLE_UNLOAD_GPU_SECS.to_owned(), secs.to_string());
+        }
+        if let Some(gpu) = self.gpu {
+            let value = if gpu { VALUE_GPU_ON } else { VALUE_GPU_OFF };
+            kv.insert(KEY_LM_GPU.to_owned(), value.to_owned());
         }
     }
 }
@@ -262,6 +278,25 @@ pub trait LmHandle: Send + Sync {
     fn device(&self) -> LmDevice {
         LmDevice::Unknown
     }
+    /// `lm_load` のログに足す固定の語（GPU の扱いとデバイスの一覧。ADR 0059 §2.3）。なければ None
+    fn load_note(&self) -> Option<String> {
+        None
+    }
+    /// 推論 1 回と読み込み 1 回の所要（ADR 0059 §2.1。評価が使う）。測らない実装は空
+    fn timings(&self) -> LmTimings {
+        LmTimings::default()
+    }
+    /// 登録されたデバイスの要約（`cpu,vulkan:IntegratedGpu`。ADR 0059 §2.3）。読み込む前は None
+    fn devices(&self) -> Option<String> {
+        None
+    }
+}
+
+/// 推論と読み込みの所要（`ikari_lm::LmTimings` の写し。評価が `ikari-lm` を知らずに使うため）
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LmTimings {
+    pub inference: Vec<Duration>,
+    pub loads: Vec<Duration>,
 }
 
 pub struct Stack {

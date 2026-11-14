@@ -1,7 +1,7 @@
 # PR と main への push ごとに scripts/check.sh を 2 つの job に分けて流す（#290、#295）。
 #   rust  ubuntu。文書の検査、ライセンス、fmt、clippy、cargo test（--rust-only）
 #   windows windows-latest。cargo test --workspace（LM なし。必須ではない。#316）
-#   windows-artifact windows-latest。実機（VM）に持ち込む release ビルドを artifact に保存する（必須ではない）
+#   windows-artifact windows-latest。実機（VM）に持ち込む release ビルド（LM は Vulkan。ADR 0059）を artifact に保存する（必須ではない）
 #   check macOS。XCFramework のビルドと swift test（--swift-only）。Swift は Linux では作れない
 # ブランチ保護の「必要なチェック」に check を入れてある（job の名前を変えない）。rust は必須ではないが、check と同じく通らないものはマージしない。
 # 公開リポジトリでは GitHub ホストのランナーが無料。macOS は混むので、macOS で流すものを Swift だけに絞る。
@@ -94,40 +94,144 @@ jobs:
   # 実機（VM）で試すための release ビルド（エンジンの exe と TIP の DLL）と、`windows/dev` のスクリプトを、1 つの artifact に入れる。
   # VM で Rust を入れてビルドしなくて済む（遅い機械での手間を避ける）。配置はリポジトリと同じ（`windows/dev/common.ps1` が
   # `..\..` を根として `target\release\` と `shell-core\resources\keymap` を見る）ので、展開したままスクリプトが動く。
-  # exe は LM つき（`-nolm` が LM なし）。配る人向けのビルドではない（インストーラと署名は W5 の残り）。必須のチェックではない。
+  # エンジンの exe は LM つき・Vulkan（ADR 0059）。バックエンドの DLL（ggml-vulkan と CPU の各種）は exe の隣の `backends\` に置く
+  # （§2.3）。LM なしは `-nolm`。GPU を使うかは設定 `engine.lm_gpu`（既定はオン。GPU が無い機械では自動で CPU）。
+  # 配る人向けのビルドではない（インストーラと署名は W5 の残り）。必須のチェックではない。
   windows-artifact:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
+    env:
+      # LunarG の Vulkan SDK。版と sha256 を固定する（sha256 は LunarG が公開する値。
+      # https://vulkan.lunarg.com/sdk/sha/<版>/windows/vulkansdk-windows-X64-<版>.exe.json）
+      VULKAN_SDK_VERSION: "1.4.363.1"
+      VULKAN_SDK_SHA256: "c02932bd9a968b22d404536108adaacac908c081cd6b0113f5bfefc523dd0a6a"
+      # vulkan-shaders-gen（内側の CMake）のビルドのフォルダは深い。rc.exe が manifest.rc で RC2136 を出して落ちた
+      # （スパイクの 2・3 回目の run）。パスの長さが原因という推測で、target を短くしたら通った
+      CARGO_TARGET_DIR: C:\t
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Vulkan SDK のキャッシュ
+        id: vulkan-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: C:\VulkanSDK\${{ env.VULKAN_SDK_VERSION }}
+          key: vulkan-sdk-${{ env.VULKAN_SDK_VERSION }}-${{ runner.os }}
+      # 取得したインストーラは、sha256 を照合してから実行する。無人のオプションは LunarG の Getting Started（Windows）のとおり
+      - name: Vulkan SDK を入れる
+        if: steps.vulkan-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        timeout-minutes: 20
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $v = $env:VULKAN_SDK_VERSION
+          $file = "vulkansdk-windows-X64-$v.exe"
+          $installer = Join-Path $env:RUNNER_TEMP $file
+          Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/$v/windows/$file" -OutFile $installer
+          $actual = (Get-FileHash -Algorithm SHA256 $installer).Hash.ToLowerInvariant()
+          if ($actual -ne $env:VULKAN_SDK_SHA256) {
+            throw "Vulkan SDK sha256 mismatch: expected $env:VULKAN_SDK_SHA256, got $actual"
+          }
+          $p = Start-Process -FilePath $installer -Wait -PassThru -ArgumentList @(
+            '--root', "C:\VulkanSDK\$v", '--accept-licenses', '--default-answer', '--confirm-command', 'install')
+          if ($p.ExitCode -ne 0) { throw "Vulkan SDK installer exited with $($p.ExitCode)" }
+      - name: VULKAN_SDK を設定する
+        shell: pwsh
+        run: |
+          $sdk = "C:\VulkanSDK\$env:VULKAN_SDK_VERSION"
+          if (-not (Test-Path "$sdk\Bin\glslc.exe")) { throw "glslc.exe not found under $sdk\Bin" }
+          "VULKAN_SDK=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "$sdk\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
-      - name: release ビルド（エンジンと TIP）
+        with:
+          workspaces: ". -> C:\\t"
+      # Ninja のとき、vulkan-shaders-gen（内側の CMake）はコンパイラの環境（INCLUDE、LIB）を cmake crate から受け取らず、
+      # コンパイラの検査で落ちた（スパイクの 2 回目の run。rc.exe の RC2136）。vcvars64 の環境を job に書き出す
+      - name: MSVC の環境を設定する（vcvars64）
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $vcvars = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'
+          if (-not (Test-Path $vcvars)) { throw "vcvars64.bat not found: $vcvars" }
+          $lines = cmd /c "`"$vcvars`" >nul && set"
+          if ($LASTEXITCODE -ne 0) { throw "vcvars64.bat failed" }
+          foreach ($line in $lines) {
+            if ($line -match '^(INCLUDE|LIB|LIBPATH|PATH|VCINSTALLDIR|VCToolsInstallDir|VCToolsVersion|WindowsSdkDir|WindowsSDKVersion|WindowsSdkBinPath|UCRTVersion|UniversalCRTSdkDir|VSINSTALLDIR|Platform)=(.*)$') {
+              "$($Matches[1])=$($Matches[2])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            }
+          }
+      - name: release ビルド（LM なしのエンジンと TIP）
         run: cargo build --release -p ikari-engine-host -p ikari-tip
-      # 実機の項目 37・38（LM の時間。ADR 0059 の GPU のスパイクの下準備）用に、LM つきのエンジンも作る。LM なしの exe は
-      # 上書きされるので、先に別の名前で取っておく
+      # LM つきのエンジンで上書きされるので、LM なしの exe を先に別の名前で取っておく
       - name: LM なしのエンジンを取っておく
         shell: bash
-        run: cp target/release/ikari-engine-host.exe target/release/ikari-engine-host-nolm.exe
-      - name: release ビルド（LM つきのエンジン）
-        run: cargo build --release -p ikari-engine-host --features lm
-      # 項目 38（LM の 1 回の時間）で使う評価ツール
-      - name: release ビルド（LM つきの評価ツール）
-        run: cargo build --release -p ikari-eval --features lm
-      # PR では GitHub が作るマージ用のコミットが `github.sha` になるので、PR の先頭のコミットを使う（探せる SHA にする）
+        run: |
+          rel="$(cygpath -u "$CARGO_TARGET_DIR")/release"
+          cp "$rel/ikari-engine-host.exe" "$rel/ikari-engine-host-nolm.exe"
+      # Visual Studio のジェネレータでは、ggml-vulkan の vulkan-shaders-gen（ExternalProject）のインストールが
+      # `Not a file: …/vulkan-shaders-gen-build/cmake_install.cmake` で落ちた（スパイクの最初の run）。Ninja にする。
+      # 評価ツールは項目 38（LM の 1 回の時間）、devices は登録されたデバイスの確認（モデルは要らない）で使う
+      - name: release ビルド（Vulkan の LM つきのエンジン、評価ツール、devices）
+        env:
+          CMAKE_GENERATOR: Ninja
+        run: |
+          ninja --version
+          cargo build --release -p ikari-engine-host -p ikari-eval --features ikari-engine-host/lm-vulkan,ikari-eval/lm-vulkan
+          cargo build --release -p ikari-lm --example devices --features vulkan
       - name: artifact の中身を集める
         shell: bash
         env:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          mkdir -p dist/target/release dist/windows dist/shell-core/resources
-          # ikari-engine-host.exe は LM つき（上の順で作った）。LM なしは -nolm。LM つきは、モデルが無ければ LM なしと同じに動く
-          cp target/release/ikari-engine-host.exe target/release/ikari-engine-host-nolm.exe target/release/ikari_tip.dll dist/target/release/
-          cp target/release/ikari-eval.exe dist/target/release/
-          mkdir -p dist/eval && cp -r eval/sets dist/eval/sets
+          set -euo pipefail
+          # target は CARGO_TARGET_DIR（C:\t）。配置は windows/dev/build.ps1 -LmVulkan と同じ
+          rel="$(cygpath -u "$CARGO_TARGET_DIR")/release"
+          out=dist/target/release
+          mkdir -p "$out/backends" dist/windows dist/shell-core/resources dist/eval
+          cp "$rel/ikari-engine-host.exe" "$rel/ikari-engine-host-nolm.exe" "$rel/ikari_tip.dll" "$rel/ikari-eval.exe" "$out/"
+          cp "$rel/examples/devices.exe" "$out/ikari-lm-devices.exe"
+          # 使う OUT_DIR: feature の組み合わせで build のフォルダが複数ありうるので、backends に ggml-vulkan を含むもの
+          sysout=""
+          for o in "$rel"/build/llama-cpp-sys-2-*/out; do
+            if ls "$o"/backends/ggml-vulkan*.dll >/dev/null 2>&1; then sysout="$o"; fi
+          done
+          if [ -z "$sysout" ]; then
+            echo "no ggml-vulkan DLL under $rel/build/llama-cpp-sys-2-*/out/backends" >&2
+            exit 1
+          fi
+          echo "OUT_DIR: $sysout"
+          # ggml と llama の本体（OUT_DIR/bin。exe の隣に置く）と、バックエンド（OUT_DIR/backends。target には写らない）
+          cp "$sysout"/bin/*.dll "$out/"
+          cp "$sysout"/backends/*.dll "$out/backends/"
+          if ! ls "$out"/llama*.dll >/dev/null 2>&1; then
+            echo "llama*.dll was not collected" >&2
+            exit 1
+          fi
+          cp -r eval/sets dist/eval/sets
           cp -r windows/dev dist/windows/dev
           cp -r shell-core/resources/keymap dist/shell-core/resources/keymap
           cp docs/windows-real-device-check.md dist/windows-real-device-check.md
           echo "${SOURCE_SHA}" > dist/COMMIT
+          # 中身と大きさ（ADR 0059 §6 の (c)）
+          (cd dist && find . -type f \( -name '*.dll' -o -name '*.exe' \) -printf '%s\t%p\n' | sort -k2) > dist/MANIFEST.tsv
+          cat dist/MANIFEST.tsv
+      # 集めたとおりの配置で、登録されたデバイスを出す。CPU のデバイスが 1 つも無ければ失敗（終了コード 1）。
+      # ランナーに GPU は無い見込みなので、GPU が無い機械で CPU に落ちることの確認を兼ねる（GPU の行が出るかは未確認。出ても失敗にしない）
+      - name: 登録されたデバイスを確認する
+        shell: bash
+        run: dist/target/release/ikari-lm-devices.exe
+      # exe と DLL が vulkan-1.dll に直接依存していないか（ADR 0059 §1.2 の推測の確認）。失敗しても artifact は作る
+      - name: DLL の依存を書き出す
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $dumpbin = Get-ChildItem "$vs\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe" | Select-Object -First 1
+          Get-ChildItem dist\target\release -Recurse -Include *.exe,*.dll | ForEach-Object {
+            "== $($_.FullName.Substring((Resolve-Path dist).Path.Length + 1))"
+            & $dumpbin.FullName /nologo /dependents $_.FullName | Select-String -Pattern '\.dll' | ForEach-Object { $_.Line.Trim() }
+          } | Tee-Object -FilePath dist\DEPENDENTS.txt
+      # PR では GitHub が作るマージ用のコミットが `github.sha` になるので、PR の先頭のコミットを使う（探せる SHA にする）
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ikari-windows-dev-${{ github.event.pull_request.head.sha || github.sha }}

@@ -269,10 +269,18 @@ impl Inner {
         started: Instant,
         loaded: bool,
         device: ikari_stack::LmDevice,
+        load_note: Option<&str>,
     ) {
         let micros = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
-        // 読めたときだけ装置を書く（失敗のときは付けない。ADR 0061 §5.4）
-        let note = loaded.then(|| format!("dev={}", crate::convert::device_word(device)));
+        // 失敗のときは装置を付けない（ADR 0061 §5.4）。GPU の扱いとデバイスの一覧（`load_note`。固定の語だけ。
+        // GPU に載せたか、CPU に落ちたかの理由。ADR 0059 §2.3・§2.4）は、失敗のときにも付ける
+        let dev = loaded.then(|| format!("dev={}", crate::convert::device_word(device)));
+        let note = match (dev, load_note) {
+            (Some(d), Some(n)) => Some(format!("{d} {n}")),
+            (Some(d), None) => Some(d),
+            (None, Some(n)) => Some(n.to_owned()),
+            (None, None) => None,
+        };
         log.record_note(
             KIND_LM_LOAD,
             micros,

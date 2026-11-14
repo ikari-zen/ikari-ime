@@ -17,6 +17,8 @@ const DEFAULT_RIGHT_CONTEXT_CHARS: usize = 10;
 const DEFAULT_TOPIC_WORDS: usize = 3;
 const DEFAULT_MAX_CANDIDATES: usize = 32;
 const DEFAULT_LOAD_RETRY_SECS: u64 = 10;
+/// GPU を使う既定（2026-11-14 ユーザー決定。使えない機械では自動で CPU）
+const DEFAULT_GPU: bool = true;
 /// NLL（nat）の差 1 あたりのコスト（ADR 0002 §13.2 の `× 1000`）
 pub const COST_PER_NAT: f32 = 1000.0;
 
@@ -58,6 +60,9 @@ pub struct ZenzConfig {
     pub budget: Duration,
     /// 最後の要求からこの時間が経ったらモデルを解放する（NFR-11）
     pub idle_unload: Duration,
+    /// モデルを GPU に載せているときの解放までの時間。None なら `idle_unload` と同じ。GPU は読み直しが重い
+    /// （N150 の VM で約 18 秒。ADR 0059）ので、エンジンが Vulkan のビルドで長くする
+    pub idle_unload_gpu: Option<Duration>,
     /// 加点は `alpha * (NLL - min NLL) * 1000`（dev 分割で調整する）
     pub alpha: f32,
     /// 1候補あたりの加算の上限（コスト）
@@ -72,6 +77,9 @@ pub struct ZenzConfig {
     pub max_candidates: usize,
     /// モデルの読み込みに失敗したあと、次に試すまでの時間
     pub load_retry: Duration,
+    /// GPU があれば使う（設定 `engine.lm_gpu`。既定は真。ADR 0059 §2.5）。GPU が使えなければ CPU。
+    /// Vulkan のビルドだけで効く（Metal は常に GPU、CPU だけのビルドは常に CPU）
+    pub gpu: bool,
 }
 
 impl Default for ZenzConfig {
@@ -80,6 +88,7 @@ impl Default for ZenzConfig {
             model_kind: ModelKind::default(),
             budget: Duration::from_millis(DEFAULT_BUDGET_MS),
             idle_unload: Duration::from_secs(DEFAULT_IDLE_UNLOAD_SECS),
+            idle_unload_gpu: None,
             alpha: DEFAULT_ALPHA,
             max_total: DEFAULT_MAX_TOTAL,
             context_chars: DEFAULT_CONTEXT_CHARS,
@@ -87,6 +96,7 @@ impl Default for ZenzConfig {
             topic_words: DEFAULT_TOPIC_WORDS,
             max_candidates: DEFAULT_MAX_CANDIDATES,
             load_retry: Duration::from_secs(DEFAULT_LOAD_RETRY_SECS),
+            gpu: DEFAULT_GPU,
         }
     }
 }
@@ -96,7 +106,7 @@ impl ZenzConfig {
     /// 未知の `zenz.*` キーと、読めない値はエラー。
     ///
     /// キー: `zenz.alpha`、`zenz.max_total`、`zenz.budget_ms`、`zenz.idle_unload_secs`、
-    /// `zenz.context_chars`、`zenz.right_context_chars`、`zenz.topic_words`、`zenz.max_candidates`、`zenz.load_retry_secs`
+    /// `zenz.context_chars`、`zenz.right_context_chars`、`zenz.topic_words`、`zenz.max_candidates`、`zenz.load_retry_secs`、`zenz.gpu`（`on` / `off`）
     pub fn from_kv(kv: &BTreeMap<String, String>) -> Result<Self, LmError> {
         let mut cfg = Self::default();
         for (key, value) in kv {
@@ -135,9 +145,21 @@ impl ZenzConfig {
                     cfg.idle_unload =
                         Duration::from_secs(parse_u64(value).ok_or_else(|| bad("not an integer"))?);
                 }
+                "idle_unload_gpu_secs" => {
+                    cfg.idle_unload_gpu = Some(Duration::from_secs(
+                        parse_u64(value).ok_or_else(|| bad("not an integer"))?,
+                    ));
+                }
                 "load_retry_secs" => {
                     cfg.load_retry =
                         Duration::from_secs(parse_u64(value).ok_or_else(|| bad("not an integer"))?);
+                }
+                "gpu" => {
+                    cfg.gpu = match value.trim() {
+                        "on" => true,
+                        "off" => false,
+                        _ => return Err(bad("expected `on` or `off`")),
+                    };
                 }
                 "context_chars" => {
                     cfg.context_chars = parse_usize(value).ok_or_else(|| bad("not an integer"))?;
@@ -195,6 +217,25 @@ mod tests {
         assert_eq!(c.context_chars, 40);
         assert_eq!(c.right_context_chars, 10);
         assert_eq!(c.topic_words, 3);
+    }
+
+    #[test]
+    fn idle_unload_gpu_is_unset_by_default_and_read_from_kv() {
+        assert_eq!(ZenzConfig::default().idle_unload_gpu, None);
+        let c = ZenzConfig::from_kv(&kv(&[("zenz.idle_unload_gpu_secs", "1800")])).unwrap();
+        assert_eq!(c.idle_unload_gpu, Some(Duration::from_secs(1800)));
+    }
+
+    #[test]
+    fn gpu_defaults_on_and_reads_on_off() {
+        assert!(ZenzConfig::default().gpu);
+        assert!(
+            !ZenzConfig::from_kv(&kv(&[("zenz.gpu", "off")]))
+                .unwrap()
+                .gpu
+        );
+        assert!(ZenzConfig::from_kv(&kv(&[("zenz.gpu", "on")])).unwrap().gpu);
+        assert!(ZenzConfig::from_kv(&kv(&[("zenz.gpu", "maybe")])).is_err());
     }
 
     #[test]
