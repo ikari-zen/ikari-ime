@@ -13,6 +13,8 @@
 
 #[cfg(windows)]
 pub mod ctrl;
+#[cfg(windows)]
+pub mod endsession;
 pub mod run;
 pub mod settings_pipe;
 
