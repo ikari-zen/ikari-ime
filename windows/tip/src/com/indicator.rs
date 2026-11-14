@@ -14,7 +14,9 @@
 //!
 //! 自分の書き込みでも通知が来る。`service` が書き込みの間だけ旗を立てて、自分の通知を読み捨てる。
 //!
-//! **まだ入れていないもの**: ボタンのアイコン（DLL に資源がない。`GetIcon` は空のアイコンを返す）、ボタンのメニュー。
+//! ボタンのアイコンは、モードの文字を実行時に描いて作る（`icon`。タスクバーの入力インジケーターはアイコンを出し、
+//! アイコンがないと言語の略称「日本」に戻る。#370）。**まだ入れていないもの**: ボタンのメニュー、DLL の資源のアイコン
+//! （プロファイルのブランドのアイコン）。
 
 use std::cell::{Cell, RefCell};
 
@@ -35,7 +37,7 @@ use windows_core::{BOOL, BSTR, ComObject, GUID, HRESULT, IUnknown, Interface, Re
 use super::dll::DllRef;
 use super::guard::guard_result;
 use super::guids::CLSID_TEXT_SERVICE;
-use super::log;
+use super::{icon, log};
 use crate::mode;
 
 /// ボタンの順序（言語バーの中の並び。小さいほど左）
@@ -154,8 +156,16 @@ impl ITfLangBarItemButton_Impl for ModeButton_Impl {
     }
 
     fn GetIcon(&self) -> windows_core::Result<HICON> {
-        // アイコンの資源はまだない。文字（`GetText`）だけで出る。実機で、これで足りるかを確かめる
-        guard_result("panic in lang bar GetIcon", || Ok(HICON::default()))
+        // 受け取った側が `DestroyIcon` で捨てる。作れなければ空のアイコン（言語の略称に戻るだけ）
+        guard_result("panic in lang bar GetIcon", || {
+            match icon::mode_icon(mode::label(self.mode.get())) {
+                Ok(icon) => Ok(icon),
+                Err(e) => {
+                    log::error("mode icon failed", &e);
+                    Ok(HICON::default())
+                }
+            }
+        })
     }
 
     fn GetText(&self) -> windows_core::Result<BSTR> {
