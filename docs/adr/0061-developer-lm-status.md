@@ -1,6 +1,6 @@
 # ADR 0061: 開発者向けに、その変換で LM が間に合ったか・かかった時間・GPU か CPU かを、ログと候補窓に出す
 
-- 状態: 提案（2026-11-14）
+- 状態: 承認（2026-11-14。§9 の Q1〜Q3 は決定済み。#364 で実装済み（実装 0・1a・1b・2））
 - 日付: 2026-11-14
 - 対象: `lm/src/ranker.rs`・`lm/src/scorer.rs`・`lm/src/llama.rs`（計測と装置）、`engine/src/workers.rs`・`cache.rs`・`convert.rs`・`diag.rs`（1 回分のまとめ、返事、ログ）、`proto/ikari/engine/v1/engine.proto`・`proto/ikari/shell/v1/shell.proto`、`shell-core/src/settings/`・`machine/`・`types.rs`・`scenario.rs`、`shell-core/scenarios/`、`shell-ffi/src/convert.rs`、`macos/Sources/IkariIME/CandidatePanel.swift`、`macos/Sources/IkariSettings/`
 - 前提: main = d996a8c。ADR 0004 §3.4（変換 1 回の締め切り）、ADR 0021（先行計算と L0 の `lm_applied`）、ADR 0034（診断ログは常時オン、スイッチを作らない）、ADR 0040 §2.5 と #321・#326（設定画面の一覧は Rust）、ADR 0042（判断は Rust）、ADR 0058 §1.2（アイドル解放と読み直し）、ADR 0059（Windows の GPU。提案、PR #345）

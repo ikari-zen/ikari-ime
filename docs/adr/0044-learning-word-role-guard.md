@@ -1,6 +1,6 @@
 # ADR 0044: 学習の word の加点を、品詞で見て役割が違う相手と競うときは弱める（観察しよう → 観察使用）
 
-- 状態: 採用（2026-11-03 にユーザーが係数の既定を 0.25 に決定。書き直し版。初版の R1 は却下）
+- 状態: 一部置き換え（ADR 0057 §4。係数の既定は 0.25 から 0.1 に変わった。以下は 2026-11-03 にユーザーが係数の既定を 0.25 に決定。書き直し版。初版の R1 は却下）
 - 日付: 2026-11-02（初版）、2026-11-03（改訂）
 - 対象: `core/src/pos.rs`（役割を比べる純関数を 1 つ足す）、`core/src/ranker/learning.rs`（word の加点の係数と設定の 1 項目）、`eval/scenarios/`（シナリオを 2 本足す）、`eval/tests/scenario_lm.rs`、`eval/scripts/snapshot.sh`。記録側（`core/src/user/learning.rs`）、`is_content_word`、学習の形式（`learning.tsv`）、Swift は変えない
 - 前提: main = 9773895。ADR 0002 §8（文脈付きの学習）、ADR 0013（記録のない文脈の back-off、上限を phrase と word に分ける）

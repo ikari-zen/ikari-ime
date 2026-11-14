@@ -41,7 +41,7 @@
 ## 3. 決定の要約（提案）
 1. **画面は WinUI 3（Windows App SDK）で作る。言語は C#**（§4 の W-a）。Fluent の見た目、ライトとダーク、高 DPI、アニメーション、UIA（スクリーンリーダー）が標準で付く。配布は**パッケージなし（MSIX にしない）・自己完結**（Windows App SDK と .NET を exe と一緒に置く。利用者に別のランタイムを入れさせない。未署名の配布 #99 と両立）。
 2. **判断と通信は Rust の核**（`windows/candidate`。C の ABI の DLL）。パイプの受け手、命令の状態（最後だけを描く、持ち主の接続、切れたら隠す）、横の位置の計算（`shell-core` の `panel`）を持つ。C# はこの DLL を呼び、返った「描く状態」を描くだけ（macOS の Swift と `shell-ffi` と同じ形。境界は 1 本）。
-3. **窓の置き場所は、別の小さなプロセス `ikari-candidate.exe`**（ユーザーのセッションに 1 つ、常駐）。`ikari-engine.exe` が子として起動し、見張る（落ちたら起動し直す。回数の上限は engine-host の `CRASH_LIMIT` と同じ考え方）。TIP は exe を起動しない。常駐なので、起動の時間はログオンと落ちたあとにだけ効く。
+3. **窓の置き場所は、別の小さなプロセス `ikari-candidate.exe`**（ユーザーのセッションに 1 つ、常駐）。`ikari-engine.exe`（**実物の exe の名前は `ikari-engine-host.exe`**。`windows/dev/common.ps1`）が子として起動し、見張る（落ちたら起動し直す。回数の上限は engine-host の `CRASH_LIMIT` と同じ考え方）。TIP は exe を起動しない。常駐なので、起動の時間はログオンと落ちたあとにだけ効く。
 4. **TIP → 候補窓は片道**（`pipe::Client::post`）。返事を待たない。キーの処理の時間（`key`）に窓の描画は入らない。
 5. **上下（`side`）は TIP が決める**。行の高さを「行数と行の種類だけで決まる純粋な関数」にし（macOS と同じ）、TIP がその高さで `panel::layout_panel` を呼んで `side` を得て、すぐ `Shell::panel_shown` に渡す。候補窓は TIP の `side` に従い、横の位置だけを測った幅で決める。
 6. **アンカーは合成の先頭の 1 文字**の `GetTextExt`（閉じるまで動かさない。macOS と同じ規則）。TIP がホストの窓の DPI の扱いに合わせて**物理の画面座標**に直してから送る。取れないときの順は `panel::resolve_anchor` をそのまま使う。

@@ -1,6 +1,6 @@
 # ADR 0045: 同じ読みで直前に選んだ表記に、数分だけ加点する（直前ボーナス）
 
-- 状態: 提案
+- 状態: 承認（実装済み。#258。`core/src/ranker/learning.rs` の既定は `recent_bonus` 6500・`recent_window_secs` 300）
 - 日付: 2026-11-03（提案）。2026-11-10 に ADR 0057 の後の main に合わせて書き直し、掃引して値を決めた
 - 対象: `core/src/user/recent.rs`（直前の選択をメモリに持つ型）、`core/src/user/learning.rs`（`LearningStore` に持たせ、`record` で書き、`reset` で消す）、`core/src/ranker/learning.rs`（加点の項を 1 つと設定の 2 項目）、`eval/src/scenario.rs`（時間を進める step）、`eval/scenarios/issue177-recent.tsv`、`eval/tests/scenario_lm.rs`。学習の形式（`learning.tsv`、schema=1）、engine、stack、Swift は変えない
 - 前提: ADR 0002 §8（文脈付きの学習）、ADR 0013（back-off、上限、LearningGuard の F1）、ADR 0044（word の役割の係数）、**ADR 0057（人間 > LM > ロジック。1 位以外の確定は 4 回分、`base_bonus` 4000、`max_total` 10500）**
