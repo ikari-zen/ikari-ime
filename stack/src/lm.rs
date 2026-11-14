@@ -53,6 +53,18 @@ impl LmHandle for ZenzHandle {
     fn load_note(&self) -> Option<String> {
         ikari_lm::log_note()
     }
+
+    fn timings(&self) -> LmTimings {
+        let t = self.ranker.timings();
+        LmTimings {
+            inference: t.inference,
+            loads: t.loads,
+        }
+    }
+
+    fn devices(&self) -> Option<String> {
+        ikari_lm::devices()
+    }
 }
 
 #[cfg(not(feature = "lm"))]
