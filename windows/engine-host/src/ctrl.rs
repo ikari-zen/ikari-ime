@@ -1,9 +1,9 @@
 //! コンソールの制御イベント（Ctrl+C、Ctrl+Break、コンソールを閉じる、ログオフ、シャットダウン）を受けて、
 //! 止める合図に変える（`cfg(windows)`。Windows の CI か実機で確かめる）。
 //!
-//! 窓を持たない常駐は `WM_QUERYENDSESSION` を受けられない（受けるにはウィンドウが要る）。ここでは受けず、
-//! 「Ctrl+C とプロセスの終了」だけを扱う（ADR 0040 §7 の W5 で、ログオフとシャットダウンの扱いを決める）。
-//! プロセスが強制的に終わっても、学習は 5 秒ごとに保存されていて、`engine.lock` は OS が解放する。
+//! コンソールのないビルド（`hide-console`）にはこの通知が届かない。ログオフとシャットダウンは、
+//! メッセージ専用ウィンドウが受ける（`endsession.rs`。#372）。止める合図と「後始末が終わった印」はここで共有する。
+//! 受け取れずにプロセスが強制的に終わっても、学習は 5 秒ごとに保存されていて、`engine.lock` は OS が解放する。
 //!
 //! `unsafe` はこのファイルの Win32 の呼び出しだけ。
 
@@ -56,17 +56,22 @@ unsafe extern "system" fn handler(ctrl_type: u32) -> i32 {
         }
         CTRL_CLOSE_EVENT | CTRL_LOGOFF_EVENT | CTRL_SHUTDOWN_EVENT => {
             signal_stop();
-            let started = Instant::now();
-            while !FINISHED.load(Ordering::SeqCst) && started.elapsed() < CLEANUP_WAIT {
-                thread::sleep(CLEANUP_POLL);
-            }
+            wait_finished();
             TRUE
         }
         _ => FALSE,
     }
 }
 
-fn signal_stop() {
+/// 後始末が終わる（`mark_finished`）まで、`CLEANUP_WAIT` を上限に待つ
+pub(crate) fn wait_finished() {
+    let started = Instant::now();
+    while !FINISHED.load(Ordering::SeqCst) && started.elapsed() < CLEANUP_WAIT {
+        thread::sleep(CLEANUP_POLL);
+    }
+}
+
+pub(crate) fn signal_stop() {
     if let Some(stop) = STOP.get() {
         stop.stop();
     }
