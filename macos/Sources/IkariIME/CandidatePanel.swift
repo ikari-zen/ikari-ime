@@ -157,10 +157,17 @@ final class CandidateView: NSView {
         return NSSize(width: widestSoFar, height: candidatesHeight + noteRowHeight)
     }
 
+    /// 開発者向けの 1 行を、パネルのどちらの端に置くか。アンカーから遠い側（下に出るときは下、上に出るときは上）
+    private var noteAtTop: Bool { side == .above }
+
+    /// 候補の行の並びの、パネルの上端からの位置（上に出るときは、開発者向けの 1 行が上にある分だけ下がる）
+    private var candidatesTop: CGFloat { noteAtTop ? noteRowHeight : 0 }
+
     /// `index` 番目の候補の行の矩形。上に置いたときは、1 位が下になる
     private func rowRect(_ index: Int) -> NSRect {
         let slot = side == .above ? model.candidates.count - 1 - index : index
-        return NSRect(x: 0, y: CGFloat(slot) * Self.rowHeight, width: bounds.width, height: Self.rowHeight)
+        return NSRect(
+            x: 0, y: candidatesTop + CGFloat(slot) * Self.rowHeight, width: bounds.width, height: Self.rowHeight)
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -196,7 +203,7 @@ final class CandidateView: NSView {
             }
 
             // 候補同士は線で区切る（画面の上から数えて最後の行の下には引かない）
-            if row.maxY < candidatesHeight - 0.5 {
+            if row.maxY < candidatesTop + candidatesHeight - 0.5 {
                 NSColor.separatorColor.setFill()
                 NSRect(x: Self.separatorInset, y: row.maxY - 0.5, width: bounds.width - Self.separatorInset * 2, height: 0.5)
                     .fill()
@@ -204,9 +211,11 @@ final class CandidateView: NSView {
         }
 
         if !model.developerNote.isEmpty {
-            let noteRow = NSRect(x: 0, y: candidatesHeight, width: bounds.width, height: Self.noteHeight)
+            let noteRow = NSRect(
+                x: 0, y: noteAtTop ? 0 : candidatesHeight, width: bounds.width, height: Self.noteHeight)
             NSColor.separatorColor.setFill()
-            NSRect(x: Self.separatorInset, y: noteRow.minY - 0.5, width: bounds.width - Self.separatorInset * 2, height: 0.5)
+            let separatorY = noteAtTop ? noteRow.maxY - 0.5 : noteRow.minY - 0.5
+            NSRect(x: Self.separatorInset, y: separatorY, width: bounds.width - Self.separatorInset * 2, height: 0.5)
                 .fill()
             draw(
                 model.developerNote, font: noteFont,
