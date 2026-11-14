@@ -260,6 +260,10 @@ fn dispatch_and_run_inner(
         ..
     } = &mut *state;
     let shell = shell.as_mut()?;
+    // 診断（#398）。TIP とエンジンの版が違えば出す（共存するだけで、動きは変えない。ADR 0064 §6.1）
+    if let Some(skew) = shell.engine().version_skew() {
+        log::version_skew(&skew.shell, &skew.engine);
+    }
     // 英数・かなキーは、OS の役として TIP がモードを替える（`mode`）
     let requested_mode = mode::requested_by_event(&event);
     // secure な欄（パスワード、PIN）かは、打鍵のたびに読んで `Key` に入れる（`shell-core` も打鍵のたびに見る。

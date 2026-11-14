@@ -92,8 +92,12 @@ impl Inner {
     }
 
     /// 接続が切れた。その接続のセッション（休止中も）と状態をすべて捨てる（休止にしない。ADR 0064 D2）。
-    /// 保存もログもしない（`Engine` が先に落ちていても呼ばれる。`connection.rs` の順序の注記）
+    /// 保存はしない（`Engine` が先に落ちていても呼ばれる。`connection.rs` の順序の注記）。
+    /// 動いている間だけ、`disconnect conn=N` を 1 行書く（止まったあとはログも閉じている）
     pub(crate) fn drop_connection(&self, conn: ConnectionId) {
+        if !self.is_stopped() {
+            self.note_connection("disconnect", conn);
+        }
         let keys: Vec<SessionKey> = {
             let mut sessions = lock_mutex(&self.sessions);
             let keys: Vec<SessionKey> = sessions

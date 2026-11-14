@@ -12,6 +12,7 @@ use std::sync::{Once, Weak};
 use ikari_runmark::PrevExit;
 
 use crate::diag_schema::{self, Rejected};
+use crate::dispatch::session_note;
 use crate::model_check::ModelReject;
 
 pub(crate) const KIND_DIAG: &str = "diag";
@@ -103,11 +104,34 @@ fn app_word(bundle_id: &str) -> &str {
 
 /// `begin_session` の行の注記。`session=` は `sh_episode` などの行と結ぶため（エンジンが
 /// `DiagEvent` の行に同じ `session=` を足す）。secure は Bundle ID を書かない（NFR-18）
-pub(crate) fn begin_session_note(b: &pb::BeginSession) -> String {
+pub(crate) fn begin_session_note(conn: ConnectionId, b: &pb::BeginSession) -> String {
+    let session = session_note(conn, b.session_id);
     match session_app(b) {
-        None => format!("session={}", b.session_id),
-        Some(app) => format!("session={} app={app}", b.session_id),
+        None => session,
+        Some(app) => format!("{session} app={app}"),
     }
+}
+
+/// 版の文字列の長さの上限（診断に出す版）
+const VERSION_MAX_BYTES: usize = 32;
+/// 版として読めない文字列の代わりの語
+const VERSION_INVALID: &str = "invalid";
+
+/// 診断に出してよい版の語（`[A-Za-z0-9.+-]` で 32 バイトまで。外れたら `invalid`）。殻の申告なので、そのまま書かない
+fn version_word(version: &str) -> &str {
+    let valid = !version.is_empty()
+        && version.len() <= VERSION_MAX_BYTES
+        && version
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'+' | b'-'));
+    if valid { version } else { VERSION_INVALID }
+}
+
+/// `hello` の行の注記。殻の版がエンジンの版と違うときだけ `peer_version=<殻の版> skew=1`。
+/// 版を申告しない殻（空）と、同じ版のときは None（今までの行のまま）
+pub(crate) fn hello_skew_note(h: &pb::Hello) -> Option<String> {
+    (!h.shell_version.is_empty() && h.shell_version != env!("CARGO_PKG_VERSION"))
+        .then(|| format!("peer_version={} skew=1", version_word(&h.shell_version)))
 }
 
 /// セッションが持つ、ログに書いてよい `app=` の語。secure は None（Bundle ID を書かない。NFR-18）
@@ -156,9 +180,9 @@ impl Inner {
         match diag_schema::validate(event) {
             Ok(ok) => {
                 let note = if ok.note.is_empty() {
-                    format!("session={}", event.session_id)
+                    session_note(conn, event.session_id)
                 } else {
-                    format!("session={} {}", event.session_id, ok.note)
+                    format!("{} {}", session_note(conn, event.session_id), ok.note)
                 };
                 self.log
                     .record_note(ok.kind, 0, self.lm_state_name(), None, Some(&note));
@@ -262,6 +286,13 @@ impl Inner {
     pub(crate) fn note_host(&self, note: &str) {
         self.log
             .record_note(KIND_HOST, 0, self.lm_state_name(), None, Some(note));
+    }
+
+    /// 接続の開始と終了の行（`connect conn=N`、`disconnect conn=N`。番号だけ。#398）
+    pub(crate) fn note_connection(&self, kind: &'static str, conn: ConnectionId) {
+        let note = format!("conn={}", conn.get());
+        self.log
+            .record_note(kind, 0, self.lm_state_name(), None, Some(&note));
     }
 
     /// `Engine` を閉じるとき、LM が読み込まれていたら `lm_unload reason=shutdown`
