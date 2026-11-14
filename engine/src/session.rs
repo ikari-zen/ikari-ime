@@ -30,12 +30,17 @@ impl Inner {
         })
     }
 
-    pub(crate) fn begin_session(&self, b: pb::BeginSession) -> Result<envelope::Body, Fail> {
+    pub(crate) fn begin_session(
+        &self,
+        conn: ConnectionId,
+        b: pb::BeginSession,
+    ) -> Result<envelope::Body, Fail> {
+        let key = SessionKey::new(conn, b.session_id);
         // client_bundle_id そのものは保存しない（アプリごとのプロファイルは将来の候補）。ログの `app=` に
         // 書く語（文字の種類と長さを確かめたもの。secure では None）だけを、メモリ上のセッションに持つ。
         // 書く行は `begin_session` と `convert`（ADR 0034 §7・§9-1。2026-10-25、2026-10-30 の改め）
         let mut sessions = lock_mutex(&self.sessions);
-        if !sessions.contains_key(&b.session_id) && sessions.len() >= SESSION_LIMIT {
+        if !sessions.contains_key(&key) && sessions.len() >= SESSION_LIMIT {
             let oldest = sessions
                 .iter()
                 .min_by_key(|(_, s)| s.last_used)
@@ -49,7 +54,7 @@ impl Inner {
         }
         let now = Instant::now();
         let app = diag::session_app(&b);
-        match sessions.get_mut(&b.session_id) {
+        match sessions.get_mut(&key) {
             // 同じ ID で secure が同じなら、履歴を残して再開する（D1）
             Some(s) if s.secure == b.secure => {
                 s.app = app;
@@ -59,7 +64,7 @@ impl Inner {
             // secure が変わったら履歴をつながない（パスワード欄の前後）
             _ => {
                 sessions.insert(
-                    b.session_id,
+                    key,
                     Session {
                         secure: b.secure,
                         app,
@@ -73,19 +78,40 @@ impl Inner {
         Ok(envelope::Body::Ack(pb::Ack {}))
     }
 
-    pub(crate) fn end_session(&self, e: pb::EndSession) -> envelope::Body {
+    pub(crate) fn end_session(&self, conn: ConnectionId, e: pb::EndSession) -> envelope::Body {
+        let key = SessionKey::new(conn, e.session_id);
         // セッションは消さず休止にする。履歴は `paused_session_ttl` のあいだ残る（D1）
-        if let Some(s) = lock_mutex(&self.sessions).get_mut(&e.session_id) {
+        if let Some(s) = lock_mutex(&self.sessions).get_mut(&key) {
             let now = Instant::now();
             s.paused_at = Some(now);
             s.last_used = now;
         }
-        self.drop_session_state(e.session_id);
+        self.drop_session_state(key);
         self.save_now();
         envelope::Body::Ack(pb::Ack {})
     }
 
-    pub(crate) fn drop_session_state(&self, session: u64) {
+    /// 接続が切れた。その接続のセッション（休止中も）と状態をすべて捨てる（休止にしない。ADR 0064 D2）。
+    /// 保存もログもしない（`Engine` が先に落ちていても呼ばれる。`connection.rs` の順序の注記）
+    pub(crate) fn drop_connection(&self, conn: ConnectionId) {
+        let keys: Vec<SessionKey> = {
+            let mut sessions = lock_mutex(&self.sessions);
+            let keys: Vec<SessionKey> = sessions
+                .keys()
+                .filter(|k| k.conn == conn)
+                .copied()
+                .collect();
+            for key in &keys {
+                sessions.remove(key);
+            }
+            keys
+        };
+        for key in keys {
+            self.drop_session_state(key);
+        }
+    }
+
+    pub(crate) fn drop_session_state(&self, session: SessionKey) {
         self.drop_prefetch(session);
         self.lookahead.forget_session(session);
         lock_mutex(&self.ctx_trace).remove_session(session);
@@ -93,14 +119,17 @@ impl Inner {
     }
 
     /// `convert` の行に足す `app=<語>`。secure、セッションがなければ None
-    pub(crate) fn app_note(&self, id: u64) -> Option<String> {
+    pub(crate) fn app_note(&self, id: SessionKey) -> Option<String> {
         lock_mutex(&self.sessions)
             .get(&id)
             .and_then(|s| s.app.as_ref().map(|a| format!("app={a}")))
     }
 
     /// (secure, 確定履歴)。セッションがなければ `UNKNOWN_SESSION`。
-    pub(crate) fn session_info(&self, id: u64) -> Result<(bool, Vec<ikari_core::Commit>), Fail> {
+    pub(crate) fn session_info(
+        &self,
+        id: SessionKey,
+    ) -> Result<(bool, Vec<ikari_core::Commit>), Fail> {
         let mut sessions = lock_mutex(&self.sessions);
         let session = sessions
             .get_mut(&id)
@@ -110,7 +139,7 @@ impl Inner {
         Ok((session.secure, session.history.clone()))
     }
 
-    pub(crate) fn push_history(&self, session: u64, reading: String, surface: String) {
+    pub(crate) fn push_history(&self, session: SessionKey, reading: String, surface: String) {
         let limits = self.limits();
         let mut sessions = lock_mutex(&self.sessions);
         let Some(s) = sessions
@@ -134,7 +163,7 @@ impl Inner {
 
     /// 先行計算とキューを捨てる。左文脈が確定履歴に依るので、確定の前に作った計算を確定のあとに
     /// 使わない（ADR 0049 K6、§5）。文節の先読みは触らない
-    fn drop_prefetch(&self, session: u64) {
+    fn drop_prefetch(&self, session: SessionKey) {
         if let Some(entry) = self.queue.forget_session(session) {
             entry.abandon();
         }
@@ -144,9 +173,9 @@ impl Inner {
     /// 休止から `paused_session_ttl` たったセッションを捨てる（見回りから）
     pub(crate) fn expire_context(&self, now: Instant) {
         let limits = self.limits();
-        let expired: Vec<u64> = {
+        let expired: Vec<SessionKey> = {
             let mut sessions = lock_mutex(&self.sessions);
-            let ids: Vec<u64> = sessions
+            let ids: Vec<SessionKey> = sessions
                 .iter()
                 .filter(|(_, s)| {
                     s.paused_at.is_some_and(|at| {

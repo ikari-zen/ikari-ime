@@ -30,7 +30,7 @@ fn commit_learns_and_end_session_saves() {
         ErrorCode::UnknownConversion
     );
     // 確定は履歴になる
-    assert_eq!(lock_mutex(&e.inner.sessions)[&1].history.len(), 1);
+    assert_eq!(lock_mutex(&e.inner.sessions)[&sk(1)].history.len(), 1);
     // 範囲外の候補
     let r2 = convert(&e, 1, READING, 1);
     let bad = send(
@@ -153,7 +153,7 @@ fn commit_text_feeds_the_history_up_to_its_char_limit() {
         );
     }
     let sessions = lock_mutex(&e.inner.sessions);
-    let history = &sessions[&1].history;
+    let history = &sessions[&sk(1)].history;
     let total: usize = history.iter().map(|c| c.surface.chars().count()).sum();
     assert!(total <= 30 && history.len() < 40, "{total}");
     assert_eq!(history.last().unwrap().surface, "文39");

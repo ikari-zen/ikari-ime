@@ -13,6 +13,11 @@ impl Inner {
         self.lookahead.close();
     }
 
+    /// `stop` のあとか（`Engine` が落ちた。ADR 0064 §4 の `Connection` との順序）
+    pub(crate) fn is_stopped(&self) -> bool {
+        *lock_mutex(&self.stop.0)
+    }
+
     pub(crate) fn prefetch_loop(&self) {
         while let Some(job) = self.queue.next() {
             let entry = Arc::clone(&job.entry);

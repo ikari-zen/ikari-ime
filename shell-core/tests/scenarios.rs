@@ -121,6 +121,7 @@ fn run(
         shell_version: "scenario".into(),
         settings: SettingsSource::Inline(setup.settings_tsv()),
         resources_dir: Path::new(env!("CARGO_MANIFEST_DIR")).join("resources"),
+        engine_owner: true,
     };
     let mut shell = Shell::new(
         config,
