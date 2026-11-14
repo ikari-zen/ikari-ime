@@ -9,6 +9,7 @@ use ikari_proto::v1 as pb;
 
 use ikari_stack::LmTrace;
 
+use crate::connection::{ConnectionId, SessionKey};
 use crate::segments::SegEntry;
 
 /// セッションごとに持つ件数の上限
@@ -28,7 +29,7 @@ pub type SharedConversion = Arc<Mutex<SegEntry>>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CacheKey {
-    pub session: u64,
+    pub session: SessionKey,
     pub reading: String,
     pub context_rev: u64,
 }
@@ -231,7 +232,7 @@ impl PrefetchCache {
     /// 番号は見ない。「最新」は入れた順
     pub fn find_by_content(
         &mut self,
-        session: u64,
+        session: SessionKey,
         reading: &str,
         ctx: &PrefetchContext,
     ) -> Option<Arc<CacheEntry>> {
@@ -245,7 +246,7 @@ impl PrefetchCache {
     }
 
     /// 同じ session・reading で、いちばん新しい 1 件（ログ用。使った印は付けない）
-    pub fn latest(&self, session: u64, reading: &str) -> Option<Arc<CacheEntry>> {
+    pub fn latest(&self, session: SessionKey, reading: &str) -> Option<Arc<CacheEntry>> {
         self.items
             .iter()
             .rev()
@@ -290,7 +291,7 @@ impl PrefetchCache {
         }
     }
 
-    fn evict_oldest(&mut self, session: Option<u64>) {
+    fn evict_oldest(&mut self, session: Option<SessionKey>) {
         let oldest = self
             .items
             .iter()
@@ -303,7 +304,7 @@ impl PrefetchCache {
         }
     }
 
-    pub fn remove_session(&mut self, session: u64) {
+    pub fn remove_session(&mut self, session: SessionKey) {
         self.items.retain(|i| {
             let keep = i.entry.key.session != session;
             if !keep {
@@ -353,7 +354,8 @@ impl PrefetchCache {
 /// 殻へ返した変換。`Commit` / `PageRequest` / `Cancel` が `conversion_id` で引く。
 pub struct ConversionItem {
     pub id: u64,
-    pub session: u64,
+    /// 変換を作ったセッション（接続つき）。ほかの接続からの要求には答えない（ADR 0064 D2）
+    pub session: SessionKey,
     pub conv: SharedConversion,
     pub page_size: usize,
     last_used: Instant,
@@ -365,7 +367,13 @@ pub struct ConversionTable {
 }
 
 impl ConversionTable {
-    pub fn insert(&mut self, id: u64, session: u64, conv: SharedConversion, page_size: usize) {
+    pub fn insert(
+        &mut self,
+        id: u64,
+        session: SessionKey,
+        conv: SharedConversion,
+        page_size: usize,
+    ) {
         self.items.push(ConversionItem {
             id,
             session,
@@ -381,7 +389,7 @@ impl ConversionTable {
         }
     }
 
-    fn evict_oldest(&mut self, session: Option<u64>) {
+    fn evict_oldest(&mut self, session: Option<SessionKey>) {
         let oldest = self
             .items
             .iter()
@@ -394,20 +402,29 @@ impl ConversionTable {
         }
     }
 
-    /// 引いて、使った時刻を更新する。
-    pub fn get(&mut self, id: u64) -> Option<(SharedConversion, usize, u64)> {
-        let item = self.items.iter_mut().find(|i| i.id == id)?;
+    /// 引いて、使った時刻を更新する。`conn` 以外の接続が作った変換は、ないものとして扱う（ADR 0064 D2）
+    pub fn get(
+        &mut self,
+        conn: ConnectionId,
+        id: u64,
+    ) -> Option<(SharedConversion, usize, SessionKey)> {
+        let item = self
+            .items
+            .iter_mut()
+            .find(|i| i.id == id && i.session.conn == conn)?;
         item.last_used = Instant::now();
         Some((Arc::clone(&item.conv), item.page_size, item.session))
     }
 
-    pub fn remove(&mut self, id: u64) -> bool {
+    /// `conn` が作った変換だけを消す（ほかの接続の変換には触らない。ADR 0064 D2）
+    pub fn remove(&mut self, conn: ConnectionId, id: u64) -> bool {
         let before = self.items.len();
-        self.items.retain(|i| i.id != id);
+        self.items
+            .retain(|i| !(i.id == id && i.session.conn == conn));
         self.items.len() != before
     }
 
-    pub fn remove_session(&mut self, session: u64) {
+    pub fn remove_session(&mut self, session: SessionKey) {
         self.items.retain(|i| i.session != session);
     }
 
@@ -432,7 +449,7 @@ pub struct Job {
 #[derive(Default)]
 struct QueueState {
     /// セッションごとに最新の 1 件だけ
-    jobs: HashMap<u64, Job>,
+    jobs: HashMap<SessionKey, Job>,
     seq: u64,
     closed: bool,
     /// ワーカーが処理中の依頼の数（`next` で取り出してから `finish` まで）
@@ -462,7 +479,7 @@ impl PrefetchQueue {
     }
 
     /// セッションの待ち依頼を捨てる。
-    pub fn forget_session(&self, session: u64) -> Option<Arc<CacheEntry>> {
+    pub fn forget_session(&self, session: SessionKey) -> Option<Arc<CacheEntry>> {
         lock(&self.state).jobs.remove(&session).map(|j| j.entry)
     }
 
@@ -521,9 +538,13 @@ mod tests {
     use super::*;
     use crate::segments::SegmentSeam;
 
+    fn sk(session: u64) -> SessionKey {
+        SessionKey::new(ConnectionId::DEFAULT, session)
+    }
+
     fn key(session: u64, reading: &str, rev: u64) -> CacheKey {
         CacheKey {
-            session,
+            session: sk(session),
             reading: reading.to_owned(),
             context_rev: rev,
         }
@@ -566,7 +587,7 @@ mod tests {
         let a = CacheEntry::new(key(1, "あ", 0));
         cache.insert(Arc::clone(&a));
         cache.insert(CacheEntry::new(key(2, "い", 0)));
-        cache.remove_session(1);
+        cache.remove_session(sk(1));
         assert_eq!(cache.len(), 1);
         assert!(!a.is_computing());
         cache.expire(Instant::now() + IDLE_LIMIT + Duration::from_secs(1));
@@ -673,14 +694,18 @@ mod tests {
             Arc::new(Mutex::new(dummy_entry()))
         };
         for id in 1..=(PER_SESSION_LIMIT as u64 + 2) {
-            table.insert(id, 7, conv(id), 9);
+            table.insert(id, sk(7), conv(id), 9);
         }
         assert_eq!(table.len(), PER_SESSION_LIMIT);
-        assert!(table.get(1).is_none());
-        assert!(table.get(PER_SESSION_LIMIT as u64 + 2).is_some());
-        assert!(table.remove(PER_SESSION_LIMIT as u64 + 2));
-        assert!(!table.remove(PER_SESSION_LIMIT as u64 + 2));
-        table.remove_session(7);
+        assert!(table.get(ConnectionId::DEFAULT, 1).is_none());
+        assert!(
+            table
+                .get(ConnectionId::DEFAULT, PER_SESSION_LIMIT as u64 + 2)
+                .is_some()
+        );
+        assert!(table.remove(ConnectionId::DEFAULT, PER_SESSION_LIMIT as u64 + 2));
+        assert!(!table.remove(ConnectionId::DEFAULT, PER_SESSION_LIMIT as u64 + 2));
+        table.remove_session(sk(7));
         assert_eq!(table.len(), 0);
     }
 

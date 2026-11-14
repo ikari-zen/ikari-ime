@@ -3,9 +3,15 @@
 //! エンジンの中のセッションのキーを（接続, `session_id`）にするための型。接続の番号は
 //! エンジンが振り、殻は知らない（proto は変えない）。
 //!
-//! **契約だけの段階（ADR 0064 §8 の 1）**: ここにあるのは型とシグネチャだけで、
-//! `Connection::handle` はまだ接続の番号を使わず、`Engine::handle` と同じに動く。
-//! キーの置き換えと、`Drop` での片づけ（D2）はレーン A（ADR 0064 §8 の 2）が入れる。
+//! - キー: エンジンの中のセッションごとの状態（確定履歴、secure、先行計算、文節の先読み、`ctx_trace`、
+//!   変換の表）は、すべて `SessionKey`（接続, `session_id`）で引く（D1）。変換の表の要求（`Page`、`Commit`
+//!   など）は、その変換を作った接続からだけ受ける（D2）。
+//! - 片づけ: `Connection` を落とすと、その接続のセッションと状態をすべて捨てる（休止にしない。D2）。
+//! - `Engine` との順序: `Connection` は `Inner` の `Arc` を持つので、`Engine` より長く残れる。`Engine` を
+//!   先に落としたら（裏のスレッドを止め、学習を保存し、ログを閉じたあと）、残った `Connection::handle` は
+//!   要求を処理せず `ENGINE_NOT_READY` を返し、ログも書かない。そのあとの `Connection` の `Drop` は、メモリの
+//!   表を片づけるだけ（保存もログもしない）。engine-host の `serve` は、接続のスレッドを待ってから戻るので、
+//!   ふつうは `Connection` が先に落ちる。
 
 use std::fmt;
 use std::sync::Arc;
@@ -28,6 +34,20 @@ impl ConnectionId {
     }
 }
 
+/// エンジンの中のセッションのキー（接続, 殻が振った `session_id`）。殻の番号は接続ごとの名前空間になる
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) struct SessionKey {
+    pub(crate) conn: ConnectionId,
+    /// 殻が振った番号（ログの `session=` に書くのはこちら）
+    pub(crate) id: u64,
+}
+
+impl SessionKey {
+    pub(crate) const fn new(conn: ConnectionId, id: u64) -> SessionKey {
+        SessionKey { conn, id }
+    }
+}
+
 /// 接続の番号の払い出し。`DEFAULT`（0）の次の 1 から振る。
 #[derive(Debug)]
 pub(crate) struct ConnectionIds(AtomicU64);
@@ -44,7 +64,7 @@ impl ConnectionIds {
 
 /// 1 本の接続（Windows の TIP の 1 つの `Shell`）の口。`Engine::connect` で取る。
 ///
-/// 落とすと、その接続のセッションと状態を捨てる（D2。レーン A が `Drop` に入れる。今は何もしない）。
+/// 落とすと、その接続のセッションと状態を捨てる（D2）。
 /// `Engine` とは独立に持てる（`Inner` の `Arc` を持つ）ので、接続ごとのスレッドへ渡してよい。
 pub struct Connection {
     inner: Arc<Inner>,
@@ -62,9 +82,15 @@ impl Connection {
     }
 
     /// `Engine::handle` と同じ契約（Envelope のバイト列を受けて返す。panic しない）。
-    /// 接続の番号をキーに使うのはレーン A（今は `Engine::handle` と同じ動き）。
+    /// セッションは、この接続の名前空間で引く（ほかの接続の同じ `session_id` とは別のもの）。
     pub fn handle(&self, req: &[u8]) -> Vec<u8> {
         self.inner.handle_frame(self.id, req)
+    }
+}
+
+impl Drop for Connection {
+    fn drop(&mut self) {
+        self.inner.drop_connection(self.id);
     }
 }
 

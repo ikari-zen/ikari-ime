@@ -123,7 +123,7 @@ fn committing_all_zero_learns_the_whole_reading_once() {
     );
     assert!(matches!(ack, envelope::Body::Ack(_)), "{ack:?}");
     assert!(learned_rows(&r) >= 1);
-    let history = lock_mutex(&r.e().inner.sessions)[&1].history.len();
+    let history = lock_mutex(&r.e().inner.sessions)[&sk(1)].history.len();
     assert!(history >= 1);
 }
 
@@ -184,7 +184,7 @@ fn reconversion_keeps_the_original_surface_and_is_not_learned_untouched() {
         commit_body(layout.conversion_id, 0, vec![choice(0); n]),
     );
     assert_eq!(learned_rows(&r), 0);
-    assert!(lock_mutex(&r.e().inner.sessions)[&1].history.is_empty());
+    assert!(lock_mutex(&r.e().inner.sessions)[&sk(1)].history.is_empty());
 }
 
 #[test]

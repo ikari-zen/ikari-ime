@@ -64,7 +64,7 @@ use crate::cache::{
     CacheEntry, CacheKey, CacheOutcome, ConversionTable, Job, MissReason, PrefetchCache,
     PrefetchContext, PrefetchQueue, SharedConversion, lock as lock_mutex,
 };
-use crate::connection::ConnectionIds;
+use crate::connection::{ConnectionIds, SessionKey};
 use crate::context_limits::ContextLimits;
 use crate::convert::candidate_kind;
 use crate::data::{DataWatch, SaveState, load_emoji_reply};
@@ -379,11 +379,14 @@ impl Engine {
 }
 
 impl Inner {
-    /// `Engine::handle` と `Connection::handle` の共通の本体。`conn` は契約だけの段階では使わない
-    /// （キーの置き換えはレーン A。ADR 0064 §8 の 2）。
-    fn handle_frame(&self, _conn: ConnectionId, req: &[u8]) -> Vec<u8> {
+    /// `Engine::handle` と `Connection::handle` の共通の本体。セッションは `conn` の名前空間で引く（ADR 0064 D1）。
+    /// `Engine` が落ちたあと（`Connection` だけが残っている）は、処理もログもせず `ENGINE_NOT_READY` を返す
+    fn handle_frame(&self, conn: ConnectionId, req: &[u8]) -> Vec<u8> {
+        if self.is_stopped() {
+            return engine_stopped_reply(req);
+        }
         let started = Instant::now();
-        let done = self.process(req);
+        let done = self.process(conn, req);
         let micros = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
         // 成功した `DiagEvent` は、`diag` が事象そのものの行を書く（要求の行は重ねて書かない）
         if done.kind != diag::KIND_DIAG {
@@ -405,7 +408,7 @@ impl Inner {
 impl Engine {
     /// 新しい接続の口を作る。接続の番号はエンジンが振る（殻は知らない。ADR 0064 §4.1 の K1）。
     /// engine-host は、パイプの接続ごとにこれを 1 つ取り、その接続の枠をすべて `Connection::handle` に渡す。
-    /// 契約だけの段階では、キーはまだ（接続, セッション）になっていない（レーン A。ADR 0064 §8 の 2）。
+    /// セッションのキーは（接続, `session_id`）なので、別の接続が同じ `session_id` を使っても混ざらない。
     pub fn connect(&self) -> Connection {
         Connection::new(Arc::clone(&self.inner), self.inner.connections.next())
     }
@@ -441,6 +444,16 @@ pub fn error_envelope(request_id: u64, code: ErrorCode, message: &str) -> Vec<u8
     .encode_to_vec()
 }
 
+/// `Engine` が落ちたあとの要求への返事。`request_id` は読めれば返す（読めなければ 0）
+fn engine_stopped_reply(req: &[u8]) -> Vec<u8> {
+    let request_id = if req.len() > MAX_ADMIN_REQUEST_BYTES {
+        0
+    } else {
+        Envelope::decode(req).map_or(0, |env| env.request_id)
+    };
+    error_envelope(request_id, ErrorCode::EngineNotReady, "engine stopped")
+}
+
 /// 要求の失敗（`ErrorReply` になる）。`message` は固定の文だけ。
 struct Fail {
     code: ErrorCode,
@@ -466,7 +479,8 @@ struct Inner {
     watch: Option<Mutex<DataWatch>>,
     /// 絵文字のショートコードの表（読み込み済みの返事。`emoji.tsv` の更新で入れ替える）
     emoji: RwLock<Arc<pb::EmojiTableReply>>,
-    sessions: Mutex<HashMap<u64, Session>>,
+    /// セッション（キーは（接続, `session_id`）。ADR 0064 D1）
+    sessions: Mutex<HashMap<SessionKey, Session>>,
     /// 文脈の量と時間（本番は既定値。テストだけが短くする）
     limits: RwLock<ContextLimits>,
     conversions: Mutex<ConversionTable>,

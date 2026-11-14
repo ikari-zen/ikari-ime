@@ -16,6 +16,11 @@ use super::*;
 
 use crate::admin::{backup_key, utc_stamp};
 
+/// 既定の接続（macOS の経路）のセッションのキー。表を直接見るテスト用
+fn sk(id: u64) -> SessionKey {
+    SessionKey::new(ConnectionId::DEFAULT, id)
+}
+
 const READING: &str = "ひんし";
 
 const BOOSTED: &str = "瀕死";

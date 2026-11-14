@@ -44,7 +44,7 @@ fn set_limits(e: &Engine, limits: ContextLimits) {
 }
 
 fn history_len(e: &Engine, session: u64) -> usize {
-    lock_mutex(&e.inner.sessions)[&session].history.len()
+    lock_mutex(&e.inner.sessions)[&sk(session)].history.len()
 }
 
 /// 周辺テキストなしで変換し、LM が受けた左文脈を返す
@@ -111,8 +111,8 @@ fn end_session_pauses_and_begin_resumes_with_the_history() {
     end(&e, 1);
     {
         let sessions = lock_mutex(&e.inner.sessions);
-        assert!(sessions[&1].paused_at.is_some(), "paused, not removed");
-        assert_eq!(sessions[&1].history.len(), 1);
+        assert!(sessions[&sk(1)].paused_at.is_some(), "paused, not removed");
+        assert_eq!(sessions[&sk(1)].history.len(), 1);
     }
     // 休止中は要求に答えない（今までと同じく UNKNOWN_SESSION）
     assert_eq!(
@@ -124,7 +124,7 @@ fn end_session_pauses_and_begin_resumes_with_the_history() {
         ErrorCode::UnknownSession
     );
     begin_with(&e, 1, false);
-    assert!(lock_mutex(&e.inner.sessions)[&1].paused_at.is_none());
+    assert!(lock_mutex(&e.inner.sessions)[&sk(1)].paused_at.is_none());
     assert_eq!(convert_context(&e, &mock, 1), "今日は");
 }
 
@@ -144,12 +144,12 @@ fn a_paused_session_is_dropped_after_the_ttl() {
     end(&e, 1);
     // TTL の前は残る。動いている 2 は消えない
     e.inner.expire_context(Instant::now());
-    assert!(lock_mutex(&e.inner.sessions).contains_key(&1));
+    assert!(lock_mutex(&e.inner.sessions).contains_key(&sk(1)));
     e.inner
         .expire_context(Instant::now() + Duration::from_millis(150));
     let sessions = lock_mutex(&e.inner.sessions);
-    assert!(!sessions.contains_key(&1), "expired");
-    assert!(sessions.contains_key(&2), "active sessions stay");
+    assert!(!sessions.contains_key(&sk(1)), "expired");
+    assert!(sessions.contains_key(&sk(2)), "active sessions stay");
 }
 
 #[test]
@@ -159,10 +159,10 @@ fn the_default_ttl_is_thirty_minutes() {
     end(&e, 1);
     e.inner
         .expire_context(Instant::now() + Duration::from_secs(29 * 60));
-    assert!(lock_mutex(&e.inner.sessions).contains_key(&1));
+    assert!(lock_mutex(&e.inner.sessions).contains_key(&sk(1)));
     e.inner
         .expire_context(Instant::now() + Duration::from_secs(31 * 60));
-    assert!(!lock_mutex(&e.inner.sessions).contains_key(&1));
+    assert!(!lock_mutex(&e.inner.sessions).contains_key(&sk(1)));
 }
 
 #[test]
@@ -184,13 +184,13 @@ fn history_is_capped_by_characters_not_count() {
     commit_text(&e, 1, "いうえお");
     {
         let sessions = lock_mutex(&e.inner.sessions);
-        let total: usize = sessions[&1]
+        let total: usize = sessions[&sk(1)]
             .history
             .iter()
             .map(|c| c.surface.chars().count())
             .sum();
         assert!(total <= 10, "{total}");
-        assert_eq!(sessions[&1].history.last().unwrap().surface, "いうえお");
+        assert_eq!(sessions[&sk(1)].history.last().unwrap().surface, "いうえお");
     }
     // 件数 32 を超えても、文字数の上限までは持つ
     set_limits(&e, ContextLimits::DEFAULT);
@@ -265,7 +265,7 @@ fn coming_back_after_the_pause_ttl_starts_without_context() {
     begin_with(&e, 2, false);
     e.inner
         .expire_context(Instant::now() + Duration::from_secs(31 * 60));
-    assert!(!lock_mutex(&e.inner.sessions).contains_key(&1));
+    assert!(!lock_mutex(&e.inner.sessions).contains_key(&sk(1)));
     begin_with(&e, 1, false);
     assert_eq!(convert_context(&e, &mock, 1), "");
 }
