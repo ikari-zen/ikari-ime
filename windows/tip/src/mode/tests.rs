@@ -48,6 +48,7 @@ fn shell(settings: &str) -> Shell {
             shell_version: "test".into(),
             settings: SettingsSource::Inline(settings.into()),
             resources_dir: resources,
+            engine_owner: false,
         },
         Box::new(NoTransport),
         Arc::new(SystemClock::new()),

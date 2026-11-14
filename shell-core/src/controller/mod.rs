@@ -68,6 +68,11 @@ pub struct ShellConfig {
     pub settings: SettingsSource,
     /// 同梱の資源の置き場所（`keymap/<preset>.tsv` など。macOS は `.app` の `Resources`）
     pub resources_dir: PathBuf,
+    /// エンジンと一緒に入れ替わる殻か。`true` は、版が違うとき（と `engine.*` の設定が変わったとき）に
+    /// エンジンへ `Shutdown` を送って止め、起こし直す（macOS。殻とエンジンが同じバンドル。ADR 0004 §5.2）。
+    /// `false` は `Shutdown` を一切送らず、版が違っても返事をそのまま使う（Windows の TIP。ADR 0064 §6.1 の V1、D4・D5）。
+    /// 契約だけの段階では、`Shell` はまだこの値を読まない（ふるまいはレーン B。ADR 0064 §8 の 3）
+    pub engine_owner: bool,
 }
 
 /// `Shell::new` の誤り。

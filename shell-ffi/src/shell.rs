@@ -342,6 +342,8 @@ fn config_from(config: &IkariShellConfig) -> Result<(ShellConfig, String), &'sta
             SettingsSource::File(PathBuf::from(settings_path))
         },
         resources_dir: PathBuf::from(resources_dir),
+        // macOS の殻はエンジンと同じバンドルで入れ替わるので、止めて起こし直してよい（ADR 0064 §6.3）
+        engine_owner: true,
     };
     Ok((shell_config, diag_dir.to_owned()))
 }
