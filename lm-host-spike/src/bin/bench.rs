@@ -110,12 +110,100 @@ fn report(label: &str, mut d: Vec<Duration>) {
     );
 }
 
+struct Host {
+    child: std::process::Child,
+    cin: std::process::ChildStdin,
+    cout: BufReader<std::process::ChildStdout>,
+}
+
+type Phase = (f64, Vec<Duration>, Vec<Vec<f32>>, u64);
+
+fn gap(ms: u64) {
+    if ms > 0 {
+        std::thread::sleep(Duration::from_millis(ms));
+    }
+}
+
+/// 別プロセス。(起動から READY までの ms, 要求ごとの往復, 結果, 子の RSS MB)
+fn host_phase(
+    host: &PathBuf,
+    model: &PathBuf,
+    reqs: &[Request],
+    warmup: usize,
+    gap_ms: u64,
+) -> Phase {
+    let t0 = Instant::now();
+    let mut child = Command::new(host)
+        .arg(model)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .expect("spawn host");
+    let cin = child.stdin.take().expect("stdin");
+    let cout = BufReader::new(child.stdout.take().expect("stdout"));
+    let mut h = Host { child, cin, cout };
+    let mut line = String::new();
+    h.cout.read_line(&mut line).expect("ready");
+    assert_eq!(line.trim(), "READY", "host did not become ready");
+    let ready_ms = t0.elapsed().as_secs_f64() * 1000.0;
+    let mut times = Vec::new();
+    let mut results = Vec::new();
+    for (i, r) in reqs.iter().enumerate() {
+        gap(gap_ms);
+        let t = Instant::now();
+        let msg = format!("{}\t{}\n", r.prompt, r.candidates.join("\t"));
+        h.cin.write_all(msg.as_bytes()).expect("write");
+        h.cin.flush().expect("flush");
+        line.clear();
+        h.cout.read_line(&mut line).expect("read");
+        let dt = t.elapsed();
+        let vals: Vec<f32> = line
+            .split_whitespace()
+            .filter_map(|x| x.parse().ok())
+            .collect();
+        assert_eq!(vals.len(), r.candidates.len(), "bad reply: {line}");
+        results.push(vals);
+        if i >= warmup {
+            times.push(dt);
+        }
+    }
+    let rss = rss_kb(h.child.id()).unwrap_or(0) / 1024;
+    drop(h.cin); // 標準入力を閉じると host は終わる
+    let _ = h.child.wait();
+    (ready_ms, times, results, rss)
+}
+
+/// 同じプロセスの中。(読み込みの ms, 要求ごとの時間, 結果, 読み込み後の自分の RSS MB)
+fn direct_phase(model: &PathBuf, reqs: &[Request], warmup: usize, gap_ms: u64) -> Phase {
+    let t0 = Instant::now();
+    let mut scorer = LlamaScorer::load(model).expect("load");
+    let load_ms = t0.elapsed().as_secs_f64() * 1000.0;
+    let mut times = Vec::new();
+    let mut results = Vec::new();
+    for (i, r) in reqs.iter().enumerate() {
+        gap(gap_ms);
+        let t = Instant::now();
+        let v = scorer.nll(&r.prompt, &r.candidates).expect("nll");
+        let dt = t.elapsed();
+        results.push(v);
+        if i >= warmup {
+            times.push(dt);
+        }
+    }
+    let rss = rss_kb(std::process::id()).unwrap_or(0) / 1024;
+    (load_ms, times, results, rss)
+}
+
 fn main() {
     let model = PathBuf::from(arg("--model").expect("--model"));
     let set = arg("--set").expect("--set");
     let n: usize = arg("--n").map_or(600, |s| s.parse().expect("--n"));
     let warmup: usize = arg("--warmup").map_or(20, |s| s.parse().expect("--warmup"));
     let cands: usize = arg("--cands").map_or(6, |s| s.parse().expect("--cands"));
+    // 要求の間に空ける時間。0 は連続（CPU/GPU が冷めない）。実際の入力は間が空くので 200 なども測る
+    let gap_ms: u64 = arg("--gap-ms").map_or(0, |s| s.parse().expect("--gap-ms"));
+    let direct_first = std::env::args().any(|a| a == "--direct-first");
     let host = arg("--host").map(PathBuf::from).unwrap_or_else(|| {
         let mut p = std::env::current_exe().expect("exe");
         p.set_file_name(format!("ikari-lm-host{}", std::env::consts::EXE_SUFFIX));
@@ -123,97 +211,42 @@ fn main() {
     });
     let reqs = load_requests(&set, n + warmup, cands);
     println!(
-        "requests={} (warmup {warmup}) candidates/request>={cands}",
+        "requests={} (warmup {warmup}) candidates/request>={cands} gap={gap_ms}ms direct_first={direct_first}",
         reqs.len()
     );
-
-    // 初回のディスク読みを両方から外す（ページキャッシュに載せる）
+    // 初回のディスク読みを両方から外す（ページキャッシュに載せる。読んだ Vec はすぐ捨てる）
     let _ = std::fs::read(&model).map(|b| b.len());
-    let me = std::process::id();
-    println!("parent baseline RSS: {} MB", rss_kb(me).unwrap_or(0) / 1024);
-
-    // ---- host（別プロセス）
-    let t0 = Instant::now();
-    let mut child = Command::new(&host)
-        .arg(&model)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .expect("spawn host");
-    let mut cin = child.stdin.take().expect("stdin");
-    let mut cout = BufReader::new(child.stdout.take().expect("stdout"));
-    let mut line = String::new();
-    cout.read_line(&mut line).expect("ready");
-    assert_eq!(line.trim(), "READY", "host did not become ready");
     println!(
-        "(a) host: spawn -> READY = {:.0} ms",
-        t0.elapsed().as_secs_f64() * 1000.0
+        "parent baseline RSS: {} MB",
+        rss_kb(std::process::id()).unwrap_or(0) / 1024
     );
 
-    let mut host_times = Vec::new();
-    let mut host_results: Vec<Vec<f32>> = Vec::new();
-    for (i, r) in reqs.iter().enumerate() {
-        let t = Instant::now();
-        let msg = format!("{}\t{}\n", r.prompt, r.candidates.join("\t"));
-        cin.write_all(msg.as_bytes()).expect("write");
-        cin.flush().expect("flush");
-        line.clear();
-        cout.read_line(&mut line).expect("read");
-        let dt = t.elapsed();
-        let vals: Vec<f32> = line
-            .split_whitespace()
-            .filter_map(|x| x.parse().ok())
-            .collect();
-        assert_eq!(vals.len(), r.candidates.len(), "bad reply: {line}");
-        host_results.push(vals);
-        if i >= warmup {
-            host_times.push(dt);
-        }
+    let (h, d);
+    if direct_first {
+        d = direct_phase(&model, &reqs, warmup, gap_ms);
+        h = host_phase(&host, &model, &reqs, warmup, gap_ms);
+    } else {
+        h = host_phase(&host, &model, &reqs, warmup, gap_ms);
+        d = direct_phase(&model, &reqs, warmup, gap_ms);
     }
-    println!(
-        "host child RSS: {} MB",
-        rss_kb(child.id()).unwrap_or(0) / 1024
-    );
-    println!(
-        "parent RSS (host mode): {} MB",
-        rss_kb(me).unwrap_or(0) / 1024
-    );
-    drop(cin); // 標準入力を閉じると host は終わる
-    let _ = child.wait();
-
-    // ---- direct（同じプロセスの中）
-    let t0 = Instant::now();
-    let mut scorer = LlamaScorer::load(&model).expect("load");
-    println!(
-        "(a) direct: in-process load = {:.0} ms",
-        t0.elapsed().as_secs_f64() * 1000.0
-    );
-    let mut direct_times = Vec::new();
+    println!("(a) host: spawn -> READY = {:.0} ms", h.0);
+    println!("(a) direct: in-process load = {:.0} ms", d.0);
+    println!("(c) host child RSS: {} MB", h.3);
+    println!("(c) parent RSS after direct load: {} MB", d.3);
     let mut max_diff = 0f32;
-    for (i, r) in reqs.iter().enumerate() {
-        let t = Instant::now();
-        let v = scorer.nll(&r.prompt, &r.candidates).expect("nll");
-        let dt = t.elapsed();
-        for (a, b) in v.iter().zip(&host_results[i]) {
-            max_diff = max_diff.max((a - b).abs());
-        }
-        if i >= warmup {
-            direct_times.push(dt);
+    for (a, b) in d.2.iter().zip(&h.2) {
+        for (x, y) in a.iter().zip(b) {
+            max_diff = max_diff.max((x - y).abs());
         }
     }
-    println!(
-        "parent RSS (direct mode, model loaded): {} MB",
-        rss_kb(me).unwrap_or(0) / 1024
-    );
     println!("max |nll_direct - nll_host| = {max_diff}");
     println!("(b) round trips:");
-    report("  host   ", host_times.clone());
-    report("  direct ", direct_times.clone());
-    let diff: Vec<Duration> = host_times
-        .iter()
-        .zip(&direct_times)
-        .map(|(h, d)| h.saturating_sub(*d))
-        .collect();
+    report("  host   ", h.1.clone());
+    report("  direct ", d.1.clone());
+    let diff: Vec<Duration> =
+        h.1.iter()
+            .zip(&d.1)
+            .map(|(a, b)| a.saturating_sub(*b))
+            .collect();
     report("  host-direct (per request, saturating)", diff);
 }
