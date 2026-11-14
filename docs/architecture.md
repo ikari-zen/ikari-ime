@@ -25,6 +25,7 @@ ikari-ime の今の構成を 1 か所にまとめた地図。判断の理由は�
 | `pipe` | TIP と常駐のエンジンをつなぐ、枠つきの双方向の流れ（枠の符号化、要求と返事の多重化、時間切れ、クライアントとサーバー）。標準ライブラリだけ。名前付きパイプの OS 層は `cfg(windows)`（W1-b）。`shell-core` に依存しない | [0040 §2.2、§5](adr/0040-windows-feasibility.md) |
 | `windows/engine-host`（`ikari-engine-host`） | Windows の常駐のエンジン（exe は `ikari-engine-host.exe`）。`pipe::Server` で受けた枠を `Engine::handle` に渡す。受け付けの繰り返しは OS に依存しない | [0040 §2.2](adr/0040-windows-feasibility.md) |
 | `windows/tip`（`ikari-tip`） | Windows の TIP（各アプリに入る DLL。cdylib）。キー（VK → `ShellEvent`）、動作の列 → TSF の操作、secure の判定、モードの写し、`pipe::Client` を `EngineTransport` に合わせる輸送は OS に依存せず Mac でテストする。TSF の COM の層は `src/com`（`cfg(windows)`、`unsafe` はここだけ） | [0040 §2.2、§2.8](adr/0040-windows-feasibility.md) |
+| `windows/candidate`（`ikari-candidate`） | Windows の候補窓の核（契約の骨組み。中身はスタブ。ADR 0062）。TIP → 候補窓の命令（`proto/ikari/candidate/v1/candidate.proto`）の型、行の高さ（固定の関数）、横の位置、画面（C#）が呼ぶ C の ABI（`include/ikari_candidate.h`）。TIP の送り口は `windows/tip/src/candidate_send.rs` | [0062](adr/0062-windows-candidate-window.md) |
 | `runmark`（`ikari-runmark`） | 起動中の印と、前回の終わり方の判定（`exit=clean|term|crash`）。`engine` と `shell-core`、`shell-ffi` が使う | [0051](adr/0051-crash-exit-record.md) |
 | `textfile`（`ikari-textfile`） | テキストファイルの形式の共通部分（UTF-8・LF で書き、LF・CRLF・BOM つきを読む）。標準ライブラリだけ | [0040 §2.9](adr/0040-windows-feasibility.md) |
 | `testtime`（`ikari-testtime`） | 時間に依存するテストの倍率（`IKARI_TEST_TIME_SCALE`）。テストでだけ使う | — |
@@ -44,6 +45,7 @@ input, proto ← shell-core ← shell-ffi（staticlib）
 proto ← engine
 engine, pipe ← windows/engine-host
 shell-core, pipe ← windows/tip
+shell-core, pipe, proto ← windows/candidate（windows/tip も使う）
 textfile ← core, dict-builder, engine, import, shell-core, xtask
 runmark ← engine, shell-core, shell-ffi
 resource ← engine

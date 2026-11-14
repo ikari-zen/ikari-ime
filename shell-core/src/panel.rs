@@ -160,6 +160,38 @@ pub fn layout_panel(
     }
 }
 
+/// `layout_panel` の y 軸が下向きの版（左上が原点。Windows の画面座標。ADR 0062 §3、§6.3）。
+/// 引数と結果の矩形はすべて y 下向き。新しい規則は持たない: y を反転して `layout_panel` を呼び、結果を戻すだけ
+/// （`PanelSide::Below` は「画面の下側（y が大きい側）に置いた」意味のまま変わらない）。
+/// `anchor` は上辺の y が `origin.y`、`work_area` も同じ。結果の `frame.origin.y` はパネルの上辺。
+pub fn layout_panel_y_down(
+    anchor: &Rect,
+    panel_size: Size,
+    reserved_height: Option<f64>,
+    work_area: &Rect,
+) -> PanelPlacement {
+    let placement = layout_panel(
+        &flip_y(anchor),
+        panel_size,
+        reserved_height,
+        &flip_y(work_area),
+    );
+    PanelPlacement {
+        frame: flip_y(&placement.frame),
+        side: placement.side,
+    }
+}
+
+/// y の向きを反転する（上辺が `y` の矩形 ↔ 下辺が `-y` の矩形。自分自身の逆）。
+fn flip_y(rect: &Rect) -> Rect {
+    Rect::new(
+        rect.origin.x,
+        -(rect.origin.y + rect.size.height),
+        rect.size.width,
+        rect.size.height,
+    )
+}
+
 /// `layout_panel` の枠だけ（予約の高さなし）。
 pub fn place_panel(anchor: &Rect, panel_size: Size, visible_frame: &Rect) -> Rect {
     layout_panel(anchor, panel_size, None, visible_frame).frame
@@ -433,5 +465,68 @@ mod tests {
             layout_panel(&anchor, s, None, &VISIBLE).frame,
             place_panel(&anchor, s, &VISIBLE)
         );
+    }
+
+    // y 下向き（Windows）。作業領域は 1920x1040（上 0、下はタスクバーを除く）
+    const WORK_DOWN: Rect = Rect::new(0.0, 0.0, 1920.0, 1040.0);
+
+    #[test]
+    fn y_down_places_below_the_anchor_when_it_fits() {
+        // アンカーの下辺は y=318。パネルの上辺はそこに揃う
+        let anchor = Rect::new(300.0, 300.0, 0.0, 18.0);
+        let placement = layout_panel_y_down(&anchor, PANEL, None, &WORK_DOWN);
+        assert_eq!(placement.side, PanelSide::Below);
+        assert_eq!(placement.frame, Rect::new(300.0, 318.0, 400.0, 56.0));
+    }
+
+    #[test]
+    fn y_down_places_above_the_anchor_when_the_bottom_is_full() {
+        let anchor = Rect::new(300.0, 1000.0, 0.0, 18.0);
+        let placement = layout_panel_y_down(&anchor, PANEL, None, &WORK_DOWN);
+        assert_eq!(placement.side, PanelSide::Above);
+        // パネルの下辺がアンカーの上辺（y=1000）に揃う
+        assert_eq!(
+            placement.frame,
+            Rect::new(300.0, 1000.0 - 56.0, 400.0, 56.0)
+        );
+    }
+
+    #[test]
+    fn y_down_decides_the_side_with_the_reserved_height() {
+        // 実際の高さ 56 なら下に入るが、予約の高さ 300 では入らない
+        let anchor = Rect::new(300.0, 900.0, 0.0, 18.0);
+        let placement = layout_panel_y_down(&anchor, PANEL, Some(300.0), &WORK_DOWN);
+        assert_eq!(placement.side, PanelSide::Above);
+    }
+
+    #[test]
+    fn y_down_shifts_left_at_the_right_edge_and_respects_a_work_area_that_does_not_start_at_zero() {
+        // 2 枚目の画面（x が 1920 から。y も 0 でない）
+        let work = Rect::new(1920.0, 100.0, 1920.0, 1040.0);
+        let anchor = Rect::new(3800.0, 200.0, 0.0, 18.0);
+        let placement = layout_panel_y_down(&anchor, PANEL, None, &work);
+        assert_eq!(
+            placement.frame,
+            Rect::new(3840.0 - 400.0, 218.0, 400.0, 56.0)
+        );
+    }
+
+    #[test]
+    fn y_down_agrees_with_the_y_up_layout_on_the_side() {
+        // 同じ配置を y 上向きで書いて、side が一致する（画面の高さ 1040 で上下を反転）
+        for anchor_top in [0.0, 300.0, 700.0, 980.0, 1030.0] {
+            let down_anchor = Rect::new(500.0, anchor_top, 0.0, 18.0);
+            let up_anchor = Rect::new(500.0, 1040.0 - anchor_top - 18.0, 0.0, 18.0);
+            let up_work = Rect::new(0.0, 0.0, 1920.0, 1040.0);
+            let down = layout_panel_y_down(&down_anchor, PANEL, Some(200.0), &WORK_DOWN);
+            let up = layout_panel(&up_anchor, PANEL, Some(200.0), &up_work);
+            assert_eq!(down.side, up.side, "anchor_top={anchor_top}");
+            assert_eq!(down.frame.origin.x, up.frame.origin.x);
+            assert_eq!(
+                down.frame.origin.y,
+                1040.0 - up.frame.origin.y - PANEL.height,
+                "anchor_top={anchor_top}"
+            );
+        }
     }
 }

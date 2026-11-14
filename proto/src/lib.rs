@@ -1,7 +1,8 @@
 //! ikari-proto: エンジンと殻の間のメッセージ（`proto/ikari/engine/v1/engine.proto`。ADR 0004 §5.2）と、
 //! 殻の入口と shell-core の間のメッセージ（`proto/ikari/shell/v1/shell.proto`。ADR 0041 §4.4）と、
 //! 設定アプリと殻の間のメッセージ（`proto/ikari/bridge/v1/bridge.proto`。ADR 0005 §6.3）と、
-//! 設定アプリと shell-core の間のメッセージ（`proto/ikari/settings/v1/settings.proto`。ADR 0041 §2.3）。
+//! 設定アプリと shell-core の間のメッセージ（`proto/ikari/settings/v1/settings.proto`。ADR 0041 §2.3）と、
+//! Windows の TIP と候補窓の間のメッセージ（`proto/ikari/candidate/v1/candidate.proto`。ADR 0062 §7.2）。
 
 /// スキーマの版。`Envelope.schema_version` に入れる。
 pub const SCHEMA_VERSION: u32 = 1;
@@ -35,5 +36,12 @@ pub mod settings {
 pub mod bridge {
     pub mod v1 {
         include!(concat!(env!("OUT_DIR"), "/ikari.bridge.v1.rs"));
+    }
+}
+
+/// `ikari.candidate.v1`（Windows の TIP と候補窓。片道。ADR 0062 §7.2）
+pub mod candidate {
+    pub mod v1 {
+        include!(concat!(env!("OUT_DIR"), "/ikari.candidate.v1.rs"));
     }
 }
