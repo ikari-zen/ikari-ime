@@ -7,7 +7,7 @@ use std::thread;
 use std::time::Duration;
 
 use ikari_pipe::frame::{Frame, FrameKind, MAX_FRAME_LEN, read_frame, write_frame};
-use ikari_pipe::mem::{self, MemDuplex, duplex_pair};
+use ikari_pipe::mem::{self, MemDuplex, duplex_pair, duplex_pair_bounded};
 use ikari_pipe::{Client, ClientError, Duplex, Listener, Server, serve_connection};
 
 /// 待ちの上限（返事が来るはずのもの）。遅い CI でも足りる長さ
@@ -426,4 +426,69 @@ fn accept_failing_forever_ends_with_the_error() {
     };
     let err = Server::new(listener).serve(|| |_: &[u8]| None).unwrap_err();
     assert_eq!(err.to_string(), "accept failed");
+}
+
+/// 相手が読まない流れ（容量 `WRITE_CAPACITY`、書きの締め切り `write_deadline()`）につないだクライアント。
+/// 読まない側の流れも返す（落とさない。落とすと EOF になって、書きが `BrokenPipe` で終わってしまう）。
+const WRITE_CAPACITY: usize = 4096;
+
+fn write_deadline() -> Duration {
+    ikari_testtime::ms(50)
+}
+
+fn stalled_peer_client() -> (Client, Raw) {
+    let (client_side, server_side) = duplex_pair_bounded(WRITE_CAPACITY, write_deadline());
+    (Client::new(client_side, None), raw(server_side))
+}
+
+#[test]
+fn post_gives_up_at_the_write_deadline_when_the_peer_stops_reading_and_disconnects() {
+    let (client, _stalled) = stalled_peer_client();
+    let body = vec![7u8; 1024];
+    let started = std::time::Instant::now();
+    // 容量が埋まるまでは送れる。埋まったら、1 回の書きが締め切りで諦めて切断になる
+    let mut outcome = Ok(());
+    for _ in 0..(WRITE_CAPACITY / body.len() + 2) {
+        outcome = client.post(&body);
+        if outcome.is_err() {
+            break;
+        }
+    }
+    assert_eq!(outcome, Err(ClientError::Disconnected));
+    assert!(started.elapsed() >= write_deadline());
+    assert!(started.elapsed() < long(), "gave up too late");
+    // 切れたあとは、待たずにすぐ Disconnected（再接続は使う側の仕事）
+    let again = std::time::Instant::now();
+    assert_eq!(client.post(&body), Err(ClientError::Disconnected));
+    assert_eq!(
+        client.request(&body, long()),
+        Err(ClientError::Disconnected)
+    );
+    assert!(again.elapsed() < write_deadline());
+}
+
+#[test]
+fn request_whose_write_stalls_fails_with_disconnected_not_timeout() {
+    let (client, _stalled) = stalled_peer_client();
+    // 1 つの要求が容量を超える。返事の待ち（long）に入る前に、書きの締め切りで切れる
+    let body = vec![1u8; WRITE_CAPACITY * 4];
+    let started = std::time::Instant::now();
+    assert_eq!(
+        client.request(&body, long()),
+        Err(ClientError::Disconnected)
+    );
+    assert!(started.elapsed() < long());
+}
+
+#[test]
+fn server_gives_up_and_closes_when_the_client_stops_reading_replies() {
+    let (client_side, server_side) = duplex_pair_bounded(WRITE_CAPACITY, write_deadline());
+    // 返事が容量を超えるので、読まないクライアントには書き切れない
+    let server = thread::spawn(move || {
+        serve_connection(server_side, |_: &[u8]| Some(vec![9u8; WRITE_CAPACITY * 2]))
+    });
+    let mut stalled = raw(client_side);
+    write_frame(&mut stalled.writer, &frame(FrameKind::Request, 1, b"x")).unwrap();
+    // 返事を読まない。サーバーは締め切りで諦めて、その接続を閉じて戻る
+    server.join().unwrap();
 }
