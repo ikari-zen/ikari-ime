@@ -226,7 +226,7 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 - やること:
   1. コンソールの窓を閉じる（×）。エンジンが終わるか、学習が保存されているか（`<データ>` の学習のファイルの更新時刻）を見る。
   2. `.\start-engine.ps1 -Action stop`（強制終了。確認が出る）。再起動して、学習が残っているか見る。
-  3. `.\build.ps1 -HideConsole` で作り直して起動する。窓が出ないこと。辞書を一時的に外して（`IKARI_USER_DIR` を空のフォルダにして）起動し、`start-failure.log` に理由が残ること。
+  3. 窓なしの exe で起動する（CI の artifact には `ikari-engine-host-hidden.exe` が入っていて、`.\start-engine.ps1` はそれがあれば自動で使う。VM に cargo が無いので `build.ps1 -HideConsole` は使わない。コンソールつきに戻すときは `-Console`）。窓が出ないこと。窓を閉じる操作が無いので、Alt+F4 やキーで止まらないこと（#372）。ログオフとシャットダウンでは `exit=clean` になり学習が残ること。辞書を一時的に外して（`IKARI_USER_DIR` を空のフォルダにして）起動し、`start-failure.log` に理由が残ること。
   4. ログオフと、シャットダウンで、エンジンの終わり方と学習を見る（VM を再起動する前に、スナップショットを取る）。
 - 期待する結果: 1 と 2 のあと、学習は最大でも直近 5 秒分を失うだけで、ロックは OS が解放する（`engine.lock` を取り直せる）。3 は窓が出ず、失敗はファイルに残る。4 は、ログオフとシャットダウンの通知を受けられない可能性が #330 に書かれている（窓がないため）。**どうなったかを記録する**（メッセージ専用ウィンドウを足す案の判断材料）。
 - うまくいかないとき: `engine.log` の最後の行と、学習のファイルの更新時刻を記録する。
@@ -407,9 +407,9 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 
 #### 項目 32: パスワード欄など（S8。#338）
 
-- 実装: 打鍵のたびに、編集セッションの中で `GUID_PROP_INPUTSCOPE` を読み（文脈の先頭の範囲）、`IS_PASSWORD`、`IS_NUMERIC_PIN`、`IS_ALPHANUMERIC_PIN`、`IS_ALPHANUMERIC_PIN_SET` のどれかがあれば secure として `shell-core` に伝える（`windows/tip/src/secure.rs`、`com/field.rs`）。入力スコープが付いていない欄、読めない欄は通常として扱う。`TS_SS_PASSWORD` という旗は TSF にない。
-- やること: 次の欄で、ikari を選んで、ひらがなと Space を打つ。(a) Win32 のパスワード欄（サインインの資格情報のダイアログ、`ES_PASSWORD` の Edit）、(b) PIN 欄（Windows Hello の PIN、設定アプリ）、(c) ブラウザ（Chrome、Edge、Firefox）の `<input type=password>`、(d) UWP の `PasswordBox`（設定アプリ、ストアアプリ）、(e) 管理者権限のダイアログ（UAC の画面は、ほかのデスクトップなので、そもそも TIP が動かない見込み）、(f) 通常の欄（Notepad、ブラウザの検索欄）。
-- 期待する結果: (a)〜(d) で変換が動かず、打ったキーがそのまま欄に入る（合成の下線も候補も出ない）。DebugView に、入力した文字も、secure かどうかも出ない。(f) では今までどおり変換できる。secure な欄から通常の欄へ移ったとき、すぐ変換できる（次のキーで戻る）。
+- 実装: 打鍵のたびに、編集セッションの中で `GUID_PROP_INPUTSCOPE` を読み（文脈の先頭の範囲）、`IS_PASSWORD`、`IS_NUMERIC_PIN`、`IS_ALPHANUMERIC_PIN`、`IS_ALPHANUMERIC_PIN_SET`、`IS_PRIVATE`（61。Chromium 系は password 欄にこれを返す。#369）のどれかがあれば secure として `shell-core` に伝える（`windows/tip/src/secure.rs`、`com/field.rs`）。入力スコープが付いていない欄、読めない欄は通常として扱う。`TS_SS_PASSWORD` という旗は TSF にない。
+- やること: 次の欄で、ikari を選んで、ひらがなと Space を打つ。(a) Win32 のパスワード欄（サインインの資格情報のダイアログ、`ES_PASSWORD` の Edit）、(b) PIN 欄（Windows Hello の PIN、設定アプリ）、(c) ブラウザ（Chrome、Edge、Firefox）の `<input type=password>`（特に Edge。期待は素通し。#369）、(d) UWP の `PasswordBox`（設定アプリ、ストアアプリ）、(e) 管理者権限のダイアログ（UAC の画面は、ほかのデスクトップなので、そもそも TIP が動かない見込み）、(f) 通常の欄（Notepad、ブラウザの検索欄）。
+- 期待する結果: (a)〜(d) で変換が動かず、打ったキーがそのまま欄に入る（合成の下線も候補も出ない）。DebugView に、入力した文字も、secure かどうかも出ない（出るのは、入力スコープの数値の並び `ikari-tip: input scopes=[…]` だけ。値が変わったときに 1 行。Edge の password 欄で 61 が出ることを確かめる）。(f) では今までどおり変換できる。secure な欄から通常の欄へ移ったとき、すぐ変換できる（次のキーで戻る）。
 - 記録すること: (1) 各欄で secure と見分けられたか（変換が止まったか）、(2) 見分けられなかった欄（変換が動いてしまった。入力スコープを付けない独自描画の欄、など）のアプリ名、(3) TSF が TIP のキーの通知をそもそも呼ばない欄（その場合も入力は守られる）、(4) キー 1 回の時間が、項目 18 より増えたか（打鍵のたびに入力スコープを読む。増えるなら、フォーカスの移動で読んで覚える案に変える）。
 - うまくいかないとき: 入力できなくなる、固まる、変換が動いてしまった、のどれかと、アプリの名前、欄の種類を記録する。
 - 英語のモード（ADR 0026）の secure の素通しは、`shell-core` が同じ `secure` の口で扱う（実装は別の issue）。ここでは日本語のモードで確かめる。

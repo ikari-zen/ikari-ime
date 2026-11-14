@@ -754,11 +754,23 @@ impl ITfCompartmentEventSink_Impl for TextService_Impl {
     /// 値を `mode` の表で読み、`shell-core` に通知する。自分の書き込みの通知は読み捨てる
     fn OnChange(&self, guid: *const GUID) -> windows_core::Result<()> {
         guard("panic in OnChange (compartment)", Ok(()), || {
-            if guid.is_null() || self.writing_mode.get() {
+            if guid.is_null() {
                 return Ok(());
             }
             // SAFETY: null でない（上で確かめた）。TSF が渡した GUID への参照
             let guid = unsafe { *guid };
+            // 診断（#371）。compartment の変更のときだけ出す（打鍵ごとではない）。読み捨てた理由も残す
+            let (kind, value) = match self.indicator.try_borrow() {
+                Ok(indicator) => indicator
+                    .as_ref()
+                    .map_or(("no-indicator", None), |i| i.describe(&guid)),
+                Err(_) => ("reentrant", None),
+            };
+            if self.writing_mode.get() {
+                log::compartment(kind, value, "dropped(own write)");
+                return Ok(());
+            }
+            log::compartment(kind, value, "accepted");
             let mode = match self.indicator.try_borrow() {
                 Ok(indicator) => indicator
                     .as_ref()

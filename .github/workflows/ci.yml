@@ -178,6 +178,20 @@ jobs:
           ninja --version
           cargo build --release -p ikari-engine-host -p ikari-eval --features ikari-engine-host/lm-vulkan,ikari-eval/lm-vulkan
           cargo build --release -p ikari-lm --example devices --features vulkan
+      # 窓なしのエンジン（hide-console。#372）。コンソールつき（Vulkan の LM つき）の exe は、上書きされるので先に取っておき、あとで戻す。
+      # 窓なしも Vulkan の LM つき（ふだん使いの構成）。start-engine.ps1 は、-hidden があればそれを使う
+      - name: release ビルド（窓なしのエンジン）
+        shell: pwsh
+        env:
+          CMAKE_GENERATOR: Ninja
+        run: |
+          # bash のステップだと PATH で Git の usr\bin\link.exe が MSVC の link.exe より先に来て、リンクに失敗する。pwsh で流す
+          $rel = Join-Path $env:CARGO_TARGET_DIR 'release'
+          Copy-Item "$rel\ikari-engine-host.exe" "$rel\ikari-engine-host-console.exe"
+          cargo build --release -p ikari-engine-host --features lm-vulkan,hide-console
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item "$rel\ikari-engine-host.exe" "$rel\ikari-engine-host-hidden.exe"
+          Copy-Item "$rel\ikari-engine-host-console.exe" "$rel\ikari-engine-host.exe" -Force
       - name: artifact の中身を集める
         shell: bash
         env:
@@ -188,7 +202,7 @@ jobs:
           rel="$(cygpath -u "$CARGO_TARGET_DIR")/release"
           out=dist/target/release
           mkdir -p "$out/backends" dist/windows dist/shell-core/resources dist/eval
-          cp "$rel/ikari-engine-host.exe" "$rel/ikari-engine-host-nolm.exe" "$rel/ikari_tip.dll" "$rel/ikari-eval.exe" "$out/"
+          cp "$rel/ikari-engine-host.exe" "$rel/ikari-engine-host-nolm.exe" "$rel/ikari-engine-host-hidden.exe" "$rel/ikari_tip.dll" "$rel/ikari-eval.exe" "$out/"
           cp "$rel/examples/devices.exe" "$out/ikari-lm-devices.exe"
           # 使う OUT_DIR: feature の組み合わせで build のフォルダが複数ありうるので、backends に ggml-vulkan を含むもの
           sysout=""

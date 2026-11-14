@@ -13,10 +13,11 @@ use windows::Win32::System::Com::CoTaskMemFree;
 use windows::Win32::System::Variant::{VT_UNKNOWN, VariantClear};
 use windows::Win32::UI::TextServices::{
     GUID_PROP_INPUTSCOPE, IS_ALPHANUMERIC_PIN, IS_ALPHANUMERIC_PIN_SET, IS_NUMERIC_PIN,
-    IS_PASSWORD, ITfContext, ITfInputScope, InputScope,
+    IS_PASSWORD, IS_PRIVATE, ITfContext, ITfInputScope, InputScope,
 };
 use windows_core::{IUnknown, Interface};
 
+use super::log;
 use crate::secure::{self, ScopeReading};
 
 /// 1 つの欄の入力スコープの数の上限（アプリが壊れた個数を返したときに、大きな領域を読まないため）
@@ -28,11 +29,15 @@ const _: () = {
     assert!(secure::IS_NUMERIC_PIN == IS_NUMERIC_PIN.0);
     assert!(secure::IS_ALPHANUMERIC_PIN == IS_ALPHANUMERIC_PIN.0);
     assert!(secure::IS_ALPHANUMERIC_PIN_SET == IS_ALPHANUMERIC_PIN_SET.0);
+    assert!(secure::IS_PRIVATE == IS_PRIVATE.0);
 };
 
 /// この文脈の欄は secure か。`ec` は今の編集セッションのもの。読めなければ通常（`false`）。
 pub fn is_secure(ec: u32, context: &ITfContext) -> bool {
     let scopes = read_scopes(ec, context);
+    if let Reading::Scopes(list) = &scopes {
+        log::input_scopes(list);
+    }
     secure::is_secure(match &scopes {
         Reading::Scopes(list) => ScopeReading::Scopes(list),
         Reading::NotSet => ScopeReading::NotSet,

@@ -27,6 +27,9 @@ $ReleaseDir = Join-Path $CargoTarget 'release'
 # (the ADR and the PR text call it "ikari-engine.exe").
 $EngineExeName = 'ikari-engine-host.exe'
 $EngineExe = Join-Path $ReleaseDir $EngineExeName
+# The no-console build (hide-console feature). The CI artifact ships it next to the console one (#372); build.ps1 -HideConsole
+# overwrites $EngineExe instead and does not make this file.
+$EngineHiddenExe = Join-Path $ReleaseDir 'ikari-engine-host-hidden.exe'
 $TipDllName = 'ikari_tip.dll'
 $TipDllBuilt = Join-Path $ReleaseDir $TipDllName
 $KeymapSource = Join-Path $RepoRoot 'shell-core\resources\keymap'
@@ -69,11 +72,13 @@ function Confirm-Action([string]$Question, [bool]$Force) {
 # Engine processes started from OUR build only (matched by full exe path). Never touches other processes.
 function Get-OurEngineProcesses {
     $found = @()
-    $procName = [IO.Path]::GetFileNameWithoutExtension($EngineExeName)
-    foreach ($p in @(Get-Process -Name $procName -ErrorAction SilentlyContinue)) {
-        $path = $null
-        try { $path = $p.Path } catch { $path = $null }
-        if ($path -and ($path -ieq $EngineExe)) { $found += $p }
+    foreach ($exe in @($EngineExe, $EngineHiddenExe)) {
+        $procName = [IO.Path]::GetFileNameWithoutExtension($exe)
+        foreach ($p in @(Get-Process -Name $procName -ErrorAction SilentlyContinue)) {
+            $path = $null
+            try { $path = $p.Path } catch { $path = $null }
+            if ($path -and ($path -ieq $exe)) { $found += $p }
+        }
     }
     return $found
 }
