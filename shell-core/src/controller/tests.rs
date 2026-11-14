@@ -31,6 +31,32 @@ impl EngineTransport for NoTransport {
     }
 }
 
+/// 送った枠の本文を記録する輸送（返事は返さない）。
+#[derive(Clone, Default)]
+struct RecordingTransport(Arc<std::sync::Mutex<Vec<ikari_proto::v1::envelope::Body>>>);
+
+impl EngineTransport for RecordingTransport {
+    fn connect(&self) -> Result<TransportHandle, TransportError> {
+        Ok(TransportHandle(1))
+    }
+    fn request(
+        &self,
+        _: TransportHandle,
+        bytes: &[u8],
+        _: Duration,
+    ) -> Result<Vec<u8>, TransportError> {
+        use prost::Message;
+        let env = ikari_proto::v1::Envelope::decode(bytes).unwrap();
+        self.0.lock().unwrap().extend(env.body);
+        Err(TransportError::Unavailable)
+    }
+    fn post(&self, _: TransportHandle, _: &[u8]) {}
+    fn close(&self, _: TransportHandle) {}
+    fn pid(&self, _: TransportHandle) -> Option<i32> {
+        None
+    }
+}
+
 struct NoText;
 
 impl TextAccess for NoText {
@@ -47,14 +73,23 @@ fn resources() -> PathBuf {
 }
 
 fn shell(settings: SettingsSource, resources_dir: PathBuf) -> Shell {
+    shell_with(settings, resources_dir, true, Box::new(NoTransport))
+}
+
+fn shell_with(
+    settings: SettingsSource,
+    resources_dir: PathBuf,
+    engine_owner: bool,
+    transport: Box<dyn EngineTransport>,
+) -> Shell {
     let mut shell = Shell::new(
         ShellConfig {
             shell_version: "test".into(),
             settings,
             resources_dir,
-            engine_owner: true,
+            engine_owner,
         },
-        Box::new(NoTransport),
+        transport,
         Arc::new(SystemClock::new()),
     )
     .unwrap();
@@ -501,6 +536,51 @@ mod lane_e {
             std::fs::read_to_string(&path).unwrap(),
             "# note\nengine.lm\ton\npaging.size\t4\n"
         );
+    }
+
+    /// 設定アプリから `engine.lm` を変えたとき、エンジンへ送った `Shutdown` の数（`Hello` は必ず送る）。
+    fn shutdowns_after_engine_setting_change(engine_owner: bool) -> (usize, usize) {
+        use ikari_proto::v1::envelope::Body as EngineBody;
+        let dir = TempDir::new();
+        let path = dir.0.join("settings.tsv");
+        std::fs::write(&path, "# note\nengine.lm\ton\n").unwrap();
+        let transport = RecordingTransport::default();
+        let sent = transport.0.clone();
+        let mut shell = shell_with(
+            SettingsSource::File(path),
+            resources(),
+            engine_owner,
+            Box::new(transport),
+        );
+        send(&mut shell, 1, hello(1));
+        let update = UpdateSettings {
+            set: vec![SettingEntry {
+                key: "engine.lm".into(),
+                value: "off".into(),
+            }],
+            reset: Vec::new(),
+        };
+        send(&mut shell, 1, frame(2, Body::UpdateSettings(update)));
+        let sent = sent.lock().unwrap();
+        let count = |f: fn(&EngineBody) -> bool| sent.iter().filter(|b| f(b)).count();
+        (
+            count(|b| matches!(b, EngineBody::Shutdown(_))),
+            count(|b| matches!(b, EngineBody::Hello(_))),
+        )
+    }
+
+    #[test]
+    fn engine_setting_change_restarts_the_engine_only_for_an_owner_shell() {
+        let (shutdowns, hellos) = shutdowns_after_engine_setting_change(true);
+        assert_eq!(shutdowns, 1);
+        assert!(hellos >= 1);
+    }
+
+    #[test]
+    fn engine_setting_change_never_sends_shutdown_for_a_non_owner_shell() {
+        let (shutdowns, hellos) = shutdowns_after_engine_setting_change(false);
+        assert_eq!(shutdowns, 0);
+        assert!(hellos >= 1, "the LM state is still refreshed with Hello");
     }
 
     #[test]
