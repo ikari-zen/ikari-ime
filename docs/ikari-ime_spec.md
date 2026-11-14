@@ -510,7 +510,7 @@ macOSを最初に、次にWindowsを作る。開発の間は、どちらもロ�
 ### Windows（TSF）
 
 - COMのDLLとして実装し、管理者権限の `regsvr32` で登録する。自分で使うだけなら署名は不要だが、配るなら署名の要否を確かめる（#81）
-- **x64用とx86用の両方のDLLが必要**。32bitアプリにはx86版が読み込まれるため。ARM版Windowsで使うならARM64版も作る（**1.0.0 は x64 だけ**。x86 と ARM64 は 1.0.0 の後。[ADR 0040](adr/0040-windows-feasibility.md) §2.1。2026-11-11 ユーザー決定）
+- **x64用とx86用の両方のDLLが必要**。32bitアプリにはx86版が読み込まれるため。ARM版Windowsで使うならARM64版も作る（**1.0.0 は x64 だけ**。x86 と ARM64 は 1.0.0 の後。[ADR 0040](adr/0040-windows-feasibility.md) §2.3。2026-11-11 ユーザー決定）
 - ストアアプリ（UWP）でも使うには、DLLのファイル権限に「ALL APPLICATION PACKAGES」を付ける
 - 周辺テキストは ITfRange::GetText で取得する。IMM32系の古いアプリでは取れないことがある
 - 候補ウィンドウの位置は ITfContextView::GetTextExt で取得する
