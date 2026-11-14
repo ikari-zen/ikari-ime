@@ -306,6 +306,39 @@ fn non_owner_shell_coexists_with_a_different_engine_version_without_shutdown() {
     let sent = kinds(&h.latest().requests);
     assert!(!sent.contains(&"shutdown".to_owned()), "{sent:?}");
     assert_eq!(sent.iter().filter(|k| *k == "hello").count(), 1, "{sent:?}");
+    // 診断には版の組だけが出る
+    assert_eq!(
+        h.link.version_skew(),
+        Some(VersionSkew {
+            shell: "1.0".into(),
+            engine: "0.9".into(),
+        })
+    );
+}
+
+#[test]
+fn version_skew_is_reported_only_to_a_non_owner_with_different_versions() {
+    // 同じ版: 出さない
+    let same = Harness::with_version_and_owner("1.0", false);
+    same.link.hello("1.0", SEC).unwrap();
+    assert_eq!(same.link.version_skew(), None);
+    // Hello の前: 出さない
+    let before = Harness::with_version_and_owner("0.9", false);
+    assert_eq!(before.link.version_skew(), None);
+    // エンジンを持つ殻（macOS）: 版が違っても出さない（止めて起こし直す道がある）
+    let owner = Harness::with_version_and_owner("0.9", true);
+    let _ = owner.link.hello("1.0", SEC);
+    assert_eq!(owner.link.version_skew(), None);
+}
+
+#[test]
+fn version_skew_never_carries_unexpected_characters() {
+    let h = Harness::with_version_and_owner("日本語 0.9", false);
+    h.link.hello("1.0", SEC).unwrap();
+    assert_eq!(
+        h.link.version_skew().map(|skew| skew.engine),
+        Some("invalid".to_owned())
+    );
 }
 
 #[test]

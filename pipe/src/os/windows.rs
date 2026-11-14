@@ -23,7 +23,7 @@ use std::sync::{Arc, RwLock, RwLockReadGuard};
 use windows_sys::Win32::Foundation::{
     ERROR_BROKEN_PIPE, ERROR_IO_PENDING, ERROR_NO_DATA, ERROR_OPERATION_ABORTED, ERROR_PIPE_BUSY,
     ERROR_PIPE_CONNECTED, ERROR_PIPE_NOT_CONNECTED, GENERIC_READ, GENERIC_WRITE, HANDLE, HLOCAL,
-    INVALID_HANDLE_VALUE, LocalFree, WAIT_OBJECT_0,
+    INVALID_HANDLE_VALUE, LocalFree, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 use windows_sys::Win32::Security::Authorization::{
     ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
@@ -50,7 +50,7 @@ use windows_sys::Win32::System::Threading::{
 };
 
 use crate::client::Client;
-use crate::duplex::{Duplex, Halves, Listener, Shutdown};
+use crate::duplex::{Duplex, Halves, Listener, Shutdown, WRITE_DEADLINE};
 use crate::name::pipe_name;
 
 /// サーバーのインスタンスの開き方。読み書きの両方向、重ね合わせの I/O。
@@ -171,9 +171,19 @@ enum Completion {
     Done(u32),
     /// 閉じる指示で取り消した
     Cancelled,
+    /// 締め切りを超えたので取り消した
+    TimedOut,
 }
 
-/// 重ね合わせの操作を 1 つ行い、終わるまで待つ。`cancel` が立ったら取り消す。
+/// 締め切りなし（読みと接続の待ち）。
+const NO_DEADLINE_MS: u32 = INFINITE;
+
+/// `WRITE_DEADLINE` をミリ秒（`WaitForMultipleObjects` の単位）にしたもの。
+fn write_deadline_ms() -> u32 {
+    u32::try_from(WRITE_DEADLINE.as_millis()).unwrap_or(NO_DEADLINE_MS - 1)
+}
+
+/// 重ね合わせの操作を 1 つ行い、終わるまで待つ。`cancel` が立つか、`timeout_ms` を超えたら取り消す。
 ///
 /// `start` は `OVERLAPPED` を受けて、`handle` への操作（`ReadFile` など）を始め、その返り値（`BOOL`）を返す。
 /// この関数は、操作を始めたら、終わる（または取り消しが済む）まで戻らない。
@@ -187,9 +197,11 @@ unsafe fn run_overlapped(
     handle: HANDLE,
     event: &Event,
     cancel: &Event,
+    timeout_ms: u32,
     start: impl FnOnce(*mut OVERLAPPED) -> i32,
 ) -> io::Result<Completion> {
     event.reset()?;
+    let mut timed_out = false;
     // ov はこのフレームに置き、下の GetOverlappedResult（完了まで待つ）を通らずに抜ける道を作らない。
     // そのため、OS が ov を使っている間、ov は動かず生きている。
     let mut ov = OVERLAPPED {
@@ -206,10 +218,11 @@ unsafe fn run_overlapped(
         let handles = [event.raw(), cancel.raw()];
         // SAFETY: handles の 2 つは、借りている event と cancel のハンドルで、この呼び出しの間開いている
         let waited = unsafe {
-            WaitForMultipleObjects(handles.len() as u32, handles.as_ptr(), FALSE, INFINITE)
+            WaitForMultipleObjects(handles.len() as u32, handles.as_ptr(), FALSE, timeout_ms)
         };
         if waited != WAIT_OBJECT_0 {
-            // 閉じる指示（WAIT_OBJECT_0 + 1）、または待ちの失敗。どちらも取り消し、終わるのを下で待つ。
+            timed_out = waited == WAIT_TIMEOUT;
+            // 締め切り、閉じる指示（WAIT_OBJECT_0 + 1）、または待ちの失敗。どちらも取り消し、終わるのを下で待つ。
             // SAFETY: handle は開いていて、ov_ptr は進行中の操作の OVERLAPPED（このフレームの ov）。
             // 失敗（ERROR_NOT_FOUND）は、すでに終わっていたこと。どちらでも下の待ちで結果を受ける。
             unsafe { CancelIoEx(handle, ov_ptr) };
@@ -222,7 +235,12 @@ unsafe fn run_overlapped(
     if ok == FALSE {
         let err = io::Error::last_os_error();
         if is_code(&err, ERROR_OPERATION_ABORTED) {
-            return Ok(Completion::Cancelled);
+            // 締め切りの取り消しが、完了と行き違いになったときは、上の Done になる（書けたものは書けた）
+            return Ok(if timed_out {
+                Completion::TimedOut
+            } else {
+                Completion::Cancelled
+            });
         }
         return Err(err);
     }
@@ -314,10 +332,18 @@ impl Read for PipeReader {
         let start = |ov| unsafe { ReadFile(handle, buf, len, ptr::null_mut(), ov) };
         // SAFETY: handle は guard が閉じさせない（閉じる側は排他のロックを待つ）。buf（out）はこの呼び出しの
         // 間借りていて生きている。self.event はこの読み専用（&mut self で直列）。
-        let done = unsafe { run_overlapped(handle, &self.event, &self.conn.cancel, start) };
+        let done = unsafe {
+            run_overlapped(
+                handle,
+                &self.event,
+                &self.conn.cancel,
+                NO_DEADLINE_MS,
+                start,
+            )
+        };
         match done {
             Ok(Completion::Done(n)) => Ok(n as usize),
-            Ok(Completion::Cancelled) => Ok(0),
+            Ok(Completion::Cancelled | Completion::TimedOut) => Ok(0),
             Err(e) if is_disconnected(&e) => Ok(0),
             Err(e) => Err(e),
         }
@@ -349,10 +375,20 @@ impl Write for PipeWriter {
         let start = |ov| unsafe { WriteFile(handle, buf, len, ptr::null_mut(), ov) };
         // SAFETY: handle は guard が閉じさせない。buf（data）はこの呼び出しの間借りていて生きている。
         // self.event はこの書き専用（&mut self で直列）。
-        let done = unsafe { run_overlapped(handle, &self.event, &self.conn.cancel, start) };
+        let done = unsafe {
+            run_overlapped(
+                handle,
+                &self.event,
+                &self.conn.cancel,
+                write_deadline_ms(),
+                start,
+            )
+        };
         match done {
             Ok(Completion::Done(n)) => Ok(n as usize),
             Ok(Completion::Cancelled) => Err(broken_pipe()),
+            // 相手が読まずにバッファが埋まった。呼び出し側（Client、Server）が接続を切る
+            Ok(Completion::TimedOut) => Err(io::Error::from(io::ErrorKind::TimedOut)),
             Err(e) if is_disconnected(&e) => Err(broken_pipe()),
             Err(e) => Err(e),
         }
@@ -533,13 +569,20 @@ impl Listener for NamedPipeListener {
         let start = |ov| unsafe { ConnectNamedPipe(handle, ov) };
         // SAFETY: handle は instance が持っていて、この呼び出しの間閉じない。バッファは渡さない。
         // connect_event はこの受け付け専用（&mut self で直列）。
-        let connected =
-            unsafe { run_overlapped(handle, &self.connect_event, &self.close.cancel, start) };
+        let connected = unsafe {
+            run_overlapped(
+                handle,
+                &self.connect_event,
+                &self.close.cancel,
+                NO_DEADLINE_MS,
+                start,
+            )
+        };
         match connected {
             Ok(Completion::Done(_)) => {}
             // CreateNamedPipeW と ConnectNamedPipe の間に相手がつないだ。つながっている
             Err(e) if is_code(&e, ERROR_PIPE_CONNECTED) => {}
-            Ok(Completion::Cancelled) => {
+            Ok(Completion::Cancelled | Completion::TimedOut) => {
                 self.next = Some(instance);
                 return Ok(None);
             }
@@ -914,6 +957,27 @@ mod tests {
         thread::sleep(ikari_testtime::ms(100));
         closer.shutdown();
         assert!(waiting.join().unwrap().unwrap());
+    }
+
+    #[test]
+    fn write_gives_up_at_the_deadline_when_the_peer_never_reads() {
+        let name = unique_name();
+        let server = accept_once(&name);
+        let (client, _) = connect_duplex(&name).unwrap();
+        // 相手はつないだまま読まない（固まったエンジンの役）
+        let _server_side = server.join().unwrap();
+        let (_reader, mut writer, _shutdown) = client.split();
+        let chunk = vec![0u8; PIPE_BUFFER_BYTES as usize];
+        let started = std::time::Instant::now();
+        // バッファが埋まるまでは進む。埋まったら 1 回の書きが締め切りで TimedOut になる
+        let err = loop {
+            if let Err(e) = writer.write(&chunk) {
+                break e;
+            }
+            assert!(started.elapsed() < long(), "write never blocked");
+        };
+        assert_eq!(err.kind(), io::ErrorKind::TimedOut, "{err:?}");
+        assert!(started.elapsed() >= WRITE_DEADLINE);
     }
 
     #[test]

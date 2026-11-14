@@ -106,6 +106,28 @@ struct LinkState {
     counts: EngineCounts,
 }
 
+/// 殻とエンジンの版の違い（診断に出す版の文字列の組）
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VersionSkew {
+    pub shell: String,
+    pub engine: String,
+}
+
+/// 診断に出す版の文字列の長さの上限
+const DIAG_VERSION_MAX_BYTES: usize = 32;
+/// 版として読めない文字列の代わりの語
+const DIAG_VERSION_INVALID: &str = "invalid";
+
+/// 版の文字列を診断に出してよい形にする（`[A-Za-z0-9.+-]` で 32 バイトまで。外れたら `invalid`）
+fn diag_version(version: &str) -> String {
+    let valid = !version.is_empty()
+        && version.len() <= DIAG_VERSION_MAX_BYTES
+        && version
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'+' | b'-'));
+    if valid { version } else { DIAG_VERSION_INVALID }.to_owned()
+}
+
 impl LinkState {
     fn take_request_id(&mut self) -> u64 {
         let id = self.next_request_id;
@@ -491,6 +513,21 @@ impl EngineLink {
         lock(&self.state)
             .suspended_until
             .is_some_and(|until| now < until)
+    }
+
+    /// 版の違い（`engine_owner = false` の殻だけ。診断用）。直近の `Hello` の返事の版が殻の版と違うときの組。
+    /// 版は診断に出してよい文字だけ（`diag_version`）。動きは変えない（返事をそのまま使う。ADR 0064 §6.1）
+    pub fn version_skew(&self) -> Option<VersionSkew> {
+        if self.engine_owner {
+            return None;
+        }
+        let state = lock(&self.state);
+        let shell = state.shell_version.as_deref()?;
+        let engine = state.observed_engine_version.as_deref()?;
+        (shell != engine).then(|| VersionSkew {
+            shell: diag_version(shell),
+            engine: diag_version(engine),
+        })
     }
 
     /// 直近の `Hello` の返事に入っていたエンジンの版

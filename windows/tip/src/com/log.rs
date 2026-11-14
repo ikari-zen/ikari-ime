@@ -62,6 +62,25 @@ pub fn mode_values(values: [Option<i32>; 4]) {
     ));
 }
 
+/// 前回出した版の違い（打鍵のたびに同じ行を出さないため）
+static LAST_VERSION_SKEW: std::sync::Mutex<Option<(String, String)>> = std::sync::Mutex::new(None);
+
+/// TIP の版とエンジンの版が違うとき、前回と違う組だけ 1 行出す（診断用。#398）。
+/// 版は `shell-core` が出してよい文字だけにした文字列（入力の内容ではない）。動きは変えない（共存する）
+pub fn version_skew(shell: &str, engine: &str) {
+    let Ok(mut last) = LAST_VERSION_SKEW.lock() else {
+        return;
+    };
+    let pair = (shell.to_owned(), engine.to_owned());
+    if last.as_ref() == Some(&pair) {
+        return;
+    }
+    write(&format!(
+        "{PREFIX}version skew tip={shell} engine={engine}\n"
+    ));
+    *last = Some(pair);
+}
+
 /// HRESULT を出す。
 pub fn hresult(message: &'static str, code: HRESULT) {
     // HRESULT は符号つきの 32 ビット。16 進で読むのが通例なので、ビット列のまま出す

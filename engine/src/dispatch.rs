@@ -93,18 +93,23 @@ fn reply_conversion(reply: &envelope::Body) -> Option<u64> {
 /// 変換の行を、同じセッションの `sh_episode` と、同じ変換の `commit` などに結ぶ番号の注記。
 /// `session=` は変換を作る要求（`convert`、`reconvert`）にだけ付け、`conv=` は変換に触れる行すべてに付ける
 /// （どれの `lm_applied` のまま確定したかを調べるため。ADR 0034 §4.3）
-fn ids_note(session: Option<u64>, conversion: Option<u64>) -> Option<String> {
+fn ids_note(conn: ConnectionId, session: Option<u64>, conversion: Option<u64>) -> Option<String> {
     match (session, conversion) {
-        (Some(s), Some(c)) => Some(format!("session={s} conv={c}")),
-        (Some(s), None) => Some(session_note(s)),
+        (Some(s), Some(c)) => Some(format!("{} conv={c}", session_note(conn, s))),
+        (Some(s), None) => Some(session_note(conn, s)),
         (None, Some(c)) => Some(format!("conv={c}")),
         (None, None) => None,
     }
 }
 
-/// `session=` の注記
-fn session_note(id: u64) -> String {
-    format!("session={id}")
+/// `session=` の注記。既定の接続（macOS。0）以外には、続けて `conn=<接続の番号>` を足す
+/// （Windows は接続ごとに `session=` の番号が重なるので、接続で結ぶ。ADR 0064 §7.2。番号だけで文字ではない）
+pub(crate) fn session_note(conn: ConnectionId, id: u64) -> String {
+    if conn == ConnectionId::DEFAULT {
+        format!("session={id}")
+    } else {
+        format!("session={id} conn={}", conn.get())
+    }
 }
 
 /// ログの注記を空白でつなぐ
@@ -174,6 +179,7 @@ impl Inner {
                 let issue = admin::issue_label(&reply);
                 // 文節の数と区切り直しの向きだけを添える（読みと表記は書かない。NFR-19）
                 let ids = ids_note(
+                    conn,
                     session.filter(|_| creates_conversion),
                     request_conv.or_else(|| reply_conversion(&reply)),
                 );
@@ -198,7 +204,7 @@ impl Inner {
                 );
                 // どのセッションが知られていなかったかを調べられるように、番号だけ添える（ADR 0034 §4.3）
                 if fail.code == ErrorCode::UnknownSession {
-                    failed.note = session.map(session_note);
+                    failed.note = session.map(|id| session_note(conn, id));
                 }
                 failed
             }
@@ -216,14 +222,19 @@ impl Inner {
             envelope::Body::Prefetch(p) => self.prefetch(conn, p),
             // 行に足す注記がある要求（ADR 0034 §4.3、§7）
             envelope::Body::BeginSession(b) => {
-                let note = diag::begin_session_note(&b);
+                let note = diag::begin_session_note(conn, &b);
                 self.begin_session(conn, b).map(|reply| (reply, Some(note)))
+            }
+            // 殻の版がエンジンの版と違うときだけ、版を 1 行に残す（番号と版だけ。#398）
+            envelope::Body::Hello(h) => {
+                let note = diag::hello_skew_note(&h);
+                Ok((self.hello(), note))
             }
             envelope::Body::Commit(c) => self.commit(conn, c),
             envelope::Body::CommitSegments(c) => self.commit_segments(conn, c),
             // 終わったセッションの番号を残す（集計がセッションの区切りに使う。ADR 0034 §5）
             envelope::Body::EndSession(e) => {
-                let note = session_note(e.session_id);
+                let note = session_note(conn, e.session_id);
                 Ok((self.end_session(conn, e), Some(note)))
             }
             other => self.dispatch_plain(conn, other).map(|reply| (reply, None)),
@@ -236,7 +247,6 @@ impl Inner {
         body: envelope::Body,
     ) -> Result<envelope::Body, Fail> {
         match body {
-            envelope::Body::Hello(_) => Ok(self.hello()),
             envelope::Body::Page(p) => self.page(conn, p),
             envelope::Body::CommitText(c) => self.commit_text(conn, c),
             envelope::Body::Cancel(c) => Ok(self.cancel(conn, c)),

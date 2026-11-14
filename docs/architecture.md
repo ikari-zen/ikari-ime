@@ -23,7 +23,7 @@ ikari-ime の今の構成を 1 か所にまとめた地図。判断の理由は�
 | `shell-core` | 殻の OS に依存しない処理の全部（入力の状態機械、キー割り当て、合成器の呼び出し、英語のモードの文脈（`english`）、郵便番号と Unicode の表記（`postal`）、ショートコード、候補ウィンドウの配置（`panel`）、メニュー、エンジンとの通信と再接続（`engine`）、設定アプリとのブリッジの判断（`bridge`）、設定の検証と整形（`settings`）、診断ログ）。入口は「OS のイベント → `Shell::dispatch` → 動作の列」の 1 本。共通のシナリオ（`shell-core/scenarios/`）で振る舞いを守る | [0041](adr/0041-shell-state-machine-in-rust.md) |
 | `shell-ffi` | 殻と設定アプリが使う `shell-core` の C ABI（staticlib。ヘッダ `include/ikari_shell.h`。`ikari_shell_*`、`ikari_settings_*`、`ikari_panel_*`。入出力は protobuf の `ikari.shell.v1`・`ikari.settings.v1`） | [0041 §4.4](adr/0041-shell-state-machine-in-rust.md) |
 | `pipe` | TIP と常駐のエンジンをつなぐ、枠つきの双方向の流れ（枠の符号化、要求と返事の多重化、時間切れ、クライアントとサーバー）。標準ライブラリだけ。名前付きパイプの OS 層は `cfg(windows)`（W1-b）。`shell-core` に依存しない | [0040 §2.2、§5](adr/0040-windows-feasibility.md) |
-| `windows/engine-host`（`ikari-engine-host`） | Windows の常駐のエンジン（exe は `ikari-engine-host.exe`）。`pipe::Server` で受けた枠を `Engine::handle` に渡す。受け付けの繰り返しは OS に依存しない | [0040 §2.2](adr/0040-windows-feasibility.md) |
+| `windows/engine-host`（`ikari-engine-host`） | Windows の常駐のエンジン（exe は `ikari-engine-host.exe`）。`pipe::Server` で受けた枠を、接続ごとの `Connection::handle`（ADR 0064）に渡す。受け付けの繰り返しは OS に依存しない | [0040 §2.2](adr/0040-windows-feasibility.md) |
 | `windows/tip`（`ikari-tip`） | Windows の TIP（各アプリに入る DLL。cdylib）。キー（VK → `ShellEvent`）、動作の列 → TSF の操作、secure の判定、モードの写し、`pipe::Client` を `EngineTransport` に合わせる輸送は OS に依存せず Mac でテストする。TSF の COM の層は `src/com`（`cfg(windows)`、`unsafe` はここだけ） | [0040 §2.2、§2.8](adr/0040-windows-feasibility.md) |
 | `windows/candidate`（`ikari-candidate`） | Windows の候補窓の核（契約の骨組み。中身はスタブ。ADR 0062）。TIP → 候補窓の命令（`proto/ikari/candidate/v1/candidate.proto`）の型、行の高さ（固定の関数）、横の位置、画面（C#）が呼ぶ C の ABI（`include/ikari_candidate.h`）。TIP の送り口は `windows/tip/src/candidate_send.rs` | [0062](adr/0062-windows-candidate-window.md) |
 | `runmark`（`ikari-runmark`） | 起動中の印と、前回の終わり方の判定（`exit=clean|term|crash`）。`engine` と `shell-core`、`shell-ffi` が使う | [0051](adr/0051-crash-exit-record.md) |
@@ -104,6 +104,17 @@ ikari-engine-host.exe（windows/engine-host。ユーザーのセッションで�
 - 依存の向きは `windows/tip → pipe`、`windows/tip → shell-core`、`windows/engine-host → pipe`、`windows/engine-host → engine`、`windows/engine-host → shell-core`（設定のパイプ）、`windows/engine-host → core`（データの置き場所）の一方向。
 - 検証: Mac で `cargo check --workspace --tests --target x86_64-pc-windows-msvc`（`scripts/check.sh` に入っている。LM なし。外す crate は今ない）。CI の job `windows`（`windows-latest`。`cargo test --workspace`、LM なし。必須ではない）。キー入力と画面は実機（VM）。
 
+## 2.2 プロセス間の取り決め（共通の規則。#395。2026-11-15 の Fable の案）
+
+「今の状態」の表で、決定ではない。境界を足す・変える PR は、この表を一緒に直す（理由は ADR にリンクで書き、ここには書かない）。「未決」は決まっていないもの。S1〜S5 は、セキュリティの指摘の番号（issue で追う）。
+
+| 境界（名前、起動する者） | 締め切り | 固まったとき | 落ちたとき | 版違い | 認証（相手の確認） | プライバシー（出してよいもの） |
+| --- | --- | --- | --- | --- | --- | --- |
+| **エンジン**: TIP → engine-host。`ikari-ime-engine-v1-<SID>-s<セッション>`。起動は W5（未決）。macOS は XPC、launchd | 返事: 変換 `min(300, max(30, 6×字数)) + 40`ms、管理 3 秒、転送 30 秒、郵便 1 秒（両 OS 共通）。書き: 200ms（暫定。#392）。接続: ふさがりで 100ms × 3、失敗後は 100ms〜1 秒控える（暫定） | 返事の時間切れ → かな候補。書きの締め切り → 切断 → 落ちたと同じ。時間切れとつなぎ直しの失敗を休止に数える（#404。値は未計測） | 次の要求でつなぎ直し、`Hello` とセッションを送り直す。60 秒に 3 回で 300 秒休止。その間はかな候補（両 OS 共通） | 版の文字列: macOS は止めて起こし直す、Windows は共存（ADR 0064）。`schema_version` 違い → かな候補。壊す変更はパイプ名の `-v1-` | 受け口: 自分のユーザーと SYSTEM だけの DACL、リモート拒否、名前の先取り防止。**TIP は相手のパスを照合していない（S1。未決）。engine-host はつないできた相手を確かめない**。macOS は署名要件で相互に確認 | 読み・左文脈・確定を運ぶ。ログは番号と固定の語だけ（NFR-19）。secure は記録しない |
+| **設定**: 設定画面 → engine-host。`ikari-ime-settings-v1-…`。画面の方式は未決（W4-s3）。macOS は殻の Unix ソケット | 管理 3 秒、転送 30 秒。書き 200ms | 未決（画面の側の扱い） | 設定の接続が切れてもエンジンのパイプは動く。画面の側は未決 | 最初の枠で照合、違えば返事を送って閉じる（shell-core `bridge`。両 OS 共通） | DACL は上と同じ。**相手の確認なし（S3。未決。W5・W6）**。macOS は同じユーザー + 署名 + cdhash + パス | 設定、ユーザー辞書、学習（書き出しを含む）。中継は許可リストだけ |
+| **候補窓**: TIP → `ikari-candidate.exe`（片道）。`ikari-ime-candidate-v1-…`。起動と見張りは engine-host（[ADR 0062 §5.4](adr/0062-windows-candidate-window.md)）。macOS は同じプロセス | 返事なし。書き 200ms | 送れなければ捨てて切断、再送しない（ADR 0062 §3 の 4）。画面が固まった窓の検知は未決 | 窓なしで続行（§5.4）。エンジンと同じ間隔でつなぎ直す。持ち主の接続が切れたら核が隠す。起動し直しの上限は未決（値） | 知らない欄と命令は無視、`Hello.schema_version` はログだけ。世代は接続ごと（#405） | DACL は上と同じ。**TIP は相手のパスを照合していない（S4。未決）。窓は送り手を確かめない（どのアプリの TIP も正当なので確かめられない）** | 候補と注釈の文字（表示に必要）。ログと既定の PNG には出さない |
+| **LM の子**: engine → `ikari-lm-host`。標準入出力（名前なし）。起動はエンジン（[ADR 0060](adr/0060-user-selectable-lm-model.md) Q4） | 未決（仮置き: 応答 500ms、準備 5 秒。掃引で決める） | 締め切りで kill → LM なしで続行（方針。スパイクで確認、本実装は未） | 起動し直す。連続 3 回で諦める（仮置き）。エンジンの再起動で忘れる | 未決（エンジンと同じ場所に置き一緒に入れ替える前提なら不要。前提を書く） | 名前がないので横取りはない。**exe の絶対パスでの起動、渡すハンドルの限定は未決（S5）**。隔離（AppContainer、Sandbox）は計測のあとに有効（Q4 の (2)） | 左文脈と読み（採点に必要）。子はネットワークなし、読めるのはモデルだけ（方針） |
+
 ## 3. データの置き場所
 
 | 場所 | 中身 | 作る人 |
@@ -122,6 +133,7 @@ ikari-engine-host.exe（windows/engine-host。ユーザーのセッションで�
 - 書き込みは別スレッド `ikari-log`（有界のキュー 8192 行、64KB のバッファ、1 秒ごとに flush）。`Engine::handle` はキューに入れるだけでディスクに触らない。満杯なら捨てて、次に書けたときに `log_dropped n=N` の行を書く（[ADR 0034](adr/0034-diagnostic-log.md) §3.1）。
 - 4MB を超えるか、ローカルの日付が変わったら回し、`logs/engine-YYYYMMDD-HHMMSS.log.gz` にする。180 日か合計 100MB のどちらか先で古い順に消す（同 §3.2）。読むときは `cd ~/Library/Application\ Support/ikari-ime/logs && gzip -dc engine-*.log.gz | cat - engine.log | less`（名前の順が時刻の順。macOS の `zcat` は `.gz` を読まないので `gzip -dc` か `gzcat`）。
 - 変換の行を結ぶ番号（番号だけで文字ではない）: `convert` と `reconvert` に `session=<番号> conv=<変換の番号>`、`page` `segment_page` `resize_segment` `commit` `commit_segments` `cancel` に `conv=`。`sh_episode` も同じ `session=` を持つので、「どの変換で LM が効かなかったか」「LM なしの変換のまま確定したか」を、時刻の順と番号で結べる。
+- 接続の番号（Windows の engine-host。#398）: 既定の接続（macOS）以外の `session=` の行（`begin_session` `end_session` `convert` `reconvert` `sh_episode` ほか）は `session=N conn=M` の順に書く。接続の開始と終了は `connect conn=M` と `disconnect conn=M`（番号だけ）。macOS の行は変えない。殻の版がエンジンと違う `hello` の行には `peer_version=<殻の版> skew=1`（版は `[A-Za-z0-9.+-]` で 32 バイトまで、外れたら `invalid`）。TIP 側の版の違いは OutputDebugString に `ikari-tip: version skew tip=<版> engine=<版>`。
 - `convert` の注記: `segments=N`、`cache=hit|wait_hit|wait_miss|miss`、`lm_applied=1|0`（返事の `lm_applied`。3 つ目の項目の `lm=<状態>` とは別のキー）、外れ（`cache=miss`）なら `miss=reading|context|none`（同じセッションのキャッシュに、読みだけが違うもの／文脈の番号だけが違うものがある／近いものがない）。秘密の入力は `cache=miss miss=none`。続けて `gap=<1 位と 2 位のスコアの差>`（候補が 1 件以下なら `na`）と `confident=1|0`（#69）。続けて `rlen=<読みの文字数>`（secure は書かない）と `qlen=<変換の時点で終わっていない先行計算の数（待ち + 処理中）>`（#159。数だけで文字は出さない）。
 - `prefetch_done` の注記: `lm_applied=1|0`（LM が間に合って使われたか）、`lm_calls=N`（その先行計算での LM 呼び出し回数。2 文節以上は 2）。
 - 先行計算の左文脈: 合成の最初の `contextRefreshKeystrokes` 打鍵は左文脈を読み直す（#1。変換中に次の文字を打つと、1 打鍵目の文脈は直前の確定がアプリに入る前に読まれるため）。文脈の番号（`contextRev`）が進んだら、その文脈で先行計算を送り直す。それより後の打鍵は読み直さず、Space で読み直す。
