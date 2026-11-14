@@ -22,8 +22,8 @@ use windows::Win32::System::Registry::{
 use windows::Win32::UI::Input::KeyboardAndMouse::HKL;
 use windows::Win32::UI::TextServices::{
     CLSID_TF_CategoryMgr, CLSID_TF_InputProcessorProfiles, GUID_TFCAT_TIP_KEYBOARD,
-    GUID_TFCAT_TIPCAP_IMMERSIVESUPPORT, GUID_TFCAT_TIPCAP_SYSTRAYSUPPORT, ITfCategoryMgr,
-    ITfInputProcessorProfileMgr,
+    GUID_TFCAT_TIPCAP_IMMERSIVESUPPORT, GUID_TFCAT_TIPCAP_INPUTMODECOMPARTMENT,
+    GUID_TFCAT_TIPCAP_SYSTRAYSUPPORT, ITfCategoryMgr, ITfInputProcessorProfileMgr,
 };
 use windows_core::{GUID, HSTRING, PCWSTR};
 
@@ -39,15 +39,22 @@ const LANGID_JAPANESE: u16 = 0x0411;
 /// アイコンは DLL の資源の 1 つ目（資源はまだない。W4 でアイコンを入れる）
 const ICON_INDEX: u32 = 0;
 
-/// 登録するカテゴリ。キーボードの TIP であること、タスクバーの入力の表示、Windows 8 以降のアプリの対応。
+/// 登録するカテゴリ。キーボードの TIP であること、タスクバーの入力の表示、Windows 8 以降のアプリの対応、
+/// input mode compartment への対応。
+///
+/// INPUTMODECOMPARTMENT は「この TIP は input mode compartment（OPENCLOSE、INPUTMODE_CONVERSION）で
+/// 入力モードを表す」という宣言（Microsoft の predefined category values）。無いと OS のインジケーターが
+/// compartment の変化を表示に反映せず、英語のモードや IME オフでも「あ」のままになる疑い（#370、#371。
+/// 実機で確かめる）。Mozc、weasel、corvusskk も登録している。
 ///
 /// IMMERSIVESUPPORT は、ストアのアプリ（app container）でも読まれるようにする印。1.0.0 の範囲（ADR 0040 §2.3）は
 /// デスクトップのアプリだけで、app container からはパイプにつながらない（W1-b の ACL）。つながらないときは
 /// 漢字に変換できないだけで、キーは失わない。外すかは S7 の実機で決める。
-const CATEGORIES: [GUID; 3] = [
+const CATEGORIES: [GUID; 4] = [
     GUID_TFCAT_TIP_KEYBOARD,
     GUID_TFCAT_TIPCAP_SYSTRAYSUPPORT,
     GUID_TFCAT_TIPCAP_IMMERSIVESUPPORT,
+    GUID_TFCAT_TIPCAP_INPUTMODECOMPARTMENT,
 ];
 
 pub fn register() -> windows_core::Result<()> {
