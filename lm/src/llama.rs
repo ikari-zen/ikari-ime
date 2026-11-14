@@ -183,6 +183,13 @@ impl Placement {
     }
 }
 
+/// バックエンドを読み込み（Vulkan のビルドは exe の隣の `backends` から）、登録されたデバイスの要約を返す。
+/// モデルは読まない（診断用。`cpu,vulkan:IntegratedGpu` の形。デバイスが無ければ `none`）
+pub fn probe_devices() -> Result<String, LmError> {
+    backend()?;
+    Ok(device_summary())
+}
+
 /// 読み込んだモデルについて、プロンプトの作り方に効く事実（診断用。実モデルのテストで確かめる）
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ModelInfo {

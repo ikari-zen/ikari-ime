@@ -26,4 +26,4 @@ pub use scorer::{LmDevice, LmScorer};
 pub use trace::LmTrace;
 
 #[cfg(feature = "llama")]
-pub use llama::{LlamaScorer, ModelInfo};
+pub use llama::{LlamaScorer, ModelInfo, probe_devices};
