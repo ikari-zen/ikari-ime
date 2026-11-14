@@ -55,6 +55,8 @@ pub enum SettingsSection {
     Postal,
     UnicodeNotation,
     WeekdayDates,
+    /// 開発者向け（ADR 0061）。変換の画面のいちばん下
+    Developer,
 }
 
 impl SettingsSection {
@@ -68,7 +70,8 @@ impl SettingsSection {
             | Self::EmojiShortcode
             | Self::Postal
             | Self::UnicodeNotation
-            | Self::WeekdayDates => SettingsScreen::Conversion,
+            | Self::WeekdayDates
+            | Self::Developer => SettingsScreen::Conversion,
         }
     }
 
@@ -85,6 +88,7 @@ impl SettingsSection {
             Self::Postal => "postal",
             Self::UnicodeNotation => "unicode_notation",
             Self::WeekdayDates => "weekday_dates",
+            Self::Developer => "developer",
         }
     }
 
@@ -286,6 +290,12 @@ pub fn all_specs() -> Vec<SettingSpec> {
             SettingKind::Bool,
             Sec::WeekdayDates,
             EngineRestart,
+        ),
+        spec(
+            KEY_DEVELOPER_LM_STATUS,
+            SettingKind::Bool,
+            Sec::Developer,
+            Immediate,
         ),
     ]);
     specs

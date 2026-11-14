@@ -12,6 +12,7 @@ mod error;
 mod prompt;
 mod ranker;
 mod scorer;
+pub mod trace;
 
 #[cfg(feature = "llama")]
 mod llama;
@@ -19,7 +20,8 @@ mod llama;
 pub use config::{ModelKind, ZenzConfig};
 pub use prompt::{PromptInput, build_prompt, build_prompt_for, tail_chars};
 pub use ranker::{LmStats, ZenzRanker};
-pub use scorer::LmScorer;
+pub use scorer::{LmDevice, LmScorer};
+pub use trace::LmTrace;
 
 #[cfg(feature = "llama")]
 pub use llama::{LlamaScorer, ModelInfo};

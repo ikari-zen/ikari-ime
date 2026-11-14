@@ -7,6 +7,7 @@ use super::*;
 
 fn panel() -> CandidatePanelModel {
     CandidatePanelModel {
+        developer_note: String::new(),
         candidates: vec![CandidateItem {
             surface: "日本語".to_owned(),
             annotation: String::new(),

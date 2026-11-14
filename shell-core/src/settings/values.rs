@@ -58,6 +58,7 @@ pub struct SettingsValues {
     pub date_weekday_dates: bool,
     pub candidate_hide_when_confident: bool,
     pub clause_min_chars: u32,
+    pub developer_lm_status: bool,
 }
 
 impl Default for SettingsValues {
@@ -83,6 +84,7 @@ impl Default for SettingsValues {
             date_weekday_dates: d.date_weekday_dates,
             candidate_hide_when_confident: d.candidate_hide_when_confident,
             clause_min_chars: d.clause_min_chars,
+            developer_lm_status: d.developer_lm_status,
         }
     }
 }
@@ -166,6 +168,7 @@ impl SettingsValues {
         if let Some(n) = ranged(KEY_CLAUSE_MIN_CHARS, &CLAUSE_MIN_CHARS_RANGE) {
             values.clause_min_chars = n;
         }
+        values.developer_lm_status = toggle(KEY_DEVELOPER_LM_STATUS, values.developer_lm_status);
         values
     }
 }
@@ -338,6 +341,8 @@ pub enum SettingsIntent {
     ClauseMinChars(i64),
     UnicodeNotation(bool),
     DateWeekdayDates(bool),
+    /// 開発者向け: 候補窓に LM の様子を出す（ADR 0061）
+    DeveloperLmStatus(bool),
     EmojiSmallLetters(bool),
     EmojiShortcode(bool),
     /// 入力欄の文字列（空白は削る。使えない文字があれば `InvalidBundleId`）
@@ -540,6 +545,9 @@ impl SettingsValues {
             }
             I::DateWeekdayDates(on) => {
                 switch_changed(self.date_weekday_dates, *on, KEY_DATE_WEEKDAY_DATES)
+            }
+            I::DeveloperLmStatus(on) => {
+                switch_changed(self.developer_lm_status, *on, KEY_DEVELOPER_LM_STATUS)
             }
             I::EmojiSmallLetters(on) => {
                 switch_changed(self.emoji_small_letters, *on, KEY_EMOJI_SMALL_LETTERS)

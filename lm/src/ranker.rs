@@ -10,7 +10,7 @@
 //!   次の要求で読み直し、読み直している間は時間切れとして扱う（NFR-15: n-gram 相当の順位のまま）。
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, SyncSender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::{self, JoinHandle};
@@ -22,7 +22,8 @@ use crate::config::{COST_PER_NAT, ModelKind, ZenzConfig};
 use crate::prompt::{
     PromptInput, build_prompt_for, head_chars, join_topic, tail_chars, topic_words,
 };
-use crate::scorer::{LmLoader, LmScorer};
+use crate::scorer::{LmDevice, LmLoader, LmScorer};
+use crate::trace;
 
 const RANKER_NAME: &str = "zenz";
 const WORKER_THREAD_NAME: &str = "ikari-zenz";
@@ -39,7 +40,7 @@ struct Request {
     key: RequestKey,
     prompt: String,
     candidates: Vec<String>,
-    reply: SyncSender<Scored>,
+    reply: SyncSender<Replied>,
 }
 
 /// `warm_up()` が採点させる読みと候補（短い読みで、候補は2つ）
@@ -50,6 +51,29 @@ const WARM_UP_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// 表記ごとの NLL
 type Scored = Arc<HashMap<String, f32>>;
+
+/// ワーカーの返事: 採点と、ワーカーでの推論（`nll`）の時間（ADR 0061 §4.1）
+type Replied = (Scored, Duration);
+
+const DEVICE_UNKNOWN: u8 = 0;
+const DEVICE_CPU: u8 = 1;
+const DEVICE_GPU: u8 = 2;
+
+fn device_to_u8(d: LmDevice) -> u8 {
+    match d {
+        LmDevice::Unknown => DEVICE_UNKNOWN,
+        LmDevice::Cpu => DEVICE_CPU,
+        LmDevice::Gpu => DEVICE_GPU,
+    }
+}
+
+fn device_from_u8(v: u8) -> LmDevice {
+    match v {
+        DEVICE_CPU => LmDevice::Cpu,
+        DEVICE_GPU => LmDevice::Gpu,
+        _ => LmDevice::Unknown,
+    }
+}
 
 #[derive(Default)]
 struct Counters {
@@ -72,8 +96,10 @@ struct Counters {
 struct Shared {
     counters: Counters,
     loaded: AtomicBool,
+    /// 読み込まれているモデルの装置（`DEVICE_*`。読まれていなければ `DEVICE_UNKNOWN`）
+    device: AtomicU8,
     /// 遅れて届いた結果（1件だけ）
-    late: Mutex<Option<(RequestKey, Scored)>>,
+    late: Mutex<Option<(RequestKey, Scored, Duration)>>,
     /// 最後に送った要求のキー（同じ要求を重ねて送らないため）
     inflight: Mutex<Option<RequestKey>>,
 }
@@ -105,6 +131,8 @@ pub struct LmStats {
     pub inference_errors: u64,
     /// いまモデルが読み込まれているか
     pub loaded: bool,
+    /// いま読み込まれているモデルの装置（読まれていなければ `Unknown`。ADR 0061 §4.1）
+    pub device: LmDevice,
 }
 
 impl LmStats {
@@ -136,6 +164,7 @@ impl ZenzRanker {
         let shared = Arc::new(Shared {
             counters: Counters::default(),
             loaded: AtomicBool::new(false),
+            device: AtomicU8::new(DEVICE_UNKNOWN),
             late: Mutex::new(None),
             inflight: Mutex::new(None),
         });
@@ -156,6 +185,11 @@ impl ZenzRanker {
             tx: Mutex::new(tx),
             worker: Mutex::new(worker),
         }
+    }
+
+    /// いま読み込まれているモデルの装置。読まれていなければ `Unknown`
+    pub fn device(&self) -> LmDevice {
+        device_from_u8(self.shared.device.load(Ordering::Acquire))
     }
 
     pub fn config(&self) -> &ZenzConfig {
@@ -179,6 +213,7 @@ impl ZenzRanker {
             unloads: c.unloads.load(Ordering::Relaxed),
             inference_errors: c.inference_errors.load(Ordering::Relaxed),
             loaded: self.shared.loaded.load(Ordering::Acquire),
+            device: self.device(),
         }
     }
 
@@ -295,7 +330,7 @@ impl ZenzRanker {
                 reading: WARM_UP_READING,
             },
         );
-        let (reply_tx, reply_rx) = mpsc::sync_channel::<Scored>(1);
+        let (reply_tx, reply_rx) = mpsc::sync_channel::<Replied>(1);
         let request = Request {
             key: RequestKey {
                 reading: WARM_UP_READING.to_owned(),
@@ -337,17 +372,20 @@ impl Ranker for ZenzRanker {
             return;
         };
         counters.calls.fetch_add(1, Ordering::Relaxed);
+        trace::record_call(self.device());
         let (key, prompt) = self.build_request_parts(input);
 
         // 遅れて届いた結果が、同じ変換のものならそのまま使う
         {
             let late = lock(&self.shared.late);
-            if let Some((k, scored)) = late.as_ref()
+            if let Some((k, scored, infer)) = late.as_ref()
                 && *k == key
                 && surfaces.iter().all(|s| scored.contains_key(*s))
             {
                 let scored = Arc::clone(scored);
+                let infer = *infer;
                 drop(late);
+                trace::record_late_hit(infer);
                 self.shared
                     .counters
                     .late_hits
@@ -364,6 +402,7 @@ impl Ranker for ZenzRanker {
         if wait.is_zero() {
             counters.expired.fetch_add(1, Ordering::Relaxed);
             counters.timeouts.fetch_add(1, Ordering::Relaxed);
+            trace::record_timeout(Duration::ZERO);
             return;
         }
         // 同じ要求の処理がまだ続いているなら、重ねて送らずに時間切れとして戻る
@@ -371,12 +410,13 @@ impl Ranker for ZenzRanker {
             let mut inflight = lock(&self.shared.inflight);
             if inflight.as_ref() == Some(&key) {
                 counters.timeouts.fetch_add(1, Ordering::Relaxed);
+                trace::record_timeout(Duration::ZERO);
                 return;
             }
             *inflight = Some(key.clone());
         }
 
-        let (reply_tx, reply_rx) = mpsc::sync_channel::<Scored>(1);
+        let (reply_tx, reply_rx) = mpsc::sync_channel::<Replied>(1);
         let request = Request {
             key: key.clone(),
             prompt,
@@ -394,17 +434,21 @@ impl Ranker for ZenzRanker {
         if !sent {
             clear_inflight(&self.shared, &key);
             counters.timeouts.fetch_add(1, Ordering::Relaxed);
+            trace::record_timeout(Duration::ZERO);
             return;
         }
         counters.requests.fetch_add(1, Ordering::Relaxed);
 
+        let waiting_since = Instant::now();
         match reply_rx.recv_timeout(wait) {
-            Ok(scored) => {
+            Ok((scored, infer)) => {
+                trace::record_reply(waiting_since.elapsed(), infer);
                 clear_inflight(&self.shared, &key);
                 self.apply(&scored, cands);
             }
             Err(RecvTimeoutError::Timeout | RecvTimeoutError::Disconnected) => {
                 counters.timeouts.fetch_add(1, Ordering::Relaxed);
+                trace::record_timeout(waiting_since.elapsed());
             }
         }
     }
@@ -443,6 +487,7 @@ fn worker_loop(rx: Receiver<Request>, loader: LmLoader, shared: Arc<Shared>, cfg
                 Err(RecvTimeoutError::Timeout) => {
                     // NFR-11: アイドルが続いたのでモデルを解放する
                     scorer = None;
+                    shared.device.store(DEVICE_UNKNOWN, Ordering::Release);
                     shared.loaded.store(false, Ordering::Release);
                     counters.unloads.fetch_add(1, Ordering::Relaxed);
                     continue;
@@ -469,6 +514,9 @@ fn worker_loop(rx: Receiver<Request>, loader: LmLoader, shared: Arc<Shared>, cfg
             if !blocked {
                 match loader() {
                     Ok(s) => {
+                        shared
+                            .device
+                            .store(device_to_u8(s.device()), Ordering::Release);
                         scorer = Some(s);
                         last_load_failure = None;
                         shared.loaded.store(true, Ordering::Release);
@@ -486,13 +534,16 @@ fn worker_loop(rx: Receiver<Request>, loader: LmLoader, shared: Arc<Shared>, cfg
             continue;
         };
 
-        match s.nll(&req.prompt, &req.candidates) {
+        let infer_started = Instant::now();
+        let result = s.nll(&req.prompt, &req.candidates);
+        let infer = infer_started.elapsed();
+        match result {
             Ok(nlls) if nlls.len() == req.candidates.len() => {
                 counters.completed.fetch_add(1, Ordering::Relaxed);
                 let scored: Scored = Arc::new(req.candidates.iter().cloned().zip(nlls).collect());
                 // 待っている人がいれば渡す。もういなければ（時間切れ）、次の同じ変換のために残す
-                if req.reply.send(Arc::clone(&scored)).is_err() {
-                    *lock(&shared.late) = Some((req.key.clone(), scored));
+                if req.reply.send((Arc::clone(&scored), infer)).is_err() {
+                    *lock(&shared.late) = Some((req.key.clone(), scored, infer));
                 }
             }
             Ok(_) | Err(_) => {
@@ -503,6 +554,7 @@ fn worker_loop(rx: Receiver<Request>, loader: LmLoader, shared: Arc<Shared>, cfg
     }
     // ワーカーの終了時に、モデルはこのスレッドの中で解放される
     drop(scorer);
+    shared.device.store(DEVICE_UNKNOWN, Ordering::Release);
     shared.loaded.store(false, Ordering::Release);
 }
 

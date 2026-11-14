@@ -44,6 +44,10 @@ impl LmHandle for ZenzHandle {
     fn is_loaded(&self) -> bool {
         self.ranker.stats().loaded
     }
+
+    fn device(&self) -> LmDevice {
+        self.ranker.device()
+    }
 }
 
 #[cfg(not(feature = "lm"))]

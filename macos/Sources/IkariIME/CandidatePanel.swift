@@ -1,5 +1,6 @@
 // 候補ウィンドウ（ADR 0004 §6.4、ADR 0014、spec の「候補リストの表示」）。
 // 枠のない、アクティブにならない NSPanel。縦一列（1 行に 1 候補）、番号ラベル、選択中は背景色。
+// 開発者向けの 1 行（`developer_note`。ADR 0061）は、空でなければ候補の下に小さく出す。
 // 注釈の行は、注釈のデータが入るまで出さない（ADR 0014 §9 Q7）。
 // 候補の `label`（ショートコードの名前 `:eyes:`。ADR 0027 §3.4）は、行の右に薄く出す。
 // アンカーの下に置き、入らないときだけ上に置く。上に置いたときは 1 位を下（アンカーに近い側）にする。
@@ -94,11 +95,15 @@ final class CandidateView: NSView {
     static let cornerRadius: CGFloat = 6
     static let selectionInset: CGFloat = 2
     static let minimumWidth: CGFloat = 160
+    /// 開発者向けの 1 行（`developer_note`。ADR 0061 §6.3）の高さと余白。空なら行ごと出さない
+    static let noteHeight: CGFloat = 20
+    static let noteAlpha: CGFloat = 0.8
     static let minimumSize = NSSize(width: minimumWidth, height: rowHeight)
 
     private let candidateFont = NSFont.systemFont(ofSize: 15)
     private let labelFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
     private let trailingFont = NSFont.systemFont(ofSize: 11)
+    private let noteFont = NSFont.systemFont(ofSize: 10)
 
     /// この変換でこれまでに見せた最大の幅。ページを送るたびに右端が揺れないよう、縮めない
     private var widestSoFar: CGFloat = 0
@@ -113,6 +118,12 @@ final class CandidateView: NSView {
     }
 
     override var isFlipped: Bool { true }
+
+    /// 開発者向けの 1 行の高さ（空なら 0）。中身は解釈しない
+    private var noteRowHeight: CGFloat { model.developerNote.isEmpty ? 0 : Self.noteHeight }
+
+    /// 候補の行が占める高さ（開発者向けの 1 行を除く）
+    private var candidatesHeight: CGFloat { Self.height(rows: model.candidates.count) }
 
     static func height(rows: Int) -> CGFloat {
         CGFloat(max(rows, 1)) * rowHeight
@@ -135,13 +146,15 @@ final class CandidateView: NSView {
             let trailingWidth = trailing.isEmpty ? 0 : Self.trailingLabelGap + width(of: trailing, font: trailingFont)
             return Self.cellPadding * 2 + label + Self.labelGap + surface + trailingWidth
         }.max() ?? 0
-        return max(Self.minimumWidth, widest)
+        let note = model.developerNote.isEmpty
+            ? 0 : Self.cellPadding * 2 + width(of: model.developerNote, font: noteFont)
+        return max(Self.minimumWidth, widest, note)
     }
 
     /// 幅は見せた候補のいちばん長いものに合わせ、この変換の間は縮めない。高さは見せている件数ぶん
     var preferredSize: NSSize {
         widestSoFar = max(widestSoFar, contentWidth())
-        return NSSize(width: widestSoFar, height: Self.height(rows: model.candidates.count))
+        return NSSize(width: widestSoFar, height: candidatesHeight + noteRowHeight)
     }
 
     /// `index` 番目の候補の行の矩形。上に置いたときは、1 位が下になる
@@ -183,11 +196,22 @@ final class CandidateView: NSView {
             }
 
             // 候補同士は線で区切る（画面の上から数えて最後の行の下には引かない）
-            if row.maxY < bounds.height - 0.5 {
+            if row.maxY < candidatesHeight - 0.5 {
                 NSColor.separatorColor.setFill()
                 NSRect(x: Self.separatorInset, y: row.maxY - 0.5, width: bounds.width - Self.separatorInset * 2, height: 0.5)
                     .fill()
             }
+        }
+
+        if !model.developerNote.isEmpty {
+            let noteRow = NSRect(x: 0, y: candidatesHeight, width: bounds.width, height: Self.noteHeight)
+            NSColor.separatorColor.setFill()
+            NSRect(x: Self.separatorInset, y: noteRow.minY - 0.5, width: bounds.width - Self.separatorInset * 2, height: 0.5)
+                .fill()
+            draw(
+                model.developerNote, font: noteFont,
+                color: NSColor.secondaryLabelColor.withAlphaComponent(Self.noteAlpha),
+                at: noteRow.minX + Self.cellPadding, in: noteRow)
         }
     }
 

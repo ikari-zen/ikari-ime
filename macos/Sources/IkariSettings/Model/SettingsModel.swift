@@ -138,6 +138,7 @@ final class SettingsModel {
     func setPostalJapanese(_ enabled: Bool) async { await apply(.postalJapanese(enabled)) }
     func setPostalEnglish(_ enabled: Bool) async { await apply(.postalEnglish(enabled)) }
     func setCandidateHideWhenConfident(_ enabled: Bool) async { await apply(.candidateHideWhenConfident(enabled)) }
+    func setDeveloperLmStatus(_ enabled: Bool) async { await apply(.developerLmStatus(enabled)) }
     func setUnicodeNotation(_ enabled: Bool) async { await apply(.unicodeNotation(enabled)) }
     func setDateWeekdayDates(_ enabled: Bool) async { await apply(.dateWeekdayDates(enabled)) }
     func setPostalTePrefix(_ enabled: Bool) async { await apply(.postalTePrefix(enabled)) }

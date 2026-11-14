@@ -441,6 +441,7 @@ fn model(choosing: &PostalChoosing) -> CandidatePanelModel {
     let end = (start + PAGE_SIZE).min(choosing.rows.len());
     let rows = &choosing.rows[start..end];
     CandidatePanelModel {
+        developer_note: String::new(),
         candidates: rows
             .iter()
             .enumerate()

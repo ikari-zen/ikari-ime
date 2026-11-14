@@ -1,0 +1,131 @@
+{
+  "description": "開発者向けに、候補窓の下へ LM の様子を 1 行出す（developer.lm_status。ADR 0061 §6.2・§7）",
+  "defaults": {"surrounding": {"left": "これは"}},
+  "scenarios": [
+    {
+      "name": "off shows no line even when the engine reports",
+      "setup": {"engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": false, "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "lm_report": {"verdict": "applied", "wait_micros": 42000, "infer_micros": 38000, "lm_deadline_micros": 300000, "convert_wait_micros": 30000, "device": "gpu", "calls": 3}}]}},
+      "steps": [
+        {"type_text": "hi", "expect": [{"text": "h", "type": "set_marked_text"}, {"highlighted_length": 1, "text": "ひ", "type": "set_marked_text"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "reading": "ひ", "type": "prefetch"}]},
+        {"press": "space", "expect": [{"highlighted_length": 2, "text": "a1", "type": "set_marked_text"}, {"candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "reserved_rows": 3, "selected": 0, "type": "show_candidates"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "reading": "ひ", "timeout_ms": 70, "type": "convert"}]}
+      ]
+    },
+    {
+      "name": "on and applied",
+      "setup": {"engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": false, "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "lm_report": {"verdict": "applied", "wait_micros": 42000, "infer_micros": 38000, "lm_deadline_micros": 300000, "convert_wait_micros": 30000, "device": "gpu", "calls": 3}}]}, "settings": ["developer.lm_status\ton"]},
+      "steps": [
+        {"type_text": "hi", "expect": [{"text": "h", "type": "set_marked_text"}, {"highlighted_length": 1, "text": "ひ", "type": "set_marked_text"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "reading": "ひ", "type": "prefetch"}]},
+        {"press": "space", "expect": [{"highlighted_length": 2, "text": "a1", "type": "set_marked_text"}, {"candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "developer_note": "LM 間に合った 42ms / 締め切り 300ms（推論 38ms） GPU", "reserved_rows": 3, "selected": 0, "type": "show_candidates"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "reading": "ひ", "timeout_ms": 70, "type": "convert"}]}
+      ]
+    },
+    {
+      "name": "on and applied with a late result",
+      "setup": {"engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": false, "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "lm_report": {"verdict": "applied", "wait_micros": 42000, "infer_micros": 38000, "lm_deadline_micros": 300000, "convert_wait_micros": 30000, "device": "gpu", "calls": 3, "late_hits": 1}}]}, "settings": ["developer.lm_status\ton"]},
+      "steps": [
+        {"type_text": "hi", "expect": [{"text": "h", "type": "set_marked_text"}, {"highlighted_length": 1, "text": "ひ", "type": "set_marked_text"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "reading": "ひ", "type": "prefetch"}]},
+        {"press": "space", "expect": [{"highlighted_length": 2, "text": "a1", "type": "set_marked_text"}, {"candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "developer_note": "LM 間に合った（遅れて届いた結果） 42ms / 締め切り 300ms（推論 38ms） GPU", "reserved_rows": 3, "selected": 0, "type": "show_candidates"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "reading": "ひ", "timeout_ms": 70, "type": "convert"}]}
+      ]
+    },
+    {
+      "name": "on and timed out on the cpu",
+      "setup": {"engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": false, "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "lm_report": {"verdict": "timed_out", "wait_micros": 300000, "lm_deadline_micros": 300000, "convert_wait_micros": 30000, "device": "cpu", "calls": 3, "timeouts": 1}}]}, "settings": ["developer.lm_status\ton"]},
+      "steps": [
+        {"type_text": "hi", "expect": [{"text": "h", "type": "set_marked_text"}, {"highlighted_length": 1, "text": "ひ", "type": "set_marked_text"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "reading": "ひ", "type": "prefetch"}]},
+        {"press": "space", "expect": [{"highlighted_length": 2, "text": "a1", "type": "set_marked_text"}, {"candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "developer_note": "LM 時間切れ 300ms / 締め切り 300ms CPU", "reserved_rows": 3, "selected": 0, "type": "show_candidates"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "reading": "ひ", "timeout_ms": 70, "type": "convert"}]}
+      ]
+    },
+    {
+      "name": "on and nothing to score",
+      "setup": {"engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": false, "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "lm_report": {"verdict": "not_scored", "lm_deadline_micros": 300000, "device": "gpu"}}]}, "settings": ["developer.lm_status\ton"]},
+      "steps": [
+        {"type_text": "hi", "expect": [{"text": "h", "type": "set_marked_text"}, {"highlighted_length": 1, "text": "ひ", "type": "set_marked_text"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "reading": "ひ", "type": "prefetch"}]},
+        {"press": "space", "expect": [{"highlighted_length": 2, "text": "a1", "type": "set_marked_text"}, {"candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "developer_note": "LM 採点なし GPU", "reserved_rows": 3, "selected": 0, "type": "show_candidates"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "reading": "ひ", "timeout_ms": 70, "type": "convert"}]}
+      ]
+    },
+    {
+      "name": "on and the prefetch was late",
+      "setup": {"engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": false, "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "lm_report": {"verdict": "prefetch_late", "lm_deadline_micros": 300000, "convert_wait_micros": 30000, "device": "gpu"}}]}, "settings": ["developer.lm_status\ton"]},
+      "steps": [
+        {"type_text": "hi", "expect": [{"text": "h", "type": "set_marked_text"}, {"highlighted_length": 1, "text": "ひ", "type": "set_marked_text"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "reading": "ひ", "type": "prefetch"}]},
+        {"press": "space", "expect": [{"highlighted_length": 2, "text": "a1", "type": "set_marked_text"}, {"candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "developer_note": "LM なし: 先行計算が Space から 30ms に間に合わず", "reserved_rows": 3, "selected": 0, "type": "show_candidates"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "reading": "ひ", "timeout_ms": 70, "type": "convert"}]}
+      ]
+    },
+    {
+      "name": "on and there was no prefetch",
+      "setup": {"engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": false, "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "lm_report": {"verdict": "no_prefetch", "lm_deadline_micros": 300000}}]}, "settings": ["developer.lm_status\ton"]},
+      "steps": [
+        {"type_text": "hi", "expect": [{"text": "h", "type": "set_marked_text"}, {"highlighted_length": 1, "text": "ひ", "type": "set_marked_text"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "reading": "ひ", "type": "prefetch"}]},
+        {"press": "space", "expect": [{"highlighted_length": 2, "text": "a1", "type": "set_marked_text"}, {"candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "developer_note": "LM なし: 先行計算なし", "reserved_rows": 3, "selected": 0, "type": "show_candidates"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "reading": "ひ", "timeout_ms": 70, "type": "convert"}]}
+      ]
+    },
+    {
+      "name": "on and the model is loading",
+      "setup": {"engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": false, "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "lm_report": {"verdict": "unavailable", "lm_state": "loading"}}]}, "settings": ["developer.lm_status\ton"]},
+      "steps": [
+        {"type_text": "hi", "expect": [{"text": "h", "type": "set_marked_text"}, {"highlighted_length": 1, "text": "ひ", "type": "set_marked_text"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "reading": "ひ", "type": "prefetch"}]},
+        {"press": "space", "expect": [{"highlighted_length": 2, "text": "a1", "type": "set_marked_text"}, {"candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "developer_note": "LM なし: 読み込み中", "reserved_rows": 3, "selected": 0, "type": "show_candidates"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "reading": "ひ", "timeout_ms": 70, "type": "convert"}]}
+      ]
+    },
+    {
+      "name": "on and the model is disabled",
+      "setup": {"engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": false, "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "lm_report": {"verdict": "unavailable", "lm_state": "disabled"}}]}, "settings": ["developer.lm_status\ton"]},
+      "steps": [
+        {"type_text": "hi", "expect": [{"text": "h", "type": "set_marked_text"}, {"highlighted_length": 1, "text": "ひ", "type": "set_marked_text"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "reading": "ひ", "type": "prefetch"}]},
+        {"press": "space", "expect": [{"highlighted_length": 2, "text": "a1", "type": "set_marked_text"}, {"candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "developer_note": "LM なし: 無効", "reserved_rows": 3, "selected": 0, "type": "show_candidates"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "reading": "ひ", "timeout_ms": 70, "type": "convert"}]}
+      ]
+    },
+    {
+      "name": "on and the model failed to load",
+      "setup": {"engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": false, "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "lm_report": {"verdict": "unavailable", "lm_state": "failed"}}]}, "settings": ["developer.lm_status\ton"]},
+      "steps": [
+        {"type_text": "hi", "expect": [{"text": "h", "type": "set_marked_text"}, {"highlighted_length": 1, "text": "ひ", "type": "set_marked_text"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "reading": "ひ", "type": "prefetch"}]},
+        {"press": "space", "expect": [{"highlighted_length": 2, "text": "a1", "type": "set_marked_text"}, {"candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "developer_note": "LM なし: 失敗", "reserved_rows": 3, "selected": 0, "type": "show_candidates"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "reading": "ひ", "timeout_ms": 70, "type": "convert"}]}
+      ]
+    },
+    {
+      "name": "on with an old engine shows no line",
+      "setup": {"engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": false, "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}]}]}, "settings": ["developer.lm_status\ton"]},
+      "steps": [
+        {"type_text": "hi", "expect": [{"text": "h", "type": "set_marked_text"}, {"highlighted_length": 1, "text": "ひ", "type": "set_marked_text"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "reading": "ひ", "type": "prefetch"}]},
+        {"press": "space", "expect": [{"highlighted_length": 2, "text": "a1", "type": "set_marked_text"}, {"candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "reserved_rows": 3, "selected": 0, "type": "show_candidates"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "reading": "ひ", "timeout_ms": 70, "type": "convert"}]}
+      ]
+    },
+    {
+      "name": "on keeps the same line across pages",
+      "setup": {"engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": true, "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "lm_report": {"verdict": "applied", "wait_micros": 42000, "infer_micros": 38000, "lm_deadline_micros": 300000, "convert_wait_micros": 30000, "device": "gpu", "calls": 3}}, {"conversion_id": 7, "page_index": 1, "has_next": false, "candidates": [{"surface": "b1"}, {"surface": "b2"}, {"surface": "b3"}]}]}, "settings": ["developer.lm_status\ton"]},
+      "steps": [
+        {"type_text": "hi", "expect": [{"text": "h", "type": "set_marked_text"}, {"highlighted_length": 1, "text": "ひ", "type": "set_marked_text"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "reading": "ひ", "type": "prefetch"}]},
+        {"press": "space", "expect": [{"highlighted_length": 2, "text": "a1", "type": "set_marked_text"}, {"candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "developer_note": "LM 間に合った 42ms / 締め切り 300ms（推論 38ms） GPU", "reserved_rows": 9, "selected": 0, "type": "show_candidates"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "reading": "ひ", "timeout_ms": 70, "type": "convert"}]},
+        {"press": "down", "expect": [{"highlighted_length": 2, "text": "a2", "type": "set_marked_text"}, {"candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "developer_note": "LM 間に合った 42ms / 締め切り 300ms（推論 38ms） GPU", "reserved_rows": 9, "selected": 1, "type": "move_selection"}], "engine": []},
+        {"press": "down", "expect": [{"highlighted_length": 2, "text": "a3", "type": "set_marked_text"}, {"candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "developer_note": "LM 間に合った 42ms / 締め切り 300ms（推論 38ms） GPU", "reserved_rows": 9, "selected": 2, "type": "move_selection"}], "engine": []},
+        {"press": "down", "expect": [{"highlighted_length": 2, "text": "b1", "type": "set_marked_text"}, {"candidates": [{"surface": "b1"}, {"surface": "b2"}, {"surface": "b3"}], "developer_note": "LM 間に合った 42ms / 締め切り 300ms（推論 38ms） GPU", "reserved_rows": 9, "selected": 0, "type": "show_candidates"}], "engine": [{"conversion_id": 7, "index": 1, "timeout_ms": 70, "type": "page"}]},
+        {"press": "down", "expect": [{"highlighted_length": 2, "text": "b2", "type": "set_marked_text"}, {"candidates": [{"surface": "b1"}, {"surface": "b2"}, {"surface": "b3"}], "developer_note": "LM 間に合った 42ms / 締め切り 300ms（推論 38ms） GPU", "reserved_rows": 9, "selected": 1, "type": "move_selection"}], "engine": []}
+      ]
+    },
+    {
+      "name": "on and confident hides the window and the line",
+      "setup": {"engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": false, "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "confident": true, "lm_report": {"verdict": "applied", "wait_micros": 42000, "infer_micros": 38000, "lm_deadline_micros": 300000, "convert_wait_micros": 30000, "device": "gpu", "calls": 3}}]}, "settings": ["developer.lm_status\ton"]},
+      "steps": [
+        {"type_text": "hi", "expect": [{"text": "h", "type": "set_marked_text"}, {"highlighted_length": 1, "text": "ひ", "type": "set_marked_text"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "reading": "ひ", "type": "prefetch"}]},
+        {"press": "space", "expect": [{"highlighted_length": 2, "text": "a1", "type": "set_marked_text"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "reading": "ひ", "timeout_ms": 70, "type": "convert"}]}
+      ]
+    },
+    {
+      "name": "on and confident shows the line once the list is revealed",
+      "setup": {"engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": false, "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "confident": true, "lm_report": {"verdict": "applied", "wait_micros": 42000, "infer_micros": 38000, "lm_deadline_micros": 300000, "convert_wait_micros": 30000, "device": "gpu", "calls": 3}}]}, "settings": ["developer.lm_status\ton"]},
+      "steps": [
+        {"type_text": "hi", "expect": [{"text": "h", "type": "set_marked_text"}, {"highlighted_length": 1, "text": "ひ", "type": "set_marked_text"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "reading": "ひ", "type": "prefetch"}]},
+        {"press": "space", "expect": [{"highlighted_length": 2, "text": "a1", "type": "set_marked_text"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "reading": "ひ", "timeout_ms": 70, "type": "convert"}]},
+        {"press": "space", "expect": [{"candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "developer_note": "LM 間に合った 42ms / 締め切り 300ms（推論 38ms） GPU", "reserved_rows": 3, "selected": 0, "type": "show_candidates"}], "engine": []}
+      ]
+    },
+    {
+      "name": "on and confident but hide_when_confident off shows the line",
+      "setup": {"engine": {"pages": [{"conversion_id": 7, "page_index": 0, "has_next": false, "candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "confident": true, "lm_report": {"verdict": "applied", "wait_micros": 42000, "infer_micros": 38000, "lm_deadline_micros": 300000, "convert_wait_micros": 30000, "device": "gpu", "calls": 3}}]}, "settings": ["developer.lm_status\ton", "candidate.hide_when_confident\toff"]},
+      "steps": [
+        {"type_text": "hi", "expect": [{"text": "h", "type": "set_marked_text"}, {"highlighted_length": 1, "text": "ひ", "type": "set_marked_text"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "reading": "ひ", "type": "prefetch"}]},
+        {"press": "space", "expect": [{"highlighted_length": 2, "text": "a1", "type": "set_marked_text"}, {"candidates": [{"surface": "a1"}, {"surface": "a2"}, {"surface": "a3"}], "developer_note": "LM 間に合った 42ms / 締め切り 300ms（推論 38ms） GPU", "reserved_rows": 3, "selected": 0, "type": "show_candidates"}], "engine": [{"context": {"available": true, "left": "これは", "right": ""}, "page_size": 9, "reading": "ひ", "timeout_ms": 70, "type": "convert"}]}
+      ]
+    }
+  ]
+}

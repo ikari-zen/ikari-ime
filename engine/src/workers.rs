@@ -1,6 +1,9 @@
 //! 裏のスレッド（先行計算、保存の掃除）の本体と停止。
 
+use ikari_stack::{LmDevice, lm_trace};
+
 use super::*;
+use crate::convert::device_word;
 
 impl Inner {
     pub(crate) fn stop(&self) {
@@ -30,6 +33,7 @@ impl Inner {
         let started = Instant::now();
         let stack = self.stack();
         let before = self.lm_stats();
+        lm_trace::begin();
         let deadline = started + self.lm_budget.max;
         let mut conv = stack
             .converter
@@ -38,12 +42,25 @@ impl Inner {
         let mut seg = SegEntry::new(self.seam(&stack).segment(conv));
         // 2 文節以上なら、文節 0 の 1 ページ目まで（同じ締め切りで）作っておく（ADR 0006 §5.3）
         seg.prefill(0, MAX_PAGE_SIZE as usize, deadline);
+        let trace = lm_trace::take();
         let applied = self.lm_applied_since(before);
         let calls = self.lm_calls_since(before);
-        entry.set_ready(Arc::new(Mutex::new(seg)), applied);
+        entry.set_ready(Arc::new(Mutex::new(seg)), applied, trace);
         let micros = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
         // 固定の語と数だけ（読み・候補は書かない。NFR-19）
-        let note = format!("lm_applied={} lm_calls={calls}", u8::from(applied));
+        let device = match trace.device {
+            LmDevice::Unknown => self.lm_device(),
+            d => d,
+        };
+        let note = format!(
+            "lm_applied={} lm_calls={calls} lm_us={} lm_infer_us={} lm_deadline_us={} lm_dev={} lm_to={}",
+            u8::from(applied),
+            trace.wait_micros,
+            trace.infer_micros,
+            self.lm_budget.max.as_micros(),
+            device_word(device),
+            trace.timeouts
+        );
         self.log.record_note(
             "prefetch_done",
             micros,

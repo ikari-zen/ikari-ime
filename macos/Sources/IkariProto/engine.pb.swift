@@ -124,6 +124,103 @@ public nonisolated enum Ikari_Engine_V1_CandidateKind: SwiftProtobuf.Enum, Swift
 
 }
 
+/// ---- LM の様子（ADR 0061 §5.3。時間は us）----
+public nonisolated enum Ikari_Engine_V1_LmVerdict: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case lmApplied // = 1
+  case lmTimedOut // = 2
+  case lmNotScored // = 3
+  case lmPrefetchLate // = 4
+  case lmNoPrefetch // = 5
+  case lmSecure // = 6
+  case lmUnavailable // = 7
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .lmApplied
+    case 2: self = .lmTimedOut
+    case 3: self = .lmNotScored
+    case 4: self = .lmPrefetchLate
+    case 5: self = .lmNoPrefetch
+    case 6: self = .lmSecure
+    case 7: self = .lmUnavailable
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .lmApplied: return 1
+    case .lmTimedOut: return 2
+    case .lmNotScored: return 3
+    case .lmPrefetchLate: return 4
+    case .lmNoPrefetch: return 5
+    case .lmSecure: return 6
+    case .lmUnavailable: return 7
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Ikari_Engine_V1_LmVerdict] = [
+    .unspecified,
+    .lmApplied,
+    .lmTimedOut,
+    .lmNotScored,
+    .lmPrefetchLate,
+    .lmNoPrefetch,
+    .lmSecure,
+    .lmUnavailable,
+  ]
+
+}
+
+public nonisolated enum Ikari_Engine_V1_LmDevice: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case cpu // = 1
+  case gpu // = 2
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .cpu
+    case 2: self = .gpu
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .cpu: return 1
+    case .gpu: return 2
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Ikari_Engine_V1_LmDevice] = [
+    .unspecified,
+    .cpu,
+    .gpu,
+  ]
+
+}
+
 public nonisolated enum Ikari_Engine_V1_ShutdownReason: SwiftProtobuf.Enum, Swift.CaseIterable {
   public typealias RawValue = Int
   case unspecified // = 0
@@ -1017,11 +1114,53 @@ public nonisolated struct Ikari_Engine_V1_ConvertReply: @unchecked Sendable {
     set {_uniqueStorage()._confident = newValue}
   }
 
+  /// 開発者向けの表示とログのための、その変換の LM の様子（ADR 0061）。振る舞いには使わない。
+  /// 新しいエンジンは Convert の返事に常に入れる（Page の返事には入れない）。ない（古いエンジン）なら殻は表示しない
+  public var lmReport: Ikari_Engine_V1_LmReport {
+    get {_storage._lmReport ?? Ikari_Engine_V1_LmReport()}
+    set {_uniqueStorage()._lmReport = newValue}
+  }
+  /// Returns true if `lmReport` has been explicitly set.
+  public var hasLmReport: Bool {_storage._lmReport != nil}
+  /// Clears the value of `lmReport`. Subsequent reads from it will return its default value.
+  public mutating func clearLmReport() {_uniqueStorage()._lmReport = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
   fileprivate var _storage = _StorageClass.defaultInstance
+}
+
+/// 開発者向けの表示とログのための、その変換の LM の様子（ADR 0061）。振る舞いには使わない
+public nonisolated struct Ikari_Engine_V1_LmReport: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var verdict: Ikari_Engine_V1_LmVerdict = .unspecified
+
+  public var waitMicros: UInt32 = 0
+
+  public var inferMicros: UInt32 = 0
+
+  public var lmDeadlineMicros: UInt32 = 0
+
+  public var convertWaitMicros: UInt32 = 0
+
+  public var device: Ikari_Engine_V1_LmDevice = .unspecified
+
+  public var calls: UInt32 = 0
+
+  public var timeouts: UInt32 = 0
+
+  public var lateHits: UInt32 = 0
+
+  public var lmState: Ikari_Engine_V1_LmState = .unspecified
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
 }
 
 public nonisolated struct Ikari_Engine_V1_Commit: Sendable {
@@ -1730,6 +1869,14 @@ nonisolated extension Ikari_Engine_V1_LmState: SwiftProtobuf._ProtoNameProviding
 
 nonisolated extension Ikari_Engine_V1_CandidateKind: SwiftProtobuf._ProtoNameProviding {
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CANDIDATE_KIND_UNSPECIFIED\0\u{1}DICTIONARY\0\u{1}HIRAGANA\0\u{1}KATAKANA\0\u{1}REWRITER\0\u{1}LITERAL\0")
+}
+
+nonisolated extension Ikari_Engine_V1_LmVerdict: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0LM_VERDICT_UNSPECIFIED\0\u{1}LM_APPLIED\0\u{1}LM_TIMED_OUT\0\u{1}LM_NOT_SCORED\0\u{1}LM_PREFETCH_LATE\0\u{1}LM_NO_PREFETCH\0\u{1}LM_SECURE\0\u{1}LM_UNAVAILABLE\0")
+}
+
+nonisolated extension Ikari_Engine_V1_LmDevice: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0LM_DEVICE_UNSPECIFIED\0\u{1}LM_DEVICE_CPU\0\u{1}LM_DEVICE_GPU\0")
 }
 
 nonisolated extension Ikari_Engine_V1_ShutdownReason: SwiftProtobuf._ProtoNameProviding {
@@ -2897,7 +3044,7 @@ nonisolated extension Ikari_Engine_V1_Candidate: SwiftProtobuf.Message, SwiftPro
 
 nonisolated extension Ikari_Engine_V1_ConvertReply: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ConvertReply"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}conversion_id\0\u{3}page_index\0\u{1}candidates\0\u{3}has_next\0\u{3}lm_applied\0\u{3}engine_micros\0\u{1}layout\0\u{1}confident\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}conversion_id\0\u{3}page_index\0\u{1}candidates\0\u{3}has_next\0\u{3}lm_applied\0\u{3}engine_micros\0\u{1}layout\0\u{1}confident\0\u{3}lm_report\0")
 
   fileprivate class _StorageClass {
     var _conversionID: UInt64 = 0
@@ -2908,6 +3055,7 @@ nonisolated extension Ikari_Engine_V1_ConvertReply: SwiftProtobuf.Message, Swift
     var _engineMicros: UInt32 = 0
     var _layout: Ikari_Engine_V1_SegmentLayout? = nil
     var _confident: Bool = false
+    var _lmReport: Ikari_Engine_V1_LmReport? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -2926,6 +3074,7 @@ nonisolated extension Ikari_Engine_V1_ConvertReply: SwiftProtobuf.Message, Swift
       _engineMicros = source._engineMicros
       _layout = source._layout
       _confident = source._confident
+      _lmReport = source._lmReport
     }
   }
 
@@ -2952,6 +3101,7 @@ nonisolated extension Ikari_Engine_V1_ConvertReply: SwiftProtobuf.Message, Swift
         case 6: try { try decoder.decodeSingularUInt32Field(value: &_storage._engineMicros) }()
         case 7: try { try decoder.decodeSingularMessageField(value: &_storage._layout) }()
         case 8: try { try decoder.decodeSingularBoolField(value: &_storage._confident) }()
+        case 9: try { try decoder.decodeSingularMessageField(value: &_storage._lmReport) }()
         default: break
         }
       }
@@ -2988,6 +3138,9 @@ nonisolated extension Ikari_Engine_V1_ConvertReply: SwiftProtobuf.Message, Swift
       if _storage._confident != false {
         try visitor.visitSingularBoolField(value: _storage._confident, fieldNumber: 8)
       }
+      try { if let v = _storage._lmReport {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 9)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -3005,10 +3158,86 @@ nonisolated extension Ikari_Engine_V1_ConvertReply: SwiftProtobuf.Message, Swift
         if _storage._engineMicros != rhs_storage._engineMicros {return false}
         if _storage._layout != rhs_storage._layout {return false}
         if _storage._confident != rhs_storage._confident {return false}
+        if _storage._lmReport != rhs_storage._lmReport {return false}
         return true
       }
       if !storagesAreEqual {return false}
     }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Ikari_Engine_V1_LmReport: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".LmReport"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}verdict\0\u{3}wait_micros\0\u{3}infer_micros\0\u{3}lm_deadline_micros\0\u{3}convert_wait_micros\0\u{1}device\0\u{1}calls\0\u{1}timeouts\0\u{3}late_hits\0\u{3}lm_state\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularEnumField(value: &self.verdict) }()
+      case 2: try { try decoder.decodeSingularUInt32Field(value: &self.waitMicros) }()
+      case 3: try { try decoder.decodeSingularUInt32Field(value: &self.inferMicros) }()
+      case 4: try { try decoder.decodeSingularUInt32Field(value: &self.lmDeadlineMicros) }()
+      case 5: try { try decoder.decodeSingularUInt32Field(value: &self.convertWaitMicros) }()
+      case 6: try { try decoder.decodeSingularEnumField(value: &self.device) }()
+      case 7: try { try decoder.decodeSingularUInt32Field(value: &self.calls) }()
+      case 8: try { try decoder.decodeSingularUInt32Field(value: &self.timeouts) }()
+      case 9: try { try decoder.decodeSingularUInt32Field(value: &self.lateHits) }()
+      case 10: try { try decoder.decodeSingularEnumField(value: &self.lmState) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.verdict != .unspecified {
+      try visitor.visitSingularEnumField(value: self.verdict, fieldNumber: 1)
+    }
+    if self.waitMicros != 0 {
+      try visitor.visitSingularUInt32Field(value: self.waitMicros, fieldNumber: 2)
+    }
+    if self.inferMicros != 0 {
+      try visitor.visitSingularUInt32Field(value: self.inferMicros, fieldNumber: 3)
+    }
+    if self.lmDeadlineMicros != 0 {
+      try visitor.visitSingularUInt32Field(value: self.lmDeadlineMicros, fieldNumber: 4)
+    }
+    if self.convertWaitMicros != 0 {
+      try visitor.visitSingularUInt32Field(value: self.convertWaitMicros, fieldNumber: 5)
+    }
+    if self.device != .unspecified {
+      try visitor.visitSingularEnumField(value: self.device, fieldNumber: 6)
+    }
+    if self.calls != 0 {
+      try visitor.visitSingularUInt32Field(value: self.calls, fieldNumber: 7)
+    }
+    if self.timeouts != 0 {
+      try visitor.visitSingularUInt32Field(value: self.timeouts, fieldNumber: 8)
+    }
+    if self.lateHits != 0 {
+      try visitor.visitSingularUInt32Field(value: self.lateHits, fieldNumber: 9)
+    }
+    if self.lmState != .unspecified {
+      try visitor.visitSingularEnumField(value: self.lmState, fieldNumber: 10)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Ikari_Engine_V1_LmReport, rhs: Ikari_Engine_V1_LmReport) -> Bool {
+    if lhs.verdict != rhs.verdict {return false}
+    if lhs.waitMicros != rhs.waitMicros {return false}
+    if lhs.inferMicros != rhs.inferMicros {return false}
+    if lhs.lmDeadlineMicros != rhs.lmDeadlineMicros {return false}
+    if lhs.convertWaitMicros != rhs.convertWaitMicros {return false}
+    if lhs.device != rhs.device {return false}
+    if lhs.calls != rhs.calls {return false}
+    if lhs.timeouts != rhs.timeouts {return false}
+    if lhs.lateHits != rhs.lateHits {return false}
+    if lhs.lmState != rhs.lmState {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

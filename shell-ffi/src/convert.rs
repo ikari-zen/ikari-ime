@@ -318,6 +318,7 @@ fn panel_from_pb(panel: pb::CandidatePanelModel) -> Result<CandidatePanelModel> 
         })
         .collect::<Result<Vec<_>>>()?;
     Ok(CandidatePanelModel {
+        developer_note: panel.developer_note,
         candidates,
         selected: panel.selected,
         annotation: panel.annotation,
@@ -327,6 +328,7 @@ fn panel_from_pb(panel: pb::CandidatePanelModel) -> Result<CandidatePanelModel> 
 
 fn panel_to_pb(panel: &CandidatePanelModel) -> pb::CandidatePanelModel {
     pb::CandidatePanelModel {
+        developer_note: panel.developer_note.clone(),
         candidates: panel
             .candidates
             .iter()
@@ -757,6 +759,7 @@ fn issue_to_pb(issue: &SettingsIssue) -> pb::SettingsIssue {
 
 fn snapshot_to_pb(snapshot: &SettingsSnapshot) -> pb::SettingsSnapshot {
     pb::SettingsSnapshot {
+        developer_lm_status: snapshot.developer_lm_status,
         input_method: method_to_pb(snapshot.input_method).into(),
         keymap_preset: preset_to_pb(snapshot.keymap_preset).into(),
         keymap_overrides: snapshot
@@ -786,6 +789,7 @@ fn snapshot_to_pb(snapshot: &SettingsSnapshot) -> pb::SettingsSnapshot {
 /// `SettingsSnapshot` の proto を型にする（テストと、設定を読む側）。
 pub fn snapshot_from_pb(snapshot: pb::SettingsSnapshot) -> Result<SettingsSnapshot> {
     Ok(SettingsSnapshot {
+        developer_lm_status: snapshot.developer_lm_status,
         input_method: method_from_pb(snapshot.input_method, "SettingsSnapshot.input_method")?,
         keymap_preset: preset_from_pb(snapshot.keymap_preset, "SettingsSnapshot.keymap_preset")?,
         keymap_overrides: snapshot
@@ -915,6 +919,7 @@ mod tests {
 
     fn every_action() -> Vec<ShellAction> {
         let panel = CandidatePanelModel {
+            developer_note: String::new(),
             candidates: vec![
                 CandidateItem {
                     surface: "品詞".into(),

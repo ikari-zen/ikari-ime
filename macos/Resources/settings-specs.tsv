@@ -34,3 +34,4 @@ postal.te_prefix	bool	postal	conversion	off	engine_restart
 postal.english	bool	postal	conversion	off	immediate
 unicode.notation	bool	unicode_notation	conversion	off	engine_restart
 date.weekday_dates	bool	weekday_dates	conversion	off	engine_restart
+developer.lm_status	bool	developer	conversion	off	immediate

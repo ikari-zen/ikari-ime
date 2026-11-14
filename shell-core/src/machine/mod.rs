@@ -8,6 +8,7 @@
 
 mod clause_delete;
 mod composer;
+mod developer_note;
 mod engine;
 mod state;
 #[cfg(test)]
@@ -1050,7 +1051,7 @@ impl InputStateMachine {
         current.candidates_hidden = false;
         Some(vec![ShellAction::ShowCandidates(panel_model(
             current,
-            to_usize(self.settings.page_size),
+            &self.settings,
         ))])
     }
 
@@ -1189,7 +1190,7 @@ impl InputStateMachine {
             segment.literal = None;
         }
         current.sync_focused();
-        let model = panel_model(current, to_usize(self.settings.page_size));
+        let model = panel_model(current, &self.settings);
         let marked = marked_text(current);
         // 字種変換で候補ウィンドウを閉じていたときは、開き直す
         vec![
@@ -1216,7 +1217,7 @@ impl InputStateMachine {
             segment.literal = None;
         }
         current.sync_focused();
-        let model = panel_model(current, to_usize(self.settings.page_size));
+        let model = panel_model(current, &self.settings);
         let marked = marked_text(current);
         vec![
             ShellAction::SetMarkedText(marked),
@@ -1629,6 +1630,11 @@ impl InputStateMachine {
             is_fallback,
             layout_rev,
             whole_layout,
+            lm_report: if is_fallback {
+                None
+            } else {
+                page.lm_report.clone()
+            },
             segments: vec![ConvertingSegment::new(reading, surface, vec![page])],
             ..ConvertingState::default()
         };
@@ -2169,7 +2175,7 @@ impl InputStateMachine {
     }
 
     fn panel_model(&self, state: &ConvertingState) -> CandidatePanelModel {
-        panel_model(state, self.page_size())
+        panel_model(state, &self.settings)
     }
 }
 
@@ -2214,7 +2220,8 @@ fn marked_text(state: &ConvertingState) -> MarkedText {
 }
 
 /// 候補ウィンドウの中身。`self` を借りずに作れるので、状態を借りたまま呼べる（状態の複製をしない）
-fn panel_model(state: &ConvertingState, page_size: usize) -> CandidatePanelModel {
+fn panel_model(state: &ConvertingState, settings: &SettingsSnapshot) -> CandidatePanelModel {
+    let page_size = to_usize(settings.page_size);
     // このあと広がる、またはページが進み得るときは、位置を決める高さをページの上限で見込む（ADR 0014 §2.2）
     let visible = state.visible_count(page_size);
     let may_grow = state.has_next || state.page_index > 0;
@@ -2223,7 +2230,7 @@ fn panel_model(state: &ConvertingState, page_size: usize) -> CandidatePanelModel
     } else {
         state.candidates.len()
     };
-    panel(
+    let model = panel(
         state.candidates.iter().take(visible).cloned().collect(),
         state.selected,
         state
@@ -2232,7 +2239,17 @@ fn panel_model(state: &ConvertingState, page_size: usize) -> CandidatePanelModel
             .map(|c| c.annotation.clone())
             .unwrap_or_default(),
         reserved,
-    )
+    );
+    // 開発者向けの 1 行。オフなら文を作らない（ADR 0061 D6）
+    if settings.developer_lm_status
+        && let Some(report) = &state.lm_report
+    {
+        return CandidatePanelModel {
+            developer_note: developer_note::lm_status_line(report),
+            ..model
+        };
+    }
+    model
 }
 
 fn shortcode_mode(settings: &SettingsSnapshot) -> ShortcodeMode {
@@ -2422,6 +2439,7 @@ fn panel(
 ) -> CandidatePanelModel {
     let reserved_rows = to_u32(reserved_rows.max(candidates.len()));
     CandidatePanelModel {
+        developer_note: String::new(),
         candidates,
         selected: to_u32(selected),
         annotation,

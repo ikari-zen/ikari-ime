@@ -299,6 +299,7 @@ pub fn panel_model(choosing: &ShortcodeChoosing) -> CandidatePanelModel {
     let end = (start + CANDIDATE_PAGE_SIZE).min(choosing.candidates.len());
     let rows = &choosing.candidates[start..end];
     CandidatePanelModel {
+        developer_note: String::new(),
         candidates: rows
             .iter()
             .map(|candidate| CandidateItem {

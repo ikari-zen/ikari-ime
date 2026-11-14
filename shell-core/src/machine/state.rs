@@ -4,8 +4,11 @@
 
 use ikari_proto::v1;
 
+use crate::menu::EngineLmState;
 use crate::shortcode::{ShortcodeChoosing, ShortcodeTyping};
-use crate::types::{CandidateItem, CandidateKind, Utf16Range};
+use crate::types::{
+    CandidateItem, CandidateKind, LmDeviceInfo, LmReportInfo, LmVerdictInfo, Utf16Range,
+};
 
 /// 変換に入る前の状態。読みに戻る（Esc、BackSpace）ときの行き先（ADR 0006 §8.5、§9.5）。
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -35,6 +38,45 @@ pub struct ConversionPage {
     pub engine_micros: u32,
     /// 区切り（`ConvertReply.layout`）。古いエンジンは `None` で、1 文節として扱う
     pub layout: Option<SegmentLayoutInfo>,
+    /// LM の様子（`ConvertReply.lm_report`。ADR 0061）。`convert` の返事だけに付く。古いエンジンは `None`
+    pub lm_report: Option<LmReportInfo>,
+}
+
+impl LmReportInfo {
+    /// `ConvertReply.lm_report` の写し。範囲外・未知の列挙は `Unspecified`（表示だけに使うので、落とさない）
+    pub(crate) fn from_reply(reply: &v1::LmReport) -> Self {
+        Self {
+            verdict: match v1::LmVerdict::try_from(reply.verdict) {
+                Ok(v1::LmVerdict::LmApplied) => LmVerdictInfo::Applied,
+                Ok(v1::LmVerdict::LmTimedOut) => LmVerdictInfo::TimedOut,
+                Ok(v1::LmVerdict::LmNotScored) => LmVerdictInfo::NotScored,
+                Ok(v1::LmVerdict::LmPrefetchLate) => LmVerdictInfo::PrefetchLate,
+                Ok(v1::LmVerdict::LmNoPrefetch) => LmVerdictInfo::NoPrefetch,
+                Ok(v1::LmVerdict::LmSecure) => LmVerdictInfo::Secure,
+                Ok(v1::LmVerdict::LmUnavailable) => LmVerdictInfo::Unavailable,
+                Ok(v1::LmVerdict::Unspecified) | Err(_) => LmVerdictInfo::Unspecified,
+            },
+            wait_micros: reply.wait_micros,
+            infer_micros: reply.infer_micros,
+            lm_deadline_micros: reply.lm_deadline_micros,
+            convert_wait_micros: reply.convert_wait_micros,
+            device: match v1::LmDevice::try_from(reply.device) {
+                Ok(v1::LmDevice::Cpu) => LmDeviceInfo::Cpu,
+                Ok(v1::LmDevice::Gpu) => LmDeviceInfo::Gpu,
+                Ok(v1::LmDevice::Unspecified) | Err(_) => LmDeviceInfo::Unspecified,
+            },
+            calls: reply.calls,
+            timeouts: reply.timeouts,
+            late_hits: reply.late_hits,
+            lm_state: match v1::LmState::try_from(reply.lm_state) {
+                Ok(v1::LmState::LmDisabled) => Some(EngineLmState::Disabled),
+                Ok(v1::LmState::LmLoading) => Some(EngineLmState::Loading),
+                Ok(v1::LmState::LmReady) => Some(EngineLmState::Ready),
+                Ok(v1::LmState::LmFailed) => Some(EngineLmState::Failed),
+                Ok(v1::LmState::Unspecified) | Err(_) => None,
+            },
+        }
+    }
 }
 
 impl ConversionPage {
@@ -48,6 +90,7 @@ impl ConversionPage {
             confident: reply.confident,
             engine_micros: reply.engine_micros,
             layout: reply.layout.as_ref().map(SegmentLayoutInfo::from_reply),
+            lm_report: reply.lm_report.as_ref().map(LmReportInfo::from_reply),
         }
     }
 
@@ -61,6 +104,7 @@ impl ConversionPage {
             confident: false,
             engine_micros: page.engine_micros,
             layout: None,
+            lm_report: None,
         }
     }
 }
@@ -236,6 +280,8 @@ pub struct ConvertingState {
     pub whole_layout: Option<SegmentLayoutInfo>,
     /// 確信が高い変換で、1 位だけを出して候補ウィンドウを出していない間（#69）
     pub candidates_hidden: bool,
+    /// 最初の変換（Space の最初の返事）の LM の様子。ページ送りや文節の移動のあいだ同じものを持つ（ADR 0061 D7）。表示にだけ使う
+    pub lm_report: Option<LmReportInfo>,
 }
 
 impl ConvertingState {

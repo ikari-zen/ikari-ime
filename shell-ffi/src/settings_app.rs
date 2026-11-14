@@ -146,6 +146,7 @@ fn presets_from(texts: &[app::PresetText]) -> Result<KeymapPresetTable, i32> {
 
 fn values_to_pb(values: &SettingsValues) -> pb::SettingsSnapshot {
     pb::SettingsSnapshot {
+        developer_lm_status: values.developer_lm_status,
         input_method: method_to_pb(values.input_method).into(),
         keymap_preset: preset_to_pb(values.keymap_preset).into(),
         keymap_overrides: values
@@ -230,6 +231,7 @@ fn intent_from_pb(kind: Option<app::intent::Kind>) -> Result<SettingsIntent, i32
         K::PostalEnglish(v) => I::PostalEnglish(v),
         K::PostalTePrefix(v) => I::PostalTePrefix(v),
         K::CandidateHideWhenConfident(v) => I::CandidateHideWhenConfident(v),
+        K::DeveloperLmStatus(v) => I::DeveloperLmStatus(v),
         K::UnicodeNotation(v) => I::UnicodeNotation(v),
         K::DateWeekdayDates(v) => I::DateWeekdayDates(v),
         K::EmojiSmallLetters(v) => I::EmojiSmallLetters(v),

@@ -249,8 +249,18 @@ fn convert_log_says_hit_with_the_lm() {
     assert!(r.lm_applied);
     let line = last_convert_line(&e, &dir);
     assert!(line.contains("segments=1 cache=hit lm_applied=1"), "{line}");
+    assert!(line.contains("lm_us="), "{line}");
+    assert!(
+        line.contains("lm_deadline_us=") && line.contains("lm_dev=cpu"),
+        "{line}"
+    );
+    assert!(line.contains("lm_calls=1 lm_to=0"), "{line}");
     let done = &log_lines(&e, &dir, "prefetch_done")[0];
-    assert!(done.ends_with("err=- lm_applied=1 lm_calls=1"), "{done}");
+    assert!(done.contains("err=- lm_applied=1 lm_calls=1 "), "{done}");
+    assert!(
+        done.contains("lm_dev=cpu") && done.contains("lm_to=0"),
+        "{done}"
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -382,7 +392,7 @@ fn engine_log_never_contains_the_text() {
         assert!(!text.contains(secret), "{secret} leaked: {text}");
     }
     // 注記は固定の語（key=value）だけ
-    const KEYS: [&str; 31] = [
+    const KEYS: [&str; 37] = [
         "session",
         "conv",
         "app",
@@ -409,6 +419,12 @@ fn engine_log_never_contains_the_text() {
         "confident",
         "rlen",
         "qlen",
+        "lm_us",
+        "lm_infer_us",
+        "lm_deadline_us",
+        "lm_dev",
+        "lm_to",
+        "dev",
         "by",
         "fill",
         "fill_eq",
@@ -871,4 +887,86 @@ fn commit_drops_the_prefetch_built_from_the_old_history() {
         Some("旧新"),
         "converted with the new history, not the old prefetch"
     );
+}
+
+// ---- LM の様子（ADR 0061）----
+
+#[test]
+fn verdict_follows_the_table_from_the_bottom() {
+    use crate::cache::MissReason;
+    use crate::convert::lm_verdict;
+    let hit = CacheOutcome::Hit;
+    let v =
+        |state, secure, outcome, applied, calls| lm_verdict(state, secure, outcome, applied, calls);
+    let ready = LmState::LmReady;
+    assert_eq!(v(ready, false, hit, true, 1), pb::LmVerdict::LmApplied);
+    assert_eq!(
+        v(ready, false, CacheOutcome::WaitHit, true, 2),
+        pb::LmVerdict::LmApplied
+    );
+    assert_eq!(v(ready, false, hit, false, 1), pb::LmVerdict::LmTimedOut);
+    assert_eq!(v(ready, false, hit, false, 0), pb::LmVerdict::LmNotScored);
+    assert_eq!(
+        v(ready, false, CacheOutcome::WaitMiss, false, 0),
+        pb::LmVerdict::LmPrefetchLate
+    );
+    assert_eq!(
+        v(ready, false, CacheOutcome::Miss(MissReason::None), false, 0),
+        pb::LmVerdict::LmNoPrefetch
+    );
+    assert_eq!(
+        v(ready, true, CacheOutcome::Miss(MissReason::None), false, 0),
+        pb::LmVerdict::LmSecure
+    );
+    // 読み込み中・無効・失敗は、ほかの条件より先に UNAVAILABLE
+    for state in [LmState::LmLoading, LmState::LmDisabled, LmState::LmFailed] {
+        assert_eq!(v(state, true, hit, false, 1), pb::LmVerdict::LmUnavailable);
+    }
+}
+
+#[test]
+fn convert_reply_carries_the_lm_report() {
+    let (e, _mock) = engine(15);
+    begin(&e, 1, false);
+    prefetch(&e, 1, READING, 0);
+    wait_until(|| !lock_mutex(&e.inner.cache).any_computing());
+    let r = convert(&e, 1, READING, 0);
+    let rep = r.lm_report.expect("lm_report is always returned");
+    assert_eq!(rep.verdict, pb::LmVerdict::LmApplied as i32);
+    assert_eq!(rep.device, pb::LmDevice::Cpu as i32);
+    assert_eq!((rep.calls, rep.timeouts, rep.late_hits), (1, 0, 0));
+    let floor = ikari_testtime::ms(15).as_micros() as u32;
+    assert!(
+        rep.infer_micros >= floor && rep.wait_micros >= floor,
+        "{rep:?}"
+    );
+    assert_eq!(rep.lm_deadline_micros, test_budget().max.as_micros() as u32);
+}
+
+#[test]
+fn lm_report_without_prefetch_has_deadlines_only() {
+    let (e, _mock) = engine(0);
+    begin(&e, 1, false);
+    let r = convert(&e, 1, READING, 0);
+    let rep = r.lm_report.expect("lm_report is always returned");
+    assert_ne!(rep.verdict, pb::LmVerdict::LmApplied as i32);
+    assert_eq!((rep.calls, rep.wait_micros, rep.infer_micros), (0, 0, 0));
+    assert!(rep.lm_deadline_micros > 0 && rep.convert_wait_micros > 0);
+}
+
+#[test]
+fn page_reply_has_no_lm_report() {
+    let (e, _mock) = engine(0);
+    begin(&e, 1, false);
+    let r = convert(&e, 1, READING, 0);
+    let page = send(
+        &e,
+        envelope::Body::Page(pb::PageRequest {
+            conversion_id: r.conversion_id,
+            index: 1,
+        }),
+    );
+    if let envelope::Body::PageReply(p) = page {
+        assert!(p.lm_report.is_none());
+    }
 }
