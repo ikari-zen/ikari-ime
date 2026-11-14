@@ -711,6 +711,7 @@ fn new_shell(settings: &str, log: Arc<Mutex<EngineLog>>) -> Result<Shell, String
         shell_version: SHELL_VERSION.into(),
         settings: SettingsSource::Inline(settings.to_owned()),
         resources_dir: Path::new(env!("CARGO_MANIFEST_DIR")).join("resources"),
+        engine_owner: true,
     };
     Shell::new(
         config,

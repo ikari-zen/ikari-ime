@@ -26,7 +26,7 @@ fn learned(e: &Engine) -> Vec<(String, String)> {
 }
 
 fn history(e: &Engine) -> Vec<(String, String)> {
-    lock_mutex(&e.inner.sessions)[&1]
+    lock_mutex(&e.inner.sessions)[&sk(1)]
         .history
         .iter()
         .map(|c| (c.reading.clone(), c.surface.clone()))

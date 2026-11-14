@@ -116,8 +116,8 @@ fn join_notes(first: Option<String>, second: Option<String>) -> Option<String> {
 }
 
 impl Inner {
-    /// 要求 1 件を処理して、(返事, 要求の種類, エラーの種類) を返す。
-    pub(crate) fn process(&self, req: &[u8]) -> Processed {
+    /// 要求 1 件を処理して、(返事, 要求の種類, エラーの種類) を返す。セッションは `conn` の名前空間で引く
+    pub(crate) fn process(&self, conn: ConnectionId, req: &[u8]) -> Processed {
         if req.len() > MAX_ADMIN_REQUEST_BYTES {
             let code = ErrorCode::BadRequest;
             return Processed::failed(
@@ -166,7 +166,7 @@ impl Inner {
             envelope::Body::Convert(_) | envelope::Body::Reconvert(_)
         );
         let request_conv = request_conversion(&body);
-        let result = catch_unwind(AssertUnwindSafe(|| self.dispatch(body)))
+        let result = catch_unwind(AssertUnwindSafe(|| self.dispatch(conn, body)))
             .unwrap_or(Err(Fail::new(ErrorCode::Internal, "internal error")));
         match result {
             Ok((reply, trace)) => {
@@ -208,40 +208,45 @@ impl Inner {
     /// 返事と、ログに添える固定の語の注記（`Convert` のキャッシュの使われ方。ほかは None）
     pub(crate) fn dispatch(
         &self,
+        conn: ConnectionId,
         body: envelope::Body,
     ) -> Result<(envelope::Body, Option<String>), Fail> {
         match body {
-            envelope::Body::Convert(c) => self.convert(c),
-            envelope::Body::Prefetch(p) => self.prefetch(p),
+            envelope::Body::Convert(c) => self.convert(conn, c),
+            envelope::Body::Prefetch(p) => self.prefetch(conn, p),
             // 行に足す注記がある要求（ADR 0034 §4.3、§7）
             envelope::Body::BeginSession(b) => {
                 let note = diag::begin_session_note(&b);
-                self.begin_session(b).map(|reply| (reply, Some(note)))
+                self.begin_session(conn, b).map(|reply| (reply, Some(note)))
             }
-            envelope::Body::Commit(c) => self.commit(c),
-            envelope::Body::CommitSegments(c) => self.commit_segments(c),
+            envelope::Body::Commit(c) => self.commit(conn, c),
+            envelope::Body::CommitSegments(c) => self.commit_segments(conn, c),
             // 終わったセッションの番号を残す（集計がセッションの区切りに使う。ADR 0034 §5）
             envelope::Body::EndSession(e) => {
                 let note = session_note(e.session_id);
-                Ok((self.end_session(e), Some(note)))
+                Ok((self.end_session(conn, e), Some(note)))
             }
-            other => self.dispatch_plain(other).map(|reply| (reply, None)),
+            other => self.dispatch_plain(conn, other).map(|reply| (reply, None)),
         }
     }
 
-    fn dispatch_plain(&self, body: envelope::Body) -> Result<envelope::Body, Fail> {
+    fn dispatch_plain(
+        &self,
+        conn: ConnectionId,
+        body: envelope::Body,
+    ) -> Result<envelope::Body, Fail> {
         match body {
             envelope::Body::Hello(_) => Ok(self.hello()),
-            envelope::Body::Page(p) => self.page(p),
-            envelope::Body::CommitText(c) => self.commit_text(c),
-            envelope::Body::Cancel(c) => Ok(self.cancel(c)),
+            envelope::Body::Page(p) => self.page(conn, p),
+            envelope::Body::CommitText(c) => self.commit_text(conn, c),
+            envelope::Body::Cancel(c) => Ok(self.cancel(conn, c)),
             envelope::Body::Shutdown(_) => Ok(self.shutdown()),
             // 文節の編集と再変換（ADR 0006。`segments.rs`）
-            envelope::Body::SegmentPage(p) => self.segment_page(p),
-            envelope::Body::ResizeSegment(r) => self.resize_segment(r),
+            envelope::Body::SegmentPage(p) => self.segment_page(conn, p),
+            envelope::Body::ResizeSegment(r) => self.resize_segment(conn, r),
             // 文節ごとの削除（ADR 0050 §5.3）。契約の時点では受け口だけ（BAD_REQUEST）
-            envelope::Body::RemoveSegments(r) => self.remove_segments(r),
-            envelope::Body::Reconvert(r) => self.reconvert(r),
+            envelope::Body::RemoveSegments(r) => self.remove_segments(conn, r),
+            envelope::Body::Reconvert(r) => self.reconvert(conn, r),
             // 管理の要求（ADR 0005 §8）
             envelope::Body::ListUserDict(_)
             | envelope::Body::AddUserDict(_)
@@ -257,7 +262,7 @@ impl Inner {
             // 英語のモードの郵便番号（ADR 0032 §9.1）
             envelope::Body::PostalLookup(r) => self.postal_lookup(r),
             // 診断ログ（ADR 0034 §2.2。`diag.rs`）。返事は常に Ack
-            envelope::Body::Diag(d) => Ok(self.diag(&d)),
+            envelope::Body::Diag(d) => Ok(self.diag(conn, &d)),
             // 返事の種類や Error を要求として受けたとき
             _ => Err(Fail::bad("unexpected message")),
         }

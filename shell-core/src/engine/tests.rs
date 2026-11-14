@@ -128,6 +128,10 @@ impl Harness {
     }
 
     fn with_version(version: &'static str) -> Self {
+        Self::with_version_and_owner(version, true)
+    }
+
+    fn with_version_and_owner(version: &'static str, engine_owner: bool) -> Self {
         let shared = Arc::new(Mutex::new(Shared::default()));
         let responder: Responder = Arc::new(move |env| default_response(env, version));
         let respond = Arc::new(Mutex::new(responder));
@@ -136,7 +140,9 @@ impl Harness {
             shared: shared.clone(),
             respond: respond.clone(),
         };
-        let link = Arc::new(EngineLink::new(Box::new(transport), clock.clone()));
+        let link = Arc::new(
+            EngineLink::new(Box::new(transport), clock.clone()).with_engine_owner(engine_owner),
+        );
         Self {
             link,
             shared,
@@ -283,6 +289,23 @@ fn version_mismatch_sends_shutdown_retries_once_and_gives_up() {
         vec!["hello", "shutdown", "hello"]
     );
     assert_eq!(h.link.last_engine_version().as_deref(), Some("0.9"));
+}
+
+#[test]
+fn non_owner_shell_coexists_with_a_different_engine_version_without_shutdown() {
+    let h = Harness::with_version_and_owner("0.9", false);
+    let started = Instant::now();
+    let hello = h.link.hello("1.0", SEC).unwrap();
+    assert!(started.elapsed() < SHUTDOWN_WAIT);
+    assert_eq!(hello.engine_version, "0.9");
+    assert_eq!(h.link.last_engine_version().as_deref(), Some("0.9"));
+    assert!(!h.link.is_suspended());
+    // 変換も続く
+    let page = h.link.convert(sample_request(), 100 * MS).unwrap();
+    assert_eq!(page.conversion_id, 7);
+    let sent = kinds(&h.latest().requests);
+    assert!(!sent.contains(&"shutdown".to_owned()), "{sent:?}");
+    assert_eq!(sent.iter().filter(|k| *k == "hello").count(), 1, "{sent:?}");
 }
 
 #[test]

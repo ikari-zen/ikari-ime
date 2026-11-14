@@ -452,6 +452,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ikari-candidate"
+version = "0.1.0"
+dependencies = [
+ "ikari-pipe",
+ "ikari-proto",
+ "ikari-shell-core",
+]
+
+[[package]]
 name = "ikari-cli"
 version = "0.1.0"
 dependencies = [
@@ -668,6 +677,7 @@ version = "0.1.0"
 name = "ikari-tip"
 version = "0.1.0"
 dependencies = [
+ "ikari-candidate",
  "ikari-pipe",
  "ikari-shell-core",
  "ikari-testtime",

@@ -127,6 +127,7 @@ public nonisolated enum Ikari_Shell_V1_KeyKind: SwiftProtobuf.Enum, Swift.CaseIt
 
 }
 
+/// プロセス間で使う（Windows の TIP と候補窓。candidate.proto が取り込む。ADR 0062 §7.2）。追加だけ: 番号を再利用しない、意味を変えない
 public nonisolated enum Ikari_Shell_V1_CandidateKind: SwiftProtobuf.Enum, Swift.CaseIterable {
   public typealias RawValue = Int
   case unspecified // = 0
@@ -394,6 +395,7 @@ public nonisolated enum Ikari_Shell_V1_MenuItemKind: SwiftProtobuf.Enum, Swift.C
 
 }
 
+/// プロセス間で使う（Windows の TIP と候補窓。candidate.proto が取り込む。ADR 0062 §7.2）。追加だけ: 番号を再利用しない、意味を変えない
 public nonisolated enum Ikari_Shell_V1_PanelSide: SwiftProtobuf.Enum, Swift.CaseIterable {
   public typealias RawValue = Int
   case unspecified // = 0
@@ -707,6 +709,7 @@ public nonisolated struct Ikari_Shell_V1_MarkedText: Sendable {
   fileprivate var _replacementRange: Ikari_Shell_V1_Utf16Range? = nil
 }
 
+/// プロセス間で使う（Windows の TIP と候補窓。candidate.proto が取り込む。ADR 0062 §7.2）。追加だけ: 番号を再利用しない、意味を変えない
 public nonisolated struct Ikari_Shell_V1_CandidateItem: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -725,6 +728,7 @@ public nonisolated struct Ikari_Shell_V1_CandidateItem: Sendable {
   public init() {}
 }
 
+/// プロセス間で使う（Windows の TIP と候補窓。candidate.proto が取り込む。ADR 0062 §7.2）。追加だけ: 番号を再利用しない、意味を変えない
 public nonisolated struct Ikari_Shell_V1_CandidatePanelModel: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -1427,6 +1431,8 @@ public nonisolated struct Ikari_Shell_V1_ShellActions: Sendable {
   public init() {}
 }
 
+/// プロセス間で使う（Windows の TIP と候補窓。candidate.proto が取り込む。ADR 0062 §7.2）。追加だけ: 番号を再利用しない、意味を変えない
+/// 座標系は使う側が決める（macOS の配置は左下が原点・y 上向き。候補窓の契約は物理の画面座標・y 下向き。candidate.proto）
 public nonisolated struct Ikari_Shell_V1_Rect: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for

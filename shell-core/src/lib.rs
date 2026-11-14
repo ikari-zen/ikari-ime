@@ -29,6 +29,7 @@ pub mod keymap;
 pub mod machine;
 pub mod menu;
 pub mod panel;
+pub mod panel_pb;
 pub mod postal;
 pub mod scenario;
 pub mod settings;
@@ -128,6 +129,7 @@ mod tests {
             shell_version: "test".into(),
             settings: SettingsSource::Inline(String::new()),
             resources_dir: std::path::PathBuf::new(),
+            engine_owner: true,
         };
         let mut shell = Shell::new(
             config,

@@ -25,12 +25,12 @@ fn main() -> ExitCode {
 fn windows_main() -> u8 {
     use std::sync::Arc;
 
-    use ikari_engine_host::ctrl;
     use ikari_engine_host::run::{
         EXIT_OK, EXIT_START_FAILED, EXIT_USAGE, StartError, StopWait, parse_args, record_failure,
         resolve_data_dir, run_host, start,
     };
     use ikari_engine_host::settings_pipe::bind_settings_listener;
+    use ikari_engine_host::{ctrl, endsession};
     use ikari_pipe::Shutdown;
     use ikari_pipe::os::windows::NamedPipeListener;
 
@@ -81,6 +81,12 @@ fn windows_main() -> u8 {
     if let Err(e) = ctrl::install(stop.handle()) {
         // 受け取れなくても動く（プロセスの終了で止まる）
         eprintln!("ikari-engine: cannot install the Ctrl+C handler: {e}");
+    }
+    if cfg!(feature = "hide-console") {
+        // コンソールがなく、制御イベントが届かない。ログオフ・シャットダウンはメッセージ専用ウィンドウで受ける（#372）
+        if let Err(e) = endsession::spawn() {
+            eprintln!("ikari-engine: cannot watch the session end: {e}");
+        }
     }
     let result = run_host(engine_listener, settings_listener, started, &stoppers, stop);
     ctrl::mark_finished();

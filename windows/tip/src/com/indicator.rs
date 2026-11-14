@@ -9,10 +9,14 @@
 //!   反転するだけにする（判断は持たない。反転は下の通知で `shell-core` に届く）。
 //! - compartment の変更の通知（`ITfCompartmentEventSink`）の登録。OS 側の変更（言語バーのクリック、IME のオン・オフ）を
 //!   `mode::from_open`・`from_conversion` で読み、`ShellEvent::InputModeChanged` にするのは `service`。
+//!   スレッドの compartment に加えて、グローバルの compartment（`GetGlobalCompartment`）の通知も受ける（#371 の診断。
+//!   OS の IME のオン・オフが、スレッドの通知に届いていなかった。どちらに届くかをログで見る。実験的）。
 //!
 //! 自分の書き込みでも通知が来る。`service` が書き込みの間だけ旗を立てて、自分の通知を読み捨てる。
 //!
-//! **まだ入れていないもの**: ボタンのアイコン（DLL に資源がない。`GetIcon` は空のアイコンを返す）、ボタンのメニュー。
+//! ボタンのアイコンは、モードの文字を実行時に描いて作る（`icon`。タスクバーの入力インジケーターはアイコンを出し、
+//! アイコンがないと言語の略称「日本」に戻る。#370）。**まだ入れていないもの**: ボタンのメニュー、DLL の資源のアイコン
+//! （プロファイルのブランドのアイコン）。
 
 use std::cell::{Cell, RefCell};
 
@@ -33,7 +37,7 @@ use windows_core::{BOOL, BSTR, ComObject, GUID, HRESULT, IUnknown, Interface, Re
 use super::dll::DllRef;
 use super::guard::guard_result;
 use super::guids::CLSID_TEXT_SERVICE;
-use super::log;
+use super::{icon, log};
 use crate::mode;
 
 /// ボタンの順序（言語バーの中の並び。小さいほど左）
@@ -152,8 +156,16 @@ impl ITfLangBarItemButton_Impl for ModeButton_Impl {
     }
 
     fn GetIcon(&self) -> windows_core::Result<HICON> {
-        // アイコンの資源はまだない。文字（`GetText`）だけで出る。実機で、これで足りるかを確かめる
-        guard_result("panic in lang bar GetIcon", || Ok(HICON::default()))
+        // 受け取った側が `DestroyIcon` で捨てる。作れなければ空のアイコン（言語の略称に戻るだけ）
+        guard_result("panic in lang bar GetIcon", || {
+            match icon::mode_icon(mode::label(self.mode.get())) {
+                Ok(icon) => Ok(icon),
+                Err(e) => {
+                    log::error("mode icon failed", &e);
+                    Ok(HICON::default())
+                }
+            }
+        })
     }
 
     fn GetText(&self) -> windows_core::Result<BSTR> {
@@ -225,9 +237,29 @@ fn write_i32(
     unsafe { compartment.SetValue(client_id, &variant) }
 }
 
+/// compartment の置き場所。スレッドの管理者のもの（`ITfCompartmentMgr` を問い合わせる。読み書きはこちら）と、
+/// グローバルのもの（`ITfThreadMgr::GetGlobalCompartment`。全スレッドで共有。#371 の診断のために通知だけ受ける）
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Scope {
+    Thread,
+    Global,
+}
+
+impl Scope {
+    /// ログに出す名前
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Thread => "thread",
+            Self::Global => "global",
+        }
+    }
+}
+
 /// 表示の道具一式（スレッドごとに 1 つ。`ActivateEx` で作り、`Deactivate` で外す）。
 pub struct Indicator {
     compartments: ITfCompartmentMgr,
+    /// グローバルの compartment（取れなければ `None`。書かない）
+    global: Option<ITfCompartmentMgr>,
     client_id: u32,
     items: ITfLangBarItemMgr,
     item: ComObject<ModeButton>,
@@ -242,15 +274,26 @@ const WATCHED: [GUID; 2] = [
 ];
 
 impl Indicator {
-    /// 言語バーにボタンを足し、compartment の通知を登録する。`sink` は、通知を受けるテキストサービス。
+    /// 言語バーにボタンを足し、compartment の通知を登録する。`sink` はスレッドの compartment の通知を、
+    /// `global_sink` はグローバルの compartment の通知を受ける（どちらに届いたかを分けるため、別の口にする）。
     ///
-    /// 一部だけ成功した場合は、足したものを外してから失敗を返す（残さない）
+    /// スレッドの方が一部だけ成功した場合は、足したものを外してから失敗を返す（残さない）。グローバルの方は診断なので、
+    /// 失敗は記録して続ける
     pub fn install(
         thread_mgr: &ITfThreadMgr,
         client_id: u32,
         sink: &ITfCompartmentEventSink,
+        global_sink: &ITfCompartmentEventSink,
     ) -> windows_core::Result<Self> {
         let compartments: ITfCompartmentMgr = thread_mgr.cast()?;
+        // SAFETY: COM の呼び出し。スレッドの管理者は生きている
+        let global = match unsafe { thread_mgr.GetGlobalCompartment() } {
+            Ok(global) => Some(global),
+            Err(e) => {
+                log::error("GetGlobalCompartment failed", &e);
+                None
+            }
+        };
         let items: ITfLangBarItemMgr = thread_mgr.cast()?;
         let item = ComObject::new(ModeButton {
             mode: Cell::new(InputMode::Japanese),
@@ -264,28 +307,46 @@ impl Indicator {
         unsafe { items.AddItem(&item_iface) }?;
         let mut indicator = Self {
             compartments,
+            global,
             client_id,
             items,
             item,
             advised: Vec::new(),
         };
-        if let Err(e) = indicator.advise(sink) {
+        let thread_compartments = indicator.compartments.clone();
+        if let Err(e) = indicator.advise(&thread_compartments, sink) {
             indicator.remove();
             return Err(e);
+        }
+        if let Some(global) = indicator.global.clone()
+            && let Err(e) = indicator.advise(&global, global_sink)
+        {
+            log::error("global compartment AdviseSink failed", &e);
         }
         Ok(indicator)
     }
 
-    fn advise(&mut self, sink: &ITfCompartmentEventSink) -> windows_core::Result<()> {
+    fn advise(
+        &mut self,
+        compartments: &ITfCompartmentMgr,
+        sink: &ITfCompartmentEventSink,
+    ) -> windows_core::Result<()> {
         for guid in &WATCHED {
             // SAFETY: `guid` は定数への参照
-            let compartment = unsafe { self.compartments.GetCompartment(guid) }?;
+            let compartment = unsafe { compartments.GetCompartment(guid) }?;
             let source: ITfSource = compartment.cast()?;
             // SAFETY: `sink` は生きている。TSF が AddRef して持つ（`remove` で外す）
             let cookie = unsafe { source.AdviseSink(&ITfCompartmentEventSink::IID, sink) }?;
             self.advised.push((source, cookie));
         }
         Ok(())
+    }
+
+    fn manager(&self, scope: Scope) -> Option<&ITfCompartmentMgr> {
+        match scope {
+            Scope::Thread => Some(&self.compartments),
+            Scope::Global => self.global.as_ref(),
+        }
     }
 
     /// 外す（通知の登録とボタン）。失敗は記録するだけ（終了の途中で呼ぶ）
@@ -335,24 +396,44 @@ impl Indicator {
         self.item.notify();
     }
 
-    /// 診断用。compartment の種類（固定の文）と、今の値（読めなければ `None`）
-    pub fn describe(&self, guid: &GUID) -> (&'static str, Option<i32>) {
+    /// 診断用。compartment の種類（固定の文）と、`scope` の今の値（読めなければ `None`）
+    pub fn describe(&self, scope: Scope, guid: &GUID) -> (&'static str, Option<i32>) {
+        let value = || self.manager(scope).and_then(|m| read_i32(m, guid));
         if *guid == GUID_COMPARTMENT_KEYBOARD_OPENCLOSE {
-            ("openclose", read_i32(&self.compartments, guid))
+            ("openclose", value())
         } else if *guid == GUID_COMPARTMENT_KEYBOARD_INPUTMODE_CONVERSION {
-            ("conversion", read_i32(&self.compartments, guid))
+            ("conversion", value())
         } else {
             ("other", None)
         }
     }
 
-    /// compartment の今の値から読んだモード。値がなければ `None`
-    pub fn read(&self, guid: &GUID) -> Option<InputMode> {
+    /// 診断用。スレッドの OPENCLOSE・CONVERSION と、グローバルの OPENCLOSE・CONVERSION の今の値
+    pub fn values(&self) -> [Option<i32>; 4] {
+        let value = |scope, guid| self.manager(scope).and_then(|m| read_i32(m, guid));
+        [
+            value(Scope::Thread, &GUID_COMPARTMENT_KEYBOARD_OPENCLOSE),
+            value(
+                Scope::Thread,
+                &GUID_COMPARTMENT_KEYBOARD_INPUTMODE_CONVERSION,
+            ),
+            value(Scope::Global, &GUID_COMPARTMENT_KEYBOARD_OPENCLOSE),
+            value(
+                Scope::Global,
+                &GUID_COMPARTMENT_KEYBOARD_INPUTMODE_CONVERSION,
+            ),
+        ]
+    }
+
+    /// `scope` の compartment の今の値から読んだモード。値がなければ `None`
+    pub fn read(&self, scope: Scope, guid: &GUID) -> Option<InputMode> {
+        let value = self.manager(scope).and_then(|m| read_i32(m, guid))?;
         if *guid == GUID_COMPARTMENT_KEYBOARD_OPENCLOSE {
-            read_i32(&self.compartments, guid).map(|value| mode::from_open(value != 0))
+            Some(mode::from_open(value != 0))
         } else if *guid == GUID_COMPARTMENT_KEYBOARD_INPUTMODE_CONVERSION {
-            read_i32(&self.compartments, guid)
-                .map(|value| mode::from_conversion(u32::try_from(value).unwrap_or_default()))
+            Some(mode::from_conversion(
+                u32::try_from(value).unwrap_or_default(),
+            ))
         } else {
             None
         }
