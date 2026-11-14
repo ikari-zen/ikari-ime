@@ -2,11 +2,15 @@
 //!
 //! 片方の書きがもう片方の読みになる。名前付きパイプと同じく、書く側（または読む側）を落とすと相手に EOF
 //! （書きは `BrokenPipe`）が伝わり、`Shutdown` は両方向を閉じてブロック中の読みを起こす。
+//!
+//! 既定は容量に上限がない。`duplex_pair_bounded` は容量と書きの締め切りを持ち、相手が読まないときに、
+//! 名前付きパイプのバッファが埋まった状態（書きが待つ。締め切りで `TimedOut`）を作れる。
 
 use std::collections::VecDeque;
 use std::io::{self, Read, Write};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::time::{Duration, Instant};
 
 use crate::duplex::{Duplex, Halves, Listener, Shutdown};
 
@@ -15,6 +19,15 @@ use crate::duplex::{Duplex, Halves, Listener, Shutdown};
 struct Chan {
     state: Mutex<ChanState>,
     readable: Condvar,
+    writable: Condvar,
+    /// 溜められるバイト数と、書きの締め切り。`None` は上限なし（待たない）
+    limit: Option<WriteLimit>,
+}
+
+#[derive(Clone, Copy)]
+struct WriteLimit {
+    capacity: usize,
+    deadline: Duration,
 }
 
 #[derive(Default)]
@@ -31,6 +44,14 @@ impl Chan {
     fn close(&self) {
         self.lock().closed = true;
         self.readable.notify_all();
+        self.writable.notify_all();
+    }
+
+    fn bounded(limit: WriteLimit) -> Chan {
+        Chan {
+            limit: Some(limit),
+            ..Chan::default()
+        }
     }
 }
 
@@ -48,6 +69,8 @@ impl Read for MemReader {
                 for (slot, byte) in out.iter_mut().zip(state.buf.drain(..n)) {
                     *slot = byte;
                 }
+                drop(state);
+                self.0.writable.notify_all();
                 return Ok(n);
             }
             if state.closed {
@@ -71,15 +94,42 @@ impl Drop for MemReader {
 struct MemWriter(Arc<Chan>);
 
 impl Write for MemWriter {
+    /// 上限なしなら、全部を溜めてすぐ戻る。上限ありなら、名前付きパイプと同じく、全部が溜まる（相手が
+    /// 読んで空きができる）まで待ち、締め切りまでに終わらなければ `TimedOut`（溜まった分は残る）。
     fn write(&mut self, data: &[u8]) -> io::Result<usize> {
+        let started = Instant::now();
+        let mut rest = data;
         let mut state = self.0.lock();
-        if state.closed {
-            return Err(io::Error::from(io::ErrorKind::BrokenPipe));
+        loop {
+            if state.closed {
+                return Err(io::Error::from(io::ErrorKind::BrokenPipe));
+            }
+            let room = match self.0.limit {
+                Some(limit) => limit.capacity.saturating_sub(state.buf.len()),
+                None => rest.len(),
+            };
+            let n = room.min(rest.len());
+            state.buf.extend(&rest[..n]);
+            rest = &rest[n..];
+            if n > 0 {
+                self.0.readable.notify_all();
+            }
+            let Some(limit) = self.0.limit else {
+                return Ok(data.len());
+            };
+            if rest.is_empty() {
+                return Ok(data.len());
+            }
+            let Some(left) = limit.deadline.checked_sub(started.elapsed()) else {
+                return Err(io::Error::from(io::ErrorKind::TimedOut));
+            };
+            state = self
+                .0
+                .writable
+                .wait_timeout(state, left)
+                .unwrap_or_else(|e| e.into_inner())
+                .0;
         }
-        state.buf.extend(data);
-        drop(state);
-        self.0.readable.notify_all();
-        Ok(data.len())
     }
 
     fn flush(&mut self) -> io::Result<()> {
@@ -127,8 +177,22 @@ impl Duplex for MemDuplex {
 
 /// つながった 2 つの流れ（片方の書きがもう片方の読みになる）。
 pub fn duplex_pair() -> (MemDuplex, MemDuplex) {
-    let a_to_b = Arc::new(Chan::default());
-    let b_to_a = Arc::new(Chan::default());
+    pair_of(Chan::default, Chan::default)
+}
+
+/// 片方向ごとに `capacity` バイトまでしか溜められず、書きが `write_deadline` までに終わらなければ
+/// `TimedOut` になる 2 つの流れ。相手が読まなくなったときの書きを試す。
+pub fn duplex_pair_bounded(capacity: usize, write_deadline: Duration) -> (MemDuplex, MemDuplex) {
+    let limit = WriteLimit {
+        capacity,
+        deadline: write_deadline,
+    };
+    pair_of(move || Chan::bounded(limit), move || Chan::bounded(limit))
+}
+
+fn pair_of(a: impl FnOnce() -> Chan, b: impl FnOnce() -> Chan) -> (MemDuplex, MemDuplex) {
+    let a_to_b = Arc::new(a());
+    let b_to_a = Arc::new(b());
     (
         MemDuplex {
             incoming: Arc::clone(&b_to_a),
@@ -220,6 +284,18 @@ mod tests {
             bw.write(b"x").unwrap_err().kind(),
             io::ErrorKind::BrokenPipe
         );
+    }
+
+    #[test]
+    fn bounded_write_times_out_when_nobody_reads_and_resumes_after_a_read() {
+        let (a, b) = duplex_pair_bounded(8, Duration::from_millis(50));
+        let (_ar, mut aw, _) = a.split();
+        let (mut br, _bw, _) = b.split();
+        aw.write_all(b"12345678").unwrap();
+        assert_eq!(aw.write(b"x").unwrap_err().kind(), io::ErrorKind::TimedOut);
+        let mut buf = [0u8; 8];
+        br.read_exact(&mut buf).unwrap();
+        assert_eq!(aw.write(b"y").unwrap(), 1);
     }
 
     #[test]
