@@ -83,12 +83,14 @@ fn lm_overrides_win_over_the_config_file() {
     LmOverrides {
         budget_ms: Some(300),
         idle_unload_secs: Some(60),
+        idle_unload_gpu_secs: Some(1800),
         gpu: Some(false),
     }
     .apply(&mut kv);
     assert_eq!(kv["zenz.budget_ms"], "300");
     assert_eq!(kv["zenz.idle_unload_secs"], "60");
     assert_eq!(kv["zenz.gpu"], "off");
+    assert_eq!(kv["zenz.idle_unload_gpu_secs"], "1800");
     assert_eq!(kv["zenz.alpha"], "0.5");
     let mut untouched = kv.clone();
     LmOverrides::default().apply(&mut untouched);

@@ -60,6 +60,9 @@ pub struct ZenzConfig {
     pub budget: Duration,
     /// 最後の要求からこの時間が経ったらモデルを解放する（NFR-11）
     pub idle_unload: Duration,
+    /// モデルを GPU に載せているときの解放までの時間。None なら `idle_unload` と同じ。GPU は読み直しが重い
+    /// （N150 の VM で約 18 秒。ADR 0059）ので、エンジンが Vulkan のビルドで長くする
+    pub idle_unload_gpu: Option<Duration>,
     /// 加点は `alpha * (NLL - min NLL) * 1000`（dev 分割で調整する）
     pub alpha: f32,
     /// 1候補あたりの加算の上限（コスト）
@@ -85,6 +88,7 @@ impl Default for ZenzConfig {
             model_kind: ModelKind::default(),
             budget: Duration::from_millis(DEFAULT_BUDGET_MS),
             idle_unload: Duration::from_secs(DEFAULT_IDLE_UNLOAD_SECS),
+            idle_unload_gpu: None,
             alpha: DEFAULT_ALPHA,
             max_total: DEFAULT_MAX_TOTAL,
             context_chars: DEFAULT_CONTEXT_CHARS,
@@ -140,6 +144,11 @@ impl ZenzConfig {
                 "idle_unload_secs" => {
                     cfg.idle_unload =
                         Duration::from_secs(parse_u64(value).ok_or_else(|| bad("not an integer"))?);
+                }
+                "idle_unload_gpu_secs" => {
+                    cfg.idle_unload_gpu = Some(Duration::from_secs(
+                        parse_u64(value).ok_or_else(|| bad("not an integer"))?,
+                    ));
                 }
                 "load_retry_secs" => {
                     cfg.load_retry =
@@ -208,6 +217,13 @@ mod tests {
         assert_eq!(c.context_chars, 40);
         assert_eq!(c.right_context_chars, 10);
         assert_eq!(c.topic_words, 3);
+    }
+
+    #[test]
+    fn idle_unload_gpu_is_unset_by_default_and_read_from_kv() {
+        assert_eq!(ZenzConfig::default().idle_unload_gpu, None);
+        let c = ZenzConfig::from_kv(&kv(&[("zenz.idle_unload_gpu_secs", "1800")])).unwrap();
+        assert_eq!(c.idle_unload_gpu, Some(Duration::from_secs(1800)));
     }
 
     #[test]

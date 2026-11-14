@@ -38,6 +38,10 @@ pub const DEFAULT_DATE_WEEKDAY_DATES: bool = false;
 /// `engine.lm_gpu` の既定（GPU があれば使う。なければ CPU。2026-11-14 ユーザー決定。ADR 0059 §2.5）
 pub const DEFAULT_LM_GPU: bool = true;
 
+/// モデルを GPU に載せているとき、`engine.idle_unload_secs` が設定ファイルに無い場合の解放までの秒数（30 分）。
+/// **計測なしの暫定値。ユーザー了承済み（2026-11-14）**（GPU の読み直しは N150 の VM で約 18 秒。ADR 0059）。CPU の既定（300 秒）は変えない
+pub const DEFAULT_IDLE_UNLOAD_GPU_SECS: u32 = 1800;
+
 /// `engine.lm_deadline_ms` の既定（先行計算で LM を待つ締め切り。`LmBudget.max` の既定と同じ）
 pub const DEFAULT_LM_DEADLINE_MS: u32 = 300;
 /// `engine.lm_deadline_ms` の範囲（暫定）。範囲外は丸める
@@ -83,6 +87,15 @@ pub struct Settings {
 }
 
 impl Settings {
+    /// GPU のときの解放までの秒数。設定ファイルの `engine.idle_unload_secs` が明示されていればそれ（GPU でも CPU でも
+    /// 同じ値。`0` = 解放しない）、なければ `DEFAULT_IDLE_UNLOAD_GPU_SECS`。戻り値の `None` は解放しない
+    pub fn idle_unload_gpu_secs(&self) -> Option<u32> {
+        let secs = self
+            .idle_unload_secs
+            .unwrap_or(DEFAULT_IDLE_UNLOAD_GPU_SECS);
+        (secs != 0).then_some(secs)
+    }
+
     /// LM を GPU で動かすか（既定は真。GPU が使えない機械では、真でも CPU に落ちる）
     pub fn lm_gpu_or_default(&self) -> bool {
         self.lm_gpu.unwrap_or(DEFAULT_LM_GPU)
@@ -252,6 +265,22 @@ mod tests {
             Some(false)
         );
         assert_eq!(parse("date.weekday_dates\t1\n"), Settings::default());
+    }
+
+    #[test]
+    fn gpu_idle_unload_is_longer_unless_explicit() {
+        assert_eq!(
+            parse("").idle_unload_gpu_secs(),
+            Some(DEFAULT_IDLE_UNLOAD_GPU_SECS)
+        );
+        assert_eq!(
+            parse("engine.idle_unload_secs\t60\n").idle_unload_gpu_secs(),
+            Some(60)
+        );
+        assert_eq!(
+            parse("engine.idle_unload_secs\t0\n").idle_unload_gpu_secs(),
+            None
+        );
     }
 
     #[test]

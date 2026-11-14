@@ -50,6 +50,7 @@ const LM_KEY_PREFIX: &str = "zenz.";
 const KEY_LM_BUDGET_MS: &str = "zenz.budget_ms";
 const KEY_LM_IDLE_UNLOAD_SECS: &str = "zenz.idle_unload_secs";
 const KEY_LM_GPU: &str = "zenz.gpu";
+const KEY_LM_IDLE_UNLOAD_GPU_SECS: &str = "zenz.idle_unload_gpu_secs";
 /// `zenz.gpu` の値（`ZenzConfig::from_kv` の書き方）
 const VALUE_GPU_ON: &str = "on";
 const VALUE_GPU_OFF: &str = "off";
@@ -161,6 +162,8 @@ pub struct LmOverrides {
     pub budget_ms: Option<u64>,
     /// 使われなくなってからモデルを解放するまでの秒数（`zenz.idle_unload_secs`）
     pub idle_unload_secs: Option<u64>,
+    /// モデルを GPU に載せているときの解放までの秒数（`zenz.idle_unload_gpu_secs`。None なら `idle_unload_secs` と同じ）
+    pub idle_unload_gpu_secs: Option<u64>,
     /// GPU を使う（`zenz.gpu`。設定 `engine.lm_gpu`。Vulkan のビルドだけで効く。ADR 0059 §2.5）
     pub gpu: Option<bool>,
 }
@@ -173,6 +176,9 @@ impl LmOverrides {
         }
         if let Some(secs) = self.idle_unload_secs {
             kv.insert(KEY_LM_IDLE_UNLOAD_SECS.to_owned(), secs.to_string());
+        }
+        if let Some(secs) = self.idle_unload_gpu_secs {
+            kv.insert(KEY_LM_IDLE_UNLOAD_GPU_SECS.to_owned(), secs.to_string());
         }
         if let Some(gpu) = self.gpu {
             let value = if gpu { VALUE_GPU_ON } else { VALUE_GPU_OFF };

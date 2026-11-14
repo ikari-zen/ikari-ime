@@ -171,6 +171,7 @@ pub fn stack_options(idle_unload_secs: u32, budget: LmBudget) -> StackOptions {
             // 待ちの長さは変換 1 回ごとの締め切りで決まる。ZenzRanker の `budget` は上限として最大に合わせる
             budget_ms: Some(budget.max.as_millis() as u64),
             idle_unload_secs: Some(unload),
+            idle_unload_gpu_secs: None,
             gpu: None,
         },
         profile: ProfileSel::User,
@@ -231,6 +232,14 @@ impl Engine {
         };
         let mut opts = stack_options(idle_unload_secs, lm_budget);
         opts.lm.gpu = Some(settings.lm_gpu_or_default());
+        // GPU のときだけ解放を遅くする（Vulkan のビルドだけ。Metal の挙動は変えない）
+        if cfg!(feature = "lm-vulkan") {
+            opts.lm.idle_unload_gpu_secs = Some(
+                settings
+                    .idle_unload_gpu_secs()
+                    .map_or(NEVER_UNLOAD_SECS, u64::from),
+            );
+        }
         // 住所 ↔ 郵便番号の設定（表は <dict>/postal.tsv。ADR 0032）
         opts.postal = PostalOptions {
             japanese: settings.postal_japanese_or_default(),

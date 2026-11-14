@@ -514,10 +514,12 @@ fn worker_loop(rx: Receiver<Request>, loader: LmLoader, shared: Arc<Shared>, cfg
     let counters = &shared.counters;
     let mut scorer: Option<Box<dyn LmScorer>> = None;
     let mut last_load_failure: Option<Instant> = None;
+    // 今のモデルの解放までの時間（GPU に載せたときは `idle_unload_gpu`）
+    let mut idle_unload = cfg.idle_unload;
 
     loop {
         let first = if scorer.is_some() {
-            match rx.recv_timeout(cfg.idle_unload) {
+            match rx.recv_timeout(idle_unload) {
                 Ok(r) => r,
                 Err(RecvTimeoutError::Timeout) => {
                     // NFR-11: アイドルが続いたのでモデルを解放する
@@ -554,6 +556,7 @@ fn worker_loop(rx: Receiver<Request>, loader: LmLoader, shared: Arc<Shared>, cfg
                         shared
                             .device
                             .store(device_to_u8(s.device()), Ordering::Release);
+                        idle_unload = idle_unload_for(&cfg, s.device());
                         scorer = Some(s);
                         last_load_failure = None;
                         shared.loaded.store(true, Ordering::Release);
@@ -594,6 +597,14 @@ fn worker_loop(rx: Receiver<Request>, loader: LmLoader, shared: Arc<Shared>, cfg
     drop(scorer);
     shared.device.store(DEVICE_UNKNOWN, Ordering::Release);
     shared.loaded.store(false, Ordering::Release);
+}
+
+/// 読み込んだ装置に応じた、解放までの時間。GPU で `idle_unload_gpu` があればそれ、なければ `idle_unload`
+fn idle_unload_for(cfg: &ZenzConfig, device: LmDevice) -> Duration {
+    match (device, cfg.idle_unload_gpu) {
+        (LmDevice::Gpu, Some(gpu)) => gpu,
+        _ => cfg.idle_unload,
+    }
 }
 
 /// 置き換えられた古い要求のキーを inflight から外す（新しい要求のキーが入っていれば残す）
