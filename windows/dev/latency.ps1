@@ -11,7 +11,7 @@
   Each line is a summary of the newest 1000 samples of one process and one kind, so only the LAST line of each
   (pid, kind) pair is shown. Medians of different processes cannot be merged, so they are listed one by one.
   Times are in microseconds in the log and in milliseconds here. The log has no input text (numbers only).
-  Never run on Windows when written: syntax only.
+ 
 #>
 param(
     [int]$Last = 2000,

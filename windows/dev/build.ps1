@@ -9,7 +9,7 @@
   you turn it on (settings.tsv in the data directory: engine.lm=true) and the model is in <DataDir>\models\.
 .NOTES
   Needs Rust (stable-x86_64-pc-windows-msvc) and Visual Studio Build Tools (C++ workload). cmake is needed only with
-  -Lm. Never run on Windows when written: syntax only.
+  -Lm.
 #>
 param([switch]$HideConsole, [switch]$Lm)
 
