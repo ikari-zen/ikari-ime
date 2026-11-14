@@ -1,6 +1,6 @@
 # ADR 0040: Windows で動かす（殻・エンジン・候補窓・設定画面・配布の方針と、段階の切り方）
 
-- 状態: 承認（2026-11-11。ユーザー決定。§9）
+- 状態: 一部置き換え（ADR 0059。§2.6 の「LM は CPU（`llama` feature）」は、Windows の LM を GPU（Vulkan。`lm-vulkan`）で推論し、GPU の既定をオンにする形に改まった。LM そのものが既定オフは変わらない。2026-11-11 の承認。ユーザー決定。§9。本文は書き換えない）
 - 日付: 2026-10-30（初版）。2026-11-11 改訂（ユーザーの決定を反映。優先順位、1.0 の定義、進め方、段階の切り方、設定画面、ファイルの形式、門）
 - 対象: 方針と段階の切り方だけ（コードは変えない）。採ったときに触るのは、`core/src/user/`、`engine/`、`runmark/`、テストの symlink、`shell-core/src/settings/`、`xtask/`、ファイルを読む箇所（§2.9）、新しい `textfile/`（§2.9）、`pipe/`（名前付きパイプの層）と `windows/`（TIP、常駐のエンジン、候補窓、設定画面）
 - 前提: main = e3360ec。spec「OS別の実装メモ」の Windows（TSF）、NFR-02（Space から 1 ページ目まで p99 16ms 以下）、NFR-14（エンジンは別プロセス）、NFR-40（Windows 11）、プロセス間通信の表（Windows は名前付きパイプ）、NFR-41（Windows 版が配れたら 1.0.0）・NFR-42（署名）。ADR 0005（設定アプリ）、ADR 0041（`shell-core`。承認、移行は完了）、ADR 0042（技術選定の方針）、ADR 0043（`cargo xtask`）、ADR 0051（`runmark`）、ADR 0058（リソースの配置）
@@ -59,7 +59,7 @@
        ├─ shell-core            状態機械（macOS と共有。§3.2）
        └─ pipe::Client          EngineTransport の実装
             │ 名前付きパイプ（枠 + Envelope。§5）
-ikari-engine.exe（windows/engine-host。Rust、ユーザーのセッションで常駐）
+ikari-engine.exe（windows/engine-host。Rust、ユーザーのセッションで常駐。**実物の exe の名前は `ikari-engine-host.exe`**。パッケージ名のまま。`windows/dev/common.ps1`）
   ├─ pipe::Server → engine（今の Engine::handle をそのまま）
   └─ 設定画面の相手（shell-core の bridge と settings。§2.5）
 候補窓（方式は §2.4 のスパイクで決める）
@@ -115,7 +115,7 @@ ikari-engine.exe（windows/engine-host。Rust、ユーザーのセッション�
 - **`scripts/check.sh` に `cargo check --target x86_64-pc-windows-msvc`（LM なし）を入れる**（W0-c から。2026-11-11 ユーザー決定。§9 の Q3）。ターゲットがなければ `rustup target add` を案内して失敗にする。
   - 注意（未確認の推測）: C や C++ をビルドする build script を持つ crate（feature つきの `llama-cpp-2` など）は、Mac からの msvc ターゲットの `check` で失敗しうる。W0-c で実測し、失敗するなら対象から外し、外したことを `check` の出力に出す。
 - **`windows-latest` の CI のジョブは、ある程度機能ができてから作る**（2026-11-11 ユーザー決定）。目安は W1 で名前付きパイプが通ったあと（W1-d）。最初は必須にしない。必須にする時期は、ジョブが安定してから改めてユーザーに聞く。それまでの Windows の検証は、手元の `cargo check`、Mac で流せるテスト、実機の確認待ちだけ。
-- **LM**: Windows 版は LM なしを基準にし、LM（CPU、`llama` feature。cmake が要る）は任意で既定はオフ。既定を見直すかは S4 の実測のあと。
+- **LM**: Windows 版は LM なしを基準にし、LM（CPU、`llama` feature。cmake が要る）は任意で既定はオフ。既定を見直すかは S4 の実測のあと。**【→ ADR 0059 で、Windows の LM は GPU（Vulkan、`lm-vulkan`）で推論し、GPU の既定はオン（使えなければ CPU に落ちる）に改まった。LM そのものは既定オフのまま（2026-11-14）】**
 - **開発環境**（2026-10-30 ユーザー決定。2026-11-11 再確認）: 作者の miniPC の上の x64 の Windows 11 の VM（#128）。TIP が落ちると Windows が固まりうるので、VM に限る。#81 の本文にある Mac の Parallels（ARM）の案は採らない。
 
 ### 2.7 配布（#99 との関係）

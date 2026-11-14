@@ -3,18 +3,18 @@
 ikari-ime の今の構成を 1 か所にまとめた地図。判断の理由は書かない（ADR へのリンクにする）。
 構成を変えたコミットで一緒に直すこと。要件は [spec](ikari-ime_spec.md)、日付つきの判断の記録は [ADR の索引](adr/README.md)。
 
-状態: フェーズ3a まで完了（2026-10-12）。macOS の入力メニュー、設定アプリ「ikari 設定」、ユーザー辞書と学習の管理（[ADR 0005](adr/0005-macos-settings-and-indicator.md)）。独自のモード表示は持たない（ADR 0005 §15.2）。英語のモード（打鍵を素通しにする）は B44 で足した（[ADR 0026](adr/0026-english-mode-and-key-stats.md)。下の「入力モードと入力ソース」）。
+状態（2026-11-14 に直した）: macOS 版は、入力メニュー、設定アプリ「ikari 設定」、ユーザー辞書と学習の管理（[ADR 0005](adr/0005-macos-settings-and-indicator.md)）。独自のモード表示は持たない（ADR 0005 §15.2）。英語のモード（打鍵を素通しにする）は B44 で足した（[ADR 0026](adr/0026-english-mode-and-key-stats.md)。下の「入力モードと入力ソース」）。殻の判断は Rust の `shell-core` に移した（[ADR 0041](adr/0041-shell-state-machine-in-rust.md)）。Windows は `pipe`・`windows/engine-host`・`windows/tip`（TIP の DLL）まで作ってあり、実機（VM）で確かめている途中（下の 2.1。候補窓と設定画面はまだ）。
 
 ## 1. crate（Rust、workspace）
 
 | crate | 責務 | 主な決定 |
 | --- | --- | --- |
 | `dict-format` | バイナリ辞書の形式（`grammar.bin`、`system.dict`、`vectors.bin`）の定義、検証、読みの正規化。IO を持たない | [0001 §3](adr/0001-phase0-architecture.md)、[0002 §3](adr/0002-phase1-architecture.md) |
-| `resource` | リソース（辞書・表・モデル）の束の契約（`ikari-resource`）。manifest の型と読み書き、束の検証（大きさ、sha256、形式の版、既知のモデル、古い版、パスの脱出）、既知のモデルの sha256 の表、入れ替えの journal の型。IO は束の読み取りだけ。まだエンジン・xtask からは使っていない（#246-2 で配線） | [0058 §4〜§7](adr/0058-offline-resource-install.md) |
+| `resource` | リソース（辞書・表・モデル）の束の契約（`ikari-resource`）。manifest の型と読み書き、束の検証（大きさ、sha256、形式の版、既知のモデル、古い版、パスの脱出）、既知のモデルの sha256 の表、入れ替えの journal の型。IO は束の読み取りだけ。エンジン（`model_check`、`lib.rs`）が使う。xtask からはまだ使っていない | [0058 §4〜§7](adr/0058-offline-resource-install.md) |
 | `dict-builder` | SudachiDict の CSV と chiVe から辞書を作る。ポリシー（`policy/*.tsv`）でコストを調整する。異字同訓の表（`policy/kun.tsv`）で動詞・形容詞の表記を並べる。`town` サブコマンドが ABR の町字マスターから地名の語彙（`town_lex.csv`）と、住所の連なり（都道府県 + 郡 + 市区 + 町名。`chain_lex.csv`。同じ行の Core にも勝つ。[0030 §12](adr/0030-abr-town-vocabulary.md)）を作る | [0001 §8](adr/0001-phase0-architecture.md)、[0002 §4](adr/0002-phase1-architecture.md)、[0009](adr/0009-verb-notation.md)、[0030](adr/0030-abr-town-vocabulary.md) |
 | `input` | ローマ字、JIS かな、字種変換。辞書に依存しない純粋な処理（殻がリンクする） | [0004 §3.3](adr/0004-phase2-macos.md) |
 | `core` | 辞書引き、ラティスと Viterbi、Ranker（cost、左文脈（連接と複合語。[0007](adr/0007-left-context-compound.md)）、文書内キャッシュ、かなの表記、学習、プロファイル、話題）と Guard、`Converter`、文節の編集と再変換（`Segmented`、`Converter::segment` / `resize` / `reconvert`。区切りの規則は `pos::{ClauseWord, clause_starts, joins_following_noun}`、解析は `ContextAnalyzer::analyze_text`、読みの逆引きは `Dictionary::warm_reading_index`、辞書のページの先読みは `Dictionary::prefault`。[契約 §6](phase2-contract.md)）、LM が規則 S の守った1位を覆したら戻す段（`CompositeRanker` の最後の段。判定は `lattice::has_noun_suru_edge`。[0024](adr/0024-lm-keeps-rule-s.md)）、英字が1位のときのカタカナの繰り上げ（`ranker/english_first.rs` が置き換えた候補を作り、`CompositeRanker` の最後の段が1位にする。置き換えた候補の追加は `Conversion::build_first_pool`。[0020](adr/0020-english-spelling-first-candidate.md)）、読みそのままの平仮名・片仮名の救済（最初のプールを rank したあと、30 位より後ろなら 30 位へ。`conversion::rescue_reading_kana`、文節のモードは `pin_first` のあとにも。`convert.kana_rescue_rank`、0 で無効。[0052](adr/0052-reading-kana-rescue.md)）、ユーザーデータ（`user/`。同じ読みで直前に選んだ表記は `LearningStore` のメモリ `RecentChoices` に持ち、数分だけ加点する。保存しない。[0045](adr/0045-recent-choice-bonus.md)） | [0001 §4](adr/0001-phase0-architecture.md)、[0002](adr/0002-phase1-architecture.md)、[0003](adr/0003-topic-ranker-decision.md)、[0020](adr/0020-english-spelling-first-candidate.md)、[0024](adr/0024-lm-keeps-rule-s.md) |
-| `lm` | zenz（GGUF、llama.cpp）による話題スコア。feature `llama` / `metal` のときだけ llama.cpp をビルドする | [0002 §13.2](adr/0002-phase1-architecture.md)、[0003](adr/0003-topic-ranker-decision.md) |
+| `lm` | zenz（GGUF、llama.cpp）による話題スコア。feature `llama` / `metal` / `vulkan` のときだけ llama.cpp をビルドする（`vulkan` は Windows の GPU。バックエンドは別の DLL） | [0002 §13.2](adr/0002-phase1-architecture.md)、[0003](adr/0003-topic-ranker-decision.md)、[0059](adr/0059-windows-gpu-inference.md) |
 | `stack` | Converter、Ranker、LM の共有の組み立て（`build_stack`）。エンジン、CLI、eval が使う | [0004 §3.2](adr/0004-phase2-macos.md) |
 | `import` | 取り込みファイル（JSONL）の検証、強制アライメント、初期学習 | [0002 §11](adr/0002-phase1-architecture.md) |
 | `proto` | エンジンと殻の間のメッセージ（`proto/ikari/engine/v1/engine.proto`、prost）。設定アプリと殻の間の `proto/ikari/bridge/v1/bridge.proto` も生成する（`shell-core` の bridge が使う。Swift は `gen-proto.sh`） | [0004 §5](adr/0004-phase2-macos.md)、[0005 §6.3](adr/0005-macos-settings-and-indicator.md) |
@@ -23,7 +23,11 @@ ikari-ime の今の構成を 1 か所にまとめた地図。判断の理由は�
 | `shell-core` | 殻の OS に依存しない処理の全部（入力の状態機械、キー割り当て、合成器の呼び出し、英語のモードの文脈（`english`）、郵便番号と Unicode の表記（`postal`）、ショートコード、候補ウィンドウの配置（`panel`）、メニュー、エンジンとの通信と再接続（`engine`）、設定アプリとのブリッジの判断（`bridge`）、設定の検証と整形（`settings`）、診断ログ）。入口は「OS のイベント → `Shell::dispatch` → 動作の列」の 1 本。共通のシナリオ（`shell-core/scenarios/`）で振る舞いを守る | [0041](adr/0041-shell-state-machine-in-rust.md) |
 | `shell-ffi` | 殻と設定アプリが使う `shell-core` の C ABI（staticlib。ヘッダ `include/ikari_shell.h`。`ikari_shell_*`、`ikari_settings_*`、`ikari_panel_*`。入出力は protobuf の `ikari.shell.v1`・`ikari.settings.v1`） | [0041 §4.4](adr/0041-shell-state-machine-in-rust.md) |
 | `pipe` | TIP と常駐のエンジンをつなぐ、枠つきの双方向の流れ（枠の符号化、要求と返事の多重化、時間切れ、クライアントとサーバー）。標準ライブラリだけ。名前付きパイプの OS 層は `cfg(windows)`（W1-b）。`shell-core` に依存しない | [0040 §2.2、§5](adr/0040-windows-feasibility.md) |
-| `windows/engine-host`（`ikari-engine-host`） | Windows の常駐のエンジン。`pipe::Server` で受けた枠を `Engine::handle` に渡す。受け付けの繰り返しは OS に依存しない | [0040 §2.2](adr/0040-windows-feasibility.md) |
+| `windows/engine-host`（`ikari-engine-host`） | Windows の常駐のエンジン（exe は `ikari-engine-host.exe`）。`pipe::Server` で受けた枠を `Engine::handle` に渡す。受け付けの繰り返しは OS に依存しない | [0040 §2.2](adr/0040-windows-feasibility.md) |
+| `windows/tip`（`ikari-tip`） | Windows の TIP（各アプリに入る DLL。cdylib）。キー（VK → `ShellEvent`）、動作の列 → TSF の操作、secure の判定、モードの写し、`pipe::Client` を `EngineTransport` に合わせる輸送は OS に依存せず Mac でテストする。TSF の COM の層は `src/com`（`cfg(windows)`、`unsafe` はここだけ） | [0040 §2.2、§2.8](adr/0040-windows-feasibility.md) |
+| `runmark`（`ikari-runmark`） | 起動中の印と、前回の終わり方の判定（`exit=clean|term|crash`）。`engine` と `shell-core`、`shell-ffi` が使う | [0051](adr/0051-crash-exit-record.md) |
+| `textfile`（`ikari-textfile`） | テキストファイルの形式の共通部分（UTF-8・LF で書き、LF・CRLF・BOM つきを読む）。標準ライブラリだけ | [0040 §2.9](adr/0040-windows-feasibility.md) |
+| `testtime`（`ikari-testtime`） | 時間に依存するテストの倍率（`IKARI_TEST_TIME_SCALE`）。テストでだけ使う | — |
 | `cli` | コマンド `ikari`（変換、ユーザー辞書、取り込み）。バイナリ名は `ikari` | [0001 §5](adr/0001-phase0-architecture.md)、[0002 §14](adr/0002-phase1-architecture.md) |
 | `eval` | 評価セットの実行、レポート、シナリオ、AJIMEE。`ikari-eval` | [0001 §6](adr/0001-phase0-architecture.md)、[0002 §15](adr/0002-phase1-architecture.md) |
 
@@ -39,6 +43,11 @@ core, stack, import（+ lm optional）← cli, eval
 input, proto ← shell-core ← shell-ffi（staticlib）
 proto ← engine
 engine, pipe ← windows/engine-host
+shell-core, pipe ← windows/tip
+textfile ← core, dict-builder, engine, import, shell-core, xtask
+runmark ← engine, shell-core, shell-ffi
+resource ← engine
+testtime（dev のみ）← pipe, engine, lm, windows/tip, windows/engine-host
 ```
 
 - `lm` と `engine-ffi` は feature なしなら llama.cpp をビルドしないので、`cargo build` / `cargo test` は workspace 全体を対象にする。
@@ -78,13 +87,13 @@ IkariEngine.xpc（同梱の XPC サービス。App Sandbox、ネットワーク�
 - 英語のモードの郵便番号（ADR 0032 §9.1、設定 `postal.english`、既定 off）: 語頭の `te` + 数字 7 桁を殻の `PostalMachine`（`shell-core/src/postal/`）がためて、7 桁目で候補ウィンドウを自動で出す（下線なし。選ぶのは ↑/↓ だけ）。住所は、殻が主スレッドの外で `PostalLookupRequest` をエンジンへ 1 回送り（shell-core の `engine`。待ちの上限は暫定で 1 秒）、エンジンが `postal.tsv` の表（`stack().postal`）を引いて返す。返事が来たとき状態が同じ（同じコードと同じ候補の通し番号）なら候補に足し、違えば捨てる。設定アプリからは中継しない（shell-core の `bridge/relay_policy.rs`）。同じ状態機械が、`u+` + 16 進 4〜6 桁（設定 `unicode.notation`、既定 off。issue #28）も扱う。4 桁目で候補（そのまま、その文字）が出て、桁が増えるたびに更新する。問い合わせはなく、10FFFF を超える並び・制御文字・未割り当ては出さない。`u` の次は `+` が要る（`use`、`unit` などは素通し）。
 - 確信度が高い変換（#69、設定 `candidate.hide_when_confident`、既定 on。2026-10-28 ユーザー決定）: エンジンが、読み全体の候補の 1 位と 2 位の最終スコアの差を見て、閾値以上なら `ConvertReply.confident = true` を返す（閾値は LM なし 5000、LM あり 10000。暫定。`convert` の行の `gap=` `confident=` で実利用の分布を見て見直す）。殻は、設定がオンで confident、1 文節のとき、最初の Space で 1 位だけを下線つきで出し、候補ウィンドウは出さない。もう一度 Space、↓、↑、数字キーで一覧を出す（選択は 0 番のまま）。Enter、Esc、BackSpace、文字入力は今までどおり。
 
-## 2.1 Windows のプロセスの構成（計画。[ADR 0040 §2.2](adr/0040-windows-feasibility.md)。今あるのは `pipe` と `engine-host` の受け付けまで）
+## 2.1 Windows のプロセスの構成（[ADR 0040 §2.2](adr/0040-windows-feasibility.md)。今あるのは `pipe`、`windows/engine-host`、`windows/tip`（COM の層まで）。候補窓（[0062](adr/0062-windows-candidate-window.md)）と設定画面はまだない）
 
 ```
 アプリのプロセス（各アプリ）
   └─ ikari_tip.dll（windows/tip。Rust、cdylib。TSF の COM は cfg(windows) の薄い層。判断は shell-core）
        │ 名前付きパイプ（枠 + Envelope。pipe::Client）
-ikari-engine.exe（windows/engine-host。ユーザーのセッションで常駐。pipe::Server → engine）
+ikari-engine-host.exe（windows/engine-host。ユーザーのセッションで常駐。pipe::Server → engine。ADR などの `ikari-engine.exe` はこれ）
 候補窓、設定画面（方式は ADR 0040 §2.4、§2.5 のスパイクで決める）
 ```
 
