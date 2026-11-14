@@ -14,6 +14,7 @@ const GITLEAKS_CONFIGS: [&str; 2] = [".gitleaks.toml", ".gitleaks.local.toml"];
 /// リンク検査から外すディレクトリ（リポジトリ直下からの相対）
 const LINK_SKIP_TOP: [&str; 4] = ["target", "data", ".claude", ".git"];
 const LINK_SKIP_ANY: &str = ".build";
+const POWERSHELL_DIRS: [&str; 1] = ["windows/dev"];
 const SHELL_SCRIPT_DIRS: [&str; 4] = ["scripts", "macos/scripts", "eval/scripts", ".claude/hooks"];
 
 /// root 以下の *.md を並べて返す（target、data、.claude、.git の直下と、どこにある .build は見ない）。
@@ -290,6 +291,47 @@ pub fn shell_syntax(root: &Path) -> Result<(), Failure> {
         }
     }
     Ok(())
+}
+
+/// PowerShell スクリプトの構文（Parser）と、PSScriptAnalyzer の Error。pwsh がなければ飛ばす
+/// （PSScriptAnalyzer がなければ構文だけ見る）。Warning は止めない（開発用の道具に合わない規則が多い）。
+pub fn powershell_syntax(root: &Path) -> Result<(), Failure> {
+    log("PowerShell スクリプトの構文");
+    if !succeeds_quietly(
+        Command::new("pwsh")
+            .arg("-NoProfile")
+            .arg("-Command")
+            .arg("exit 0"),
+    ) {
+        warn("pwsh がありません。PowerShell スクリプトの検査を飛ばします");
+        return Ok(());
+    }
+    const SCRIPT: &str = r#"$bad = 0
+foreach ($d in $env:IKARI_PS_DIRS.Split(';')) {
+  foreach ($f in Get-ChildItem -Path $d -Filter *.ps1 -Recurse) {
+    $e = $null
+    [void][System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$e)
+    foreach ($x in $e) { "$($f.FullName):$($x.Extent.StartLineNumber): $($x.Message)"; $bad++ }
+  }
+  if (Get-Module -ListAvailable PSScriptAnalyzer) {
+    foreach ($r in Invoke-ScriptAnalyzer -Path $d -Recurse -Severity Error) { "$($r.ScriptPath):$($r.Line): $($r.RuleName) $($r.Message)"; $bad++ }
+  }
+}
+if ($bad -gt 0) { exit 1 }"#;
+    let ok = Command::new("pwsh")
+        .current_dir(root)
+        .env("IKARI_PS_DIRS", POWERSHELL_DIRS.join(";"))
+        .args(["-NoProfile", "-Command", SCRIPT])
+        .stdin(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success());
+    if ok {
+        Ok(())
+    } else {
+        Err(Failure::new(
+            "PowerShell スクリプトに構文エラーか Error があります（上の出力）",
+        ))
+    }
 }
 
 /// リポジトリのシェルスクリプトを bash で流す（テスト用。bash がなければ飛ばす）
