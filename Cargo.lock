@@ -587,6 +587,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ikari-lm-host-spike"
+version = "0.1.0"
+dependencies = [
+ "ikari-lm",
+]
+
+[[package]]
 name = "ikari-pipe"
 version = "0.1.0"
 dependencies = [
