@@ -25,15 +25,41 @@ pub fn error(message: &'static str, error: &windows_core::Error) {
     hresult(message, error.code());
 }
 
-/// compartment の変更の通知 1 件（診断用。#371）。種類と結果は固定の文、値は compartment の数値
-/// （入力の内容ではない）。
-pub fn compartment(kind: &'static str, value: Option<i32>, outcome: &'static str) {
-    match value {
-        Some(value) => write(&format!(
-            "{PREFIX}OnChange {kind} value={value} {outcome}\n"
-        )),
-        None => write(&format!("{PREFIX}OnChange {kind} value=none {outcome}\n")),
+/// compartment の変更の通知 1 件（診断用。#371）。`scope` はどちらの compartment に届いたか（`thread` か `global`）、
+/// 種類と結果は固定の文、値は compartment の数値（入力の内容ではない）。
+pub fn compartment(
+    scope: &'static str,
+    kind: &'static str,
+    value: Option<i32>,
+    outcome: &'static str,
+) {
+    write(&format!(
+        "{PREFIX}OnChange {scope} {kind} value={} {outcome}\n",
+        number(value)
+    ));
+}
+
+fn number(value: Option<i32>) -> String {
+    value.map_or_else(|| "none".to_owned(), |v| v.to_string())
+}
+
+/// 前回出した入力モードの compartment の値（打鍵のたびに同じ行を出さないため）
+static LAST_MODE_VALUES: std::sync::Mutex<Option<[Option<i32>; 4]>> = std::sync::Mutex::new(None);
+
+/// 入力モードの compartment の今の値（スレッドの OPENCLOSE・CONVERSION、グローバルの OPENCLOSE・CONVERSION）を、
+/// 前回と違うときだけ 1 行出す（診断用。#371。通知が来なくても値が変わったかを、次の打鍵で見るため）
+pub fn mode_values(values: [Option<i32>; 4]) {
+    let Ok(mut last) = LAST_MODE_VALUES.lock() else {
+        return;
+    };
+    if *last == Some(values) {
+        return;
     }
+    *last = Some(values);
+    let [thread_open, thread_conv, global_open, global_conv] = values.map(number);
+    write(&format!(
+        "{PREFIX}mode values thread open={thread_open} conv={thread_conv} global open={global_open} conv={global_conv}\n"
+    ));
 }
 
 /// HRESULT を出す。
@@ -84,14 +110,13 @@ static LAST_SCOPE_LINE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new
 
 /// 入力スコープの読み取りの結果を、前回と違うときだけ 1 行出す（空や失敗のときも出す）。secure の判定の調査用
 pub fn input_scope(diag: &ScopeDiag<'_>) {
-    let flag = |value: Option<i32>| value.map_or_else(|| "none".to_owned(), |v| v.to_string());
     let line = format!(
         "{PREFIX}input scope path=key range={} app={} tip={} disabled={} empty={}\n",
         diag.range,
         diag.app,
         diag.tip,
-        flag(diag.disabled),
-        flag(diag.empty),
+        number(diag.disabled),
+        number(diag.empty),
     );
     let Ok(mut last) = LAST_SCOPE_LINE.lock() else {
         return;
