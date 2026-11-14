@@ -731,6 +731,15 @@ public nonisolated struct Ikari_Settings_V1_Intent: Sendable {
     set {kind = .clauseMinChars(newValue)}
   }
 
+  /// 開発者向け: 候補窓に LM の様子を出す（ADR 0061）
+  public var developerLmStatus: Bool {
+    get {
+      if case .developerLmStatus(let v)? = kind {return v}
+      return false
+    }
+    set {kind = .developerLmStatus(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Kind: Equatable, Sendable {
@@ -755,6 +764,8 @@ public nonisolated struct Ikari_Settings_V1_Intent: Sendable {
     case resetEmojiShortcodeExclude(Ikari_Shell_V1_Empty)
     case keymap(Ikari_Settings_V1_KeymapIntent)
     case clauseMinChars(Int64)
+    /// 開発者向け: 候補窓に LM の様子を出す（ADR 0061）
+    case developerLmStatus(Bool)
 
   }
 
@@ -1961,7 +1972,7 @@ nonisolated extension Ikari_Settings_V1_KeymapIntent: SwiftProtobuf.Message, Swi
 
 nonisolated extension Ikari_Settings_V1_Intent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Intent"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}input_method\0\u{3}keymap_preset\0\u{3}paging_wrap\0\u{3}page_size\0\u{3}lm_enabled\0\u{3}idle_unload_secs\0\u{3}lm_deadline_ms\0\u{3}convert_wait_ms\0\u{3}postal_japanese\0\u{3}postal_english\0\u{3}postal_te_prefix\0\u{3}candidate_hide_when_confident\0\u{3}unicode_notation\0\u{3}date_weekday_dates\0\u{3}emoji_small_letters\0\u{3}emoji_shortcode\0\u{4}\u{4}add_emoji_shortcode_exclude\0\u{3}remove_emoji_shortcode_exclude\0\u{3}reset_emoji_shortcode_exclude\0\u{1}keymap\0\u{3}clause_min_chars\0\u{b}add_shared_exclude\0\u{b}remove_shared_exclude\0\u{b}reset_shared_exclude\0\u{c}\u{11}\u{1}\u{c}\u{12}\u{1}\u{c}\u{13}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}input_method\0\u{3}keymap_preset\0\u{3}paging_wrap\0\u{3}page_size\0\u{3}lm_enabled\0\u{3}idle_unload_secs\0\u{3}lm_deadline_ms\0\u{3}convert_wait_ms\0\u{3}postal_japanese\0\u{3}postal_english\0\u{3}postal_te_prefix\0\u{3}candidate_hide_when_confident\0\u{3}unicode_notation\0\u{3}date_weekday_dates\0\u{3}emoji_small_letters\0\u{3}emoji_shortcode\0\u{4}\u{4}add_emoji_shortcode_exclude\0\u{3}remove_emoji_shortcode_exclude\0\u{3}reset_emoji_shortcode_exclude\0\u{1}keymap\0\u{3}clause_min_chars\0\u{3}developer_lm_status\0\u{b}add_shared_exclude\0\u{b}remove_shared_exclude\0\u{b}reset_shared_exclude\0\u{c}\u{11}\u{1}\u{c}\u{12}\u{1}\u{c}\u{13}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2147,6 +2158,14 @@ nonisolated extension Ikari_Settings_V1_Intent: SwiftProtobuf.Message, SwiftProt
           self.kind = .clauseMinChars(v)
         }
       }()
+      case 25: try {
+        var v: Bool?
+        try decoder.decodeSingularBoolField(value: &v)
+        if let v = v {
+          if self.kind != nil {try decoder.handleConflictingOneOf()}
+          self.kind = .developerLmStatus(v)
+        }
+      }()
       default: break
       }
     }
@@ -2241,6 +2260,10 @@ nonisolated extension Ikari_Settings_V1_Intent: SwiftProtobuf.Message, SwiftProt
     case .clauseMinChars?: try {
       guard case .clauseMinChars(let v)? = self.kind else { preconditionFailure() }
       try visitor.visitSingularInt64Field(value: v, fieldNumber: 24)
+    }()
+    case .developerLmStatus?: try {
+      guard case .developerLmStatus(let v)? = self.kind else { preconditionFailure() }
+      try visitor.visitSingularBoolField(value: v, fieldNumber: 25)
     }()
     case nil: break
     }

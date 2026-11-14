@@ -296,6 +296,13 @@ struct ConversionTab: View {
                     .pickerStyle(.segmented)
                 }
             }
+            Section("開発者") {
+                Toggle(
+                    "変換のときに LM の様子を表示する",
+                    isOn: .asyncSetter(get: { model.values.developerLmStatus }, set: model.setDeveloperLmStatus))
+                Text("開発者向け。候補窓の下に、言語モデルが間に合ったか、待った時間と締め切り、GPU か CPU かを出します。ふだんはオフのままにしてください。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
     }
