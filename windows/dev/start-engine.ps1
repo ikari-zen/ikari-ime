@@ -5,7 +5,10 @@
   start (default), stop, or restart.
 .PARAMETER Foreground
   start only: run the engine in THIS console (Ctrl+C here stops it; this is how to test Ctrl+C).
-  Without it, the engine starts in its own console window.
+  Without it, the engine starts WITHOUT a console window when ikari-engine-host-hidden.exe exists (the CI artifact has it,
+  #372): no window to close by mistake, no Ctrl+C. Otherwise (a source build) it starts in its own console window.
+.PARAMETER Console
+  start only: use the console exe (ikari-engine-host.exe) in its own console window, even if the no-console exe exists.
 .PARAMETER Force
   stop/restart only: do not ask before killing.
 .NOTES
@@ -18,6 +21,7 @@
 param(
     [ValidateSet('start', 'stop', 'restart')][string]$Action = 'start',
     [switch]$Foreground,
+    [switch]$Console,
     [switch]$Force
 )
 
@@ -33,7 +37,10 @@ function Stop-OurEngine {
 }
 
 function Start-OurEngine {
-    if (-not (Test-Path -LiteralPath $EngineExe)) { throw "Not built: $EngineExe. Run .\build.ps1 first." }
+    # Foreground and -Console need the console exe. Otherwise prefer the no-console exe when there is one.
+    $exe = $EngineExe
+    if (-not $Foreground -and -not $Console -and (Test-Path -LiteralPath $EngineHiddenExe)) { $exe = $EngineHiddenExe }
+    if (-not (Test-Path -LiteralPath $exe)) { throw "Not built: $exe. Run .\build.ps1 first." }
     if (-not (Test-Path -LiteralPath (Join-Path $DataDir 'dict\system.dict'))) {
         throw "No dictionary in $DataDir\dict. Run .\install-data.ps1 first."
     }
@@ -43,13 +50,13 @@ function Start-OurEngine {
     if ($DataDir -ne $DefaultDataDir -and -not $env:IKARI_USER_DIR) {
         Write-Warn 'DataDir differs from the default but IKARI_USER_DIR is not set. The TIP in other apps will not see it.'
     }
-    Write-Step "$EngineExe --data-dir $DataDir"
+    Write-Step "$exe --data-dir $DataDir"
     if ($Foreground) {
-        & $EngineExe --data-dir $DataDir
+        & $exe --data-dir $DataDir
         Write-Note "engine exited with code $LASTEXITCODE (0 = normal or already running, 2 = could not start, 64 = bad arguments)"
         return
     }
-    $proc = Start-Process -FilePath $EngineExe -ArgumentList @('--data-dir', "`"$DataDir`"") -WorkingDirectory $ReleaseDir -PassThru
+    $proc = Start-Process -FilePath $exe -ArgumentList @('--data-dir', "`"$DataDir`"") -WorkingDirectory $ReleaseDir -PassThru
     # wait up to 10 seconds for the pipe (opening a 600 MB dictionary can take a while: not measured)
     $pipe = Get-PipeName $EnginePipePrefix
     $deadline = (Get-Date).AddSeconds(10)

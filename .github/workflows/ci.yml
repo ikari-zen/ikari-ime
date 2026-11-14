@@ -110,6 +110,15 @@ jobs:
         run: cp target/release/ikari-engine-host.exe target/release/ikari-engine-host-nolm.exe
       - name: release ビルド（LM つきのエンジン）
         run: cargo build --release -p ikari-engine-host --features lm
+      # 窓なしのエンジン（hide-console。#372）。コンソールつきの exe（LM つき）は、上書きされるので先に取っておき、あとで戻す。
+      # 窓なしも LM つき（ふだん使いの構成）。start-engine.ps1 は、-hidden があればそれを使う
+      - name: release ビルド（窓なしのエンジン）
+        shell: bash
+        run: |
+          cp target/release/ikari-engine-host.exe target/release/ikari-engine-host-console.exe
+          cargo build --release -p ikari-engine-host --features lm,hide-console
+          cp target/release/ikari-engine-host.exe target/release/ikari-engine-host-hidden.exe
+          cp target/release/ikari-engine-host-console.exe target/release/ikari-engine-host.exe
       # 項目 38（LM の 1 回の時間）で使う評価ツール
       - name: release ビルド（LM つきの評価ツール）
         run: cargo build --release -p ikari-eval --features lm
@@ -121,7 +130,8 @@ jobs:
         run: |
           mkdir -p dist/target/release dist/windows dist/shell-core/resources
           # ikari-engine-host.exe は LM つき（上の順で作った）。LM なしは -nolm。LM つきは、モデルが無ければ LM なしと同じに動く
-          cp target/release/ikari-engine-host.exe target/release/ikari-engine-host-nolm.exe target/release/ikari_tip.dll dist/target/release/
+          cp target/release/ikari-engine-host.exe target/release/ikari-engine-host-nolm.exe target/release/ikari-engine-host-hidden.exe target/release/ikari_tip.dll dist/target/release/
+          # exe は 3 つ: コンソールつき LM あり、コンソールつき LM なし（-nolm）、窓なし LM あり（-hidden）
           cp target/release/ikari-eval.exe dist/target/release/
           mkdir -p dist/eval && cp -r eval/sets dist/eval/sets
           cp -r windows/dev dist/windows/dev
