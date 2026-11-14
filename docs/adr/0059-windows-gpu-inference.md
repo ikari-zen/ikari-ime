@@ -1,6 +1,6 @@
 # ADR 0059: Windows の LM を GPU（Vulkan）で推論する
 
-- 状態: 提案
+- 状態: 承認（2026-11-14。ユーザー決定は §6 の「決定済み」。実装は PR #367）
 - 日付: 2026-11-12
 - 対象: `lm/`（バックエンドの読み込み、デバイスの選択）、`stack/`・`engine/`・`eval/`・`windows/engine-host/` の feature、`engine/src/settings.rs`（設定のキー）、`windows/dev/build.ps1`、`.github/workflows/ci.yml`、`docs/windows-real-device-check.md`（項目 38 の追記）
 - 前提: main = 60a62be。ADR 0040 §2.6（Windows の LM は任意で既定オフ）・§6 の S4・§7 の W4、ADR 0042（判断は Rust）、ADR 0058（モデルと辞書の置き場所）、#343（`ikari-engine-host` の `lm` feature）。llama-cpp-2 / llama-cpp-sys-2 は 0.1.161（`Cargo.lock`）
