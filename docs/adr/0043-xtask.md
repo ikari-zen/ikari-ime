@@ -1,6 +1,6 @@
 # ADR 0043: ビルドと検証のスクリプトを `cargo xtask` に寄せる
 
-- 状態: 提案
+- 状態: 承認（実装済み。`scripts/check.sh` は `cargo xtask check` を呼ぶ包みで、`dict`・`data`・`eval`・`perf`・`cov` も `xtask` にある）
 - 日付: 2026-10-30
 - 対象: 方針、段、`check` の記録との関係（コードは変えない）。採ったときに触るのは、新しい crate `xtask`、`.cargo/config.toml`（別名 `xtask`）、`scripts/check.sh`・`scripts/build-dict.sh`・`scripts/fetch-data.sh`・`scripts/install-data.sh`・`eval/scripts/snapshot.sh`（中身を xtask に移し、薄い呼び出しにする）、`scripts/check-record.sh` と `.claude/hooks/guard-pr-merge.sh`（記録の書式の扱い）
 - 前提: main = a43ccb1。ADR 0042（技術選定の方針。PR #137。main にはまだない）§1-5。ADR 0041（殻の Rust への移行）§6.3（性能の計測）

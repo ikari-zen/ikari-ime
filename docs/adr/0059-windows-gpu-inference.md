@@ -79,11 +79,11 @@
 - キー（案）: `engine.lm_gpu`。値は既存の `engine.lm` と同じ真偽の書き方。オンは「GPU があれば使う、なければ CPU」、オフは「CPU だけ」。`engine.lm` がオフなら意味を持たない。
 - 「オン／オフ／自動」の 3 値にしない。オンがすでに「自動で CPU に落ちる」ので、3 値目の意味が無い。
 - `lm-vulkan` でないビルド（macOS の `lm-metal` を含む）では読み捨てる（macOS は今のまま常に Metal）。
-- 既定: スパイクのあとに決める（§6 の (a)）。それまでの実装の既定はオフ。
+- 既定: スパイクのあとに決める（§6 の (a)）。それまでの実装の既定はオフ。**【→ §6 で既定オンに決定（2026-11-14）。`engine.lm_gpu` の既定は真で、GPU が使えなければ自動で CPU に落ちる（`engine/src/settings.rs`）】**
 - 設定画面に出すかは §6 の (b)。
 
 ### 2.6 CI
-- `windows` job には足さず、**別の job（案 `windows-vulkan`）**にする。理由: `windows` job はすでに LM（CPU）のビルドを含み 45 分の枠がある。Vulkan のビルドは SDK の導入とシェーダーのコンパイルが加わり、時間が延びる見込み（推測。未計測）。並べれば `windows` の結果を待たせない。必須のチェックにはしない（ADR 0040 §2.6 のまま）。
+- **【→ 実装では別の job にせず、`windows-artifact`（実機に持ち込む release ビルドを artifact に保存する job。`.github/workflows/ci.yml`）に統合した。以下の `windows-vulkan` はこの案の名前】** `windows` job には足さず、**別の job（案 `windows-vulkan`）**にする。理由: `windows` job はすでに LM（CPU）のビルドを含み 45 分の枠がある。Vulkan のビルドは SDK の導入とシェーダーのコンパイルが加わり、時間が延びる見込み（推測。未計測）。並べれば `windows` の結果を待たせない。必須のチェックにはしない（ADR 0040 §2.6 のまま）。
 - Vulkan SDK: LunarG の公式インストーラを取得し、無人で入れて（`--accept-licenses --default-answer --confirm-command install`）、`VULKAN_SDK` と `<SDK>\Bin` を `GITHUB_ENV` / `GITHUB_PATH` に書く（前例と同じ）。**版と sha256 を ci.yml の env に固定**し、取得したインストーラを照合してから実行する（`xtask/src/data/fetch.rs` の固定と同じ考え方）。SDK のフォルダは版をキーに `actions/cache` で持つ。
 - job の中身: `cargo build -p ikari-engine-host --features lm-vulkan`、`backends\` の配置の確認、デバイスの列挙のテスト（モデルを要らないもの。CPU のデバイスが 1 つ以上あること）。ランナーに GPU は無い見込みなので（推測）、「GPU が無い機械で CPU に落ちる」ことの確認を兼ねる。ランナーに `vulkan-1.dll` があるかは未確認。
 - 所要時間は最初の PR で測り、PR の説明に書く。
