@@ -61,7 +61,8 @@ impl Inner {
             Ok(()) => Ok(()),
             // 何も書いていないので、接続は生きている
             Err(FrameError::TooLarge(_)) => Err(ClientError::TooLarge),
-            // 途中まで書いたかもしれない。流れが壊れたので切る
+            // 途中まで書いたかもしれない。流れが壊れたので切る（締め切りを超えた `TimedOut` もここ。
+            // 送れなかったものは捨てる。再接続は使う側の仕事）
             Err(_) => {
                 self.disconnect();
                 Err(ClientError::Disconnected)
@@ -134,7 +135,8 @@ impl Client {
         self.inner.next_seq.fetch_add(1, Ordering::Relaxed)
     }
 
-    /// 要求を送り、返事を `timeout` まで待つ。
+    /// 要求を送り、返事を `timeout` まで待つ。`timeout` は返事の待ちだけにかかる。送る側の待ちは
+    /// `WRITE_DEADLINE` で別に切る（超えたら接続を切って `Disconnected`）。
     pub fn request(&self, bytes: &[u8], timeout: Duration) -> Result<Vec<u8>, ClientError> {
         let seq = self.next_seq();
         let waiter = self
@@ -159,7 +161,7 @@ impl Client {
         }
     }
 
-    /// 返事を待たずに送る。
+    /// 返事を待たずに送る。書きが締め切り（`WRITE_DEADLINE`）までに終わらなければ、接続を切って `Disconnected`。
     pub fn post(&self, bytes: &[u8]) -> Result<(), ClientError> {
         let seq = self.next_seq();
         self.inner.send(FrameKind::Post, seq, bytes)
