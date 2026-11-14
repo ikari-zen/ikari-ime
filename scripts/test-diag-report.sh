@@ -157,3 +157,7 @@ for row in \
 done
 
 log "diag-report のテスト: OK"
+
+# Windows の接続ごとに session= が 1 から重なっても、conn= が違えば別のセッションとして数える（#398。混ぜると app= の割り当てが狂う）
+conn_report="$(python3 -I "$REPORT" scripts/testdata/diag-conn)"
+printf '%s\n' "$conn_report" | grep -q '^| セッション（epoch, session= の組） | 2 |$' || die "conn= の違うセッションが別に数えられていません"

@@ -20,7 +20,7 @@
 - TIP は `ShellAction::ShowCandidates` / `MoveSelection` / `HideCandidates` を `TsfOp::ShowCandidates(model)` / `MoveCandidates(model)` / `HideCandidates` に変える（`windows/tip/src/ops.rs`）。COM の層は**ログを出すだけ**で、窓はない（`com/edit.rs` の `TsfOp::ShowCandidates(_)` は `show candidates (position found|no position)` を書くだけ）。
 - 位置は `candidate_rect()` が `ITfContextView::GetTextExt` で取る。範囲は**合成の全体**（なければ選択）。戻りの `clipped` は使っていない。
 - TIP は `Shell::panel_shown(side, source)` を呼んでいない。shell-core の機械は、窓が上（`PanelSide::Above`）のとき ↑/↓ を入れ替える（`shell-core/src/machine/mod.rs` の `panel_side`）。**Windows では今、窓の上下が機械に伝わる道がない。**
-- `pipe` の `Client` には片道の `post` がある（返事を待たない）。名前付きパイプの作成、ACL（自分のユーザーだけ）、`PIPE_REJECT_REMOTE_CLIENTS` は `pipe` にある。
+- `pipe` の `Client` には片道の `post` がある（返事を待たない）。名前付きパイプの作成、ACL（自分のユーザーと SYSTEM だけ）、`PIPE_REJECT_REMOTE_CLIENTS` は `pipe` にある。
 - 実機（N150 の VM、2026-11-14）: SSH はセッション 0 で窓を出せない。セッション 1 で流すのは `run-in-session.ps1`。`virsh screenshot` はデスクトップとタスクバーは映したが、Run や Notepad の窓は映さなかった（原因は未確認。`docs/windows-real-device-check.md` §1.6）。画面の代わりに `uia-probe.ps1`、`ime-test.ps1`、`dbgcap.ps1` を使っている。
 
 ### 1.2 macOS（揃える相手）
@@ -132,7 +132,7 @@
 - TIP は `ikari-candidate.exe` のパイプ（`ikari-ime-candidate-v1-s<セッション>`。名前の作り方は `pipe::pipe_name` と同じ）に直接つなぐ。engine-host を中継しない。パイプの受け手は Rust の核（`pipe::Server`）で、C# はパイプに触れない。
 - つながらない・切れたときは、窓を出さずに入力を続ける（今と同じ状態）。エンジンの再接続と同じ間隔の上限でつなぎ直す。
 - 窓は 1 つ。最後に `Show` を送った接続が持ち主。持ち主の接続が切れたら（アプリが落ちた、TIP が外れた）、核が窓を隠させる。
-- パイプの ACL はエンジンのパイプと同じ（自分のユーザーだけ）。ストアのアプリ（app container）からの接続は、エンジンのパイプの決定に従う（1.0.0 の範囲外。ADR 0040 §2.3）。
+- パイプの ACL はエンジンのパイプと同じ（自分のユーザーと SYSTEM だけ）。ストアのアプリ（app container）からの接続は、エンジンのパイプの決定に従う（1.0.0 の範囲外。ADR 0040 §2.3）。
 
 ### 5.4 エンジンと候補窓の有無の組み合わせ（#393。2026-11-15。Fable の案。ユーザー方針「macOS に準拠」に従い決定）
 - 揃える相手（macOS。コードで確認）: エンジンが開けない・落ちた・休止中でも、殻は読みのかな候補（ひらがな、全角・半角カタカナ）を作り、候補ウィンドウを普段と同じに出す。止まるのは文節とページ送りだけ（`shell-core/src/machine/mod.rs` の `is_fallback`）。エンジンのプロセスは開けなくても終わらず、`ENGINE_NOT_READY` を返して次の要求で開き直す。
@@ -146,8 +146,8 @@
 | あり | なし（起動前、落ちた、つながらない） | 窓なし。下線つきの 1 位。Space・↑↓・数字の選択は効く（一覧は見えない） | あり。macOS は窓が殻と同じプロセスで、この状態がない。別プロセスにした代価（§5.1） |
 | なし | なし（engine-host そのものがいない） | 窓なし。かなの 1 位 | 同上 |
 
-- **決定 3: どの組み合わせでも守ること。** (a) キーを素通しにしない・失わない（2026-11-12 の決定）。(b) キーの処理を、接続の試行 1 回と書きの締め切り（`WRITE_DEADLINE`）より長く止めない。(c) 窓に送れなかったとき（つながっていない、書きの失敗）は `Shell::panel_shown` を呼ばない（上下は `Below` のまま。見えない窓に合わせて ↑/↓ を入れ替えない）。(d) 候補の文字をログに出さない。
-- **決定 4: engine-host が終わると候補窓も終わる**（Job Object の「閉じたら終了」）。残して引き継ぐ案は採らない（見張りにプロセスのハンドルが要り、残った窓の引き取りの仕組みが増える。パイプの名前も空かない）。macOS と違う点で、理由は起動する者が engine-host だけだから（§11）。engine-host を起こすのは W5（ログオン時と、TIP がつながらないとき。ADR 0040 §2.2）。
+- **決定 3: どの組み合わせでも守ること。** (a) キーを素通しにしない・失わない（2026-11-12 の決定）。(b) 候補窓への送りで、キーの処理を、接続の試行 1 回と書きの締め切り（`WRITE_DEADLINE`）より長く止めない（エンジンの返事待ち、変換の締め切り最大 340ms は別）。(c) 窓に送れなかったとき（つながっていない、書きの失敗）は `Shell::panel_shown` を呼ばない（上下は `Below` のまま。見えない窓に合わせて ↑/↓ を入れ替えない）。(d) 候補の文字をログに出さない。
+- **決定 4: engine-host が終わると候補窓も終わる**（Job Object の「閉じたら終了」）。残して引き継ぐ案は採らない（見張りにプロセスのハンドルが要り、残った窓の引き取りの仕組みが増える。パイプの名前も空かない）。macOS と違う点で、理由は起動する者が engine-host だけだから（§11）。engine-host を起こすのは W5（ログオン時と、TIP がつながらないとき。ADR 0040 §2.2）。ADR 0060 の `ikari-lm-host`（隔離にも Job Object を使う案）との入れ子（子の子）は、L4 の実機で確かめる（推測: 入れ子の Job Object は可能）。
 - **決定 5: 起動できない理由を見せる口は W5 で決める。** 決定 1 で engine-host が常駐するので、理由（固定の語。`logs/start-failure.log` と同じ）を設定のパイプか `HelloReply` で返せる。`developer_note` は使わない（開発者向けの行）。
 - §3 の 3 と §5.3 の 2 つ目の文は、この節に従う。§11 の「TIP が exe を起動する」の却下は変えない。
 - 推測（L4 の実機で確かめる）: Job Object で子が確実に終わる。窓を先に起動しても engine-host の起動の時間に響かない。窓なしでも Space・↑↓ の選択が下線の表示だけで進む（機械は窓の有無を知らない）。
