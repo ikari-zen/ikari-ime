@@ -10,7 +10,7 @@ use ikari_core::{
     RankInput, Ranker, UnknownParams,
 };
 
-use ikari_stack::{LmHandle, StackMeta};
+use ikari_stack::{LmDevice, LmHandle, StackMeta, lm_trace};
 
 use super::*;
 
@@ -61,7 +61,9 @@ impl Ranker for MockLm {
         let now = Instant::now();
         match input.deadline {
             Some(deadline) if now + self.delay <= deadline => {
+                lm_trace::record_call(LmDevice::Cpu);
                 std::thread::sleep(self.delay);
+                lm_trace::record_reply(self.delay, self.delay);
                 self.loaded.store(true, Ordering::Release);
                 if self.boost.load(Ordering::Relaxed) {
                     for c in cands.iter_mut().filter(|c| c.surface == BOOSTED) {
@@ -70,6 +72,10 @@ impl Ranker for MockLm {
                 }
             }
             _ => {
+                if input.deadline.is_some() {
+                    lm_trace::record_call(LmDevice::Cpu);
+                    lm_trace::record_timeout(Duration::ZERO);
+                }
                 self.timeouts.fetch_add(1, Ordering::Relaxed);
             }
         }
@@ -99,6 +105,14 @@ impl LmHandle for MockHandle {
 
     fn is_loaded(&self) -> bool {
         self.0.loaded.load(Ordering::Acquire)
+    }
+
+    fn device(&self) -> LmDevice {
+        if self.is_loaded() {
+            LmDevice::Cpu
+        } else {
+            LmDevice::Unknown
+        }
     }
 }
 

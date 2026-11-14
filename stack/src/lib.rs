@@ -16,6 +16,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+/// LM の計測の型と記録（エンジンが `ikari-lm` を直接知らずに使う。ADR 0061）
+pub use ikari_lm::trace as lm_trace;
+pub use ikari_lm::{LmDevice, LmTrace};
+
 use ikari_core::user::{IT_PACK_ID, UserDictionary, UserDir, builtin_it_pack};
 use ikari_core::{
     CalculatorRewriter, Clock, CompositeRanker, ConvertOptions, Converter, CostRanker, DateOptions,
@@ -254,6 +258,10 @@ pub trait LmHandle: Send + Sync {
     fn warm_up(&self);
     fn stats(&self) -> LmStats;
     fn is_loaded(&self) -> bool;
+    /// いま読み込まれているモデルの装置（読まれていなければ `Unknown`。ADR 0061）
+    fn device(&self) -> LmDevice {
+        LmDevice::Unknown
+    }
 }
 
 pub struct Stack {

@@ -7,9 +7,10 @@ license.workspace = true
 [features]
 default = []
 # zenz（llama.cpp）を使う。cmake が必要（ADR 0002 §13.2）
-lm = ["dep:ikari-lm", "ikari-lm/llama"]
+lm = ["ikari-lm/llama"]
 lm-metal = ["lm", "ikari-lm/metal"]
 
 [dependencies]
 ikari-core.workspace = true
-ikari-lm = { workspace = true, optional = true }
+# 計測の型（LmTrace、LmDevice）を使うので常に依存する。llama.cpp は feature `lm` のときだけ入る（ADR 0061）
+ikari-lm.workspace = true

@@ -61,28 +61,32 @@ fn micros(d: Duration) -> u64 {
 }
 
 /// 採点の対象があり締め切りのある `rank` の呼び出し（`LmStats.calls` と同じ）。
-pub(crate) fn record_call(device: LmDevice) {
+#[doc(hidden)]
+pub fn record_call(device: LmDevice) {
     update(|t| {
         t.calls = t.calls.saturating_add(1);
         t.device = device;
     });
 }
 
-pub(crate) fn record_timeout(waited: Duration) {
+#[doc(hidden)]
+pub fn record_timeout(waited: Duration) {
     update(|t| {
         t.timeouts = t.timeouts.saturating_add(1);
         t.wait_micros = t.wait_micros.saturating_add(micros(waited));
     });
 }
 
-pub(crate) fn record_reply(waited: Duration, infer: Duration) {
+#[doc(hidden)]
+pub fn record_reply(waited: Duration, infer: Duration) {
     update(|t| {
         t.wait_micros = t.wait_micros.saturating_add(micros(waited));
         t.infer_micros = t.infer_micros.saturating_add(micros(infer));
     });
 }
 
-pub(crate) fn record_late_hit(infer: Duration) {
+#[doc(hidden)]
+pub fn record_late_hit(infer: Duration) {
     update(|t| {
         t.late_hits = t.late_hits.saturating_add(1);
         t.infer_micros = t.infer_micros.saturating_add(micros(infer));

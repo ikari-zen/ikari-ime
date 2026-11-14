@@ -7,6 +7,8 @@ use std::time::{Duration, Instant};
 use ikari_core::Context;
 use ikari_proto::v1 as pb;
 
+use ikari_stack::LmTrace;
+
 use crate::segments::SegEntry;
 
 /// セッションごとに持つ件数の上限
@@ -83,6 +85,8 @@ enum EntryState {
     Ready {
         conv: SharedConversion,
         lm_applied: bool,
+        /// 先行計算のスレッドの LM 計測（ADR 0061）
+        trace: LmTrace,
     },
     /// 計算に失敗した、または捨てられた
     Abandoned,
@@ -152,10 +156,14 @@ impl CacheEntry {
         })
     }
 
-    pub fn set_ready(&self, conv: SharedConversion, lm_applied: bool) {
+    pub fn set_ready(&self, conv: SharedConversion, lm_applied: bool, trace: LmTrace) {
         let mut state = lock(&self.state);
         if matches!(*state, EntryState::Computing) {
-            *state = EntryState::Ready { conv, lm_applied };
+            *state = EntryState::Ready {
+                conv,
+                lm_applied,
+                trace,
+            };
         }
         self.ready.notify_all();
     }
@@ -174,12 +182,16 @@ impl CacheEntry {
     }
 
     /// `until` まで、計算が終わるのを待つ。間に合わない、または失敗なら None。
-    pub fn wait_ready(&self, until: Instant) -> Option<(SharedConversion, bool)> {
+    pub fn wait_ready(&self, until: Instant) -> Option<(SharedConversion, bool, LmTrace)> {
         let mut state = lock(&self.state);
         loop {
             match &*state {
-                EntryState::Ready { conv, lm_applied } => {
-                    return Some((Arc::clone(conv), *lm_applied));
+                EntryState::Ready {
+                    conv,
+                    lm_applied,
+                    trace,
+                } => {
+                    return Some((Arc::clone(conv), *lm_applied, *trace));
                 }
                 EntryState::Abandoned => return None,
                 EntryState::Computing => {}

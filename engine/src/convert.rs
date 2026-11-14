@@ -1,5 +1,7 @@
 //! 変換の要求（先行計算、変換、ページ、確定、取り消し、終了）。
 
+use ikari_stack::{LmDevice, LmTrace};
+
 use super::*;
 
 /// Space（Convert）で、計算中の先行計算を待つ最大の時間の既定（NFR-04。Space から数える。ADR 0021 L1）。
@@ -16,6 +18,96 @@ pub(crate) fn candidate_kind(origin: CandidateOrigin) -> pb::CandidateKind {
         CandidateOrigin::Literal => pb::CandidateKind::Literal,
         _ => pb::CandidateKind::Dictionary,
     }
+}
+
+/// 「間に合った」の判定（ADR 0061 §5.1）。表の下から順に見る。`lm_applied` は今の求め方のまま（振る舞いに使う値）。
+pub(crate) fn lm_verdict(
+    lm_state: LmState,
+    secure: bool,
+    outcome: CacheOutcome,
+    lm_applied: bool,
+    calls: u32,
+) -> pb::LmVerdict {
+    if lm_state != LmState::LmReady {
+        return pb::LmVerdict::LmUnavailable;
+    }
+    if secure {
+        return pb::LmVerdict::LmSecure;
+    }
+    match outcome {
+        CacheOutcome::Miss(_) => pb::LmVerdict::LmNoPrefetch,
+        CacheOutcome::WaitMiss => pb::LmVerdict::LmPrefetchLate,
+        CacheOutcome::Hit | CacheOutcome::WaitHit => {
+            if lm_applied {
+                pb::LmVerdict::LmApplied
+            } else if calls == 0 {
+                pb::LmVerdict::LmNotScored
+            } else {
+                pb::LmVerdict::LmTimedOut
+            }
+        }
+    }
+}
+
+fn saturating_u32(v: u64) -> u32 {
+    u32::try_from(v).unwrap_or(u32::MAX)
+}
+
+fn micros_of(d: Duration) -> u32 {
+    saturating_u32(u64::try_from(d.as_micros()).unwrap_or(u64::MAX))
+}
+
+fn proto_device(d: LmDevice) -> pb::LmDevice {
+    match d {
+        LmDevice::Cpu => pb::LmDevice::Cpu,
+        LmDevice::Gpu => pb::LmDevice::Gpu,
+        LmDevice::Unknown => pb::LmDevice::Unspecified,
+    }
+}
+
+/// ログの `lm_dev=` の語（固定。NFR-19）
+pub(crate) fn device_word(d: LmDevice) -> &'static str {
+    match d {
+        LmDevice::Cpu => "cpu",
+        LmDevice::Gpu => "gpu",
+        LmDevice::Unknown => "none",
+    }
+}
+
+/// `ConvertReply.lm_report` を作る（ADR 0061 §5.2）。当たらなかった変換の `trace` は既定値。
+pub(crate) fn build_lm_report(
+    verdict: pb::LmVerdict,
+    trace: &LmTrace,
+    device: LmDevice,
+    lm_state: LmState,
+    lm_deadline: Duration,
+    convert_wait: Duration,
+) -> pb::LmReport {
+    pb::LmReport {
+        verdict: verdict as i32,
+        wait_micros: saturating_u32(trace.wait_micros),
+        infer_micros: saturating_u32(trace.infer_micros),
+        lm_deadline_micros: micros_of(lm_deadline),
+        convert_wait_micros: micros_of(convert_wait),
+        device: proto_device(device) as i32,
+        calls: trace.calls,
+        timeouts: trace.timeouts,
+        late_hits: trace.late_hits,
+        lm_state: lm_state as i32,
+    }
+}
+
+/// ログの欄（`lm_us= lm_infer_us= lm_deadline_us= lm_dev= lm_calls= lm_to=`。固定の語と数だけ）
+pub(crate) fn lm_log_fields(report: &pb::LmReport, device: LmDevice) -> String {
+    format!(
+        "lm_us={} lm_infer_us={} lm_deadline_us={} lm_dev={} lm_calls={} lm_to={}",
+        report.wait_micros,
+        report.infer_micros,
+        report.lm_deadline_micros,
+        device_word(device),
+        report.calls,
+        report.timeouts
+    )
 }
 
 pub(crate) fn check_reading(reading: &str) -> Result<(), Fail> {
@@ -272,7 +364,7 @@ impl Inner {
                 }
             }
         };
-        let (conv, lm_applied) = match cached {
+        let (conv, lm_applied, lm_trace) = match cached {
             Some(hit) => hit,
             None => {
                 // 先行計算がない、または間に合わなかった。LM を使わずにその場で変換する
@@ -281,7 +373,11 @@ impl Inner {
                     .converter
                     .convert_until(&c.reading, &ctx, Some(Instant::now()));
                 let seg = self.seam(&stack).segment(conv);
-                (Arc::new(Mutex::new(SegEntry::new(seg))), false)
+                (
+                    Arc::new(Mutex::new(SegEntry::new(seg))),
+                    false,
+                    LmTrace::default(),
+                )
             }
         };
 
@@ -329,6 +425,26 @@ impl Inner {
             ));
         }
         lock_mutex(&self.conversions).insert(conversion_id, c.session_id, conv, page_size);
+        let lm_state = self.lm_state();
+        let lm_device = match lm_trace.device {
+            LmDevice::Unknown => self.lm_device(),
+            d => d,
+        };
+        let lm_report = build_lm_report(
+            lm_verdict(lm_state, secure, outcome, lm_applied, lm_trace.calls),
+            &lm_trace,
+            lm_device,
+            lm_state,
+            self.lm_budget.max,
+            self.convert_wait,
+        );
+        let lm_fields = if secure {
+            None
+        } else if matches!(outcome, CacheOutcome::Hit | CacheOutcome::WaitHit) {
+            Some(lm_log_fields(&lm_report, lm_device))
+        } else {
+            Some(format!("lm_dev={}", device_word(lm_device)))
+        };
         let reply = envelope::Body::ConvertReply(pb::ConvertReply {
             conversion_id,
             page_index: 0,
@@ -338,7 +454,7 @@ impl Inner {
             confident,
             engine_micros: micros_u32(started),
             layout: Some(layout),
-            lm_report: None, // ADR 0061 レーン 1a で入れる
+            lm_report: Some(lm_report),
         });
         let mut note = format!(
             "{} gap={gap_note} confident={}",
@@ -352,6 +468,10 @@ impl Inner {
                 &format!("lm_applied={} by=content", u8::from(lm_applied)),
                 1,
             );
+        }
+        if let Some(fields) = lm_fields {
+            note.push(' ');
+            note.push_str(&fields);
         }
         if let Some(fill) = fill_note {
             note.push(' ');

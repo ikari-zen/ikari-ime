@@ -1,5 +1,7 @@
 //! LM の状態の問い合わせと、モデルの暖機（別スレッド）。
 
+use ikari_stack::LmDevice;
+
 use super::*;
 
 impl Inner {
@@ -21,6 +23,14 @@ impl Inner {
             LmState::LmFailed => "failed",
             _ => "disabled",
         }
+    }
+
+    /// いま読み込まれているモデルの装置。LM がなければ `Unknown`
+    pub(crate) fn lm_device(&self) -> LmDevice {
+        self.stack()
+            .lm
+            .as_ref()
+            .map_or(LmDevice::Unknown, |lm| lm.device())
     }
 
     pub(crate) fn lm_stats(&self) -> Option<LmStats> {
@@ -77,7 +87,7 @@ impl Inner {
                 // 読み込み（またはその失敗）が終わった。所要を `lm_load` に書く（ADR 0034 §4.3）
                 let loaded = lm.is_loaded();
                 loaded_flag.store(loaded, Ordering::Release);
-                Inner::lm_load_line(&log, began, loaded);
+                Inner::lm_load_line(&log, began, loaded, lm.device());
                 flag.store(false, Ordering::Release);
             });
         if started.is_err() {

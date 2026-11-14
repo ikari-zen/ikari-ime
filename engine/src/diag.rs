@@ -264,14 +264,21 @@ impl Inner {
     }
 
     /// ワーカーが LM の読み込みを終えたときの `lm_load`（所要 us、失敗なら `err=lm_load_failed`）
-    pub(crate) fn lm_load_line(log: &EngineLog, started: Instant, loaded: bool) {
+    pub(crate) fn lm_load_line(
+        log: &EngineLog,
+        started: Instant,
+        loaded: bool,
+        device: ikari_stack::LmDevice,
+    ) {
         let micros = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
+        // 読めたときだけ装置を書く（失敗のときは付けない。ADR 0061 §5.4）
+        let note = loaded.then(|| format!("dev={}", crate::convert::device_word(device)));
         log.record_note(
             KIND_LM_LOAD,
             micros,
             if loaded { "ready" } else { "failed" },
             (!loaded).then_some(ERR_LM_LOAD_FAILED),
-            None,
+            note.as_deref(),
         );
     }
 }
