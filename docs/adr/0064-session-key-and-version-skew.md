@@ -1,6 +1,6 @@
 # ADR 0064: Windows で、エンジンがセッションを（接続, セッション）で区別する。版が違う殻とエンジンは Windows では共存し、版の違いでエンジンを止めるのは macOS の殻だけにする
 
-- 状態: 提案
+- 状態: 承認（2026-11-14。ユーザーが Q1〜Q3 を推奨どおりに決定: Q1=U1 接続、Q2=V1、Q3=別の口。§9）
 - 日付: 2026-11-14
 - 対象: `engine`（`lib.rs` の `Engine::handle` の入口、`session.rs`、`dispatch.rs`、`cache.rs` の変換の表、先行計算と `lookahead`・`ctx_trace` のキー）、`windows/engine-host/src/lib.rs`（`serve`）、`shell-core/src/engine/mod.rs`（`EngineLink::hello`）、`shell-core/src/controller/`（`restart_engine`）、`shell-core` の `ShellConfig`、`windows/tip/src/com/host.rs`（`create_shell`）、`shell-ffi`（既定値だけ）、`windows/engine-host/tests/`、ADR 0063 §1.2・§3 の 5・6 の記述
 - 前提: main = 37740c3。アーキテクチャレビュー（2026-11-14）の指摘 1・2・12（高・高・中）。ADR 0046（E4・E5。ほかのアプリからは借りない）、ADR 0063（TIP の DLL の更新。古い TIP と新しいエンジンが共存する）、ADR 0040 §2.2（TIP の中で `shell-core` を動かす。エンジンは 1 つ）、ADR 0004 §5.2（macOS: 入れ替えた直後に古いエンジンを止める）
