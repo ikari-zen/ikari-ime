@@ -39,7 +39,7 @@ cd ikari-ime
 
 #### 1.3.1 VM でビルドしない場合（CI の成果物を持ち込む）
 
-遅い機械では、VM に Rust と Build Tools を入れてビルドする代わりに、CI（`windows-artifact` job）が作った release ビルドを持ち込めます（`ikari-engine-host.exe` は LM つき、`ikari-engine-host-nolm.exe` は LM なし。Rust、Build Tools、cmake、git は要りません。LM は設定でオンにするまで使われません）。
+遅い機械では、VM に Rust と Build Tools を入れてビルドする代わりに、CI（`windows-artifact` job）が作った release ビルドを持ち込めます（`ikari-engine-host.exe` は LM つきで、GPU（Vulkan。ADR 0059）に対応しています。バックエンドの DLL は exe の隣の `backends\` にあるので、フォルダごと持ち込みます。`ikari-engine-host-nolm.exe` は LM なし。Rust、Build Tools、cmake、git は要りません。LM は設定でオンにするまで使われません）。
 
 Mac で（`gh` にログインしておく）:
 
@@ -442,6 +442,18 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 - やること: リポジトリの根で `cargo run --release -p ikari-eval --features lm -- --ranker full --set eval\sets\homophones-ext.tsv --lm <データ>\models\zenz-v3.2-small-Q5_K_M.gguf --dict <データ>\dict`。続けて、`--lm-budget-ms 300`（既定）と、`--lm` なしの結果を比べる。出力の LM の時間（1 回の平均と p99）、時間切れの割合、1 位の変化を記録する。
 - 期待する結果: 数字を得ることが目的で、期待値は置かない（[ADR 0040](adr/0040-windows-feasibility.md) §2.6。この数字で、LM の既定をオフのままにするかを決める）。Mac の同じセットの数字（`eval/reports/README.md`）と並べる。
 - うまくいかないとき: CPU の機種（VM の割り当てコア数、AVX2 の有無）を記録する。VM の CPU が実機と大きく違うと、数字が使えない。可能なら実機でも 1 回測る。
+
+#### 項目 39: GPU（Vulkan）で LM が動くことと、GPU の無い状態で CPU に落ちること（ADR 0059）
+
+- 前提: CI の `windows-artifact` を持ち込んである（`target\release\` に `ikari-engine-host.exe`、`ikari-lm-devices.exe`、`ggml*.dll`、`llama*.dll`、`backends\`）。モデルがある。`engine.lm` は `on`。GPU の設定 `engine.lm_gpu` は書かなければ `on`（GPU があれば使い、なければ CPU）。
+- やること:
+  (a) `target\release\ikari-lm-devices.exe`（モデルは要らない）。出力の `lm devices=` を記録する。
+  (b) エンジンを起動して（`start-engine.ps1`）、変換する。`<データ>\logs\` の `lm_load` の行の `dev=`、`gpu=`、`devices=` を見る。タスクマネージャーの GPU の欄で、メモリの使用の変化も見る。
+  (c) `<データ>\settings.tsv` に `engine.lm_gpu<TAB>off` を足して、エンジンを起こし直す。`lm_load` の行が `gpu=off_setting`、`dev=cpu` になることを見る。
+  (d) `settings.tsv` を戻し、`target\release\backends\ggml-vulkan.dll` を一時的に別の名前にして、エンジンを起こし直す。`devices=cpu`、`gpu=no_gpu` で動くことを見る。戻す。
+  (e) 項目 38 の評価ツール（`ikari-eval.exe`）を、環境変数 `IKARI_LM_GPU=1` と `0` で流し、標準エラーの `lm inference:` の行（推論 1 回の平均、p50、p95、p99、読み込み、暖機の時間）を比べる。
+- 期待する結果（**見込み**）: (a) 内蔵 GPU なら `cpu,vulkan:IntegratedGpu`（ほかの CPU の種類の `cpu` の行が並ぶことがある）。(b) `gpu=on`、`dev=gpu`。読み込みと暖機に十数秒かかる（スパイクの N150 の VM の値: 読み込み約 12 秒、最初の 1 回約 6 秒）。その間の変換は LM なしで通常どおり。(c)(d) 落ちずに CPU で動く。(e) スパイクの参考値は ADR 0059 §6。
+- うまくいかないとき: (a) で `none` や CPU だけなら、`backends\` の場所（exe の隣か）、DLL の欠け、`vulkan-1.dll` の有無（`where vulkan-1.dll`）を記録する。(b) でエンジンが落ちるなら、`<データ>\logs\` の最後の行と、直前の `runmark` を記録する（ドライバの中で落ちる場合は捕まえられない。ADR 0059 §2.4）。
 
 ## 6. 結果の記録の書き方
 

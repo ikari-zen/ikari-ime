@@ -14,6 +14,8 @@ pub const KEY_ENGINE_PREFIX: &str = "engine.";
 pub const KEY_ENGINE_LM: &str = "engine.lm";
 pub const KEY_ENGINE_IDLE_UNLOAD_SECS: &str = "engine.idle_unload_secs";
 pub const KEY_ENGINE_LM_DEADLINE_MS: &str = "engine.lm_deadline_ms";
+/// 殻は値の検査だけする（設定の値としては持たない。エンジンが読む。ADR 0059 §2.5）
+pub const KEY_ENGINE_LM_GPU: &str = "engine.lm_gpu";
 pub const KEY_ENGINE_CONVERT_WAIT_MS: &str = "engine.convert_wait_ms";
 pub const KEY_EMOJI_SHORTCODE: &str = "emoji.shortcode";
 pub const KEY_EMOJI_SHORTCODE_EXCLUDE: &str = "emoji.shortcode_exclude";

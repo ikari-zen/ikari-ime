@@ -10,7 +10,8 @@ use super::text::{has_forbidden, split_lines, trim_blank};
 use crate::types::{SettingsIssue, SettingsIssueKind, SettingsSnapshot};
 
 /// TSV を読む。`engine.lm`、`engine.idle_unload_secs`、`engine.lm_deadline_ms`、`engine.convert_wait_ms` は殻も読む
-/// （メニューとエンジンの再起動の判定のため）。値が不正なら警告。それ以外の `engine.*` は警告なしで無視する。
+/// （メニューとエンジンの再起動の判定のため）。値が不正なら警告。`engine.lm_gpu` は値の書き方だけ検査する（持たない。
+/// エンジンが読む）。それ以外の `engine.*` は警告なしで無視する。
 pub(super) fn parse_tsv(tsv: &str) -> SettingsValidation {
     let mut settings = default_snapshot();
     let mut issues: Vec<SettingsIssue> = Vec::new();
@@ -54,6 +55,8 @@ fn apply_line(
             KEY_ENGINE_LM => set_switch(value, &mut settings.engine_lm),
             KEY_ENGINE_IDLE_UNLOAD_SECS => set_count(value, &mut settings.engine_idle_unload_secs),
             KEY_ENGINE_LM_DEADLINE_MS => set_count(value, &mut settings.engine_lm_deadline_ms),
+            // GPU で LM を動かすか（エンジンだけが読む。殻は値の書き方を検査して、不正なら警告する）
+            KEY_ENGINE_LM_GPU => set_switch(value, &mut true),
             KEY_ENGINE_CONVERT_WAIT_MS => set_count(value, &mut settings.engine_convert_wait_ms),
             // それ以外の `engine.*` は無視する（警告も出さない）
             _ => None,
@@ -560,6 +563,17 @@ mod tests {
         assert!(parsed.issues.is_empty());
         assert!(is_acceptable("engine.lm_deadline_ms", "500"));
         assert!(!is_acceptable("engine.convert_wait_ms", "-1"));
+    }
+
+    #[test]
+    fn lm_gpu_is_checked_but_not_held() {
+        // エンジンだけが読むキー。殻は書き方（on / off）を検査して、不正なら警告する
+        let ok = parse("engine.lm_gpu\toff\n");
+        assert!(ok.issues.is_empty());
+        assert_eq!(ok.snapshot, default_snapshot());
+        let bad = parse("engine.lm_gpu\t0\n");
+        assert_eq!(bad.issues.len(), 1);
+        assert_eq!(bad.issues[0].key, "engine.lm_gpu");
     }
 
     #[test]
