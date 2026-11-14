@@ -32,14 +32,14 @@ use windows::Win32::UI::TextServices::{
     ITfCompositionSink_Impl, ITfContext, ITfDocumentMgr, ITfKeyEventSink, ITfKeyEventSink_Impl,
     ITfKeystrokeMgr, ITfSource, ITfTextInputProcessor_Impl, ITfTextInputProcessorEx,
     ITfTextInputProcessorEx_Impl, ITfThreadMgr, ITfThreadMgrEventSink, ITfThreadMgrEventSink_Impl,
-    TF_ES_ASYNCDONTCARE, TF_ES_READWRITE, TF_ES_SYNC,
+    TF_ES_ASYNC, TF_ES_ASYNCDONTCARE, TF_ES_READWRITE, TF_ES_SYNC,
 };
 use windows_core::{BOOL, ComObject, GUID, IUnknownImpl, Interface, Ref, implement};
 
 use super::dll::DllRef;
 use super::edit::{self, Doc, Exec, ModeSink, Timers, TsfText};
 use super::guard::guard;
-use super::indicator::Indicator;
+use super::indicator::{Indicator, Scope};
 use super::{field, host, keyboard, log, timer};
 use crate::keys;
 use crate::latency::Kind;
@@ -176,6 +176,9 @@ enum Mode {
     Sync,
     /// 非同期でよい（TSF が取れるときに呼ぶ。すぐ呼ばれることもある）
     Async,
+    /// 必ず後で（`TF_ES_ASYNC`。今の呼び出しが戻ってから）。compartment の通知の中から使う: 通知の中で同じ
+    /// compartment を書くと、TSF が再入として断る（起動直後の `SetValue failed (CONVERSION) hr=0x8000FFFF`。#371）
+    Deferred,
 }
 
 /// フォーカスのある文書の、いちばん上の文脈
@@ -209,6 +212,7 @@ fn run_event(
     let flags = match mode {
         Mode::Sync => TF_ES_SYNC | TF_ES_READWRITE,
         Mode::Async => TF_ES_ASYNCDONTCARE | TF_ES_READWRITE,
+        Mode::Deferred => TF_ES_ASYNC | TF_ES_READWRITE,
     };
     match edit::request(context, client_id, flags, body) {
         Ok(_) => outcome.get(),
@@ -439,9 +443,15 @@ impl TextService_Impl {
             .map_err(|_| E_UNEXPECTED)?
             .key_sink_advised = true;
 
-        // 入力モードの表示（compartment と言語バーのボタン）。なくても入力はできるので、失敗しても続ける
+        // 入力モードの表示（compartment と言語バーのボタン）。なくても入力はできるので、失敗しても続ける。
+        // グローバルの compartment の通知は、届いた先を分けるために別の口（`GlobalCompartmentSink`）で受ける
         let compartment_sink: ITfCompartmentEventSink = self.to_interface();
-        match Indicator::install(thread_mgr, client_id, &compartment_sink) {
+        let global_sink: ITfCompartmentEventSink = GlobalCompartmentSink {
+            service: self.this(),
+            _dll: DllRef::new(),
+        }
+        .into();
+        match Indicator::install(thread_mgr, client_id, &compartment_sink, &global_sink) {
             Ok(indicator) => {
                 *self.indicator.try_borrow_mut().map_err(|_| E_UNEXPECTED)? = Some(indicator)
             }
@@ -557,6 +567,12 @@ impl TextService_Impl {
         let Some(event) = keys::key_event(&press.raw()) else {
             return false;
         };
+        // 診断（#371）。入力モードの compartment の値が前回と違えば出す（通知が来ないまま値が変わったかを見る）
+        if let Ok(indicator) = self.indicator.try_borrow()
+            && let Some(indicator) = indicator.as_ref()
+        {
+            log::mode_values(indicator.values());
+        }
         let outcome = run_event(&this, Some(context), event, Mode::Sync);
         meter.finish(Kind::Key, stamp, outcome.is_some());
         let eaten = outcome.unwrap_or(false);
@@ -750,50 +766,77 @@ impl ITfThreadMgrEventSink_Impl for TextService_Impl {
 }
 
 impl ITfCompartmentEventSink_Impl for TextService_Impl {
-    /// 入力モードの compartment が変わった（言語バーのクリック、IME のオン・オフ、ほかのアプリや OS の操作）。
-    /// 値を `mode` の表で読み、`shell-core` に通知する。自分の書き込みの通知は読み捨てる
+    /// スレッドの入力モードの compartment が変わった（言語バーのクリック、IME のオン・オフ、ほかのアプリや OS の操作）
     fn OnChange(&self, guid: *const GUID) -> windows_core::Result<()> {
         guard("panic in OnChange (compartment)", Ok(()), || {
-            if guid.is_null() {
-                return Ok(());
-            }
-            // SAFETY: null でない（上で確かめた）。TSF が渡した GUID への参照
-            let guid = unsafe { *guid };
-            // 診断（#371）。compartment の変更のときだけ出す（打鍵ごとではない）。読み捨てた理由も残す
-            let (kind, value) = match self.indicator.try_borrow() {
-                Ok(indicator) => indicator
-                    .as_ref()
-                    .map_or(("no-indicator", None), |i| i.describe(&guid)),
-                Err(_) => ("reentrant", None),
-            };
-            if self.writing_mode.get() {
-                log::compartment(kind, value, "dropped(own write)");
-                return Ok(());
-            }
-            log::compartment(kind, value, "accepted");
-            let mode = match self.indicator.try_borrow() {
-                Ok(indicator) => indicator
-                    .as_ref()
-                    .and_then(|indicator| indicator.read(&guid)),
-                Err(_) => None,
-            };
-            let Some(mode) = mode else {
-                return Ok(());
-            };
-            let this = self.this();
-            let context = focused_context(&this);
-            run_event(
-                &this,
-                context.as_ref(),
-                ShellEvent::InputModeChanged {
-                    mode_id: mode.mode_id().to_owned(),
-                    // TODO(S8、W4): secure な入力欄
-                    secure: false,
-                },
-                Mode::Async,
-            );
+            self.compartment_changed(Scope::Thread, guid);
             Ok(())
         })
+    }
+}
+
+/// グローバルの compartment の通知を受ける口（#371 の診断。実験的）。`ITfCompartmentEventSink::OnChange` は GUID しか
+/// 渡さないので、スレッドの方と同じ口では、どちらに届いたかが分からない。受けたら `compartment_changed` に流すだけ。
+///
+/// テキストサービスを持つ（循環する）。`Deactivate` の `Indicator::remove` で通知の登録を外すと、TSF がこの口を放し、
+/// 循環が切れる
+#[implement(ITfCompartmentEventSink)]
+struct GlobalCompartmentSink {
+    service: ComObject<TextService>,
+    _dll: DllRef,
+}
+
+impl ITfCompartmentEventSink_Impl for GlobalCompartmentSink_Impl {
+    fn OnChange(&self, guid: *const GUID) -> windows_core::Result<()> {
+        guard("panic in OnChange (global compartment)", Ok(()), || {
+            self.service.compartment_changed(Scope::Global, guid);
+            Ok(())
+        })
+    }
+}
+
+impl TextService_Impl {
+    /// 入力モードの compartment の通知。値を `mode` の表で読み、`shell-core` に通知する（判断は `shell-core`）。
+    /// 自分の書き込みの通知は読み捨てる。`dispatch` は通知が戻ってから行う（`Mode::Deferred`）
+    fn compartment_changed(&self, scope: Scope, guid: *const GUID) {
+        if guid.is_null() {
+            return;
+        }
+        // SAFETY: null でない（上で確かめた）。TSF が渡した GUID への参照
+        let guid = unsafe { *guid };
+        // 診断（#371）。compartment の変更のときだけ出す（打鍵ごとではない）。届いた先と、読み捨てた理由も残す
+        let (kind, value) = match self.indicator.try_borrow() {
+            Ok(indicator) => indicator
+                .as_ref()
+                .map_or(("no-indicator", None), |i| i.describe(scope, &guid)),
+            Err(_) => ("reentrant", None),
+        };
+        if self.writing_mode.get() {
+            log::compartment(scope.name(), kind, value, "dropped(own write)");
+            return;
+        }
+        log::compartment(scope.name(), kind, value, "accepted");
+        let mode = match self.indicator.try_borrow() {
+            Ok(indicator) => indicator
+                .as_ref()
+                .and_then(|indicator| indicator.read(scope, &guid)),
+            Err(_) => None,
+        };
+        let Some(mode) = mode else {
+            return;
+        };
+        let this = self.this();
+        let context = focused_context(&this);
+        run_event(
+            &this,
+            context.as_ref(),
+            ShellEvent::InputModeChanged {
+                mode_id: mode.mode_id().to_owned(),
+                // TODO(S8、W4): secure な入力欄
+                secure: false,
+            },
+            Mode::Deferred,
+        );
     }
 }
 

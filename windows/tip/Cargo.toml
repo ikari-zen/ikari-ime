@@ -22,6 +22,8 @@ windows-core = "0.62.2"
 windows = { version = "0.62.2", features = [
     # BOOL、HRESULT、HMODULE、RECT など
     "Win32_Foundation",
+    # 入力モードのアイコンを描く（CreateDIBSection、DrawTextW。タスクバーの入力インジケーター。#370）
+    "Win32_Graphics_Gdi",
     # IClassFactory
     "Win32_System_Com",
     # OutputDebugStringW

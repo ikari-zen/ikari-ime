@@ -216,7 +216,7 @@ impl Inner {
     /// 返すのは要求の行に添える `ctx_rev=N`（固定の語と数だけ。NFR-19）。secure では呼ばない
     fn trace_context(
         &self,
-        session: u64,
+        session: SessionKey,
         rev: u64,
         surrounding: Option<&pb::SurroundingText>,
         req: &str,
@@ -239,24 +239,26 @@ impl Inner {
     /// 返事と、ログの注記（`ctx_rev`。secure と空の読みでは None）
     pub(crate) fn prefetch(
         &self,
+        conn: ConnectionId,
         p: pb::Prefetch,
     ) -> Result<(envelope::Body, Option<String>), Fail> {
+        let session = SessionKey::new(conn, p.session_id);
         let ack = Ok((envelope::Body::Ack(pb::Ack {}), None));
         if char_count_exceeds(&p.reading, MAX_READING_CHARS) {
             return Err(Fail::bad("reading too long"));
         }
-        let (secure, history) = self.session_info(p.session_id)?;
+        let (secure, history) = self.session_info(session)?;
         // 読みが変わった。前の変換の文節の先読みは要らない
-        self.lookahead.forget_session(p.session_id);
+        self.lookahead.forget_session(session);
         // 秘密の入力は、計算も保存もしない（NFR-18）。読みが空になったら古い依頼を捨てる
         if secure || p.reading.is_empty() {
-            if let Some(old) = self.queue.forget_session(p.session_id) {
+            if let Some(old) = self.queue.forget_session(session) {
                 lock_mutex(&self.cache).remove(&old);
             }
             return ack;
         }
         let mut trace = self.trace_context(
-            p.session_id,
+            session,
             p.context_rev,
             p.context.as_ref(),
             "prefetch",
@@ -264,7 +266,7 @@ impl Inner {
         );
         // 直前の確定をアプリがまだ反映していないなら、left に補って先行計算を作る（ADR 0038）。
         // 番号の記録（上）は殻が送った周辺テキストのまま
-        let filled = lock_mutex(&self.ctx_trace).fill_left(p.session_id, p.context.as_ref());
+        let filled = lock_mutex(&self.ctx_trace).fill_left(session, p.context.as_ref());
         let filled_chars = filled.as_ref().map_or(0, |f| f.chars);
         if filled_chars > 0 {
             trace.push_str(&format!(" fill={filled_chars}"));
@@ -273,7 +275,7 @@ impl Inner {
         // アイドル解放のあとの最初の Prefetch で、読み込みを別スレッドで始める（読み込み済みなら何もしない）
         self.ensure_warm();
         let key = CacheKey {
-            session: p.session_id,
+            session,
             reading: p.reading,
             context_rev: p.context_rev,
         };
@@ -294,7 +296,12 @@ impl Inner {
     }
 
     /// 返事と、ログの注記（キャッシュの使われ方と LM の有無。固定の語だけ）を返す
-    pub(crate) fn convert(&self, c: pb::Convert) -> Result<(envelope::Body, Option<String>), Fail> {
+    pub(crate) fn convert(
+        &self,
+        conn: ConnectionId,
+        c: pb::Convert,
+    ) -> Result<(envelope::Body, Option<String>), Fail> {
+        let session = SessionKey::new(conn, c.session_id);
         let started = Instant::now();
         // 変換の時点で終わっていない先行計算の数（数だけ。#159）
         let qlen = self.queue.pending();
@@ -307,11 +314,11 @@ impl Inner {
         } else {
             c.page_size
         } as usize;
-        let (secure, history) = self.session_info(c.session_id)?;
+        let (secure, history) = self.session_info(session)?;
         let stack = self.stack();
         let trace = (!secure).then(|| {
             self.trace_context(
-                c.session_id,
+                session,
                 c.context_rev,
                 c.context.as_ref(),
                 "convert",
@@ -325,7 +332,7 @@ impl Inner {
             (None, CacheOutcome::Miss(MissReason::None))
         } else {
             let key = CacheKey {
-                session: c.session_id,
+                session,
                 reading: c.reading.clone(),
                 context_rev: c.context_rev,
             };
@@ -333,12 +340,12 @@ impl Inner {
             let (entry, reason) = {
                 let mut cache = lock_mutex(&self.cache);
                 fill_note = cache
-                    .latest(c.session_id, &c.reading)
+                    .latest(session, &c.reading)
                     .and_then(|e| e.ctx.as_ref().and_then(|p| fill_note_for(p, &convert_ctx)));
                 match cache.find(&key) {
                     Some(e) => (Some(e), MissReason::None),
                     // 番号が違っても、先行計算に使った文脈の中身が同じなら当てる（ADR 0038 §2 の 2）
-                    None => match cache.find_by_content(c.session_id, &c.reading, &convert_ctx) {
+                    None => match cache.find_by_content(session, &c.reading, &convert_ctx) {
                         Some(e) => {
                             by_content = true;
                             (Some(e), MissReason::None)
@@ -415,16 +422,16 @@ impl Inner {
         };
         // 前の変換の先読みは捨てる。2 文節以上なら、返事のあとに文節 1 以降の 1 ページ目を裏で作る
         // （秘密の入力は先読みしない。ADR 0006 §3.4、§5.3）
-        self.lookahead.forget_session(c.session_id);
+        self.lookahead.forget_session(session);
         if !secure && layout.segments.len() >= 2 {
             self.lookahead.submit(LookJob::new(
-                c.session_id,
+                session,
                 Arc::clone(&conv),
                 page_size,
                 layout.layout_rev,
             ));
         }
-        lock_mutex(&self.conversions).insert(conversion_id, c.session_id, conv, page_size);
+        lock_mutex(&self.conversions).insert(conversion_id, session, conv, page_size);
         let lm_state = self.lm_state();
         let lm_device = match lm_trace.device {
             LmDevice::Unknown => self.lm_device(),
@@ -484,7 +491,7 @@ impl Inner {
         }
         note.push_str(&format!(" qlen={qlen}"));
         // アプリ別の偏りを行単位で見られるように（ADR 0034 §9-1。2026-10-30）。secure は書かない
-        if let Some(app) = self.app_note(c.session_id) {
+        if let Some(app) = self.app_note(session) {
             note.push(' ');
             note.push_str(&app);
         }
@@ -497,14 +504,18 @@ impl Inner {
         ))
     }
 
-    pub(crate) fn page(&self, p: pb::PageRequest) -> Result<envelope::Body, Fail> {
+    pub(crate) fn page(
+        &self,
+        conn: ConnectionId,
+        p: pb::PageRequest,
+    ) -> Result<envelope::Body, Fail> {
         let started = Instant::now();
         let index = usize::try_from(p.index).unwrap_or(usize::MAX);
         if index > MAX_PAGE_INDEX {
             return Err(Fail::bad("page index out of range"));
         }
         let (conv, page_size, _) = lock_mutex(&self.conversions)
-            .get(p.conversion_id)
+            .get(conn, p.conversion_id)
             .ok_or(UNKNOWN_CONVERSION)?;
         let (budget, layout) = {
             let entry = lock_mutex(&conv);
@@ -538,9 +549,13 @@ impl Inner {
     }
 
     /// 返事と、ログの注記（確定した候補が Rewriter のものなら `rw=<名前>`。secure では None）
-    pub(crate) fn commit(&self, c: pb::Commit) -> Result<(envelope::Body, Option<String>), Fail> {
+    pub(crate) fn commit(
+        &self,
+        conn: ConnectionId,
+        c: pb::Commit,
+    ) -> Result<(envelope::Body, Option<String>), Fail> {
         let (conv, _, session) = lock_mutex(&self.conversions)
-            .get(c.conversion_id)
+            .get(conn, c.conversion_id)
             .ok_or(UNKNOWN_CONVERSION)?;
         let index = usize::try_from(c.candidate_index).unwrap_or(usize::MAX);
         let (event, reading, surface) = {
@@ -556,7 +571,7 @@ impl Inner {
                 candidate.surface.clone(),
             )
         };
-        lock_mutex(&self.conversions).remove(c.conversion_id);
+        lock_mutex(&self.conversions).remove(conn, c.conversion_id);
         // secure の確定は `commit` が None を返す（学習も履歴もしない。NFR-18）
         let mut note = None;
         if let Some(event) = event {
@@ -572,22 +587,27 @@ impl Inner {
         Ok((envelope::Body::Ack(pb::Ack {}), note))
     }
 
-    pub(crate) fn commit_text(&self, c: pb::CommitText) -> Result<envelope::Body, Fail> {
+    pub(crate) fn commit_text(
+        &self,
+        conn: ConnectionId,
+        c: pb::CommitText,
+    ) -> Result<envelope::Body, Fail> {
         if char_count_exceeds(&c.reading, MAX_READING_CHARS)
             || char_count_exceeds(&c.surface, MAX_SURFACE_CHARS)
         {
             return Err(Fail::bad("text too long"));
         }
-        let (secure, _) = self.session_info(c.session_id)?;
+        let session = SessionKey::new(conn, c.session_id);
+        let (secure, _) = self.session_info(session)?;
         if !secure && !c.surface.is_empty() {
-            lock_mutex(&self.ctx_trace).note_commit(c.session_id, &c.surface);
-            self.push_history(c.session_id, c.reading, c.surface);
+            lock_mutex(&self.ctx_trace).note_commit(session, &c.surface);
+            self.push_history(session, c.reading, c.surface);
         }
         Ok(envelope::Body::Ack(pb::Ack {}))
     }
 
-    pub(crate) fn cancel(&self, c: pb::Cancel) -> envelope::Body {
-        lock_mutex(&self.conversions).remove(c.conversion_id);
+    pub(crate) fn cancel(&self, conn: ConnectionId, c: pb::Cancel) -> envelope::Body {
+        lock_mutex(&self.conversions).remove(conn, c.conversion_id);
         envelope::Body::Ack(pb::Ack {})
     }
 

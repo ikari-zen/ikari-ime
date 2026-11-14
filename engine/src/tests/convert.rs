@@ -191,7 +191,7 @@ fn secure_sessions_are_not_prefetched_learned_or_remembered() {
     );
     let stack = e.inner.stack();
     assert!(stack.learning.as_ref().unwrap().is_empty());
-    assert!(lock_mutex(&e.inner.sessions)[&1].history.is_empty());
+    assert!(lock_mutex(&e.inner.sessions)[&sk(1)].history.is_empty());
     assert!(!lock_mutex(&e.inner.save).dirty);
     drop(e);
     assert!(!path.exists(), "nothing was saved");

@@ -18,6 +18,7 @@ use ikari_proto::v1 as pb;
 use ikari_proto::v1::{ErrorCode, envelope};
 
 use crate::cache::{SharedConversion, lock as lock_mutex};
+use crate::connection::{ConnectionId, SessionKey};
 use crate::{Fail, candidate_kind};
 
 /// 文節の候補の 1 塊（コアの `Page` を所有型にしたもの）
@@ -410,7 +411,7 @@ fn check_rev(entry: &SegEntry, rev: u32) -> Result<(), Fail> {
 
 /// 文節の先読みの依頼 1 件。`Convert` の返事のあと、文節 1 以降の 1 ページ目を LM つきで作る（ADR 0006 §3.4）
 pub(crate) struct LookJob {
-    pub session: u64,
+    pub session: SessionKey,
     pub conv: SharedConversion,
     pub page_size: usize,
     /// 依頼したときの区切りの版。区切り直しがあったら続けない（`Resize` が作り直す）
@@ -421,7 +422,7 @@ pub(crate) struct LookJob {
 }
 
 impl LookJob {
-    pub fn new(session: u64, conv: SharedConversion, page_size: usize, rev: u32) -> LookJob {
+    pub fn new(session: SessionKey, conv: SharedConversion, page_size: usize, rev: u32) -> LookJob {
         LookJob {
             session,
             conv,
@@ -436,7 +437,7 @@ impl LookJob {
 #[derive(Default)]
 struct LookState {
     /// セッションごとに最新の 1 件だけ
-    jobs: HashMap<u64, LookJob>,
+    jobs: HashMap<SessionKey, LookJob>,
     seq: u64,
     closed: bool,
 }
@@ -447,7 +448,7 @@ pub(crate) struct LookaheadQueue {
     state: Mutex<LookState>,
     wake: Condvar,
     /// 処理中の依頼の `cancel`（セッションごと）
-    running: Mutex<HashMap<u64, Arc<AtomicBool>>>,
+    running: Mutex<HashMap<SessionKey, Arc<AtomicBool>>>,
 }
 
 impl LookaheadQueue {
@@ -480,7 +481,7 @@ impl LookaheadQueue {
     }
 
     /// セッションの待ち依頼を捨てる。処理中のものも止める（`cancel`）
-    pub fn forget_session(&self, session: u64) {
+    pub fn forget_session(&self, session: SessionKey) {
         if let Some(old) = lock_mutex(&self.state).jobs.remove(&session) {
             old.cancel.store(true, Ordering::Release);
         }
@@ -568,7 +569,11 @@ impl crate::Inner {
 
     /// 再変換（ADR 0006 §9）。選択した表記から文節の列を作る。確定履歴は読みの推定にだけ使い（新しい順）、
     /// 左文脈は殻が送った周辺テキストだけにする。LM は待たない。secure では始めない（NFR-18）
-    pub(crate) fn reconvert(&self, r: pb::Reconvert) -> Result<envelope::Body, Fail> {
+    pub(crate) fn reconvert(
+        &self,
+        conn: ConnectionId,
+        r: pb::Reconvert,
+    ) -> Result<envelope::Body, Fail> {
         let started = Instant::now();
         if r.surface.is_empty() {
             return Err(Fail::bad("empty surface"));
@@ -587,7 +592,8 @@ impl crate::Inner {
         } else {
             r.page_size
         } as usize;
-        let (secure, mut history) = self.session_info(r.session_id)?;
+        let session = SessionKey::new(conn, r.session_id);
+        let (secure, mut history) = self.session_info(session)?;
         if secure {
             return Err(Fail::bad("reconvert is not available in a secure session"));
         }
@@ -620,7 +626,7 @@ impl crate::Inner {
         );
         crate::lock_mutex(&self.conversions).insert(
             conversion_id,
-            r.session_id,
+            session,
             Arc::new(Mutex::new(entry)),
             page_size,
         );
@@ -632,11 +638,12 @@ impl crate::Inner {
     /// 返事と、ログの注記（Rewriter の候補を確定したら `rw=<名前>`。secure と変更なしの再変換では None）
     pub(crate) fn commit_segments(
         &self,
+        conn: ConnectionId,
         c: pb::CommitSegments,
     ) -> Result<(envelope::Body, Option<String>), Fail> {
         let choices = core_choices(&c.choices)?;
         let (conv, _, session) = crate::lock_mutex(&self.conversions)
-            .get(c.conversion_id)
+            .get(conn, c.conversion_id)
             .ok_or(crate::UNKNOWN_CONVERSION)?;
         let (commit, origin) = {
             let entry = crate::lock_mutex(&conv);
@@ -648,7 +655,7 @@ impl crate::Inner {
                 (Some(entry.commit(&choices).map_err(fail_of)?), origin)
             }
         };
-        crate::lock_mutex(&self.conversions).remove(c.conversion_id);
+        crate::lock_mutex(&self.conversions).remove(conn, c.conversion_id);
         let secure = crate::lock_mutex(&self.sessions)
             .get(&session)
             .is_none_or(|s| s.secure);
@@ -687,12 +694,16 @@ impl crate::Inner {
     /// 返事は新しい区切り（版が 1 上がる）。`focused` は取り除いた範囲の左の文節（先頭なら 0）。
     /// 全部を取り除く指定、範囲外は `BAD_REQUEST`（殻は全部消えるときは `Cancel` する）。
     /// 先読みは版が変わるので、続きを作らずに止まる
-    pub(crate) fn remove_segments(&self, r: pb::RemoveSegments) -> Result<envelope::Body, Fail> {
+    pub(crate) fn remove_segments(
+        &self,
+        conn: ConnectionId,
+        r: pb::RemoveSegments,
+    ) -> Result<envelope::Body, Fail> {
         let started = Instant::now();
         let first = usize::try_from(r.first).unwrap_or(usize::MAX);
         let count = usize::try_from(r.count).unwrap_or(usize::MAX);
         let (conv, _, _) = crate::lock_mutex(&self.conversions)
-            .get(r.conversion_id)
+            .get(conn, r.conversion_id)
             .ok_or(crate::UNKNOWN_CONVERSION)?;
         let mut entry = crate::lock_mutex(&conv);
         check_rev(&entry, r.layout_rev)?;
@@ -708,7 +719,11 @@ impl crate::Inner {
 
     /// 区切り直し（ADR 0006 §4）。LM を待たずに計算する（§16.1-6）。返事は新しい区切りと、
     /// フォーカスしている文節の 1 ページ目
-    pub(crate) fn resize_segment(&self, r: pb::ResizeSegment) -> Result<envelope::Body, Fail> {
+    pub(crate) fn resize_segment(
+        &self,
+        conn: ConnectionId,
+        r: pb::ResizeSegment,
+    ) -> Result<envelope::Body, Fail> {
         let started = Instant::now();
         if usize::try_from(r.delta.unsigned_abs()).unwrap_or(usize::MAX) > crate::MAX_READING_CHARS
         {
@@ -717,7 +732,7 @@ impl crate::Inner {
         let left = core_choices(&r.left)?;
         let segment = usize::try_from(r.segment).unwrap_or(usize::MAX);
         let (conv, page_size, _) = crate::lock_mutex(&self.conversions)
-            .get(r.conversion_id)
+            .get(conn, r.conversion_id)
             .ok_or(crate::UNKNOWN_CONVERSION)?;
         let before = self.lm_stats();
         let mut entry = crate::lock_mutex(&conv);
@@ -749,6 +764,7 @@ impl crate::Inner {
     /// ないときは、1 ページ目は LM を待たずに作る。2 ページ目以降は届いている LM の結果を使ってよい
     pub(crate) fn segment_page(
         &self,
+        conn: ConnectionId,
         r: pb::SegmentPageRequest,
     ) -> Result<pb::envelope::Body, Fail> {
         let started = Instant::now();
@@ -759,7 +775,7 @@ impl crate::Inner {
         let left = core_choices(&r.left)?;
         let segment = usize::try_from(r.segment).unwrap_or(usize::MAX);
         let (conv, page_size, _) = crate::lock_mutex(&self.conversions)
-            .get(r.conversion_id)
+            .get(conn, r.conversion_id)
             .ok_or(crate::UNKNOWN_CONVERSION)?;
         let before = self.lm_stats();
         let mut entry = crate::lock_mutex(&conv);

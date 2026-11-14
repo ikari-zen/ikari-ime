@@ -133,12 +133,12 @@ impl Inner {
     /// 殻からの `DiagEvent`。返事は常に Ack（殻は待たない）。
     /// secure は何も書かずに捨てる（`diag_reject` も書かない。NFR-18）。セッションがなければ
     /// `diag_reject reason=no_session` を数える（`UNKNOWN_SESSION` の行は書かない）
-    pub(crate) fn diag(&self, event: &pb::DiagEvent) -> envelope::Body {
+    pub(crate) fn diag(&self, conn: ConnectionId, event: &pb::DiagEvent) -> envelope::Body {
         let ack = envelope::Body::Ack(pb::Ack {});
         // 休止中（`EndSession` のあと）のセッションの事象も受ける: 合成の最後の `sh_episode` が
         // `EndSession` のあとに届いても、secure の判断は変わらない
         let secure = lock_mutex(&self.sessions)
-            .get(&event.session_id)
+            .get(&SessionKey::new(conn, event.session_id))
             .map(|s| s.secure);
         match secure {
             Some(true) => return ack,

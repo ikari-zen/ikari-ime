@@ -88,12 +88,12 @@ fn a_new_convert_cancels_the_old_lookahead() {
     begin(&e, 1, false);
     let r = convert(&e, 1, READING, 0);
     let (conv, page_size, _) = lock_mutex(&e.inner.conversions)
-        .get(r.conversion_id)
+        .get(ConnectionId::DEFAULT, r.conversion_id)
         .unwrap();
-    let first = LookJob::new(1, Arc::clone(&conv), page_size, 0);
+    let first = LookJob::new(sk(1), Arc::clone(&conv), page_size, 0);
     let first_cancel = Arc::clone(&first.cancel);
     queue.submit(first);
-    let second = LookJob::new(1, conv, page_size, 0);
+    let second = LookJob::new(sk(1), conv, page_size, 0);
     let second_cancel = Arc::clone(&second.cancel);
     queue.submit(second);
     assert!(first_cancel.load(Ordering::Acquire));
@@ -101,7 +101,7 @@ fn a_new_convert_cancels_the_old_lookahead() {
     let next = queue.next().unwrap();
     assert!(Arc::ptr_eq(&next.cancel, &second_cancel));
     // 処理中でも、同じセッションの新しい依頼や forget で止まる
-    queue.forget_session(1);
+    queue.forget_session(sk(1));
     assert!(second_cancel.load(Ordering::Acquire));
     queue.close();
     assert!(queue.next().is_none());
