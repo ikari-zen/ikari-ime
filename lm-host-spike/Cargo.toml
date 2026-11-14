@@ -24,3 +24,11 @@ required-features = ["llama"]
 name = "lm-host-bench"
 path = "src/bin/bench.rs"
 required-features = ["llama"]
+
+[[bin]]
+name = "fake-host"
+path = "src/bin/fake_host.rs"
+
+[dev-dependencies]
+ikari-core.workspace = true
+ikari-testtime.workspace = true

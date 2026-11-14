@@ -17,6 +17,7 @@ mod scorer;
 mod llama;
 
 pub use config::{ModelKind, ZenzConfig};
+pub use error::LmError; // スパイク: lm-host-spike が使う
 pub use prompt::{PromptInput, build_prompt, build_prompt_for, tail_chars};
 pub use ranker::{LmStats, ZenzRanker};
 pub use scorer::LmScorer;
