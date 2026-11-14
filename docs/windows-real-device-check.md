@@ -2,7 +2,7 @@
 
 Windows 版の ikari（TIP、常駐のエンジン、名前付きパイプ）は、Mac では型と OS に依存しない部分までしか確かめられません。この文書は、Windows 11 の VM で通しで動かし、「実機の確認待ち」を閉じるための手順です（[ADR 0040](adr/0040-windows-feasibility.md) §2.1、§6 の S0〜S11、§7 の W5。issue #331）。
 
-**この文書とスクリプトは、Windows で動かしたことがありません。** 書いた環境は Mac で、PowerShell の構文も検査できていません。最初に動かしたとき、スクリプトの失敗や手順の抜けが出ると思ってください。直したことと分かったことは、「結果の記録」に書いてください。
+**この文書とスクリプトは、2026-11-14 に Windows 11 の VM（N150 の 2 vCPU）で動かし始めました。** 最初の実行で出た失敗や手順の抜けは直してあります（PR #350 など）。まだ動かしていない項目や、手順が変わりうる箇所は、各項目の結果と「結果の記録」を見てください。
 
 - 対象: 開発用の手順です。配る人向けのインストーラではありません（W5 の残りで作ります）。
 - 範囲: LM なし、x64、Windows 11 のデスクトップのアプリ（[ADR 0040](adr/0040-windows-feasibility.md) §2.3）。**候補窓と設定画面はまだありません**（W3、W4-s3）。候補は出ず、確認の対象は「変換して確定できるか」までです（項目 14）。
@@ -12,9 +12,9 @@ Windows 版の ikari（TIP、常駐のエンジン、名前付きパイプ）は
 
 ### 1.1 VM
 
-- miniPC の上の x64 の Windows 11 の VM を使います（[ADR 0040](adr/0040-windows-feasibility.md) §2.6）。**TIP は全アプリに入る DLL なので、不具合でアプリや Windows が固まることがあります。実機（ふだん使う Windows）には入れません。**
-- 最初に VM のスナップショットを取ります（「準備だけ済んだ状態」と、「登録した直後」の 2 つを勧めます）。固まったら、スナップショットに戻します。
-- 管理者になれるユーザーで使います。別のユーザーからの接続を確かめる項目（項目 10）のために、もう 1 人、標準ユーザーを作っておくと進みます（その項目のときでかまいません）。
+- 別のホストの KVM 上の x64 の Windows 11 Pro の VM を使いました（[ADR 0040](adr/0040-windows-feasibility.md) §2.6）。Mac からは `ssh win11` で入ります（鍵認証）。**TIP は全アプリに入る DLL なので、不具合でアプリや Windows が固まることがあります。実機（ふだん使う Windows）には入れません。**
+- 基準の状態（準備だけ済み、ikari は未登録）を取っておき、固まったら戻します。実際の VM では、ホスト側の差分ディスク（オーバーレイ）で基準を持ち、基準へ戻す道具を使いました。ゲストの中の変更は、戻すとすべて消えます。VM のスナップショットを使う場合も、考え方は同じです。
+- 管理者になれるユーザーで使いました。項目 10（別のユーザーからの接続）のための標準ユーザーは、まだ確かめられていません。2026-11-14 の時点で、`Start-Process -Credential` で別のユーザーを起動すると `0xC0000142` で失敗し、保留にしています。
 - ネットワークが要るのは、道具の取得と、Mac からのデータの持ち込みのときだけです。
 
 ### 1.2 道具
@@ -25,7 +25,7 @@ Windows 版の ikari（TIP、常駐のエンジン、名前付きパイプ）は
 | Visual Studio Build Tools（「C++ によるデスクトップ開発」） | リンカー（`link.exe`）と Windows SDK | Rust のインストーラが案内します |
 | Git | リポジトリの取得 | |
 | cmake | LM なしのビルドでは要りません。項目 37・38（S4。LM つき）のときだけ | <https://cmake.org/download/>（PATH に通す） |
-| Sysinternals DebugView | TIP のログを見る（`OutputDebugString`） | TIP は、ログをファイルに書きません |
+| Sysinternals DebugView（任意） | TIP のログを見る（`OutputDebugString`） | TIP は、ログをファイルに書きません。DebugView がなくても、`windows\dev\dbgcap.ps1` で同じログを取れます（§1.6） |
 | 確認するアプリ | Notepad、Edge、Chrome、VS Code（[ADR 0040](adr/0040-windows-feasibility.md) §6 の S2）。あれば Word | |
 
 ### 1.3 リポジトリの取得
@@ -50,6 +50,11 @@ gh run download <番号> -n ikari-windows-dev-<コミットの SHA> -D ikari-win
 
 `ikari-windows-dev` を VM に持ち込み（`scp` など）、その中の `windows\dev` で、`build.ps1` を飛ばして `install-data.ps1` 以降を流します。中身はリポジトリと同じ配置（`target\release\`、`windows\dev\`、`shell-core\resources\keymap`）で、`COMMIT` に元のコミット（PR なら先頭のコミット、main なら main のコミット）の SHA が入っています（結果の記録に書いてください）。項目 1 のうち、ビルドと `cargo test` は CI の結果で代えます。
 
+実際に持ち込んだときの中身（2026-11-14）:
+
+- `ikari-engine-host.exe`（LM つき）、`ikari-engine-host-nolm.exe`（LM なし）、`ikari_tip.dll`、`ikari-eval.exe`、`eval\sets`
+- 2 回目以降に入れ替えるとき、使用中の DLL は上書きできません。管理者の PowerShell で、`.\unregister.ps1` で登録を外し、使用中のファイルを別の名前に変えてから（例: `ikari_tip.dll` → `ikari_tip.old.dll`）、新しいものをコピーし、`.\register.ps1` で登録し直します。この順で、VM を再起動せずに DLL を入れ替えられました（エンジンの exe は、この方法で確かめていません）。
+
 ### 1.4 データ（辞書とモデル）
 
 辞書は約 650MB です。**Windows の上で作る手順は、試していません**（`cargo xtask data fetch` と `cargo xtask dict` が Windows で動くかは未確認。取得は `curl`、展開は `tar`（と、ものによって `unzip`、`xz`）に頼っています）。**Mac で作ったデータを持ち込む**のを標準の手順にします。
@@ -70,6 +75,7 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 
 - zip にして持ち込むと、展開したファイルに「インターネットから取得」の印が付くことがあります。辞書の読み込みに影響するかは分かりません。読めなかったら、それも記録してください。
 - Mac の辞書と Windows で同じ形式として読めるかは、最初の確認（項目 1）で分かります（どちらもリトルエンディアンの見込みです）。
+- 実際に持ち込んだ例（2026-11-14）: 辞書を VM の `C:\ikari-data\build\dict\` に置き、`.\install-data.ps1 -Src C:\ikari-data` を流しました（`-DryRun` で計画を見てから。確認が出たら、同じファイルを飛ばして違うものだけ置き換えます。`-Force` を付けると、確認を省けます）。この辞書を、エンジンが開けたことは項目 2 で確かめました（§4）。
 
 ### 1.5 スクリプトの設定の置き場所
 
@@ -82,6 +88,27 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 | TIP の DLL | ビルドの結果 `target\release\ikari_tip.dll`。登録するのは `%LOCALAPPDATA%\ikari-ime-dev\tip\` に作る**コピー**（アプリが読み込んだ DLL を、ビルドが上書きしないため） | |
 
 スクリプトは、ASCII だけで書いています（Windows PowerShell 5.1 は、BOM のないファイルを日本語の文字コードとして読むため）。
+
+### 1.6 VM への接続と、画面なしの確認（2026-11-14 に使った方法）
+
+- **接続**: Mac から `ssh win11`。SSH の既定のシェルは PowerShell です。呼び出しごとに `Set-ExecutionPolicy -Scope Process Bypass` が要ります。
+- **文字コード**: SSH の出力は cp932 になることがあります。結果はファイルに書いて `scp` で Mac に取り、UTF-8 として読みます。
+- **セッション**: SSH はセッション 0 で、ウィンドウを出せません。TIP とエンジンのパイプ名には `-s<セッション番号>` が入るため、TIP と同じデスクトップ（セッション 1）で動かす必要があります。SSH から起動したプロセスは、切断で一緒に終わりました。
+- **セッション 1 での実行**: `windows\dev\run-in-session.ps1` が、スケジュールタスク（`/IT /RU`）でセッション 1 に指定の `.ps1` を流し、`-OutFile` ができるまで待って表示します。タスクの名前はそのたびに変わります（同じ名前だと、動いているタスクを潰すため）。
+
+  ```powershell
+  .\run-in-session.ps1 -Script C:\ikari-dev\windows\dev\uia-probe.ps1 -OutFile C:\ikari-dev\uia-probe.txt
+  ```
+
+- **常駐のエンジン**: ログオンでセッション 1 に起動するスケジュールタスク（`ikari-engine-dev`）で動かしました。
+- **画面の代わりに読むもの（画面が見えないときに使う）**:
+  - `uia-probe.ps1`: UI Automation で Notepad の部品を一覧にします。Notepad の本文を読めることを、2026-11-14 に確かめました。
+  - `ime-test.ps1`（`-Mode Prepare`、`Activate`、`Release`、`Read`）: `Prepare` は、Notepad を終了し、LocalState を消してから（Notepad は前回のタブを復元するため）起動し、本文を空にして、ikari を有効にします。`Read` は本文と有効なプロファイルを UTF-8 で書きます。
+  - `dbgcap.ps1`: このセッションの `OutputDebugString`（TIP のログ）を、ファイルに書きます（既定は `C:\ikari-dev\dbg.log`、120 秒）。DebugView は要りません。
+  - キーは、VM のホスト側で `virsh send-key` を使って送ります。8 キーずつに分けて送ります。F キーは、明示のトークンを付けて送ります。
+- **画面（`virsh screenshot`）の注意**: 2026-11-14 の時点で、デスクトップとタスクバーは映りましたが、Run（Win+R）や Notepad の窓は映りませんでした（原因は未確認）。目視の項目（13、14）は、上の道具で代えて確かめました。
+- **読み取りでフォーカスが動くと**: TIP のセッションが切れ、組み立て中の文字が消えることがあります。
+- **TIP の初期モード**: TIP は起動時に日本語のモードで始まります（#349）。直す前は、新しく開いた Notepad で打鍵が英語のモードのまま素通しになりました。
 
 ## 2. 導入
 

@@ -12,7 +12,7 @@
     2. registry + TSF profile, written by the DLL itself (DllRegisterServer): HKCR\CLSID\{...}, the Japanese
        (0x0411) input profile "ikari", and the TIP keyboard category.
   Run it inside the VM (a TIP bug can freeze Windows: ADR 0040 s8). Take a VM snapshot first.
-  Never run on Windows when written: syntax only.
+ 
 #>
 param([switch]$DryRun, [switch]$Force)
 
