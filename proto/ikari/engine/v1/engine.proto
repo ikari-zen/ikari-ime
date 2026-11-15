@@ -4,7 +4,7 @@ syntax = "proto3";
 package ikari.engine.v1;
 
 message Envelope {
-  uint32 schema_version = 1;     // = 1。不一致なら ErrorReply{code: SCHEMA_MISMATCH}
+  uint32 schema_version = 1;     // = 1。不一致なら ErrorReply{code: SCHEMA_MISMATCH}。追加だけなら 1 のまま、互換を壊すときだけ上げる（古い殻と新しいエンジンが共存するため。ADR 0063 §3 の 6）
   uint64 request_id = 2;         // 殻が付ける。返事にそのまま入れる
   oneof body {
     Hello hello = 10;               HelloReply hello_reply = 11;
