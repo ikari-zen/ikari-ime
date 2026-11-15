@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 
 use crate::error::LmError;
+use crate::host::HostLimits;
 
 /// `--ranker-config` で上書きするときのキーの接頭辞（他の Ranker と同じファイルに書けるように）
 pub const CONFIG_PREFIX: &str = "zenz.";
@@ -80,6 +81,9 @@ pub struct ZenzConfig {
     /// GPU があれば使う（設定 `engine.lm_gpu`。既定は真。ADR 0059 §2.5）。GPU が使えなければ CPU。
     /// Vulkan のビルドだけで効く（Metal は常に GPU、CPU だけのビルドは常に CPU）
     pub gpu: bool,
+    /// 推論を別プロセス（`ikari-lm-host`）で動かすときの締め切りと断念の回数（ADR 0060 Q4）。
+    /// 同じプロセスで動かすときは使わない
+    pub host: HostLimits,
 }
 
 impl Default for ZenzConfig {
@@ -97,6 +101,7 @@ impl Default for ZenzConfig {
             max_candidates: DEFAULT_MAX_CANDIDATES,
             load_retry: Duration::from_secs(DEFAULT_LOAD_RETRY_SECS),
             gpu: DEFAULT_GPU,
+            host: HostLimits::default(),
         }
     }
 }
@@ -106,7 +111,8 @@ impl ZenzConfig {
     /// 未知の `zenz.*` キーと、読めない値はエラー。
     ///
     /// キー: `zenz.alpha`、`zenz.max_total`、`zenz.budget_ms`、`zenz.idle_unload_secs`、
-    /// `zenz.context_chars`、`zenz.right_context_chars`、`zenz.topic_words`、`zenz.max_candidates`、`zenz.load_retry_secs`、`zenz.gpu`（`on` / `off`）
+    /// `zenz.context_chars`、`zenz.right_context_chars`、`zenz.topic_words`、`zenz.max_candidates`、`zenz.load_retry_secs`、`zenz.gpu`（`on` / `off`）、
+    /// `zenz.host_ready_ms`、`zenz.host_request_ms`、`zenz.host_max_failures`（別プロセスのとき。掃引用）
     pub fn from_kv(kv: &BTreeMap<String, String>) -> Result<Self, LmError> {
         let mut cfg = Self::default();
         for (key, value) in kv {
@@ -160,6 +166,23 @@ impl ZenzConfig {
                         "off" => false,
                         _ => return Err(bad("expected `on` or `off`")),
                     };
+                }
+                "host_ready_ms" => {
+                    cfg.host.ready_deadline = Duration::from_millis(
+                        parse_u64(value).ok_or_else(|| bad("not an integer"))?,
+                    );
+                }
+                "host_request_ms" => {
+                    cfg.host.request_deadline = Duration::from_millis(
+                        parse_u64(value).ok_or_else(|| bad("not an integer"))?,
+                    );
+                }
+                "host_max_failures" => {
+                    let v: u32 = value.trim().parse().map_err(|_| bad("not an integer"))?;
+                    if v == 0 {
+                        return Err(bad("must be at least 1"));
+                    }
+                    cfg.host.max_failures = v;
                 }
                 "context_chars" => {
                     cfg.context_chars = parse_usize(value).ok_or_else(|| bad("not an integer"))?;
@@ -265,6 +288,21 @@ mod tests {
         for k in [ModelKind::ZenzV3, ModelKind::KanakanjiEdge] {
             assert_eq!(ModelKind::parse(k.as_str()), Some(k));
         }
+    }
+
+    #[test]
+    fn host_limits_are_read_from_kv() {
+        let c = ZenzConfig::from_kv(&kv(&[
+            ("zenz.host_ready_ms", "1500"),
+            ("zenz.host_request_ms", "250"),
+            ("zenz.host_max_failures", "5"),
+        ]))
+        .unwrap();
+        assert_eq!(c.host.ready_deadline, Duration::from_millis(1500));
+        assert_eq!(c.host.request_deadline, Duration::from_millis(250));
+        assert_eq!(c.host.max_failures, 5);
+        assert_eq!(ZenzConfig::default().host, HostLimits::default());
+        assert!(ZenzConfig::from_kv(&kv(&[("zenz.host_max_failures", "0")])).is_err());
     }
 
     #[test]
