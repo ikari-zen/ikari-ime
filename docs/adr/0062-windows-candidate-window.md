@@ -151,7 +151,7 @@
 - **決定 5: 起動できない理由を見せる口は W5 で決める。** 決定 1 で engine-host が常駐するので、理由（固定の語。`logs/start-failure.log` と同じ）を設定のパイプか `HelloReply` で返せる。`developer_note` は使わない（開発者向けの行）。
 - §3 の 3 と §5.3 の 2 つ目の文は、この節に従う。§11 の「TIP が exe を起動する」の却下は変えない。
 - 推測（L4 の実機で確かめる）: Job Object で子が確実に終わる。窓を先に起動しても engine-host の起動の時間に響かない。窓なしでも Space・↑↓ の選択が下線の表示だけで進む（機械は窓の有無を知らない）。
-- 決定 1 は engine-host の今の動き（`windows/engine-host/src/main.rs`「エンジンが開いてから受け口を作る」）を変える。寿命の門は Rust に既にある（`shell-core/src/engine/gate.rs`）。実装は別 issue。
+- 決定 1 の engine-host の側は #414 で入れた: 起動の順は、ロックを試す（別のエンジンが動いていれば終わる）→ 候補窓の起動の入口（`windows/engine-host/src/candidate_window.rs`。今は何もしない。起動と Job Object は L4）→ エンジンを開く（開けなくても続ける）→ 受け口を作る（作れなければ終わる）。開けていない間は `ENGINE_NOT_READY` を返し、前の試みから 2 秒（macOS と同じ値）以上あけた次の要求で開き直す（`windows/engine-host/src/slot.rs`。寿命の門 `shell-core/src/engine/gate.rs` の中で開く）。
 
 ## 6. 位置決め（決めること 3）
 
