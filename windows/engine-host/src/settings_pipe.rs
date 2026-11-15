@@ -26,7 +26,6 @@
 use std::io;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use ikari_engine::Engine;
 use ikari_pipe::frame::KIND_SEQ_BYTES;
 use ikari_pipe::{FrameKind, Listener, MAX_FRAME_LEN, Server};
 use ikari_shell_core::SettingsEntry;
@@ -39,6 +38,8 @@ use ikari_shell_core::settings::{
 };
 use prost::Message;
 
+use crate::slot::EngineSlot;
+
 /// 枠の本体のプロトコル。`bridge.proto` の `Frame`（版は `BridgeHello.bridge_version`。接続の最初の `Hello` で照合し、
 /// 合わなければ `VERSION_MISMATCH` を返す。判断は shell-core の `handshake`）。
 pub const SETTINGS_PIPE_PROTOCOL: &str = "ikari.bridge.v1";
@@ -49,10 +50,11 @@ pub const SETTINGS_PIPE_FRAME_KINDS: [FrameKind; 2] = [FrameKind::Request, Frame
 /// 返事の本体の上限（バイト）。パイプの枠の上限から、種類と通し番号の分を引いたもの
 const MAX_REPLY_BODY_BYTES: usize = MAX_FRAME_LEN as usize - KIND_SEQ_BYTES;
 
-/// 設定画面の接続が共有するもの。`Engine` はエンジンのパイプと同じ 1 つ。
+/// 設定画面の接続が共有するもの。`Engine` はエンジンのパイプと同じ 1 つ（`EngineSlot`）。
+/// エンジンが開けていなくても、設定の読み書きには答える（中継の要求は `ENGINE_NOT_READY`）。
 #[derive(Clone)]
 pub struct SettingsHost {
-    engine: Arc<Engine>,
+    engine: Arc<EngineSlot>,
     store: Arc<Mutex<SettingsStore>>,
     gate: Arc<RelayGate>,
     host_version: String,
@@ -61,7 +63,7 @@ pub struct SettingsHost {
 impl SettingsHost {
     /// `store` は `settings.tsv` の置き場所を持つ（書き手は、`UpdateSettings` を受けるここだけ）。
     /// `host_version` は `HelloReply.shell_version` に入れる（アプリの版）。
-    pub fn new(engine: Arc<Engine>, store: SettingsStore, host_version: &str) -> Self {
+    pub fn new(engine: Arc<EngineSlot>, store: SettingsStore, host_version: &str) -> Self {
         Self {
             engine,
             store: Arc::new(Mutex::new(store)),
@@ -99,6 +101,7 @@ impl SettingsHost {
             Route::UpdateSettings { request_id, update } => self.update(request_id, update),
             Route::Relay(job) => {
                 // エンジンは同じプロセスにいる。`EngineLink` の待ち（時間切れ）は要らず、そのまま渡す
+                // （開けていなければ `ENGINE_NOT_READY` が返り、間隔をおいて開き直す）
                 let reply = self.engine.handle(&job.envelope);
                 relay_reply(job.request_id, Ok(reply))
             }

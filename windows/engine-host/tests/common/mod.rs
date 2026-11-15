@@ -46,13 +46,18 @@ pub fn fixture_dict_dir() -> &'static Path {
 /// fixture の辞書を `dict/` に置いたデータのディレクトリ。
 pub fn data_dir_with_dict() -> tempfile::TempDir {
     let data = tempfile::tempdir().unwrap();
-    let dict = UserDir::new(data.path()).dict_dir();
+    install_dict(data.path());
+    data
+}
+
+/// データのディレクトリ `data` の `dict/` に fixture の辞書を置く。
+pub fn install_dict(data: &Path) {
+    let dict = UserDir::new(data).dict_dir();
     std::fs::create_dir_all(&dict).unwrap();
     for entry in std::fs::read_dir(fixture_dict_dir()).unwrap() {
         let entry = entry.unwrap();
         std::fs::copy(entry.path(), dict.join(entry.file_name())).unwrap();
     }
-    data
 }
 
 /// 辞書を置いたデータのディレクトリで、LM なしのエンジンを開く。
