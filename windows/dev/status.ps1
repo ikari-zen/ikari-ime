@@ -14,14 +14,17 @@ param([int]$LogLines = 20)
 
 Write-Step 'Settings used by these scripts'
 Write-Note "DataDir:        $DataDir"
-Write-Note "Engine exe:     $EngineExe"
+Write-Note "Engine exe:     $DevEngineExe   (copied from $ReleaseDir by start-engine.ps1)"
 Write-Note "TIP versions:   $TipVersionsDir\<time>\$TipDllName"
 Write-Note "User SID / session: $(Get-CurrentUserSid) / $(Get-CurrentSessionId)"
 
 Write-Step 'Engine process'
 $ours = @(Get-OurEngineProcesses)
 if ($ours.Count -eq 0) { Write-Note 'Not running (this build).' }
-foreach ($p in $ours) { Write-Note ("PID {0}  started {1}  working set {2:N0} MB" -f $p.Id, $p.StartTime, ($p.WorkingSet64 / 1MB)) }
+foreach ($p in $ours) {
+    Write-Note ("PID {0}  started {1}  working set {2:N0} MB  {3}" -f $p.Id, $p.StartTime, ($p.WorkingSet64 / 1MB), $p.Path)
+    if ($p.Path -ine $DevEngineExe) { Write-Warn "Not the install copy: the TIP does not talk to it (#409). Run .\start-engine.ps1 -Action restart." }
+}
 $others = @(Get-Process -Name ([IO.Path]::GetFileNameWithoutExtension($EngineExeName)), ([IO.Path]::GetFileNameWithoutExtension($EngineHiddenExe)) -ErrorAction SilentlyContinue | Where-Object { $ours.Id -notcontains $_.Id })
 foreach ($p in $others) { Write-Warn "Another $EngineExeName is running: PID $($p.Id) (not touched by these scripts)" }
 

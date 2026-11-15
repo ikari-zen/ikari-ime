@@ -35,18 +35,25 @@ $TipDllBuilt = Join-Path $ReleaseDir $TipDllName
 $KeymapSource = Join-Path $RepoRoot 'shell-core\resources\keymap'
 
 # Install layout (ADR 0063 s3), the same shape as the installer:
-#   <install dir>\ikari-engine-host.exe              the engine (fixed path, not per version)
+#   <install dir>\ikari-engine-host.exe              the engine (fixed path, not per version; always THIS name)
+#   <install dir>\llama*.dll, ggml*.dll, backends\   next to the engine (LM builds only; lm/src/llama.rs)
 #   <install dir>\tip\<version>\ikari_tip.dll         the TIP, one folder per version
 #   <install dir>\tip\<version>\resources\keymap\     the TIP reads "resources" next to the DLL (windows/tip/src/deploy.rs)
-# For development the install dir is the build folder (the engine is already there) and <version> is the time of
-# register.ps1, so every register.ps1 makes a NEW folder: it never overwrites a DLL that apps have loaded, and the
-# new DllRegisterServer only re-points the registration (no unregister). cargo never writes into tip\.
-# Run unregister.ps1 before "cargo clean" or before deleting target\ (the registered DLL lives under it).
-$DevInstallDir = $ReleaseDir
+# The TIP accepts only the engine at <install dir>\ikari-engine-host.exe (two folders up from the DLL, the middle one
+# named "tip"; #409). So start-engine.ps1 COPIES the built engine there under that name (also the no-console build,
+# ikari-engine-host-hidden.exe) and starts the copy; it never runs the engine from target\release.
+# <version> is the time of register.ps1, so every register.ps1 makes a NEW folder: it never overwrites a DLL that
+# apps have loaded, and the new DllRegisterServer only re-points the registration (no unregister).
+$DevInstallDir = Join-Path $env:LOCALAPPDATA 'ikari-ime-dev\install'
+$DevEngineExe = Join-Path $DevInstallDir $EngineExeName
+# Files the engine loads from next to its exe (copied with it when they are in $ReleaseDir)
+$EngineSideDllPatterns = @('llama*.dll', 'ggml*.dll')
+$EngineBackendsDirName = 'backends'
 $TipVersionsDir = Join-Path $DevInstallDir 'tip'
 $TipResourcesDirName = 'resources'
 # Folder name of a version made by register.ps1: sortable time (sorting by name = sorting by age)
 $TipVersionFormat = 'yyyyMMdd-HHmmss-fff'
+$TipVersionPattern = '^\d{8}-\d{6}-\d{3}$'
 # Where register.ps1 put the DLL before ADR 0063 (one fixed path). Only shown by status.ps1; delete it by hand.
 $LegacyTipDir = Join-Path $env:LOCALAPPDATA 'ikari-ime-dev\tip'
 
@@ -79,18 +86,46 @@ function Confirm-Action([string]$Question, [bool]$Force) {
     return ($answer -eq 'y' -or $answer -eq 'Y')
 }
 
-# Engine processes started from OUR build only (matched by full exe path). Never touches other processes.
+# Engine processes started from OUR install copy or OUR build only (matched by full exe path). Never touches other
+# processes. The build paths stay in the list so that an engine started by an older start-engine.ps1 can be stopped.
 function Get-OurEngineProcesses {
     $found = @()
-    foreach ($exe in @($EngineExe, $EngineHiddenExe)) {
+    foreach ($exe in @($DevEngineExe, $EngineExe, $EngineHiddenExe)) {
         $procName = [IO.Path]::GetFileNameWithoutExtension($exe)
         foreach ($p in @(Get-Process -Name $procName -ErrorAction SilentlyContinue)) {
             $path = $null
             try { $path = $p.Path } catch { $path = $null }
-            if ($path -and ($path -ieq $exe)) { $found += $p }
+            if ($path -and ($path -ieq $exe) -and -not ($found | Where-Object { $_.Id -eq $p.Id })) { $found += $p }
         }
     }
     return $found
+}
+
+# Copies the engine $SourceExe to $DevEngineExe (always named ikari-engine-host.exe, whatever $SourceExe is called),
+# and the DLLs and backends\ next to it. Call it only when our engine is not running (a running exe cannot be
+# overwritten). The exe is not copied when it is the same file (sha256).
+function Install-DevEngine([string]$SourceExe) {
+    if (-not (Test-Path -LiteralPath $DevInstallDir)) { New-Item -ItemType Directory -Path $DevInstallDir | Out-Null }
+    $same = (Test-Path -LiteralPath $DevEngineExe) -and
+        ((Get-FileHash -LiteralPath $SourceExe).Hash -eq (Get-FileHash -LiteralPath $DevEngineExe).Hash)
+    if ($same) { Write-Note "engine unchanged: $DevEngineExe" }
+    else {
+        Copy-Item -LiteralPath $SourceExe -Destination $DevEngineExe -Force
+        Write-Note "copied $SourceExe"
+        Write-Note "    to $DevEngineExe"
+    }
+    $sourceDir = Split-Path -Parent $SourceExe
+    foreach ($pattern in $EngineSideDllPatterns) {
+        foreach ($f in @(Get-ChildItem -Path (Join-Path $sourceDir $pattern) -File -ErrorAction SilentlyContinue)) {
+            Copy-Item -LiteralPath $f.FullName -Destination (Join-Path $DevInstallDir $f.Name) -Force
+        }
+    }
+    $backends = Join-Path $sourceDir $EngineBackendsDirName
+    if (Test-Path -LiteralPath $backends -PathType Container) {
+        $backendsDest = Join-Path $DevInstallDir $EngineBackendsDirName
+        if (-not (Test-Path -LiteralPath $backendsDest)) { New-Item -ItemType Directory -Path $backendsDest | Out-Null }
+        Copy-Item -Path (Join-Path $backends '*') -Destination $backendsDest -Recurse -Force
+    }
 }
 
 function Get-CurrentUserSid {
@@ -131,7 +166,8 @@ function Get-TipVersionName([string]$DllPath) {
 # The version folders under $TipVersionsDir, oldest first (by name, which is the time of register.ps1).
 function Get-TipVersionDirs {
     if (-not (Test-Path -LiteralPath $TipVersionsDir -PathType Container)) { return @() }
-    return @(Get-ChildItem -LiteralPath $TipVersionsDir -Directory | Sort-Object -Property Name)
+    return @(Get-ChildItem -LiteralPath $TipVersionsDir -Directory |
+            Where-Object { $_.Name -match $TipVersionPattern } | Sort-Object -Property Name)
 }
 
 # Tries to delete each version folder. The DLL goes first: when an app still has it loaded, deleting it fails and

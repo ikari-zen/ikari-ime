@@ -11,7 +11,7 @@
   kept whole and reported. Close those apps, or sign out and in, then run this script again. No delete at the next
   reboot is scheduled (MOVEFILE_DELAY_UNTIL_REBOOT needs an administrator; that is the installer's job, ADR 0063 s3-4).
   A kept folder does no harm: nothing points to it, so apps started from now on do not load it.
-  No administrator needed (the folders are under the build folder).
+  No administrator needed (the folders are under %LOCALAPPDATA%, and inherit its permissions).
 
 #>
 param([switch]$DryRun, [switch]$Force)

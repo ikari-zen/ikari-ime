@@ -86,4 +86,7 @@ if ($previous) {
 else {
     Write-Note 'Add the input method: Settings > Time & language > Language & region > Japanese > Language options > Add a keyboard > "ikari".'
 }
+if (-not (Test-Path -LiteralPath $DevEngineExe)) {
+    Write-Note "No engine at $DevEngineExe yet: .\start-engine.ps1 copies it there (the TIP talks only to that path; #409)."
+}
 Write-Note 'Check with .\status.ps1'
