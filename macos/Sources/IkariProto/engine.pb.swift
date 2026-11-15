@@ -464,7 +464,7 @@ public nonisolated struct Ikari_Engine_V1_Envelope: Sendable {
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  /// = 1。不一致なら ErrorReply{code: SCHEMA_MISMATCH}
+  /// = 1。不一致なら ErrorReply{code: SCHEMA_MISMATCH}。追加だけなら 1 のまま、互換を壊すときだけ上げる（古い殻と新しいエンジンが共存するため。ADR 0063 §3 の 6）
   public var schemaVersion: UInt32 = 0
 
   /// 殻が付ける。返事にそのまま入れる

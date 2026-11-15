@@ -683,6 +683,7 @@ dependencies = [
  "ikari-pipe",
  "ikari-shell-core",
  "ikari-testtime",
+ "tempfile",
  "windows",
  "windows-core",
 ]

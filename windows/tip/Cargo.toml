@@ -36,6 +36,8 @@ windows = { version = "0.62.2", features = [
     "Win32_System_Variant",
     # CLSID の InprocServer32 の登録
     "Win32_System_Registry",
+    # GetLongPathNameW（パイプの相手の確認で、8.3 の短い名前を長い名前に直す。#409）
+    "Win32_Storage_FileSystem",
     # DLL_PROCESS_ATTACH
     "Win32_System_SystemServices",
     # VARIANT（入力モードの compartment の値。W4。`Win32_System_Com` と `Win32_System_Ole` も要る）
@@ -45,9 +47,13 @@ windows = { version = "0.62.2", features = [
     "Win32_UI_Input_KeyboardAndMouse",
     # ITf*（TSF）
     "Win32_UI_TextServices",
+    # OpenProcess、QueryFullProcessImageNameW（パイプの相手の実行ファイルのパス。#409）
+    "Win32_System_Threading",
     # SetTimer、KillTimer
     "Win32_UI_WindowsAndMessaging",
 ] }
 
 [dev-dependencies]
 ikari-testtime.workspace = true
+# パイプの相手の確認の試験（Windows だけ）で、偽のエンジンの exe を置く一時フォルダ
+tempfile.workspace = true
