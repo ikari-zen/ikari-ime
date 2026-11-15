@@ -34,11 +34,28 @@ $TipDllName = 'ikari_tip.dll'
 $TipDllBuilt = Join-Path $ReleaseDir $TipDllName
 $KeymapSource = Join-Path $RepoRoot 'shell-core\resources\keymap'
 
-# The DLL that regsvr32 registers is a COPY in this folder, so that a rebuild never has to overwrite a DLL
-# that apps have loaded. The TIP looks for "resources" next to the DLL (windows/tip/src/com/host.rs).
-$DevInstallDir = Join-Path $env:LOCALAPPDATA 'ikari-ime-dev\tip'
-$TipDllInstalled = Join-Path $DevInstallDir $TipDllName
-$TipResourcesInstalled = Join-Path $DevInstallDir 'resources'
+# Install layout (ADR 0063 s3), the same shape as the installer:
+#   <install dir>\ikari-engine-host.exe              the engine (fixed path, not per version; always THIS name)
+#   <install dir>\llama*.dll, ggml*.dll, backends\   next to the engine (LM builds only; lm/src/llama.rs)
+#   <install dir>\tip\<version>\ikari_tip.dll         the TIP, one folder per version
+#   <install dir>\tip\<version>\resources\keymap\     the TIP reads "resources" next to the DLL (windows/tip/src/deploy.rs)
+# The TIP accepts only the engine at <install dir>\ikari-engine-host.exe (two folders up from the DLL, the middle one
+# named "tip"; #409). So start-engine.ps1 COPIES the built engine there under that name (also the no-console build,
+# ikari-engine-host-hidden.exe) and starts the copy; it never runs the engine from target\release.
+# <version> is the time of register.ps1, so every register.ps1 makes a NEW folder: it never overwrites a DLL that
+# apps have loaded, and the new DllRegisterServer only re-points the registration (no unregister).
+$DevInstallDir = Join-Path $env:LOCALAPPDATA 'ikari-ime-dev\install'
+$DevEngineExe = Join-Path $DevInstallDir $EngineExeName
+# Files the engine loads from next to its exe (copied with it when they are in $ReleaseDir)
+$EngineSideDllPatterns = @('llama*.dll', 'ggml*.dll')
+$EngineBackendsDirName = 'backends'
+$TipVersionsDir = Join-Path $DevInstallDir 'tip'
+$TipResourcesDirName = 'resources'
+# Folder name of a version made by register.ps1: sortable time (sorting by name = sorting by age)
+$TipVersionFormat = 'yyyyMMdd-HHmmss-fff'
+$TipVersionPattern = '^\d{8}-\d{6}-\d{3}$'
+# Where register.ps1 put the DLL before ADR 0063 (one fixed path). Only shown by status.ps1; delete it by hand.
+$LegacyTipDir = Join-Path $env:LOCALAPPDATA 'ikari-ime-dev\tip'
 
 # COM class of the TIP (windows/tip/src/com/guids.rs CLSID_TEXT_SERVICE)
 $TipClsid = '{83A140BE-DECB-4358-867B-7B77D6541276}'
@@ -69,18 +86,46 @@ function Confirm-Action([string]$Question, [bool]$Force) {
     return ($answer -eq 'y' -or $answer -eq 'Y')
 }
 
-# Engine processes started from OUR build only (matched by full exe path). Never touches other processes.
+# Engine processes started from OUR install copy or OUR build only (matched by full exe path). Never touches other
+# processes. The build paths stay in the list so that an engine started by an older start-engine.ps1 can be stopped.
 function Get-OurEngineProcesses {
     $found = @()
-    foreach ($exe in @($EngineExe, $EngineHiddenExe)) {
+    foreach ($exe in @($DevEngineExe, $EngineExe, $EngineHiddenExe)) {
         $procName = [IO.Path]::GetFileNameWithoutExtension($exe)
         foreach ($p in @(Get-Process -Name $procName -ErrorAction SilentlyContinue)) {
             $path = $null
             try { $path = $p.Path } catch { $path = $null }
-            if ($path -and ($path -ieq $exe)) { $found += $p }
+            if ($path -and ($path -ieq $exe) -and -not ($found | Where-Object { $_.Id -eq $p.Id })) { $found += $p }
         }
     }
     return $found
+}
+
+# Copies the engine $SourceExe to $DevEngineExe (always named ikari-engine-host.exe, whatever $SourceExe is called),
+# and the DLLs and backends\ next to it. Call it only when our engine is not running (a running exe cannot be
+# overwritten). The exe is not copied when it is the same file (sha256).
+function Install-DevEngine([string]$SourceExe) {
+    if (-not (Test-Path -LiteralPath $DevInstallDir)) { New-Item -ItemType Directory -Path $DevInstallDir | Out-Null }
+    $same = (Test-Path -LiteralPath $DevEngineExe) -and
+        ((Get-FileHash -LiteralPath $SourceExe).Hash -eq (Get-FileHash -LiteralPath $DevEngineExe).Hash)
+    if ($same) { Write-Note "engine unchanged: $DevEngineExe" }
+    else {
+        Copy-Item -LiteralPath $SourceExe -Destination $DevEngineExe -Force
+        Write-Note "copied $SourceExe"
+        Write-Note "    to $DevEngineExe"
+    }
+    $sourceDir = Split-Path -Parent $SourceExe
+    foreach ($pattern in $EngineSideDllPatterns) {
+        foreach ($f in @(Get-ChildItem -Path (Join-Path $sourceDir $pattern) -File -ErrorAction SilentlyContinue)) {
+            Copy-Item -LiteralPath $f.FullName -Destination (Join-Path $DevInstallDir $f.Name) -Force
+        }
+    }
+    $backends = Join-Path $sourceDir $EngineBackendsDirName
+    if (Test-Path -LiteralPath $backends -PathType Container) {
+        $backendsDest = Join-Path $DevInstallDir $EngineBackendsDirName
+        if (-not (Test-Path -LiteralPath $backendsDest)) { New-Item -ItemType Directory -Path $backendsDest | Out-Null }
+        Copy-Item -Path (Join-Path $backends '*') -Destination $backendsDest -Recurse -Force
+    }
 }
 
 function Get-CurrentUserSid {
@@ -93,6 +138,57 @@ function Get-CurrentSessionId {
 
 function Get-PipeName([string]$Prefix) {
     return "$Prefix$(Get-CurrentUserSid)-s$(Get-CurrentSessionId)"
+}
+
+# ---------------------------------------------------------------- TIP versions (ADR 0063)
+
+# The DLL that HKCR\CLSID\{TIP}\InprocServer32 points to, or $null when the TIP is not registered. Read only.
+function Get-RegisteredTipDll {
+    $key = "Registry::HKEY_CLASSES_ROOT\CLSID\$TipClsid\InprocServer32"
+    if (-not (Test-Path -LiteralPath $key)) { return $null }
+    $value = (Get-ItemProperty -LiteralPath $key).'(default)'
+    if ([string]::IsNullOrEmpty($value)) { return $null }
+    return $value
+}
+
+# The version folder name when $DllPath is <TipVersionsDir>\<name>\ikari_tip.dll, else $null.
+function Get-TipVersionName([string]$DllPath) {
+    if ([string]::IsNullOrEmpty($DllPath)) { return $null }
+    if ((Split-Path -Leaf $DllPath) -ine $TipDllName) { return $null }
+    $versionDir = Split-Path -Parent $DllPath
+    $parent = Split-Path -Parent $versionDir
+    if (-not $parent) { return $null }
+    $expected = [IO.Path]::GetFullPath($TipVersionsDir).TrimEnd('\')
+    if ([IO.Path]::GetFullPath($parent).TrimEnd('\') -ine $expected) { return $null }
+    return (Split-Path -Leaf $versionDir)
+}
+
+# The version folders under $TipVersionsDir, oldest first (by name, which is the time of register.ps1).
+function Get-TipVersionDirs {
+    if (-not (Test-Path -LiteralPath $TipVersionsDir -PathType Container)) { return @() }
+    return @(Get-ChildItem -LiteralPath $TipVersionsDir -Directory |
+            Where-Object { $_.Name -match $TipVersionPattern } | Sort-Object -Property Name)
+}
+
+# Tries to delete each version folder. The DLL goes first: when an app still has it loaded, deleting it fails and
+# the whole folder is kept, so the old TIP in that app can still read its resources (it reloads the keymap when the
+# settings change). Returns the folders that were kept (with the reason). No reboot-time delete is scheduled
+# (MOVEFILE_DELAY_UNTIL_REBOOT needs an administrator; that is the installer's job, ADR 0063 s3-4).
+function Remove-TipVersionDirs([IO.DirectoryInfo[]]$Dirs) {
+    $kept = @()
+    foreach ($dir in $Dirs) {
+        $dll = Join-Path $dir.FullName $TipDllName
+        try {
+            if (Test-Path -LiteralPath $dll) { Remove-Item -LiteralPath $dll -Force }
+            Remove-Item -LiteralPath $dir.FullName -Recurse -Force
+            Write-Note "deleted $($dir.FullName)"
+        }
+        catch {
+            $kept += [pscustomobject]@{ Path = $dir.FullName; Reason = $_.Exception.Message }
+            Write-Warn "kept $($dir.FullName) (probably still loaded by an app): $($_.Exception.Message)"
+        }
+    }
+    return $kept
 }
 
 # Names of pipes that start with an ikari prefix (listing \\.\pipe\ does not open any of them)

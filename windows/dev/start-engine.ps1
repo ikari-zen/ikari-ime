@@ -1,6 +1,8 @@
 <#
 .SYNOPSIS
-  Starts or stops the engine (ikari-engine-host.exe, the one built by build.ps1).
+  Starts or stops the engine. "start" first COPIES the engine built by build.ps1 (or the CI artifact) to
+  $DevEngineExe, always under the name ikari-engine-host.exe (also the no-console build), with the DLLs and backends\
+  next to it, and starts that copy: the TIP talks only to <install dir>\ikari-engine-host.exe (ADR 0063 s3-5, #409).
 .PARAMETER Action
   start (default), stop, or restart.
 .PARAMETER Foreground
@@ -14,7 +16,7 @@
 .NOTES
   "stop" is a forced kill (Stop-Process = TerminateProcess), the same as a crash: learning is saved every
   5 seconds, the lock is released by the OS. For a normal stop, press Ctrl+C in the engine's console window.
-  Only processes whose exe path is exactly the one built here are touched.
+  Only processes whose exe path is exactly our install copy (or the one built here) are touched.
   The data directory is $DataDir (common.ps1). The engine needs dict\ there (run install-data.ps1 first).
  
 #>
@@ -38,14 +40,19 @@ function Stop-OurEngine {
 
 function Start-OurEngine {
     # Foreground and -Console need the console exe. Otherwise prefer the no-console exe when there is one.
-    $exe = $EngineExe
-    if (-not $Foreground -and -not $Console -and (Test-Path -LiteralPath $EngineHiddenExe)) { $exe = $EngineHiddenExe }
-    if (-not (Test-Path -LiteralPath $exe)) { throw "Not built: $exe. Run .\build.ps1 first." }
+    $source = $EngineExe
+    if (-not $Foreground -and -not $Console -and (Test-Path -LiteralPath $EngineHiddenExe)) { $source = $EngineHiddenExe }
+    if (-not (Test-Path -LiteralPath $source)) { throw "Not built: $source. Run .\build.ps1 first." }
     if (-not (Test-Path -LiteralPath (Join-Path $DataDir 'dict\system.dict'))) {
         throw "No dictionary in $DataDir\dict. Run .\install-data.ps1 first."
     }
     $running = @(Get-OurEngineProcesses)
-    if ($running.Count -gt 0) { Write-Note "Already running (PID $($running[0].Id))."; return }
+    if ($running.Count -gt 0) { Write-Note "Already running (PID $($running[0].Id)  $($running[0].Path))."; return }
+
+    # Copy to the install dir under the fixed name (the TIP checks the engine's path; #409), then run the copy.
+    Write-Step "install $source"
+    Install-DevEngine $source
+    $exe = $DevEngineExe
 
     if ($DataDir -ne $DefaultDataDir -and -not $env:IKARI_USER_DIR) {
         Write-Warn 'DataDir differs from the default but IKARI_USER_DIR is not set. The TIP in other apps will not see it.'
@@ -56,7 +63,7 @@ function Start-OurEngine {
         Write-Note "engine exited with code $LASTEXITCODE (0 = normal or already running, 2 = could not start, 64 = bad arguments)"
         return
     }
-    $proc = Start-Process -FilePath $exe -ArgumentList @('--data-dir', "`"$DataDir`"") -WorkingDirectory $ReleaseDir -PassThru
+    $proc = Start-Process -FilePath $exe -ArgumentList @('--data-dir', "`"$DataDir`"") -WorkingDirectory $DevInstallDir -PassThru
     # wait up to 10 seconds for the pipe (opening a 600 MB dictionary can take a while: not measured)
     $pipe = Get-PipeName $EnginePipePrefix
     $deadline = (Get-Date).AddSeconds(10)

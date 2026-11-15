@@ -81,6 +81,12 @@ pub fn version_skew(shell: &str, engine: &str) {
     *last = Some(pair);
 }
 
+/// パイプの相手を本物のエンジンでないとして拒んだ（#409）。`reason` は理由の種類の固定の文だけ
+/// （相手のパスは利用者名を含みうるので出さない）
+pub fn peer_rejected(reason: &'static str) {
+    write(&format!("{PREFIX}engine peer rejected reason={reason}\n"));
+}
+
 /// HRESULT を出す。
 pub fn hresult(message: &'static str, code: HRESULT) {
     // HRESULT は符号つきの 32 ビット。16 進で読むのが通例なので、ビット列のまま出す
