@@ -2,7 +2,8 @@
 //!
 //! - 設定: `%LOCALAPPDATA%\ikari-ime\settings.tsv`（`IKARI_USER_DIR` があればその下）。`core::user::UserDir` と同じ決め方を、
 //!   DLL に `ikari-core`（辞書など）を入れないために、ここで繰り返す。場所が決められなければ空の設定（既定値）で動く。
-//! - 資源（キー割り当ての表など）: DLL と同じ場所の `resources`。TODO(W5): インストーラの配置に合わせる。
+//! - 資源（キー割り当ての表など）: DLL と同じ場所の `resources`（`deploy::resources_dir`）。DLL は版ごとのフォルダ
+//!   `<インストール先>\tip\<版>\` に置くので、資源も版ごとに分かれる（ADR 0063 §3 の 1）。
 
 use std::ffi::OsString;
 use std::os::windows::ffi::OsStringExt;
@@ -14,6 +15,7 @@ use windows::Win32::System::LibraryLoader::GetModuleFileNameW;
 
 use super::connector::PipeConnector;
 use super::{dll, log};
+use crate::deploy;
 use crate::latency::{self, Meter};
 use crate::transport::{DownSink, PipeTransport};
 
@@ -23,8 +25,6 @@ const LOCAL_APPDATA_ENV: &str = "LOCALAPPDATA";
 const APP_DIR_NAME: &str = "ikari-ime";
 /// `engine::SETTINGS_FILE_NAME` と同じ値
 const SETTINGS_FILE_NAME: &str = "settings.tsv";
-/// DLL の隣の資源のディレクトリ
-const RESOURCES_DIR_NAME: &str = "resources";
 /// パスの上限（UTF-16。長いパスを含む）
 const MAX_LONG_PATH: usize = 32_768;
 /// 最初に読むパスのバッファ
@@ -73,7 +73,7 @@ pub fn client_name() -> String {
 fn resources_dir() -> PathBuf {
     dll::module()
         .and_then(|module| module_file(Some(module)))
-        .and_then(|path| path.parent().map(|dir| dir.join(RESOURCES_DIR_NAME)))
+        .and_then(|path| deploy::resources_dir(&path))
         .unwrap_or_default()
 }
 
