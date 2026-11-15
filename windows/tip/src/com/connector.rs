@@ -137,17 +137,23 @@ fn long_path(path: &OsStr) -> OsString {
 mod tests {
     use super::*;
     use ikari_pipe::os::windows::NamedPipeListener;
-    use ikari_pipe::{Duplex, Listener};
+    use ikari_pipe::{Duplex, Listener, Shutdown};
     use std::io::{BufRead, BufReader, Read};
     use std::path::PathBuf;
     use std::process::{Child, Command, Stdio};
     use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::mpsc;
+    use std::time::Duration;
 
     /// 子のプロセスに、偽のエンジン（パイプの受け口）として動かせるための環境変数（値はパイプの名前）
     const FAKE_ENGINE_ENV: &str = "IKARI_TIP_TEST_FAKE_ENGINE_PIPE";
     /// 子が受け口を作ったと知らせる行
     const READY_LINE: &str = "fake-engine-ready";
     const FAKE_ENGINE_TEST: &str = "com::connector::tests::fake_engine";
+    /// 子が受け口を作るまで待つ上限（試験が固まらないための締め切り。exe の写しの初回の検査を見込んだ目安）
+    const READY_TIMEOUT: Duration = Duration::from_secs(30);
+    /// 子が自分で終わるまでの上限（親が止め損ねても、子が残り続けないため）
+    const FAKE_ENGINE_LIFETIME: Duration = Duration::from_secs(60);
 
     static NEXT_NAME: AtomicU32 = AtomicU32::new(0);
 
@@ -166,8 +172,14 @@ mod tests {
         let Ok(name) = std::env::var(FAKE_ENGINE_ENV) else {
             return;
         };
+        let lifetime = ikari_testtime::scaled(FAKE_ENGINE_LIFETIME);
+        std::thread::spawn(move || {
+            std::thread::sleep(lifetime);
+            std::process::exit(1);
+        });
         let mut listener = NamedPipeListener::bind(&name).expect("bind the fake engine pipe");
-        println!("{READY_LINE}");
+        // `--test-threads=1` の libtest は「test 名前 ... 」を改行なしで先に出すので、行の頭から書く
+        println!("\n{READY_LINE}");
         if let Ok(Some(duplex)) = listener.accept() {
             let (mut reader, _writer, _closer) = duplex.split();
             let mut sink = Vec::new();
@@ -193,11 +205,25 @@ mod tests {
             .spawn()
             .expect("spawn the fake engine");
         let stdout = child.stdout.take().expect("stdout");
-        let ready = BufReader::new(stdout)
-            .lines()
-            .map_while(Result::ok)
-            .any(|line| line.trim() == READY_LINE);
-        assert!(ready, "the fake engine did not start");
+        let (ready_tx, ready_rx) = mpsc::channel();
+        // 準備の行を見たら知らせ、そのあとも子の出力を終わりまで読み捨てる（子の書きが詰まらないように）
+        std::thread::spawn(move || {
+            let mut ready_tx = Some(ready_tx);
+            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                if line.trim() == READY_LINE
+                    && let Some(tx) = ready_tx.take()
+                {
+                    let _ = tx.send(());
+                }
+            }
+        });
+        if ready_rx
+            .recv_timeout(ikari_testtime::scaled(READY_TIMEOUT))
+            .is_err()
+        {
+            finish(child);
+            panic!("the fake engine did not start");
+        }
         child
     }
 
@@ -217,13 +243,17 @@ mod tests {
         // この試験の exe 自身が受け口を作る（`ikari-engine-host.exe` ではない）
         let name = unique_name();
         let mut listener = NamedPipeListener::bind(&name).expect("bind");
+        let closer = listener.closer();
         let accept = std::thread::spawn(move || {
             let _ = listener.accept();
         });
         let dir = long_dir(&std::env::temp_dir());
         let tip_dll = dir.join("ikari_tip.dll");
-        assert!(open_verified(&name, Some(&tip_dll)).is_none());
+        let rejected = open_verified(&name, Some(&tip_dll)).is_none();
+        // つながらなかったときも受け付けの待ちを起こす（試験を固めない）
+        closer.shutdown();
         accept.join().expect("accept thread");
+        assert!(rejected);
     }
 
     #[test]
