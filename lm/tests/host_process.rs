@@ -291,8 +291,9 @@ fn a_child_that_never_gets_ready_is_killed_and_counted() {
     assert_eq!(h.first(), BAD);
     assert!(wait_until(|| h.health.consecutive_failures() == 1));
     assert_eq!(h.health.child_id(), None);
-    let stats = h.ranker.stats();
-    assert_eq!((stats.loads, stats.load_failures), (0, 1));
+    // ワーカーが数えるのは、loader が戻ったあと（子の失敗の数より少し遅れる）
+    assert!(wait_until(|| h.ranker.stats().load_failures == 1));
+    assert_eq!(h.ranker.stats().loads, 0);
 }
 
 #[test]
