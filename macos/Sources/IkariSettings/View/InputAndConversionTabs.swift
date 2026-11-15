@@ -248,6 +248,10 @@ struct ConversionTab: View {
                     isOn: .asyncSetter(get: { model.values.lmEnabled }, set: model.setLMEnabled))
                 Text("切り替えると変換エンジンを起こし直します。読み込み中の数秒は、辞書だけで変換します。")
                     .font(.caption).foregroundStyle(.secondary)
+                if let notice = model.lmNotice {
+                    Label(notice, systemImage: "info.circle")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Picker(
                     "使っていないとき解放するまでの時間",
                     selection: .asyncSetter(get: { model.values.idleUnloadSecs }, set: model.setIdleUnloadSecs)

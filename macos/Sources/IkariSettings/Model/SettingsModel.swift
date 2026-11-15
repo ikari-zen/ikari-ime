@@ -60,6 +60,8 @@ final class SettingsModel {
     private(set) var errorMessage: String?
     private(set) var profile: [ProfileDomainRow] = []
     private(set) var profileMessage: String?
+    /// エンジンの `Hello` の LM の状態と実行装置（案内の元。取れなければ nil）。#425
+    private var lmRuntime: (state: Ikari_Engine_V1_LmState, device: Ikari_Engine_V1_LmDevice)?
     let presets: KeymapPresetTable
     private let bridge: any SettingsBridge
     /// 殻が返した設定の行（shell-core に渡す今の値）
@@ -78,6 +80,28 @@ final class SettingsModel {
     func load() async {
         await reloadSettings()
         await reloadProfile()
+        await reloadLMRuntime()
+    }
+
+    /// LM が CPU で動いているときの案内。出す条件と文は shell-core（`SettingsCore.lmNotice`）。ここは出すだけ
+    var lmNotice: String? {
+        guard let lmRuntime else { return nil }
+        return SettingsCore.lmNotice(enabled: values.lmEnabled, state: lmRuntime.state, device: lmRuntime.device)
+    }
+
+    /// エンジンの `Hello` から LM の状態と装置を取る。取れなければ案内は出さない（設定の画面の邪魔をしない）
+    func reloadLMRuntime() async {
+        do {
+            var hello = Ikari_Engine_V1_Hello()
+            hello.shellVersion = bridge.shellVersion
+            guard case .helloReply(let reply) = try await bridge.engine(.hello(hello)) else {
+                lmRuntime = nil
+                return
+            }
+            lmRuntime = (reply.lm, reply.lmDevice)
+        } catch {
+            lmRuntime = nil
+        }
     }
 
     /// 殻の通知（`settings_changed`）でも呼ぶ
