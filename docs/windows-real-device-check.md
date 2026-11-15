@@ -53,7 +53,8 @@ gh run download <番号> -n ikari-windows-dev-<コミットの SHA> -D ikari-win
 実際に持ち込んだときの中身（2026-11-14）:
 
 - `ikari-engine-host.exe`（LM つき）、`ikari-engine-host-nolm.exe`（LM なし）、`ikari_tip.dll`、`ikari-eval.exe`、`eval\sets`
-- 2 回目以降に入れ替えるとき、使用中の DLL は上書きできません。管理者の PowerShell で、`.\unregister.ps1` で登録を外し、使用中のファイルを別の名前に変えてから（例: `ikari_tip.dll` → `ikari_tip.old.dll`）、新しいものをコピーし、`.\register.ps1` で登録し直します。この順で、VM を再起動せずに DLL を入れ替えられました（エンジンの exe は、この方法で確かめていません）。
+- 2 回目以降に入れ替えるとき: 管理者の PowerShell で `.\register.ps1` を流し直すだけです。毎回 `target\release\tip\<日時>\` という新しいフォルダに DLL を置き、登録を解除せずに向け直すので、使用中の DLL に当たっても止まりません（ADR 0063 §3 の 8。項目 29）。`ikari_tip.dll` を上書きしても構いません（登録しているのは `tip\<日時>\` のコピー）。エンジンの exe は、止めてから上書きします。
+- 以前の手順（`.\unregister.ps1` で外し、使用中の `%LOCALAPPDATA%\ikari-ime-dev\tip\ikari_tip.dll` を改名してから置き直す）は使いません。そのフォルダは、新しい `register.ps1` のあとはどこからも登録されていないので、サインアウトのあとに手で消します（`status.ps1` が残りを知らせます）。
 
 ### 1.4 データ（辞書とモデル）
 
@@ -85,7 +86,7 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 | --- | --- | --- |
 | データのディレクトリ | `%LOCALAPPDATA%\ikari-ime`（`IKARI_USER_DIR` があればそちら。2026-11-12 決定、#333） | エンジンの決め方（`core/src/user/dir.rs`）と同じにする。以前に `%APPDATA%\ikari-ime` に置いた開発用のデータは、手で `%LOCALAPPDATA%\ikari-ime` に移すか、消す |
 | エンジンの exe | `target\release\ikari-engine-host.exe` | パッケージ名は `ikari-engine-host` で、ADR などが呼ぶ `ikari-engine.exe` ではありません |
-| TIP の DLL | ビルドの結果 `target\release\ikari_tip.dll`。登録するのは `%LOCALAPPDATA%\ikari-ime-dev\tip\` に作る**コピー**（アプリが読み込んだ DLL を、ビルドが上書きしないため） | |
+| TIP の DLL | ビルドの結果 `target\release\ikari_tip.dll`。登録するのは、`register.ps1` が毎回作る `target\release\tip\<日時>\ikari_tip.dll`（と隣の `resources\keymap\`）の**コピー**（ADR 0063。インストール先の `<インストール先>\ikari-engine-host.exe` と `<インストール先>\tip\<版>\ikari_tip.dll` と同じ形。アプリが読み込んだ DLL を上書きしない。cargo は `tip\` に書かない）。`cargo clean` や `target\` の削除の前に `unregister.ps1` を流す（登録している DLL が消えると、新しく開いたアプリで ikari が読めなくなる） | |
 
 スクリプトは、ASCII だけで書いています（Windows PowerShell 5.1 は、BOM のないファイルを日本語の文字コードとして読むため）。
 
@@ -119,7 +120,7 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 | 1 | `.\build.ps1` | `cargo build --release -p ikari-engine-host -p ikari-tip`（LM なし）。窓を出さないエンジンは `-HideConsole`（項目 6 で使う） |
 | 2 | `.\install-data.ps1 -Src <持ち込み先> -DryRun`、次に `-DryRun` なしで | `<データ>\dict\` と `<データ>\models\` にだけ置く。同じファイルは飛ばし、違うファイルを置き換えるときは確認する。学習、ユーザー辞書、プロファイル、`settings.tsv` には触らない。エンジンが動いていると止まる |
 | 3 | `.\start-engine.ps1` | エンジンを別のコンソールで起動し、パイプができるまで最大 10 秒待つ。`-Foreground` はこのコンソールで動かす（Ctrl+C の確認用） |
-| 4 | `.\register.ps1 -DryRun`、次に**管理者の** PowerShell で `.\register.ps1` | 計画を表示し、確認を取ってから、DLL とキーマップの表を `%LOCALAPPDATA%\ikari-ime-dev\tip\` にコピーし、`regsvr32 /s` で登録する（`HKCR\CLSID\{83A140BE-…}`、日本語の入力プロファイル、TIP の分類） |
+| 4 | `.\register.ps1 -DryRun`、次に**管理者の** PowerShell で `.\register.ps1` | 計画を表示し、確認を取ってから、DLL とキーマップの表を新しいフォルダ `target\release\tip\<日時>\` にコピーし、`regsvr32 /s` で登録する（`HKCR\CLSID\{83A140BE-…}`、日本語の入力プロファイル、TIP の分類）。前の版の登録は解除せず、新しいフォルダに向け直す。古い版のフォルダは `.\clean-tip.ps1` で消す（使用中のものは残る） |
 | 5 | 設定アプリで入力方式を足す | 「設定 > 時刻と言語 > 言語と地域 > 日本語 > 言語のオプション > キーボードを追加する」で「ikari」を足し、入力方式の切り替えで選ぶ（名前と場所は Windows の版で違います） |
 | 往復時間の表 | `.\latency.ps1` | `<データ>\logs\tip-latency.log`（TIP の測定。`latency.on` があるときだけ書かれる。項目 18）を、中央値と p95 の表にする（読むだけ） |
 | 状態 | `.\status.ps1` | エンジンのプロセス、パイプの名前、登録、データのファイル、ログの末尾を表示する（何も変えない） |
@@ -267,8 +268,8 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 
 #### 項目 12: 登録と解除（S9）
 
-- やること: 管理者の PowerShell で、`.\register.ps1`（先に `-DryRun`）。`.\status.ps1` で確認。解除は `.\unregister.ps1`（`-RemoveFiles` を付けるとコピーも消す。確認が出る）。登録したまま HKCU だけで足りるか、という S9 の問いは、**この手順では試せない**（今の DLL は HKCR にだけ書く。`register.rs` の `TODO(S9)`）。記録だけする。
-- 期待する結果: `regsvr32` の終了コードが 0。`status.ps1` の「CLSID registered」に、コピーした DLL のパスが出る（`ThreadingModel=Apartment`）。解除のあと、CLSID が消え、入力方式の一覧から「ikari」が消える（開いているアプリは、アプリを開き直すまで残ることがある。**どうなったかを記録する**）。登録は途中で失敗したら、書いたものを消す作りになっている。
+- やること: 管理者の PowerShell で、`.\register.ps1`（先に `-DryRun`）。`.\status.ps1` で確認。解除は `.\unregister.ps1`（登録中の DLL を registry から読んで解除する。`-RemoveFiles` を付けると `tip\<日時>\` のフォルダも消す。使用中のものは残る。確認が出る）。登録したまま HKCU だけで足りるか、という S9 の問いは、**この手順では試せない**（今の DLL は HKCR にだけ書く。`register.rs` の `TODO(S9)`）。記録だけする。
+- 期待する結果: `regsvr32` の終了コードが 0。`status.ps1` の「CLSID registered」に、コピーした DLL のパス（`…\tip\<日時>\ikari_tip.dll`）が出る（`ThreadingModel=Apartment`）。版のフォルダの一覧で、そのフォルダに「registered」が付く。解除のあと、CLSID が消え、入力方式の一覧から「ikari」が消える（開いているアプリは、アプリを開き直すまで残ることがある。**どうなったかを記録する**）。登録が途中で失敗したら、初めての登録なら書いたものを消し、前の版の登録があれば消さずに残す作りになっている（`windows/tip/src/deploy.rs`。ADR 0063 §3 の 2）。
 - うまくいかないとき: 終了コード 3 は DLL が読めない（DLL の依存、x64 の PowerShell かどうか）、5 は `DllRegisterServer` の失敗（`HRESULT` を、DebugView で見る）。登録が半端になったら、`.\unregister.ps1` を試し、だめなら VM のスナップショットに戻す。
 
 #### 項目 13: 入力方式に出て、切り替えられる
@@ -387,11 +388,20 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 
 ### 5.5 更新、署名、そのほかの未検証の事項
 
-#### 項目 29: 使用中の DLL の置き換え（S9）
+#### 項目 29: 使用中の DLL の置き換え（S9。ADR 0063）
 
-- やること: Notepad で ikari を選び、DLL が読まれた状態で、別のコンソールで `.\build.ps1`（ビルドは、`target\release\` に作るので、読み込まれたコピーを上書きしない）、続けて管理者で `.\register.ps1`。コピー（`%LOCALAPPDATA%\ikari-ime-dev\tip\ikari_tip.dll`）の上書きが失敗するか見る。失敗したら、Notepad を閉じて、もう一度。
-- 期待する結果: 読み込まれている間は、上書きに失敗する見込み（Windows は、使用中の DLL を上書きできない。**推測**）。アプリを閉じると上書きできる。再ログオンが要るか（エクスプローラーなどが DLL を持ち続けるか）を記録する。
-- うまくいかないとき: スクリプトの警告の文と、どのアプリが持っていたか（`tasklist /m ikari_tip.dll`）を記録する。
+これまでの結果（2026-11-14、#377）: 読み込まれている DLL への上書きは失敗した。Notepad と Edge を閉じても、explorer と Windows Terminal が持ち続けるので上書きできない。ADR 0063 で、版ごとのフォルダに置いて登録を向け直す形に変えた。以下はその確かめ（ADR 0063 §7 のスパイクの 1〜4、6、9 を、開発用のスクリプトで行う）。**VM のスナップショットを取ってから行う。**モジュールのパスは `Get-Process | ForEach-Object { $_.Modules } | Where-Object FileName -like '*ikari_tip*' | Select-Object FileName -Unique`（管理者の PowerShell。`tasklist /m` はパスを出さない）で見る。
+
+- やること:
+  1. 管理者の PowerShell で `.\register.ps1`（版 A）。ikari を入力方式に足し、Notepad と Edge で打つ。`status.ps1` で登録中の版（`tip\<日時 A>\`）を記録する。上のコマンドで、explorer と Windows Terminal が版 A のパスを持つことを見る。入力方式の一覧（設定の画面と `Get-WinUserLanguageList` の `InputMethodTips`）を記録する。
+  2. Notepad を開いたまま、`.\build.ps1`（または新しい artifact の `ikari_tip.dll` を `target\release\` に上書き）、続けて管理者で `.\register.ps1`（版 B）。上書きの失敗で止まらないこと、`regsvr32` が 0 で終わること、`status.ps1` の「CLSID registered」が版 B を指すことを見る。入力方式の一覧と既定の入力方式が手順 1 と変わらないこと（ikari が消えない、Microsoft IME などが足されない）を記録する。
+  3. 開いたままの Notepad で打つ（版 A のまま動くか）。新しく開いた Notepad で打つ（版 B か。上のコマンドのパスで見る）。explorer を再起動（タスク マネージャーから）したあと、explorer のモジュールが版 B になるか。
+  4. `.\clean-tip.ps1 -DryRun`、次に `.\clean-tip.ps1`。版 A のフォルダが「kept」と出て丸ごと残る（DLL も `resources\keymap\` も残る）こと、版 A を持つ開いたままの Notepad で打ち続けられることを見る。
+  5. サインアウトしてサインインする。全部のプロセスが版 B になるか（上のコマンド）。`.\clean-tip.ps1` で版 A のフォルダが消えるか。
+  6. 版 A を持つアプリがある状態で、版 A の `ikari_tip.dll` を `Rename-Item` できるか（ADR 0063 §1.4 の推測の確かめ。改名できたら名前を戻す）。
+  7. 撤去の確かめ: アプリを開いたまま、管理者で `.\unregister.ps1 -RemoveFiles`。使用中のフォルダが残って「kept」と出ること、開いているアプリが落ちないこと、新しく開いたアプリに ikari が出ないことを見る。
+- 期待する結果: 手順 2 で止まらず、登録が版 B を指す。入力方式の一覧は変わらない（ADR 0063 §3 の 2。weasel の注記からの**推測**）。手順 3 は、開いていたアプリは版 A、新しく開いたアプリと再起動した explorer は版 B（**推測**。ADR 0063 §1.4）。手順 4 は、使用中の版 A は残り、開いていたアプリの入力は続く。手順 5 で全部が版 B になり、版 A を消せる。手順 6 は改名できる見込み（**推測**）。
+- うまくいかないとき: `register.ps1` と `clean-tip.ps1` の出力、`regsvr32` の終了コード、DebugView の行、上のコマンドのパス、入力方式の一覧を、そのまま記録する。入力方式の一覧が変わった（ikari が外れた、別の IME が足された）ときは、ADR 0063 §3 の 2 の前提が崩れたので、ADR を直す材料にする。
 
 #### 項目 30: 使用中の辞書の置き換え（S5）
 
@@ -489,10 +499,10 @@ ikari のコミット（git rev-parse --short HEAD）:
 実機（VM）を元に戻すときの手順です。対象を限り、本番のデータ（学習など）には触れません。
 
 1. エンジンを止める: コンソールで Ctrl+C、または `.\start-engine.ps1 -Action stop`（確認が出る）。
-2. 管理者の PowerShell で `.\unregister.ps1 -RemoveFiles`（確認が出る。DLL の登録を解除し、`%LOCALAPPDATA%\ikari-ime-dev\tip\` の中のコピーだけを消す）。使用中で消せなかったら、アプリを閉じるか、サインアウトして、もう一度。
+2. 管理者の PowerShell で `.\unregister.ps1 -RemoveFiles`（確認が出る。登録中の DLL の登録を解除し、`target\release\tip\` の中の版のフォルダだけを消す）。使用中で消せなかったフォルダは残るので、アプリを閉じるか、サインアウトして、もう一度。ADR 0063 より前の `%LOCALAPPDATA%\ikari-ime-dev\tip\` が残っていれば、手で消す。
 3. Windows の入力方式の一覧から、「ikari」が消えていることを確かめる（残っていたら、「言語のオプション」から削除する）。
 4. データ: `<データ>`（`%LOCALAPPDATA%\ikari-ime` など）は、**自動では消しません**。要らなければ、中身を確かめて、手で削除してください（学習のファイルが入っています）。
-5. ビルドの成果物: リポジトリの `target\` を消せば戻ります（`cargo clean`）。
+5. ビルドの成果物: リポジトリの `target\` を消せば戻ります（`cargo clean`）。**先に手順 2 を済ませる**（登録している DLL は `target\release\tip\` にあります）。
 6. 確実に戻したいときは、準備のときのスナップショットに戻します。
 
 ## 8. 関連
@@ -500,4 +510,4 @@ ikari のコミット（git rev-parse --short HEAD）:
 - [ADR 0040](adr/0040-windows-feasibility.md)（Windows の方針、§6 の未検証の事項、§7 の W5）、[ADR 0058](adr/0058-offline-resource-install.md)（リソースの配置。§14 の Windows への持ち越し）
 - issue: #331（この手順書）、#81（Windows 対応）、#128（開発環境）
 - PR（確認待ちの出どころ）: #315（W1-b）、#318（W2-b）、#326（W4-s2）、#329（再接続）、#330（W5-a）
-- スクリプト: [../windows/dev/common.ps1](../windows/dev/common.ps1)、[build.ps1](../windows/dev/build.ps1)、[install-data.ps1](../windows/dev/install-data.ps1)、[register.ps1](../windows/dev/register.ps1)、[unregister.ps1](../windows/dev/unregister.ps1)、[start-engine.ps1](../windows/dev/start-engine.ps1)、[status.ps1](../windows/dev/status.ps1)、[latency.ps1](../windows/dev/latency.ps1)
+- スクリプト: [../windows/dev/common.ps1](../windows/dev/common.ps1)、[build.ps1](../windows/dev/build.ps1)、[install-data.ps1](../windows/dev/install-data.ps1)、[register.ps1](../windows/dev/register.ps1)、[unregister.ps1](../windows/dev/unregister.ps1)、[clean-tip.ps1](../windows/dev/clean-tip.ps1)、[start-engine.ps1](../windows/dev/start-engine.ps1)、[status.ps1](../windows/dev/status.ps1)、[latency.ps1](../windows/dev/latency.ps1)
