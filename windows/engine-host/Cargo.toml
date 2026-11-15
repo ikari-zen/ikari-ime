@@ -14,6 +14,7 @@ ikari-engine.workspace = true
 ikari-shell-core.workspace = true
 prost.workspace = true
 ikari-core.workspace = true
+ikari-proto.workspace = true
 
 # Ctrl+C などの受け取り（`src/ctrl.rs`）だけが使う。Win32 の宣言だけで、実行時の層を持たない（pipe と同じ）
 [target.'cfg(windows)'.dependencies]
@@ -38,6 +39,5 @@ lm-vulkan = ["lm", "ikari-engine/lm-vulkan"]
 
 [dev-dependencies]
 ikari-testtime.workspace = true
-ikari-proto.workspace = true
 ikari-dict-builder.workspace = true
 tempfile.workspace = true

@@ -154,3 +154,29 @@ fn closing_the_listener_closes_open_connections_and_releases_the_engine() {
     // 接続のスレッドの持つ `Arc` はなくなった。最後の 1 つを落とせば、`Engine` の `Drop` が走る
     assert_eq!(Arc::strong_count(&engine), 1);
 }
+
+#[test]
+fn admin_requests_are_refused_on_the_engine_pipe_and_the_connection_stays_usable() {
+    let (engine, _data) = open_engine();
+    let (connector, host) = spawn_host(Arc::new(engine));
+    let client = Client::new(connector.connect().unwrap(), None);
+
+    let admin = [
+        envelope::Body::ExportData(pb::ExportData {}),
+        envelope::Body::ResetLearning(pb::LearningReset::default()),
+        envelope::Body::LearningStatus(pb::LearningStatus::default()),
+    ];
+    for body in admin {
+        let reply = call(&client, 5, body);
+        let envelope::Body::Error(e) = reply else {
+            panic!("expected an error: {reply:?}");
+        };
+        assert_eq!(e.code, pb::ErrorCode::BadRequest as i32);
+    }
+    // 接続はそのまま使える
+    begin_session(&client, SESSION);
+
+    drop(client);
+    drop(connector);
+    host.join().unwrap();
+}

@@ -29,12 +29,84 @@ pub mod slot;
 use std::io;
 use std::sync::Arc;
 
+use ikari_engine::error_envelope;
 use ikari_pipe::{Listener, Server};
+use ikari_proto::v1::{Envelope, ErrorCode, envelope};
+use prost::Message;
+
+/// エンジンのパイプで断る理由（固定の文。要求の中身は入れない）
+const ADMIN_REFUSED_MESSAGE: &str = "admin requests are not accepted on the engine pipe";
+
+/// 管理の要求（ADR 0005 §8。ユーザー辞書、学習の状態・書き出し・取り込み・消去、プロファイル）か。
+/// これらは設定のパイプ（`settings_pipe`。中継の許可リストを通る）だけが受ける。TIP が話すエンジンのパイプでは受けない
+/// （どのアプリの中の TIP からでも学習が読み書きできてしまわないように）。
+/// `match` はワイルドカードを持たない: 要求の種類が増えたら、ここでコンパイルが通らなくなり、どちらのパイプで受けるかを決めさせる。
+fn is_admin_request(body: &envelope::Body) -> bool {
+    use envelope::Body as B;
+    match body {
+        B::ListUserDict(_)
+        | B::AddUserDict(_)
+        | B::RemoveUserDict(_)
+        | B::LearningStatus(_)
+        | B::ResetLearning(_)
+        | B::ExportData(_)
+        | B::ImportData(_)
+        | B::GetProfile(_)
+        | B::SetProfile(_) => true,
+        B::Hello(_)
+        | B::HelloReply(_)
+        | B::BeginSession(_)
+        | B::Ack(_)
+        | B::EndSession(_)
+        | B::Prefetch(_)
+        | B::Convert(_)
+        | B::ConvertReply(_)
+        | B::Page(_)
+        | B::PageReply(_)
+        | B::Commit(_)
+        | B::CommitText(_)
+        | B::Cancel(_)
+        | B::Shutdown(_)
+        | B::Error(_)
+        | B::SegmentPage(_)
+        | B::SegmentPageReply(_)
+        | B::ResizeSegment(_)
+        | B::RemoveSegments(_)
+        | B::SegmentLayout(_)
+        | B::CommitSegments(_)
+        | B::Reconvert(_)
+        | B::UserDictListReply(_)
+        | B::LearningStatusReply(_)
+        | B::ExportReply(_)
+        | B::ImportReply(_)
+        | B::ProfileReply(_)
+        | B::EmojiTable(_)
+        | B::EmojiTableReply(_)
+        | B::Diag(_)
+        | B::PostalLookup(_)
+        | B::PostalLookupReply(_) => false,
+    }
+}
+
+/// 管理の要求なら、エンジンに渡さず `BAD_REQUEST` の `Envelope` を返す。そうでなければ `None`
+fn refuse_admin(request: &[u8]) -> Option<Vec<u8>> {
+    // 読めない本体はエンジンに渡す（エンジンが `BAD_REQUEST` を返す）
+    let envelope = Envelope::decode(request).ok()?;
+    if envelope.body.as_ref().is_some_and(is_admin_request) {
+        return Some(error_envelope(
+            envelope.request_id,
+            ErrorCode::BadRequest,
+            ADMIN_REFUSED_MESSAGE,
+        ));
+    }
+    None
+}
 
 use crate::slot::{ConnectionSlot, EngineSlot};
 
 /// 受け口が閉じられるまで受け付け、受けた要求を、接続ごとに `engine.connect()` で取った `Connection` に渡す
 /// （開けていなければ `ENGINE_NOT_READY`。`ConnectionSlot`）。
+/// ただし管理の要求（`is_admin_request`）は渡さず、`BAD_REQUEST` を返す（設定のパイプだけが受ける）。
 ///
 /// 戻る前に、残っている接続を閉じてスレッドを待つ（どの `Connection` も `Engine` より先に落ちる。
 /// `Engine` は `EngineSlot` だけが持つので、呼び出し側が最後の `Arc<EngineSlot>` を落とせば、`Engine` の
@@ -42,6 +114,52 @@ use crate::slot::{ConnectionSlot, EngineSlot};
 pub fn serve<L: Listener>(listener: L, slot: Arc<EngineSlot>) -> io::Result<()> {
     Server::new(listener).serve(move || {
         let mut connection = ConnectionSlot::new(Arc::clone(&slot));
-        move |request: &[u8]| Some(connection.handle(request))
+        move |request: &[u8]| {
+            Some(refuse_admin(request).unwrap_or_else(|| connection.handle(request)))
+        }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ikari_proto::SCHEMA_VERSION;
+    use ikari_proto::v1 as pb;
+
+    fn request(request_id: u64, body: envelope::Body) -> Vec<u8> {
+        Envelope {
+            schema_version: SCHEMA_VERSION,
+            request_id,
+            body: Some(body),
+        }
+        .encode_to_vec()
+    }
+
+    #[test]
+    fn admin_requests_are_refused_with_the_request_id_echoed() {
+        let bodies = [
+            envelope::Body::ListUserDict(pb::UserDictList::default()),
+            envelope::Body::LearningStatus(pb::LearningStatus::default()),
+            envelope::Body::ResetLearning(pb::LearningReset::default()),
+            envelope::Body::ExportData(pb::ExportData::default()),
+            envelope::Body::ImportData(pb::ImportData::default()),
+            envelope::Body::GetProfile(pb::ProfileGet::default()),
+        ];
+        for body in bodies {
+            let reply = refuse_admin(&request(7, body)).expect("refused");
+            let reply = Envelope::decode(reply.as_slice()).unwrap();
+            assert_eq!(reply.request_id, 7);
+            let Some(envelope::Body::Error(e)) = reply.body else {
+                panic!("expected an error: {reply:?}");
+            };
+            assert_eq!(e.code, ErrorCode::BadRequest as i32);
+        }
+    }
+
+    #[test]
+    fn typing_requests_and_garbage_are_passed_on() {
+        let hello = request(1, envelope::Body::Hello(pb::Hello::default()));
+        assert!(refuse_admin(&hello).is_none());
+        assert!(refuse_admin(&[0xff; 16]).is_none());
+    }
 }
