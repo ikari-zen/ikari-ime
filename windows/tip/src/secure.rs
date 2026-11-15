@@ -6,6 +6,9 @@
 //!
 //! # TSF で読める手がかり
 //! - 入力スコープ（`GUID_PROP_INPUTSCOPE`）: アプリが欄に付ける属性。`IS_PASSWORD` など。**これだけが TIP から読める**。
+//! - 文脈の `GUID_COMPARTMENT_KEYBOARD_DISABLED`（キーボードが無効の欄）: 0 以外なら secure に含める（#369。
+//!   Chromium は password 欄の文脈にこれを立てる）。macOS の「secure は記録せず、学習しない」に揃える。
+//!   `GUID_COMPARTMENT_EMPTYCONTEXT` は判定に使わない（診断のログだけ）。
 //! - `TS_SS_PASSWORD` という静的フラグは存在しない（`TS_STATUS` / `TF_STATUS` の `dwStaticFlags` にあるのは
 //!   `DISJOINTSEL`、`REGIONS`、`TRANSITORY`、`NOHIDDENTEXT`、`TKB*`、`UWPCONTROL` だけ）。`TF_SS_TRANSITORY` は
 //!   IME 自身の一時的な文脈の印で、秘密とは関係がないので使わない。
@@ -58,9 +61,42 @@ pub fn is_secure(reading: ScopeReading<'_>) -> bool {
     }
 }
 
+/// 文脈の `GUID_COMPARTMENT_KEYBOARD_DISABLED` の値（読めなければ `None`）から、キーボードが無効の欄か。
+/// 0 以外が無効。値がない・読めないときは有効（通常）として扱う。
+pub fn is_keyboard_disabled(value: Option<i32>) -> bool {
+    value.is_some_and(|v| v != 0)
+}
+
+/// この欄は secure か。入力スコープ（`reading`）と、キーボードが無効か（`keyboard_disabled`）のどちらかが当てはまれば secure。
+pub fn is_secure_field(reading: ScopeReading<'_>, keyboard_disabled: Option<i32>) -> bool {
+    is_keyboard_disabled(keyboard_disabled) || is_secure(reading)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn keyboard_disabled_is_secure() {
+        assert!(is_secure_field(ScopeReading::NotSet, Some(1)));
+        assert!(is_secure_field(ScopeReading::Unreadable, Some(1)));
+        assert!(is_secure_field(
+            ScopeReading::Scopes(&[IS_DEFAULT]),
+            Some(-1)
+        ));
+    }
+
+    #[test]
+    fn keyboard_enabled_or_unknown_falls_back_to_scopes() {
+        assert!(!is_secure_field(ScopeReading::NotSet, Some(0)));
+        assert!(!is_secure_field(ScopeReading::NotSet, None));
+        assert!(!is_secure_field(ScopeReading::Scopes(&[IS_DEFAULT]), None));
+        assert!(is_secure_field(
+            ScopeReading::Scopes(&[IS_PASSWORD]),
+            Some(0)
+        ));
+        assert!(is_secure_field(ScopeReading::Scopes(&[IS_PRIVATE]), None));
+    }
 
     /// IS_DEFAULT、IS_URL、IS_NUMBER、IS_EMAIL_SMTPEMAILADDRESS など、秘密でないスコープ
     const IS_DEFAULT: i32 = 0;

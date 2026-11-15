@@ -13,7 +13,8 @@
 //! 読み方ごとの結果（入力スコープの値、値なし、失敗した呼び出しと HRESULT）と、文脈の
 //! `GUID_COMPARTMENT_KEYBOARD_DISABLED`・`GUID_COMPARTMENT_EMPTYCONTEXT` の値を、前回と違うときに 1 行出す
 //! （`log::input_scope`。最初の 1 回は空でも出る）。数値と固定の文だけで、欄の内容は出さない。DISABLED と EMPTYCONTEXT は
-//! **読むだけで判定には使わない**（Chromium は password 欄の文脈にこの 2 つを立てる。使うかはユーザーの決定待ち）。
+//! DISABLED は secure の判定に含める（2026-11-14 ユーザー決定。#369。Chromium は password 欄の文脈に立てる）。
+//! EMPTYCONTEXT は**読むだけで判定には使わない**。
 //!
 //! 入力スコープの値を読むには編集セッションの `ec` が要る。このため、キーの処理の編集セッションの中
 //! （`service::dispatch_and_run_inner`）で、`dispatch` の前に呼ぶ。
@@ -75,11 +76,12 @@ pub fn is_secure(ec: u32, context: &ITfContext) -> bool {
         }
         None => (ScopeOutcome::Skipped, ScopeOutcome::Skipped),
     };
+    let disabled = context_flag(context, &GUID_COMPARTMENT_KEYBOARD_DISABLED);
     log::input_scope(&ScopeDiag {
         range: range_kind,
         app: &app,
         tip: &tip,
-        disabled: context_flag(context, &GUID_COMPARTMENT_KEYBOARD_DISABLED),
+        disabled,
         empty: context_flag(context, &GUID_COMPARTMENT_EMPTYCONTEXT),
     });
     // 読めた方の値で判定する（両方読めなければ、`app` の結果で「通常」）
@@ -88,11 +90,14 @@ pub fn is_secure(ec: u32, context: &ITfContext) -> bool {
         (_, ScopeOutcome::Scopes(_)) => &tip,
         _ => &app,
     };
-    secure::is_secure(match chosen {
-        ScopeOutcome::Scopes(list) => ScopeReading::Scopes(list),
-        ScopeOutcome::NotSet { .. } => ScopeReading::NotSet,
-        ScopeOutcome::Failed { .. } | ScopeOutcome::Skipped => ScopeReading::Unreadable,
-    })
+    secure::is_secure_field(
+        match chosen {
+            ScopeOutcome::Scopes(list) => ScopeReading::Scopes(list),
+            ScopeOutcome::NotSet { .. } => ScopeReading::NotSet,
+            ScopeOutcome::Failed { .. } | ScopeOutcome::Skipped => ScopeReading::Unreadable,
+        },
+        disabled,
+    )
 }
 
 /// 文脈の compartment の値（診断用。読めなければ `None`）
