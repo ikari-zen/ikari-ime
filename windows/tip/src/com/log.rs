@@ -119,7 +119,7 @@ pub struct ScopeDiag<'a> {
     pub app: &'a ScopeOutcome,
     /// `ITfContext::GetProperty`（以前の読み方。TIP のプロパティの置き場所）
     pub tip: &'a ScopeOutcome,
-    /// 文脈の `GUID_COMPARTMENT_KEYBOARD_DISABLED`・`GUID_COMPARTMENT_EMPTYCONTEXT` の値（読むだけ。判定には使わない）
+    /// 文脈の `GUID_COMPARTMENT_KEYBOARD_DISABLED`・`GUID_COMPARTMENT_EMPTYCONTEXT` の値（DISABLED は secure の判定に使う。EMPTYCONTEXT は読むだけ）
     pub disabled: Option<i32>,
     pub empty: Option<i32>,
 }
