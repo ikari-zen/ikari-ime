@@ -16,6 +16,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+/// 別プロセスの LM（`ikari-lm-host`）の実行ファイルの名前（Windows は `.exe` つき）
+pub use ikari_lm::host::host_exe_name as lm_host_exe_name;
 /// LM の計測の型と記録（エンジンが `ikari-lm` を直接知らずに使う。ADR 0061）
 pub use ikari_lm::trace as lm_trace;
 pub use ikari_lm::{LmDevice, LmTrace};
@@ -65,6 +67,9 @@ pub struct StackPaths {
     pub vectors: Option<PathBuf>,
     /// zenz の GGUF。None なら LM を使わない
     pub lm_model: Option<PathBuf>,
+    /// LM の推論を頼む別プロセス（`ikari-lm-host`）の実行ファイル（ADR 0060 Q4）。絶対パスで渡す。
+    /// None なら同じプロセスで動かす（feature `lm` が要る。CLI、評価、テスト）
+    pub lm_host: Option<PathBuf>,
     /// 同梱の語彙集（IT）を使わない。既定は使う（ADR 0012 B20-4。設定 `dict.pack_it`）
     pub no_packs: bool,
 }
@@ -323,7 +328,7 @@ pub enum StackError {
     Config(String),
     /// `RankerSet::Topic` なのに vectors.bin がない
     MissingVectors,
-    /// LM を求められたが、このビルドに `lm` feature がない
+    /// LM を同じプロセスで動かすよう求められたが、このビルドに `lm` feature がない
     LmNotBuilt,
     /// 指定された LM のモデルのファイルがない
     LmModelNotFound(PathBuf),

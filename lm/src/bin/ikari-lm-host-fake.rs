@@ -16,6 +16,7 @@
 //!   nll.<表記>=<数>        その表記の NLL（なければ表記の文字数）
 //!
 //! `--gpu off` で起動したときは装置を CPU と報告する（`--gpu on` は GPU）。
+//! 要求が来たときに `<台本のパス>.die` があれば、答えずに終わる（動いている子を、テストが外から落とす）。
 //! 起動のたびに、`<台本のパス>.starts` に `--gpu` の値を 1 行足す（テストが、起動の回数と引数を見る）。
 
 use std::collections::HashMap;
@@ -30,6 +31,7 @@ use ikari_lm::host::{ARG_GPU, ARG_GPU_ON, ARG_MODEL, ReadyInfo, serve};
 use ikari_lm::{GpuState, LmDevice, LmError, LmScorer};
 
 const NLL_PREFIX: &str = "nll.";
+const DIE_SUFFIX: &str = ".die";
 const STARTS_SUFFIX: &str = ".starts";
 const FOREVER: Duration = Duration::from_secs(3600);
 
@@ -60,6 +62,7 @@ impl Script {
 
 struct FakeScorer {
     script: Script,
+    die_flag: PathBuf,
     answered: u64,
 }
 
@@ -71,7 +74,7 @@ impl FakeScorer {
 
 impl LmScorer for FakeScorer {
     fn nll(&mut self, _prompt: &str, candidates: &[String]) -> Result<Vec<f32>, LmError> {
-        if self.reached("exit_after") {
+        if self.die_flag.exists() || self.reached("exit_after") {
             std::process::exit(1);
         }
         if self.reached("hang_after") {
@@ -116,6 +119,11 @@ fn main() -> ExitCode {
     };
     let gpu_on = value_of(ARG_GPU).as_deref() == Some(ARG_GPU_ON);
     let script = Script::read(&model);
+    let die_flag = {
+        let mut path = model.clone().into_os_string();
+        path.push(DIE_SUFFIX);
+        PathBuf::from(path)
+    };
     let mut starts = model.clone().into_os_string();
     starts.push(STARTS_SUFFIX);
     if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -163,6 +171,7 @@ fn main() -> ExitCode {
         };
         let scorer = FakeScorer {
             script,
+            die_flag,
             answered: 0,
         };
         Ok((Box::new(scorer) as Box<dyn LmScorer>, info))

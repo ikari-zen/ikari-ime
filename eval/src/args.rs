@@ -95,6 +95,10 @@ pub(crate) struct EngineArgs {
     /// zenz の GGUF（feature lm が要る）。付けると LM つきの数値になる（参考）
     #[arg(long)]
     pub(crate) lm: Option<PathBuf>,
+    /// LM を別プロセスで動かす（`ikari-lm-host` の実行ファイル。製品のエンジンと同じ経路。ADR 0060 Q4）。
+    /// 付けなければ同じプロセス（feature lm が要る）
+    #[arg(long, requires = "lm")]
+    pub(crate) lm_host: Option<PathBuf>,
     /// LM の待ち時間の上限（ms）
     #[arg(long)]
     pub(crate) lm_budget_ms: Option<u64>,
@@ -260,6 +264,10 @@ pub(crate) struct RunArgs {
     /// zenz の GGUF（feature lm が要る）
     #[arg(long)]
     pub(crate) lm: Option<PathBuf>,
+    /// LM を別プロセスで動かす（`ikari-lm-host` の実行ファイル。製品のエンジンと同じ経路。ADR 0060 Q4）。
+    /// 付けなければ同じプロセス（feature lm が要る）
+    #[arg(long, requires = "lm")]
+    pub(crate) lm_host: Option<PathBuf>,
     /// LM の待ち時間の上限（ms）。省略時は ZenzConfig の既定（300ms）。実際の待ちは変換1回の締め切りで決まる
     #[arg(long)]
     pub(crate) lm_budget_ms: Option<u64>,

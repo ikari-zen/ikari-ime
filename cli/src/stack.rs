@@ -101,6 +101,7 @@ pub fn build_stack(req: &StackRequest<'_>) -> Result<Stack, Box<dyn Error>> {
         lm_model: common.lm.clone(),
         #[cfg(not(feature = "lm"))]
         lm_model: None,
+        lm_host: None,
         no_packs: common.no_packs,
     };
     let opts = StackOptions {

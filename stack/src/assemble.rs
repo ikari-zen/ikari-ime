@@ -317,7 +317,7 @@ pub(super) fn assemble_with(
             None => {
                 let path = paths.lm_model.as_deref().unwrap_or(Path::new(""));
                 let lm_kv = build_lm_kv(&opts.ranker_config, opts.lm, &convert);
-                lm::build(path, &lm_kv)?
+                lm::build(path, &lm_kv, paths.lm_host.as_deref())?
             }
         };
         rankers.push(Arc::clone(&ranker));
