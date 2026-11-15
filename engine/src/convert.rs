@@ -57,7 +57,7 @@ fn micros_of(d: Duration) -> u32 {
     saturating_u32(u64::try_from(d.as_micros()).unwrap_or(u64::MAX))
 }
 
-fn proto_device(d: LmDevice) -> pb::LmDevice {
+pub(crate) fn proto_device(d: LmDevice) -> pb::LmDevice {
     match d {
         LmDevice::Cpu => pb::LmDevice::Cpu,
         LmDevice::Gpu => pb::LmDevice::Gpu,

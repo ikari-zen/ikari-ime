@@ -27,6 +27,7 @@ impl Inner {
             dict_label: self.stack().meta.dict_label.clone(),
             lm: self.lm_state() as i32,
             learning_quarantined: self.learning_quarantined.swap(false, Ordering::AcqRel),
+            lm_device: convert::proto_device(self.lm_device()) as i32,
         })
     }
 

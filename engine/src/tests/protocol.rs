@@ -41,6 +41,8 @@ fn lm_state_is_disabled_or_failed_without_a_handle() {
             panic!();
         };
         assert_eq!(h.lm, expected as i32);
+        // LM がなければ装置は分からない（設定アプリは CPU の案内を出さない。#425）
+        assert_eq!(h.lm_device, pb::LmDevice::Unspecified as i32);
     }
 }
 

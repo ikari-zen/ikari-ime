@@ -263,6 +263,14 @@ public nonisolated struct Ikari_Settings_V1_AppRequest: Sendable {
     set {body = .constants(newValue)}
   }
 
+  public var lmNotice: Ikari_Settings_V1_LmNoticeRequest {
+    get {
+      if case .lmNotice(let v)? = body {return v}
+      return Ikari_Settings_V1_LmNoticeRequest()
+    }
+    set {body = .lmNotice(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Body: Equatable, Sendable {
@@ -276,6 +284,7 @@ public nonisolated struct Ikari_Settings_V1_AppRequest: Sendable {
     case importSize(Ikari_Settings_V1_ImportSizeRequest)
     case exportFileName(Ikari_Settings_V1_ExportFileNameRequest)
     case constants(Ikari_Shell_V1_Empty)
+    case lmNotice(Ikari_Settings_V1_LmNoticeRequest)
 
   }
 
@@ -330,7 +339,7 @@ public nonisolated struct Ikari_Settings_V1_AppReply: Sendable {
     set {body = .dictionaryList(newValue)}
   }
 
-  /// pos_display、export_file_name の結果
+  /// pos_display、export_file_name、lm_notice の結果（lm_notice は案内を出さないとき空）
   public var text: String {
     get {
       if case .text(let v)? = body {return v}
@@ -371,7 +380,7 @@ public nonisolated struct Ikari_Settings_V1_AppReply: Sendable {
     case chord(Ikari_Settings_V1_ChordInfo)
     case dictionaryEntry(Ikari_Settings_V1_DictionaryEntryResult)
     case dictionaryList(Ikari_Settings_V1_DictionaryList)
-    /// pos_display、export_file_name の結果
+    /// pos_display、export_file_name、lm_notice の結果（lm_notice は案内を出さないとき空）
     case text(String)
     case profileSet(Ikari_Settings_V1_ProfileSetResult)
     case importSize(Ikari_Settings_V1_ImportSizeVerdict)
@@ -1210,6 +1219,24 @@ public nonisolated struct Ikari_Settings_V1_ExportFileNameRequest: Sendable {
   public init() {}
 }
 
+/// LM が CPU で動いているときの案内の問い合わせ（#425）。出すかどうかと文は shell-core が決める。
+/// lm と device はエンジンの HelloReply の値、lm_enabled は設定 `engine.lm` の今の値。返事は `text`（出さないとき空）
+public nonisolated struct Ikari_Settings_V1_LmNoticeRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var lmEnabled: Bool = false
+
+  public var lm: Ikari_Engine_V1_LmState = .unspecified
+
+  public var device: Ikari_Engine_V1_LmDevice = .unspecified
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
 public nonisolated struct Ikari_Settings_V1_IntRange: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -1317,7 +1344,7 @@ nonisolated extension Ikari_Settings_V1_ImportSizeVerdict: SwiftProtobuf._ProtoN
 
 nonisolated extension Ikari_Settings_V1_AppRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AppRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}describe\0\u{1}plan\0\u{1}chord\0\u{3}dictionary_entry\0\u{3}dictionary_list\0\u{3}pos_display\0\u{3}profile_set\0\u{3}import_size\0\u{3}export_file_name\0\u{1}constants\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}describe\0\u{1}plan\0\u{1}chord\0\u{3}dictionary_entry\0\u{3}dictionary_list\0\u{3}pos_display\0\u{3}profile_set\0\u{3}import_size\0\u{3}export_file_name\0\u{1}constants\0\u{3}lm_notice\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1455,6 +1482,19 @@ nonisolated extension Ikari_Settings_V1_AppRequest: SwiftProtobuf.Message, Swift
           self.body = .constants(v)
         }
       }()
+      case 11: try {
+        var v: Ikari_Settings_V1_LmNoticeRequest?
+        var hadOneofValue = false
+        if let current = self.body {
+          hadOneofValue = true
+          if case .lmNotice(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.body = .lmNotice(v)
+        }
+      }()
       default: break
       }
     }
@@ -1505,6 +1545,10 @@ nonisolated extension Ikari_Settings_V1_AppRequest: SwiftProtobuf.Message, Swift
     case .constants?: try {
       guard case .constants(let v)? = self.body else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 10)
+    }()
+    case .lmNotice?: try {
+      guard case .lmNotice(let v)? = self.body else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 11)
     }()
     case nil: break
     }
@@ -3119,6 +3163,46 @@ nonisolated extension Ikari_Settings_V1_ExportFileNameRequest: SwiftProtobuf.Mes
     if lhs.year != rhs.year {return false}
     if lhs.month != rhs.month {return false}
     if lhs.day != rhs.day {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Ikari_Settings_V1_LmNoticeRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".LmNoticeRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}lm_enabled\0\u{1}lm\0\u{1}device\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularBoolField(value: &self.lmEnabled) }()
+      case 2: try { try decoder.decodeSingularEnumField(value: &self.lm) }()
+      case 3: try { try decoder.decodeSingularEnumField(value: &self.device) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.lmEnabled != false {
+      try visitor.visitSingularBoolField(value: self.lmEnabled, fieldNumber: 1)
+    }
+    if self.lm != .unspecified {
+      try visitor.visitSingularEnumField(value: self.lm, fieldNumber: 2)
+    }
+    if self.device != .unspecified {
+      try visitor.visitSingularEnumField(value: self.device, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Ikari_Settings_V1_LmNoticeRequest, rhs: Ikari_Settings_V1_LmNoticeRequest) -> Bool {
+    if lhs.lmEnabled != rhs.lmEnabled {return false}
+    if lhs.lm != rhs.lm {return false}
+    if lhs.device != rhs.device {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

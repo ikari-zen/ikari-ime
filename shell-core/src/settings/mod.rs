@@ -17,6 +17,7 @@ mod admin;
 mod chord;
 mod defaults;
 mod file;
+mod lm_notice;
 mod parse;
 mod specs;
 mod store;
@@ -32,6 +33,7 @@ pub use admin::{
 };
 pub use chord::KeyChord;
 pub use defaults::*;
+pub use lm_notice::{LM_CPU_NOTICE, lm_cpu_notice};
 pub use parse::{
     effective_entries, engine_settings_differ, is_acceptable, is_known_key, parse_bundle_id_list,
 };
