@@ -5,6 +5,10 @@
 //!   `ZenzRanker` のワーカーはそれを捨て、次の要求で loader を呼ぶ。
 //! - loader（[`host_loader`]）は、子を起動して `Ready` を待つ。起動し直すか諦めるかは [`HostHealth`] が数える。
 //!
+//! 断念の前の試し直し（2026-11-15 ユーザー決定）: GPU を使ってよい設定で、連続失敗が上限に達したら、
+//! すぐには諦めず、数を 0 に戻して、以後の子を CPU だけ（`--gpu cpu`）で起動する。CPU の子でも上限に達したら諦める。
+//! 子が「GPU に載せていない」と知らせていたとき（GPU のない機械、設定がオフ）は、試し直さずに諦める。
+//!
 //! 数えるもの（連続失敗）: 起動できない、`Ready` が締め切りまでに来ない、版が違う、読み込みの失敗、
 //! 子が終わった、返事が締め切りまでに来ない、壊れた返事。採点が 1 回成功したら 0 に戻す。
 //! 数えないもの: 子が生きていて返した 1 件の採点の失敗（`Failed(Inference)`。長すぎるプロンプトなど、入力で決まる。
@@ -23,7 +27,7 @@ use crate::host::os::{self, ChildProc};
 use crate::host::proto::{
     FailKind, MAX_FRAME_BYTES, PROTOCOL_VERSION, Reply, Request, read_frame, write_frame,
 };
-use crate::host::{ARG_GPU, ARG_GPU_OFF, ARG_GPU_ON, ARG_MODEL};
+use crate::host::{ARG_GPU, ARG_GPU_CPU, ARG_GPU_OFF, ARG_GPU_ON, ARG_MODEL};
 use crate::placement::{self, GpuState};
 use crate::scorer::{LmDevice, LmLoader, LmScorer};
 
@@ -35,7 +39,8 @@ const DEFAULT_READY_DEADLINE: Duration = Duration::from_secs(60);
 /// （`ZenzConfig::budget`。300ms まで）とは別。N150 の VM の Vulkan で最初の 1 回が約 6 秒だった（ADR 0059）ので、
 /// それより十分長くする
 const DEFAULT_REQUEST_DEADLINE: Duration = Duration::from_secs(30);
-/// 仮置き（同上）: 連続でこの回数失敗したら、子の起動を諦める
+/// 仮置き（同上）: 連続でこの回数失敗したら、子の起動を諦める。GPU を使う設定では、GPU の子でこの回数、
+/// そのあと CPU の子でこの回数（合わせて 2 倍）
 const DEFAULT_MAX_FAILURES: u32 = 3;
 
 const READER_THREAD_NAME: &str = "ikari-lm-host-read";
@@ -51,7 +56,8 @@ pub struct HostLimits {
     pub ready_deadline: Duration,
     /// 採点 1 回の上限（要求の書き込みと、返事の読みを含む）
     pub request_deadline: Duration,
-    /// 連続でこの回数失敗したら、以後は子を起動しない（1 以上）
+    /// 連続でこの回数失敗したら、以後は子を起動しない（1 以上）。GPU を使う設定では、先に CPU だけの子に
+    /// 切り替えて、もう一度この回数まで試す
     pub max_failures: u32,
 }
 
@@ -83,21 +89,34 @@ pub struct HostHealth {
     max_failures: u32,
     consecutive_failures: AtomicU32,
     spawns: AtomicU64,
-    /// 子が GPU での読み込みに失敗して CPU で読み直した。以後は CPU だけで起動する（ADR 0059 §2.4 と同じ扱い）
+    /// GPU を使ってよい設定か（`HostSpec::use_gpu`）
+    use_gpu: bool,
+    /// 以後は CPU だけで起動する。子が GPU での読み込みに失敗して CPU で読み直した（ADR 0059 §2.4 と同じ扱い）か、
+    /// GPU を使う子が連続で失敗して上限に達した
     gpu_failed: AtomicBool,
+    /// `--gpu on` で起動した子が、GPU に載せていないと知らせた（GPU がない、環境変数でオフ）。
+    /// CPU で試し直しても同じなので、上限に達したら諦める
+    gpu_unused: AtomicBool,
     /// 今の子の pid（いなければ 0）
     child_id: AtomicU32,
 }
 
 impl HostHealth {
-    fn new(max_failures: u32) -> Self {
+    fn new(max_failures: u32, use_gpu: bool) -> Self {
         Self {
             max_failures: max_failures.max(1),
             consecutive_failures: AtomicU32::new(0),
             spawns: AtomicU64::new(0),
+            use_gpu,
             gpu_failed: AtomicBool::new(false),
+            gpu_unused: AtomicBool::new(false),
             child_id: AtomicU32::new(0),
         }
+    }
+
+    /// 以後の子を CPU だけで起動する状態か（GPU の子の読み込みの失敗、または連続失敗のあと）
+    pub fn gpu_disabled(&self) -> bool {
+        self.gpu_failed.load(Ordering::Acquire)
     }
 
     /// 連続失敗が上限に達し、もう子を起動しない状態か（エンジンを起動し直すまで続く）
@@ -125,15 +144,25 @@ impl HostHealth {
     /// `lm_load` のログに足す固定の語（数だけ）
     pub fn log_note(&self) -> String {
         format!(
-            "host=on host_spawns={} host_failures={} host_gave_up={}",
+            "host=on host_spawns={} host_failures={} host_gave_up={} host_gpu_off={}",
             self.spawns(),
             self.consecutive_failures(),
-            u8::from(self.gave_up())
+            u8::from(self.gave_up()),
+            u8::from(self.gpu_disabled())
         )
     }
 
+    /// 失敗を 1 つ数える。GPU を使う子で上限に達したら、諦める前に、CPU だけの子に切り替えて数を戻す。
+    /// 呼ぶのは LM のワーカーのスレッドだけ（同時には呼ばれない）
     fn record_failure(&self) {
-        self.consecutive_failures.fetch_add(1, Ordering::AcqRel);
+        let failures = self.consecutive_failures.fetch_add(1, Ordering::AcqRel) + 1;
+        let gpu_in_use = self.use_gpu
+            && !self.gpu_failed.load(Ordering::Acquire)
+            && !self.gpu_unused.load(Ordering::Acquire);
+        if failures >= self.max_failures && gpu_in_use {
+            self.gpu_failed.store(true, Ordering::Release);
+            self.consecutive_failures.store(0, Ordering::Release);
+        }
     }
 
     fn record_success(&self) {
@@ -144,7 +173,7 @@ impl HostHealth {
 /// 子を起動して採点を頼む loader（`ZenzRanker::new` に渡す）と、子の様子。
 /// 子は、loader が呼ばれたとき（最初の要求、アイドルの解放のあと、子が死んだあと）に起動する。
 pub fn host_loader(spec: HostSpec) -> (LmLoader, Arc<HostHealth>) {
-    let health = Arc::new(HostHealth::new(spec.limits.max_failures));
+    let health = Arc::new(HostHealth::new(spec.limits.max_failures, spec.use_gpu));
     let loader: LmLoader = {
         let health = Arc::clone(&health);
         Arc::new(move || {
@@ -183,8 +212,8 @@ struct Live {
 }
 
 impl Live {
-    fn spawn(spec: &HostSpec, use_gpu: bool) -> Result<Live, String> {
-        let gpu = if use_gpu { ARG_GPU_ON } else { ARG_GPU_OFF };
+    /// `gpu` は `--gpu` の値（[`ARG_GPU_ON`] / [`ARG_GPU_OFF`] / [`ARG_GPU_CPU`]）
+    fn spawn(spec: &HostSpec, gpu: &str) -> Result<Live, String> {
         let args: [OsString; 4] = [
             ARG_MODEL.into(),
             spec.model.clone().into_os_string(),
@@ -260,8 +289,13 @@ impl HostScorer {
             health.record_failure();
             LmError::Load(format!("lm host: {what}"))
         };
-        let gpu_was_disabled = spec.use_gpu && health.gpu_failed.load(Ordering::Acquire);
-        let live = Live::spawn(spec, spec.use_gpu && !gpu_was_disabled).map_err(|e| failed(&e))?;
+        let gpu_was_disabled = spec.use_gpu && health.gpu_disabled();
+        let gpu_arg = match (spec.use_gpu, gpu_was_disabled) {
+            (true, false) => ARG_GPU_ON,
+            (true, true) => ARG_GPU_CPU,
+            (false, _) => ARG_GPU_OFF,
+        };
+        let live = Live::spawn(spec, gpu_arg).map_err(|e| failed(&e))?;
         // ここから先の失敗では、`live` を捨てて子を回収する
         match live.recv(spec.limits.ready_deadline) {
             Ok(Reply::Ready {
@@ -272,6 +306,9 @@ impl HostScorer {
             }) => {
                 if gpu == GpuState::FallbackLoadFailed {
                     health.gpu_failed.store(true, Ordering::Release);
+                }
+                if gpu_arg == ARG_GPU_ON && device != LmDevice::Gpu {
+                    health.gpu_unused.store(true, Ordering::Release);
                 }
                 // 同じプロセスで読んだときと同じ記録を残す（`lm_load` のログ、ADR 0061 の表示が読む）
                 placement::set_devices(sanitize_devices(&devices));
@@ -392,7 +429,7 @@ mod tests {
 
     #[test]
     fn health_gives_up_at_the_limit_and_recovers_on_success() {
-        let h = HostHealth::new(2);
+        let h = HostHealth::new(2, false);
         assert!(!h.gave_up());
         h.record_failure();
         assert!(!h.gave_up());
@@ -402,8 +439,32 @@ mod tests {
         assert!(h.gave_up());
         assert_eq!(
             h.log_note(),
-            "host=on host_spawns=0 host_failures=2 host_gave_up=1"
+            "host=on host_spawns=0 host_failures=2 host_gave_up=1 host_gpu_off=0"
         );
+    }
+
+    #[test]
+    fn a_gpu_child_that_keeps_failing_gets_a_cpu_retry_before_giving_up() {
+        let h = HostHealth::new(2, true);
+        h.record_failure();
+        h.record_failure();
+        // GPU の子で上限: 諦めずに、CPU だけに切り替えて数を戻す
+        assert!(!h.gave_up());
+        assert!(h.gpu_disabled());
+        assert_eq!(h.consecutive_failures(), 0);
+        h.record_failure();
+        h.record_failure();
+        assert!(h.gave_up());
+    }
+
+    #[test]
+    fn no_cpu_retry_when_the_child_was_not_on_the_gpu() {
+        let h = HostHealth::new(2, true);
+        h.gpu_unused.store(true, Ordering::Release);
+        h.record_failure();
+        h.record_failure();
+        assert!(h.gave_up());
+        assert!(!h.gpu_disabled());
     }
 
     #[test]

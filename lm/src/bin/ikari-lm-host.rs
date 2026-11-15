@@ -1,6 +1,9 @@
 //! `ikari-lm-host`: LM の推論だけをするプロセス（ADR 0060 Q4）。エンジンが起動し、標準入出力のパイプで採点を頼む。
 //!
-//!   ikari-lm-host --model <GGUF のパス> --gpu on|off
+//!   ikari-lm-host --model <GGUF のパス> --gpu on|off|cpu
+//!
+//! `on` / `off` は設定 `engine.lm_gpu`（Metal のビルドは `off` でも GPU に載せる。同じプロセスで読むときと同じ）。
+//! `cpu` は、ビルドに関わらず CPU だけで読む（GPU の子が失敗し続けたあとの試し直し）。
 //!
 //! 標準入力が閉じたら終わる（エンジンが子を手放した、またはエンジンが死んだ）。ファイルはモデルを読むだけで、
 //! 通信はしない（NFR-17）。取り決めは `ikari_lm::host::proto`。
@@ -8,14 +11,23 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use ikari_lm::host::{ARG_GPU, ARG_GPU_OFF, ARG_GPU_ON, ARG_MODEL, ReadyInfo, serve};
+use ikari_lm::host::{ARG_GPU, ARG_GPU_CPU, ARG_GPU_OFF, ARG_GPU_ON, ARG_MODEL, ReadyInfo, serve};
 use ikari_lm::{LlamaScorer, LmScorer};
 
 const EXIT_USAGE: u8 = 2;
 
+/// `--gpu` の値
+#[derive(Clone, Copy)]
+enum Gpu {
+    /// 設定どおり（真 = 使ってよい）
+    Setting(bool),
+    /// CPU だけ
+    CpuOnly,
+}
+
 struct Args {
     model: PathBuf,
-    gpu: bool,
+    gpu: Gpu,
 }
 
 fn parse_args() -> Option<Args> {
@@ -28,8 +40,9 @@ fn parse_args() -> Option<Args> {
             ARG_MODEL => model = Some(PathBuf::from(value)),
             ARG_GPU => {
                 gpu = Some(match value.to_str()? {
-                    ARG_GPU_ON => true,
-                    ARG_GPU_OFF => false,
+                    ARG_GPU_ON => Gpu::Setting(true),
+                    ARG_GPU_OFF => Gpu::Setting(false),
+                    ARG_GPU_CPU => Gpu::CpuOnly,
                     _ => return None,
                 });
             }
@@ -45,12 +58,15 @@ fn parse_args() -> Option<Args> {
 fn main() -> ExitCode {
     let Some(args) = parse_args() else {
         eprintln!(
-            "usage: ikari-lm-host {ARG_MODEL} <model.gguf> {ARG_GPU} {ARG_GPU_ON}|{ARG_GPU_OFF}"
+            "usage: ikari-lm-host {ARG_MODEL} <model.gguf> {ARG_GPU} {ARG_GPU_ON}|{ARG_GPU_OFF}|{ARG_GPU_CPU}"
         );
         return ExitCode::from(EXIT_USAGE);
     };
     let load = move || {
-        let scorer = LlamaScorer::load_with(&args.model, args.gpu)?;
+        let scorer = match args.gpu {
+            Gpu::Setting(use_gpu) => LlamaScorer::load_with(&args.model, use_gpu)?,
+            Gpu::CpuOnly => LlamaScorer::load_cpu_only(&args.model)?,
+        };
         let info = ReadyInfo {
             device: scorer.device(),
             gpu: ikari_lm::gpu_state(),

@@ -22,10 +22,13 @@ pub const HOST_EXE_STEM: &str = "ikari-lm-host";
 
 /// 子の引数: モデルのパス
 pub const ARG_MODEL: &str = "--model";
-/// 子の引数: GPU を使ってよいか（[`ARG_GPU_ON`] / [`ARG_GPU_OFF`]。設定 `engine.lm_gpu`）
+/// 子の引数: GPU の扱い。[`ARG_GPU_ON`] / [`ARG_GPU_OFF`] は設定 `engine.lm_gpu`（同じプロセスで読むときと同じ意味。
+/// Metal のビルドは `off` でも GPU に載せる）。[`ARG_GPU_CPU`] は、ビルドに関わらず CPU だけで読む
+/// （GPU の子が失敗し続けたあとの試し直し）
 pub const ARG_GPU: &str = "--gpu";
 pub const ARG_GPU_ON: &str = "on";
 pub const ARG_GPU_OFF: &str = "off";
+pub const ARG_GPU_CPU: &str = "cpu";
 
 /// 子の実行ファイルの名前（Windows は `.exe` つき）
 pub fn host_exe_name() -> String {

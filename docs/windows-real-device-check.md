@@ -471,7 +471,7 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 
 - 前提: CI の `windows-artifact` を持ち込んである（`target\release\` に `ikari-engine-host.exe` と `ikari-lm-host.exe` が並んでいる。`ggml*.dll`、`llama*.dll`、`backends\` も同じ場所）。モデルがある。`engine.lm` は `on`。
 - やること:
-  (a) エンジンを起動して（`start-engine.ps1`）、変換する。`Get-Process ikari-lm-host` で子がいること、`<データ>\logs\` の `lm_load` の行に `host=on host_spawns=1 host_failures=0 host_gave_up=0` があり、`dev=`・`gpu=`・`devices=` が項目 39 の (b) と同じであることを見る。同音異義語の並びが LM ありの並びであることを見る。
+  (a) エンジンを起動して（`start-engine.ps1`）、変換する。`Get-Process ikari-lm-host` で子がいること、`<データ>\logs\` の `lm_load` の行に `host=on host_spawns=1 host_failures=0 host_gave_up=0 host_gpu_off=0` があり、`dev=`・`gpu=`・`devices=` が項目 39 の (b) と同じであることを見る。同音異義語の並びが LM ありの並びであることを見る。
   (b) 子を落とす: `Stop-Process -Name ikari-lm-host -Force`。そのまま変換する（数回）。
   (c) 親を落とす: 子がいる状態で、エンジンをタスクマネージャーから「タスクの終了」で落とす。数秒後に `Get-Process ikari-lm-host`。
   (d) 窓なしのエンジン（`start-engine.ps1` が `-hidden` を使う構成）で起動し、変換する。コンソールの窓が出ないことを見る。
@@ -480,7 +480,7 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
   (g) アイドルの解放: `settings.tsv` に `engine.idle_unload_secs<TAB>60` を足して起こし直し、変換してから 60 秒以上（GPU に載っていれば、これは効かず 1800 秒）待つ。`Get-Process ikari-lm-host`。もう一度変換する。
 - 期待する結果（**見込み**）: (a) 子が 1 つ。(b) 変換は止まらず、候補は出続ける（落とした直後の 1 回は LM なしの並び）。次の変換で子が起動し直り（`Get-Process` で pid が変わる）、読み込みが済むと LM ありの並びに戻る。エンジンは落ちない。(c) 子も消える（Job Object）。(d) 窓は出ない。(e) LM つきのエンジンは、子なしで同じプロセスで動く（`lm_load` に `host=on` が無い）。LM なしのエンジンは LM なし（`lm=failed`）で動く。子を戻すと、LM なしのエンジンでも LM が効く。(f) 1 位は全件一致、`--out-cases` は一致、p50 の差はほぼ無い（スパイクの N150 の値: 171.5ms 対 171.8ms）。(g) CPU のときは子が消え、次の変換で起動し直る。
 - 記録してほしい数字（締め切りの値を決めるため。ADR 0060 の「Q4 の本実装」）: (f) の `load_ms`、`warm_up_ms`、`max` を GPU と CPU で。(a) の起動から `lm_load` の行までの所要（行の 3 つ目の欄。µs）を、ビルド直後の最初の 1 回と 2 回目以降で。
-- うまくいかないとき: (a) で子がいない・`host=on` が無いなら、`ikari-lm-host.exe` が `ikari-engine-host.exe` と同じフォルダにあるかを見る。`host_gave_up=1` なら、子が 3 回続けて失敗している（読み込みが 60 秒を超えた、DLL が足りず起動できない、など）。`target\release\ikari-lm-host.exe --model <モデル> --gpu on` を端末で直接動かし、すぐ終わるか（DLL の欠けのダイアログ、終了コード）を見る（正常なら、読み込みのあとに読めない文字を数十バイト出して入力を待つ。これは準備完了の枠。Ctrl+Z、Enter で終わる）。(c) で子が残るなら、`Get-Process ikari-lm-host | Select-Object Id, StartTime` を記録する（親の stdin が閉じても終わらなかったことになる）。
+- うまくいかないとき: (a) で子がいない・`host=on` が無いなら、`ikari-lm-host.exe` が `ikari-engine-host.exe` と同じフォルダにあるかを見る。`host_gpu_off=1` なら、GPU の子が 3 回続けて失敗して CPU の子に切り替わっている（`dev=cpu`）。`host_gave_up=1` なら、CPU の子でも 3 回続けて失敗している（読み込みが 60 秒を超えた、DLL が足りず起動できない、など）。`target\release\ikari-lm-host.exe --model <モデル> --gpu on` を端末で直接動かし、すぐ終わるか（DLL の欠けのダイアログ、終了コード）を見る（正常なら、読み込みのあとに読めない文字を数十バイト出して入力を待つ。これは準備完了の枠。Ctrl+Z、Enter で終わる）。(c) で子が残るなら、`Get-Process ikari-lm-host | Select-Object Id, StartTime` を記録する（親の stdin が閉じても終わらなかったことになる）。
 
 ## 6. 結果の記録の書き方
 

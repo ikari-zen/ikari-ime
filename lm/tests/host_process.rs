@@ -238,7 +238,8 @@ fn a_hung_child_is_killed_at_the_deadline() {
 
 #[test]
 fn consecutive_failures_give_up_and_stop_spawning() {
-    let h = Harness::new("exit_after=0\n");
+    // GPU を使わない設定（GPU を使う設定では、諦める前に CPU の子で試し直す。下の別のテスト）
+    let h = Harness::with("exit_after=0\n", false, ZenzConfig::default());
     for n in 1..=MAX_FAILURES {
         assert_eq!(h.first(), BAD);
         assert!(wait_until(|| h.health.consecutive_failures() == n));
@@ -260,7 +261,8 @@ fn consecutive_failures_give_up_and_stop_spawning() {
 #[test]
 fn a_new_loader_forgets_that_the_old_one_gave_up() {
     // 断念はメモリだけで覚える。エンジンを起動し直す（loader を作り直す）と、もう一度試す
-    let h = Harness::new("exit_after=0\n");
+    // GPU を使わない設定（GPU を使う設定では、諦める前に CPU の子で試し直す。下の別のテスト）
+    let h = Harness::with("exit_after=0\n", false, ZenzConfig::default());
     for n in 1..=MAX_FAILURES {
         assert_eq!(h.first(), BAD);
         assert!(wait_until(|| h.health.consecutive_failures() == n));
@@ -356,7 +358,8 @@ fn after_a_gpu_load_fallback_the_child_is_started_without_gpu() {
     assert_eq!(h.first(), BAD);
     assert_eq!(h.first(), GOOD);
     // 2 回目の起動は GPU を試さない（ADR 0059 §2.4 の「この起動の間は CPU」と同じ）
-    assert_eq!(h.starts(), ["on", "off"]);
+    assert_eq!(h.starts(), ["on", "cpu"]);
+    assert!(h.health.gpu_disabled());
 }
 
 #[test]
@@ -385,4 +388,66 @@ fn idle_unload_ends_the_child_and_the_next_request_starts_a_new_one() {
     assert_eq!(h.health.spawns(), 2);
     // アイドルの解放は失敗ではない
     assert_eq!(h.health.consecutive_failures(), 0);
+}
+
+#[test]
+fn a_gpu_child_that_keeps_crashing_is_replaced_by_a_cpu_child() {
+    // GPU の子は最初の要求で落ちる。CPU の子は健康
+    let h = Harness::new(&format!("{HEALTHY}die_on_gpu=1\n"));
+    for n in 1..=MAX_FAILURES {
+        assert_eq!(h.first(), BAD);
+        // 上限に達した回で、諦めずに CPU だけに切り替わり、数は 0 に戻る
+        let expected = if n == MAX_FAILURES { 0 } else { n };
+        assert!(wait_until(
+            || h.health.consecutive_failures() == expected && h.health.child_id().is_none()
+        ));
+    }
+    assert!(h.health.gpu_disabled());
+    assert!(!h.health.gave_up());
+    // 次の要求から CPU の子で LM が戻る
+    assert!(wait_until(|| h.first() == GOOD));
+    assert_eq!(h.ranker.device(), LmDevice::Cpu);
+    let mut expected = vec!["on"; MAX_FAILURES as usize];
+    expected.push("cpu");
+    assert_eq!(h.starts(), expected);
+    assert!(!h.health.gave_up());
+}
+
+#[test]
+fn when_the_cpu_child_also_keeps_crashing_the_host_gives_up() {
+    // GPU でも CPU でも、最初の要求で落ちる
+    let h = Harness::new("exit_after=0\n");
+    for _ in 0..(MAX_FAILURES * 2) {
+        assert!(!h.health.gave_up());
+        let spawns = h.health.spawns();
+        assert_eq!(h.first(), BAD);
+        assert!(wait_until(
+            || h.health.spawns() == spawns + 1 && h.health.child_id().is_none()
+        ));
+    }
+    assert!(wait_until(|| h.health.gave_up()));
+    assert!(h.health.gpu_disabled());
+    // GPU で上限まで、そのあと CPU で上限まで。以後は起動しない
+    let mut expected = vec!["on"; MAX_FAILURES as usize];
+    expected.extend(vec!["cpu"; MAX_FAILURES as usize]);
+    assert_eq!(h.starts(), expected);
+    assert_eq!(h.first(), BAD);
+    assert_eq!(h.health.spawns(), u64::from(MAX_FAILURES * 2));
+}
+
+#[test]
+fn no_cpu_retry_when_gpu_is_off_or_was_never_used() {
+    // 設定で GPU を使わない: 上限で諦める（CPU で試し直しても同じ）
+    let off = Harness::with("exit_after=0\n", false, ZenzConfig::default());
+    // GPU を使う設定だが、子が CPU に載せたと知らせた（GPU のない機械）
+    let unused = Harness::new("gpu=unused\nexit_after=0\n");
+    for h in [&off, &unused] {
+        for n in 1..=MAX_FAILURES {
+            assert_eq!(h.first(), BAD);
+            assert!(wait_until(|| h.health.consecutive_failures() == n));
+        }
+        assert!(h.health.gave_up());
+        assert!(!h.health.gpu_disabled());
+        assert_eq!(h.health.spawns(), u64::from(MAX_FAILURES));
+    }
 }

@@ -1,6 +1,6 @@
 //! テスト用の偽の `ikari-lm-host`（モデルなし）。配布物には入れない。
 //!
-//! 引数は本物と同じ（`--model <パス> --gpu on|off`）。`--model` のファイルを「台本」として読む（`key=value` の行）。
+//! 引数は本物と同じ（`--model <パス> --gpu on|off|cpu`）。`--model` のファイルを「台本」として読む（`key=value` の行）。
 //! テストは台本を書き換えて、次に起動する子の挙動を変えられる。
 //!
 //!   load=fail              読み込みの失敗を返して終わる
@@ -8,6 +8,8 @@
 //!   ready_delay_ms=N       Ready の前に N ms 待つ
 //!   version=N              Ready の版を N にする
 //!   gpu=fallback           `--gpu on` のとき、GPU で読めず CPU で読み直したことにする
+//!   gpu=unused             `--gpu on` でも、装置を CPU と報告する（GPU のない機械）
+//!   die_on_gpu=1           `--gpu on` のとき、最初の要求で（答えずに）終わる（GPU のドライバで落ちる子）
 //!   delay_ms=N             採点 1 回に N ms かける
 //!   exit_after=N           N 回答えたあと、次の要求で（答えずに）終わる
 //!   hang_after=N           N 回答えたあと、次の要求で（答えずに）止まる
@@ -17,7 +19,7 @@
 //!
 //! `--gpu off` で起動したときは装置を CPU と報告する（`--gpu on` は GPU）。
 //! 要求が来たときに `<台本のパス>.die` があれば、答えずに終わる（動いている子を、テストが外から落とす）。
-//! 起動のたびに、`<台本のパス>.starts` に `--gpu` の値を 1 行足す（テストが、起動の回数と引数を見る）。
+//! 起動のたびに、`<台本のパス>.starts` に `--gpu` の値（`on` / `off` / `cpu`）を 1 行足す（テストが、起動の回数と引数を見る）。
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -63,6 +65,8 @@ impl Script {
 struct FakeScorer {
     script: Script,
     die_flag: PathBuf,
+    /// `--gpu on` で起動し、台本が `die_on_gpu=1`
+    die_now: bool,
     answered: u64,
 }
 
@@ -74,7 +78,7 @@ impl FakeScorer {
 
 impl LmScorer for FakeScorer {
     fn nll(&mut self, _prompt: &str, candidates: &[String]) -> Result<Vec<f32>, LmError> {
-        if self.die_flag.exists() || self.reached("exit_after") {
+        if self.die_now || self.die_flag.exists() || self.reached("exit_after") {
             std::process::exit(1);
         }
         if self.reached("hang_after") {
@@ -117,7 +121,8 @@ fn main() -> ExitCode {
     let Some(model) = value_of(ARG_MODEL).map(PathBuf::from) else {
         return ExitCode::from(2);
     };
-    let gpu_on = value_of(ARG_GPU).as_deref() == Some(ARG_GPU_ON);
+    let gpu_arg = value_of(ARG_GPU).unwrap_or_default();
+    let gpu_on = gpu_arg == ARG_GPU_ON;
     let script = Script::read(&model);
     let die_flag = {
         let mut path = model.clone().into_os_string();
@@ -131,7 +136,7 @@ fn main() -> ExitCode {
         .append(true)
         .open(starts)
     {
-        let _ = writeln!(f, "{}", if gpu_on { "on" } else { "off" });
+        let _ = writeln!(f, "{gpu_arg}");
     }
 
     if script.is("ready", "never") {
@@ -151,11 +156,13 @@ fn main() -> ExitCode {
         thread::sleep(FOREVER);
     }
 
+    let die_now = gpu_on && script.is("die_on_gpu", "1");
     let load = move || {
         if script.is("load", "fail") {
             return Err(LmError::Load("fake load failure".to_owned()));
         }
-        let fallback = gpu_on && script.is("gpu", "fallback");
+        let fallback = gpu_on && (script.is("gpu", "fallback") || script.is("gpu", "unused"));
+        let load_failed = gpu_on && script.is("gpu", "fallback");
         let info = ReadyInfo {
             device: if gpu_on && !fallback {
                 LmDevice::Gpu
@@ -163,7 +170,8 @@ fn main() -> ExitCode {
                 LmDevice::Cpu
             },
             gpu: match (gpu_on, fallback) {
-                (true, true) => GpuState::FallbackLoadFailed,
+                (true, true) if load_failed => GpuState::FallbackLoadFailed,
+                (true, true) => GpuState::NoGpu,
                 (true, false) => GpuState::On,
                 (false, _) => GpuState::OffSetting,
             },
@@ -172,6 +180,7 @@ fn main() -> ExitCode {
         let scorer = FakeScorer {
             script,
             die_flag,
+            die_now,
             answered: 0,
         };
         Ok((Box::new(scorer) as Box<dyn LmScorer>, info))
