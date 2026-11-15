@@ -26,9 +26,9 @@ const SETTINGS_FILE_NAME: &str = "settings.tsv";
 /// DLL の隣の資源のディレクトリ
 const RESOURCES_DIR_NAME: &str = "resources";
 /// パスの上限（UTF-16。長いパスを含む）
-const MAX_LONG_PATH: usize = 32_768;
+pub(super) const MAX_LONG_PATH: usize = 32_768;
 /// 最初に読むパスのバッファ
-const INITIAL_PATH_LEN: usize = 260;
+pub(super) const INITIAL_PATH_LEN: usize = 260;
 
 fn env_dir(name: &str) -> Option<PathBuf> {
     std::env::var_os(name)
