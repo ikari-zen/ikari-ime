@@ -489,3 +489,57 @@ fn meter_records_first_connect_and_requests() {
     // 入力の本体は行に入らない
     assert!(lines.iter().all(|l| !l.contains("re:a")));
 }
+
+/// 受けるだけで返事をしないサーバー（固まったエンジン）。接続ごとの切る手段を返す
+fn hung_server() -> (MemConnector, mpsc::Receiver<Arc<dyn ikari_pipe::Shutdown>>) {
+    let (mut listener, connector) = mem::listener();
+    let (kill_tx, kill) = mpsc::channel();
+    thread::spawn(move || {
+        let mut held = Vec::new();
+        while let Ok(Some(duplex)) = listener.accept() {
+            let (reader, writer, shutdown) = duplex.split();
+            let _ = kill_tx.send(Arc::clone(&shutdown));
+            held.push((reader, writer, shutdown));
+        }
+    });
+    (connector, kill)
+}
+
+/// #404: 固まったエンジン（返事が来ない）を `EngineLink` まで通し、
+/// 休止（遮断器）に入って、パイプを呼ばなくなること。
+#[test]
+fn a_hung_engine_that_never_replies_ends_in_suspension() {
+    use ikari_shell_core::SystemClock;
+    use ikari_shell_core::engine::HUNG_TIMEOUT_LIMIT;
+
+    let (connector, _kill) = hung_server();
+    let scripted = Arc::new(Scripted::new(connector, &[]));
+    let sink = DownSink::new();
+    let transport = PipeTransport::with_backoff(
+        Arc::clone(&scripted),
+        Arc::clone(&sink),
+        Duration::from_millis(1),
+        Duration::from_millis(1),
+    );
+    let link = Arc::new(EngineLink::new(
+        Box::new(transport),
+        Arc::new(SystemClock::new()),
+    ));
+    sink.bind(&link);
+
+    // 1 回の時間切れでは休止に入らない。続けば入る
+    assert!(link.postal_lookup("1000001", short()).is_err());
+    assert!(!link.is_suspended());
+    for _ in 1..HUNG_TIMEOUT_LIMIT {
+        assert!(link.postal_lookup("1000001", short()).is_err());
+    }
+    assert!(link.is_suspended(), "時間切れの連続で休止に入る");
+
+    // 休止の中はパイプ（コネクタ）を呼ばない
+    let opens = scripted.opens();
+    assert_eq!(
+        link.postal_lookup("1000001", short()),
+        Err(ikari_shell_core::EngineError::Unavailable)
+    );
+    assert_eq!(scripted.opens(), opens);
+}

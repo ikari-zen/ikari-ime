@@ -702,6 +702,59 @@ fn three_crashes_in_a_suspension_window_stop_calling_the_engine_for_five_minutes
 }
 
 #[test]
+fn consecutive_reply_timeouts_suspend_like_crashes() {
+    let h = Harness::new();
+    h.link.convert(sample_request(), SEC).unwrap();
+    h.respond(|_| None);
+    for _ in 0..HUNG_TIMEOUT_LIMIT {
+        assert!(!h.link.is_suspended());
+        assert_eq!(
+            h.link.convert(sample_request(), MS),
+            Err(EngineError::Timeout)
+        );
+        h.advance(Duration::from_secs(1));
+    }
+    assert!(h.link.is_suspended());
+    assert_eq!(
+        h.link.convert(sample_request(), MS),
+        Err(EngineError::Unavailable)
+    );
+    h.advance(SUSPENSION + SEC);
+    assert!(!h.link.is_suspended());
+}
+
+#[test]
+fn a_success_between_timeouts_restarts_the_count() {
+    let h = Harness::new();
+    h.link.convert(sample_request(), SEC).unwrap();
+    for _ in 0..HUNG_TIMEOUT_LIMIT * 2 {
+        h.respond(|_| None);
+        assert_eq!(
+            h.link.convert(sample_request(), MS),
+            Err(EngineError::Timeout)
+        );
+        h.respond(|request| default_response(request, "1.0"));
+        h.link.convert(sample_request(), SEC).unwrap();
+    }
+    assert!(!h.link.is_suspended());
+}
+
+#[test]
+fn timeouts_spread_over_more_than_a_minute_do_not_suspend() {
+    let h = Harness::new();
+    h.link.convert(sample_request(), SEC).unwrap();
+    h.respond(|_| None);
+    for _ in 0..HUNG_TIMEOUT_LIMIT * 2 {
+        assert_eq!(
+            h.link.convert(sample_request(), MS),
+            Err(EngineError::Timeout)
+        );
+        h.advance(Duration::from_secs(40));
+    }
+    assert!(!h.link.is_suspended());
+}
+
+#[test]
 fn crashes_spread_over_more_than_a_minute_do_not_suspend() {
     let h = Harness::new();
     h.link.convert(sample_request(), SEC).unwrap();
