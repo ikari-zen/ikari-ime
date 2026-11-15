@@ -126,9 +126,8 @@ pub extern "system" fn DllRegisterServer() -> HRESULT {
         || match register::register() {
             Ok(()) => S_OK,
             Err(e) => {
+                // 途中まで書いたものの後始末は `register` が決める（更新のときは前の版の登録を残す。ADR 0063 §3 の 2）
                 log::error("DllRegisterServer failed", &e);
-                // 途中まで書いたものを消す（消せないものは残る。解除の誤りは捨てる）
-                let _ = register::unregister();
                 e.code()
             }
         },

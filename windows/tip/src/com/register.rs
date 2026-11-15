@@ -7,6 +7,11 @@
 //!
 //! `regsvr32` は呼ぶ前に COM（OLE）を初期化する。
 //!
+//! 更新（ADR 0063 §3 の 1・2）: 新しい版の DLL は版ごとのフォルダ（`<インストール先>\tip\<版>\`）に置かれ、その
+//! `DllRegisterServer` が呼ばれる。**先に解除しない**。上の 1 の `InprocServer32` の既定値（とプロファイルのアイコンの
+//! パス）を自分の場所に書き換えるだけで、CLSID・プロファイルの GUID・カテゴリは版をまたいで同じ。登録が途中で
+//! 失敗したときも、前の登録があれば解除しない（`deploy::cleanup_after_failed_register`）。
+//!
 //! TODO(S9): いまは HKCR（`HKLM\Software\Classes`。管理者が要る）に書く。ユーザーごとの登録（HKCU）で TSF が
 //! 読むか、更新のときの置き換えとあわせて W5 の実機で確かめる。
 
@@ -17,7 +22,7 @@ use windows::Win32::Foundation::{
 };
 use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance};
 use windows::Win32::System::Registry::{
-    HKEY_CLASSES_ROOT, REG_SZ, RegDeleteTreeW, RegSetKeyValueW,
+    HKEY_CLASSES_ROOT, REG_SZ, RRF_RT_REG_SZ, RegDeleteTreeW, RegGetValueW, RegSetKeyValueW,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::HKL;
 use windows::Win32::UI::TextServices::{
@@ -28,7 +33,8 @@ use windows::Win32::UI::TextServices::{
 use windows_core::{GUID, HSTRING, PCWSTR};
 
 use super::guids::{CLSID_TEXT_SERVICE, GUID_PROFILE_JAPANESE};
-use super::{dll, host};
+use super::{dll, host, log};
+use crate::deploy::{self, PriorRegistration, RegisterFailureCleanup};
 
 /// 入力メニューと設定に出る名前
 const DISPLAY_NAME: &str = "ikari";
@@ -57,7 +63,25 @@ const CATEGORIES: [GUID; 4] = [
     GUID_TFCAT_TIPCAP_INPUTMODECOMPARTMENT,
 ];
 
+/// 登録する（更新のときは、前の版の登録を自分の場所に向け直す）。失敗したら、新しく入れるときだけ途中まで
+/// 書いたものを消す（消せないものは残る。解除の誤りは捨てる）。
 pub fn register() -> windows_core::Result<()> {
+    let prior = prior_registration();
+    let result = register_all();
+    if result.is_err() {
+        match deploy::cleanup_after_failed_register(prior) {
+            RegisterFailureCleanup::Unregister => {
+                let _ = unregister();
+            }
+            RegisterFailureCleanup::Keep => {
+                log::event("register failed; keeping the previous registration");
+            }
+        }
+    }
+    result
+}
+
+fn register_all() -> windows_core::Result<()> {
     let path = module_path()?;
     register_class(&path)?;
     register_profile(&path)?;
@@ -75,6 +99,31 @@ pub fn unregister() -> windows_core::Result<()> {
 
 fn clsid_key() -> String {
     format!("CLSID\\{{{CLSID_TEXT_SERVICE:?}}}")
+}
+
+/// 登録を始める前の `InprocServer32` の既定値の有無（値は読まない）。
+fn prior_registration() -> PriorRegistration {
+    let key = HSTRING::from(format!("{}\\InprocServer32", clsid_key()));
+    // SAFETY: `key` は NUL で終わる UTF-16 で、呼び出しの間生きている。値の名前は既定値（null）。
+    // データとその大きさの受け口を渡さない（有無だけを見る。pvData が null なら pcbData も null でよい）
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_CLASSES_ROOT,
+            &key,
+            PCWSTR::null(),
+            RRF_RT_REG_SZ,
+            None,
+            None,
+            None,
+        )
+    };
+    if status == ERROR_SUCCESS {
+        PriorRegistration::Present
+    } else if status == ERROR_FILE_NOT_FOUND {
+        PriorRegistration::Absent
+    } else {
+        PriorRegistration::Unknown
+    }
 }
 
 fn check(status: WIN32_ERROR) -> windows_core::Result<()> {

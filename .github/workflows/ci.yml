@@ -180,6 +180,7 @@ jobs:
           cargo build --release -p ikari-lm --example devices --features vulkan
       # 窓なしのエンジン（hide-console。#372）。コンソールつき（Vulkan の LM つき）の exe は、上書きされるので先に取っておき、あとで戻す。
       # 窓なしも Vulkan の LM つき（ふだん使いの構成）。start-engine.ps1 は、-hidden があればそれを使う
+      # （導入先に ikari-engine-host.exe の名前で写してから起動する。TIP はその名前のエンジンだけを相手にする。ADR 0063、#409）
       - name: release ビルド（窓なしのエンジン）
         shell: pwsh
         env:

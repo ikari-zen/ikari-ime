@@ -14,14 +14,17 @@ param([int]$LogLines = 20)
 
 Write-Step 'Settings used by these scripts'
 Write-Note "DataDir:        $DataDir"
-Write-Note "Engine exe:     $EngineExe"
-Write-Note "TIP DLL (copy): $TipDllInstalled"
+Write-Note "Engine exe:     $DevEngineExe   (copied from $ReleaseDir by start-engine.ps1)"
+Write-Note "TIP versions:   $TipVersionsDir\<time>\$TipDllName"
 Write-Note "User SID / session: $(Get-CurrentUserSid) / $(Get-CurrentSessionId)"
 
 Write-Step 'Engine process'
 $ours = @(Get-OurEngineProcesses)
 if ($ours.Count -eq 0) { Write-Note 'Not running (this build).' }
-foreach ($p in $ours) { Write-Note ("PID {0}  started {1}  working set {2:N0} MB" -f $p.Id, $p.StartTime, ($p.WorkingSet64 / 1MB)) }
+foreach ($p in $ours) {
+    Write-Note ("PID {0}  started {1}  working set {2:N0} MB  {3}" -f $p.Id, $p.StartTime, ($p.WorkingSet64 / 1MB), $p.Path)
+    if ($p.Path -ine $DevEngineExe) { Write-Warn "Not the install copy: the TIP does not talk to it (#409). Run .\start-engine.ps1 -Action restart." }
+}
 $others = @(Get-Process -Name ([IO.Path]::GetFileNameWithoutExtension($EngineExeName)), ([IO.Path]::GetFileNameWithoutExtension($EngineHiddenExe)) -ErrorAction SilentlyContinue | Where-Object { $ours.Id -notcontains $_.Id })
 foreach ($p in $others) { Write-Warn "Another $EngineExeName is running: PID $($p.Id) (not touched by these scripts)" }
 
@@ -39,8 +42,21 @@ if (Test-Path -LiteralPath $clsidKey) {
     $model = (Get-ItemProperty -LiteralPath $clsidKey).ThreadingModel
     Write-Note "CLSID registered: $registered   ThreadingModel=$model"
     if (-not (Test-Path -LiteralPath $registered)) { Write-Warn 'The registered DLL file does not exist.' }
+    if (-not (Get-TipVersionName $registered)) { Write-Warn "The registered DLL is not in $TipVersionsDir (not made by register.ps1)." }
 }
 else { Write-Note 'CLSID not registered.' }
+
+Write-Step "TIP version folders in $TipVersionsDir (oldest first)"
+$currentVersion = Get-TipVersionName (Get-RegisteredTipDll)
+$versionDirs = @(Get-TipVersionDirs)
+if ($versionDirs.Count -eq 0) { Write-Note '(none)' }
+foreach ($d in $versionDirs) {
+    if ($d.Name -eq $currentVersion) { Write-Note "$($d.Name)   <- registered" } else { Write-Note $d.Name }
+}
+if ($versionDirs.Count -gt 1) { Write-Note 'Delete the older ones with .\clean-tip.ps1 (folders still loaded by an app are kept).' }
+if (Test-Path -LiteralPath $LegacyTipDir) {
+    Write-Warn "Old fixed-path copy from before ADR 0063: $LegacyTipDir. When nothing points to it, delete it by hand."
+}
 
 Write-Step 'Data files'
 foreach ($rel in @('dict\grammar.bin', 'dict\system.dict', 'dict\vectors.bin', 'dict\emoji.tsv', 'dict\postal.tsv',
