@@ -161,7 +161,7 @@ def split_epochs(events):
     `hello` は区切りに使えない: 殻が入力モードを有効にするたびに送る（実機のログで 2000 回以上、
     直前は emoji_table / begin_session）ので、エンジンの起動とは対応しない。
     `session=` の番号は殻（IME のプロセス）が採番し、プロセスが替わると 1 から数え直す。
-    セッションは (epoch, session=) の組で区別し、さらに次の場合は新しいセッションとして数える。
+    セッションは (epoch, conn=, session=) の組で区別し（conn= のない行は 0。Windows の接続ごとの重なりを混ぜない）、さらに次の場合は新しいセッションとして数える。
     - `end_session session=N`（D5 以降の行）のあとの begin_session
     - `app=` が替わる begin_session（end_session に session= がない古い行のための代わり）
     同じ app の begin_session は secure と文脈共有の更新で、続きとして扱う。
@@ -173,7 +173,7 @@ def split_epochs(events):
     epoch, starts = 0, []
     pending = True
     prev_lm, lm_swapped = None, False
-    live = {}  # (epoch, session) -> [通し番号, app, 終わったか, begin_session を見たか]
+    live = {}  # (epoch, conn, session) -> [通し番号, app, 終わったか, begin_session を見たか]
     instances = 0
     smoke_sessions = set()
     begins = collections.defaultdict(lambda: [0, 0])  # epoch -> [smoke の begin 数, app が smoke 以外の begin 数]
@@ -197,7 +197,8 @@ def split_epochs(events):
             e.app = e.kv["app"]  # 2026-10-30 以降の版は convert の行が app= を持つ（ADR 0034 §9-1）。これを優先する
         if sid is None:
             continue
-        key = (epoch, sid)
+        # Windows の engine-host は接続ごとに session= が 1 から重なるので、conn= があればそれも組に入れる（macOS の行には conn= がなく 0。#398）
+        key = (epoch, e.kv.get("conn", "0"), sid)
         cur = live.get(key)
         if e.kind == "begin_session":
             app = e.kv.get("app")

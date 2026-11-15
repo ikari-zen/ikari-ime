@@ -1,0 +1,5 @@
+1793086402000 connect 1us lm=ready err=- conn=1
+1793086402010 connect 1us lm=ready err=- conn=2
+1793086402100 begin_session 30us lm=ready err=- session=1 conn=1 app=com.example.Editor
+1793086402200 begin_session 30us lm=ready err=- session=1 conn=2 app=com.example.Editor
+1793086402300 end_session 5us lm=ready err=- session=1 conn=1
