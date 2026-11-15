@@ -454,12 +454,22 @@ pub fn error_envelope(request_id: u64, code: ErrorCode, message: &str) -> Vec<u8
 
 /// `Engine` が落ちたあとの要求への返事。`request_id` は読めれば返す（読めなければ 0）
 fn engine_stopped_reply(req: &[u8]) -> Vec<u8> {
+    not_ready_envelope(req, "engine stopped")
+}
+
+/// エンジンがまだ開けていないときの返事（Windows の engine-host が、開けないまま常駐する間に返す。
+/// ADR 0062 §5.4 の決定 1。macOS の `IkariEngineService` の `notReady` と同じ）。`request_id` は読めれば返す（読めなければ 0）
+pub fn not_ready_reply(req: &[u8]) -> Vec<u8> {
+    not_ready_envelope(req, "engine not ready")
+}
+
+fn not_ready_envelope(req: &[u8], message: &str) -> Vec<u8> {
     let request_id = if req.len() > MAX_ADMIN_REQUEST_BYTES {
         0
     } else {
         Envelope::decode(req).map_or(0, |env| env.request_id)
     };
-    error_envelope(request_id, ErrorCode::EngineNotReady, "engine stopped")
+    error_envelope(request_id, ErrorCode::EngineNotReady, message)
 }
 
 /// 要求の失敗（`ErrorReply` になる）。`message` は固定の文だけ。

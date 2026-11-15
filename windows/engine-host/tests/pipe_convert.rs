@@ -12,6 +12,7 @@ use std::thread::{self, JoinHandle};
 
 use common::*;
 use ikari_engine_host::serve;
+use ikari_engine_host::slot::EngineSlot;
 use ikari_pipe::os::windows::{ListenerCloser, NamedPipeListener, connect_duplex};
 use ikari_pipe::{Client, Shutdown};
 use ikari_proto::v1 as pb;
@@ -40,7 +41,7 @@ impl Host {
         let name = unique_name();
         let listener = NamedPipeListener::bind(&name).expect("bind the pipe");
         let closer = listener.closer();
-        let engine = Arc::new(engine);
+        let engine = Arc::new(EngineSlot::opened(Arc::new(engine)));
         let thread = thread::spawn(move || serve(listener, engine).expect("serve"));
         Host {
             name,

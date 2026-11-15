@@ -11,9 +11,12 @@
 //! - 接続が切れると `Connection` が落ち、その接続のセッションと状態をエンジンが捨てる（ADR 0064 D2）。
 //! - 1 本の接続の要求は届いた順に処理する。別の接続（別のアプリの TIP）とは並行に動く。
 //! - `Connection::handle` は決して panic せず、エラーも `Envelope` で返すので、ハンドラは常に返事を返す。
+//! - エンジンがまだ開けていないとき（辞書がない、など）は、`ENGINE_NOT_READY` を返し、間隔をおいた次の要求で
+//!   開き直す（`slot`。ADR 0062 §5.4 の決定 1）。開けたら、その接続の `Connection` をそこで取る。
 
 #![deny(unsafe_code)]
 
+pub mod candidate_window;
 #[cfg(windows)]
 pub mod ctrl;
 #[cfg(windows)]
@@ -21,11 +24,12 @@ pub mod endsession;
 pub mod run;
 pub mod session_end;
 pub mod settings_pipe;
+pub mod slot;
 
 use std::io;
 use std::sync::Arc;
 
-use ikari_engine::{Engine, error_envelope};
+use ikari_engine::error_envelope;
 use ikari_pipe::{Listener, Server};
 use ikari_proto::v1::{Envelope, ErrorCode, envelope};
 use prost::Message;
@@ -98,15 +102,18 @@ fn refuse_admin(request: &[u8]) -> Option<Vec<u8>> {
     None
 }
 
-/// 受け口が閉じられるまで受け付け、受けた要求を、接続ごとに `engine.connect()` で取った `Connection` に渡す。
+use crate::slot::{ConnectionSlot, EngineSlot};
+
+/// 受け口が閉じられるまで受け付け、受けた要求を、接続ごとに `engine.connect()` で取った `Connection` に渡す
+/// （開けていなければ `ENGINE_NOT_READY`。`ConnectionSlot`）。
 /// ただし管理の要求（`is_admin_request`）は渡さず、`BAD_REQUEST` を返す（設定のパイプだけが受ける）。
 ///
 /// 戻る前に、残っている接続を閉じてスレッドを待つ（どの `Connection` も `Engine` より先に落ちる。
-/// 接続のスレッドは `Arc<Engine>` を持たないので、呼び出し側が最後の `Arc` を落とせば、`Engine` の
+/// `Engine` は `EngineSlot` だけが持つので、呼び出し側が最後の `Arc<EngineSlot>` を落とせば、`Engine` の
 /// `Drop`（学習の保存）が走る）。
-pub fn serve<L: Listener>(listener: L, engine: Arc<Engine>) -> io::Result<()> {
+pub fn serve<L: Listener>(listener: L, slot: Arc<EngineSlot>) -> io::Result<()> {
     Server::new(listener).serve(move || {
-        let connection = engine.connect();
+        let mut connection = ConnectionSlot::new(Arc::clone(&slot));
         move |request: &[u8]| {
             Some(refuse_admin(request).unwrap_or_else(|| connection.handle(request)))
         }

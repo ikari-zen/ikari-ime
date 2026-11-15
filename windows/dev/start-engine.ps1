@@ -71,6 +71,12 @@ function Start-OurEngine {
         if (Test-Path -LiteralPath $failure) { Write-Note "--- $failure"; Get-Content -LiteralPath $failure -Tail 20 }
         return
     }
+    # the engine stays even when it cannot open the dictionary (it answers ENGINE_NOT_READY and retries; ADR 0062 §5.4)
+    $failure = Join-Path $DataDir 'logs\start-failure.log'
+    if ((Test-Path -LiteralPath $failure) -and ((Get-Item -LiteralPath $failure).LastWriteTime -ge $proc.StartTime)) {
+        Write-Warn "The engine is running but could not open the engine yet (typing gives kana only until it can)."
+        Write-Note "--- $failure"; Get-Content -LiteralPath $failure -Tail 20
+    }
     if (@(Get-IkariPipes) -contains $pipe) { Write-Step "Running (PID $($proc.Id)); pipe $pipe exists." }
     else { Write-Warn "Running (PID $($proc.Id)) but the pipe is not there yet. Check .\status.ps1 in a few seconds." }
 }

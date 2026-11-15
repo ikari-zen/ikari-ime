@@ -8,6 +8,7 @@ use std::thread;
 use common::*;
 use ikari_engine::Engine;
 use ikari_engine_host::serve;
+use ikari_engine_host::slot::EngineSlot;
 use ikari_pipe::mem;
 use ikari_pipe::{Client, ClientError};
 use ikari_proto::v1 as pb;
@@ -17,7 +18,8 @@ use prost::Message;
 /// `serve` を別のスレッドで動かす。`connector` を全部落とすと受け口が閉じ、`serve` が戻る。
 fn spawn_host(engine: Arc<Engine>) -> (mem::MemConnector, thread::JoinHandle<()>) {
     let (listener, connector) = mem::listener();
-    let host = thread::spawn(move || serve(listener, engine).expect("serve"));
+    let slot = Arc::new(EngineSlot::opened(engine));
+    let host = thread::spawn(move || serve(listener, slot).expect("serve"));
     (connector, host)
 }
 
