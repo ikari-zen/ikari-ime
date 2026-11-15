@@ -455,6 +455,21 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 - 期待する結果（**見込み**）: (a) 内蔵 GPU なら `cpu,vulkan:IntegratedGpu`（ほかの CPU の種類の `cpu` の行が並ぶことがある）。(b) `gpu=on`、`dev=gpu`。読み込みと暖機に十数秒かかる（スパイクの N150 の VM の値: 読み込み約 12 秒、最初の 1 回約 6 秒）。その間の変換は LM なしで通常どおり。(c)(d) 落ちずに CPU で動く。(e) スパイクの参考値は ADR 0059 §6。
 - うまくいかないとき: (a) で `none` や CPU だけなら、`backends\` の場所（exe の隣か）、DLL の欠け、`vulkan-1.dll` の有無（`where vulkan-1.dll`）を記録する。(b) でエンジンが落ちるなら、`<データ>\logs\` の最後の行と、直前の `runmark` を記録する（ドライバの中で落ちる場合は捕まえられない。ADR 0059 §2.4）。
 
+#### 項目 40: LM の子（`ikari-lm-host.exe`）が動き、落としてもエンジンが生き残ること（ADR 0060 Q4）
+
+- 前提: CI の `windows-artifact` を持ち込んである（`target\release\` に `ikari-engine-host.exe` と `ikari-lm-host.exe` が並んでいる。`ggml*.dll`、`llama*.dll`、`backends\` も同じ場所）。モデルがある。`engine.lm` は `on`。
+- やること:
+  (a) エンジンを起動して（`start-engine.ps1`）、変換する。`Get-Process ikari-lm-host` で子がいること、`<データ>\logs\` の `lm_load` の行に `host=on host_spawns=1 host_failures=0 host_gave_up=0` があり、`dev=`・`gpu=`・`devices=` が項目 39 の (b) と同じであることを見る。同音異義語の並びが LM ありの並びであることを見る。
+  (b) 子を落とす: `Stop-Process -Name ikari-lm-host -Force`。そのまま変換する（数回）。
+  (c) 親を落とす: 子がいる状態で、エンジンをタスクマネージャーから「タスクの終了」で落とす。数秒後に `Get-Process ikari-lm-host`。
+  (d) 窓なしのエンジン（`start-engine.ps1` が `-hidden` を使う構成）で起動し、変換する。コンソールの窓が出ないことを見る。
+  (e) `ikari-lm-host.exe` を一時的に別の名前にして、エンジンを起こし直し、変換する。`lm_load` の行を見る。戻す。LM なしのエンジン（`ikari-engine-host-nolm.exe`）でも同じことを試す。
+  (f) 往復の追加: `target\release\ikari-eval.exe --ranker full --set eval\sets\homophones-ext.tsv --lm <モデル> --dict <データ>\dict` を、`--lm-host target\release\ikari-lm-host.exe` あり・なしで流し、標準エラーの `lm inference:` の行（p50、p95、p99、max、load_ms、warm_up_ms）と、`--out-cases` の 2 つのファイルの一致を比べる。GPU（`IKARI_LM_GPU=1`）と CPU（`0`）の両方。
+  (g) アイドルの解放: `settings.tsv` に `engine.idle_unload_secs<TAB>60` を足して起こし直し、変換してから 60 秒以上（GPU に載っていれば、これは効かず 1800 秒）待つ。`Get-Process ikari-lm-host`。もう一度変換する。
+- 期待する結果（**見込み**）: (a) 子が 1 つ。(b) 変換は止まらず、候補は出続ける（落とした直後の 1 回は LM なしの並び）。次の変換で子が起動し直り（`Get-Process` で pid が変わる）、読み込みが済むと LM ありの並びに戻る。エンジンは落ちない。(c) 子も消える（Job Object）。(d) 窓は出ない。(e) LM つきのエンジンは、子なしで同じプロセスで動く（`lm_load` に `host=on` が無い）。LM なしのエンジンは LM なし（`lm=failed`）で動く。子を戻すと、LM なしのエンジンでも LM が効く。(f) 1 位は全件一致、`--out-cases` は一致、p50 の差はほぼ無い（スパイクの N150 の値: 171.5ms 対 171.8ms）。(g) CPU のときは子が消え、次の変換で起動し直る。
+- 記録してほしい数字（締め切りの値を決めるため。ADR 0060 の「Q4 の本実装」）: (f) の `load_ms`、`warm_up_ms`、`max` を GPU と CPU で。(a) の起動から `lm_load` の行までの所要（行の 3 つ目の欄。µs）を、ビルド直後の最初の 1 回と 2 回目以降で。
+- うまくいかないとき: (a) で子がいない・`host=on` が無いなら、`ikari-lm-host.exe` が `ikari-engine-host.exe` と同じフォルダにあるかを見る。`host_gave_up=1` なら、子が 3 回続けて失敗している（読み込みが 60 秒を超えた、DLL が足りず起動できない、など）。`target\release\ikari-lm-host.exe --model <モデル> --gpu on` を端末で直接動かし、すぐ終わるか（DLL の欠けのダイアログ、終了コード）を見る（正常なら、読み込みのあとに読めない文字を数十バイト出して入力を待つ。これは準備完了の枠。Ctrl+Z、Enter で終わる）。(c) で子が残るなら、`Get-Process ikari-lm-host | Select-Object Id, StartTime` を記録する（親の stdin が閉じても終わらなかったことになる）。
+
 ## 6. 結果の記録の書き方
 
 次の表を、コピーして使います（この文書に書き込まず、issue のコメントか、別のメモに書いてください。この文書は手順書として保ちます）。1 項目 1 行。「結果」は、○（期待どおり）、△（一部、または条件つき）、×（期待と違う）、－（できなかった。理由を備考に）のどれか。「見たこと」は、事実だけを書き、推測は備考に、「推測」と付けて書きます。

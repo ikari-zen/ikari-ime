@@ -14,7 +14,7 @@ ikari-ime の今の構成を 1 か所にまとめた地図。判断の理由は�
 | `dict-builder` | SudachiDict の CSV と chiVe から辞書を作る。ポリシー（`policy/*.tsv`）でコストを調整する。異字同訓の表（`policy/kun.tsv`）で動詞・形容詞の表記を並べる。`town` サブコマンドが ABR の町字マスターから地名の語彙（`town_lex.csv`）と、住所の連なり（都道府県 + 郡 + 市区 + 町名。`chain_lex.csv`。同じ行の Core にも勝つ。[0030 §12](adr/0030-abr-town-vocabulary.md)）を作る | [0001 §8](adr/0001-phase0-architecture.md)、[0002 §4](adr/0002-phase1-architecture.md)、[0009](adr/0009-verb-notation.md)、[0030](adr/0030-abr-town-vocabulary.md) |
 | `input` | ローマ字、JIS かな、字種変換。辞書に依存しない純粋な処理（殻がリンクする） | [0004 §3.3](adr/0004-phase2-macos.md) |
 | `core` | 辞書引き、ラティスと Viterbi、Ranker（cost、左文脈（連接と複合語。[0007](adr/0007-left-context-compound.md)）、文書内キャッシュ、かなの表記、学習、プロファイル、話題）と Guard、`Converter`、文節の編集と再変換（`Segmented`、`Converter::segment` / `resize` / `reconvert`。区切りの規則は `pos::{ClauseWord, clause_starts, joins_following_noun}`、解析は `ContextAnalyzer::analyze_text`、読みの逆引きは `Dictionary::warm_reading_index`、辞書のページの先読みは `Dictionary::prefault`。[契約 §6](phase2-contract.md)）、LM が規則 S の守った1位を覆したら戻す段（`CompositeRanker` の最後の段。判定は `lattice::has_noun_suru_edge`。[0024](adr/0024-lm-keeps-rule-s.md)）、英字が1位のときのカタカナの繰り上げ（`ranker/english_first.rs` が置き換えた候補を作り、`CompositeRanker` の最後の段が1位にする。置き換えた候補の追加は `Conversion::build_first_pool`。[0020](adr/0020-english-spelling-first-candidate.md)）、読みそのままの平仮名・片仮名の救済（最初のプールを rank したあと、30 位より後ろなら 30 位へ。`conversion::rescue_reading_kana`、文節のモードは `pin_first` のあとにも。`convert.kana_rescue_rank`、0 で無効。[0052](adr/0052-reading-kana-rescue.md)）、ユーザーデータ（`user/`。同じ読みで直前に選んだ表記は `LearningStore` のメモリ `RecentChoices` に持ち、数分だけ加点する。保存しない。[0045](adr/0045-recent-choice-bonus.md)） | [0001 §4](adr/0001-phase0-architecture.md)、[0002](adr/0002-phase1-architecture.md)、[0003](adr/0003-topic-ranker-decision.md)、[0020](adr/0020-english-spelling-first-candidate.md)、[0024](adr/0024-lm-keeps-rule-s.md) |
-| `lm` | zenz（GGUF、llama.cpp）による話題スコア。feature `llama` / `metal` / `vulkan` のときだけ llama.cpp をビルドする（`vulkan` は Windows の GPU。バックエンドは別の DLL） | [0002 §13.2](adr/0002-phase1-architecture.md)、[0003](adr/0003-topic-ranker-decision.md)、[0059](adr/0059-windows-gpu-inference.md) |
+| `lm` | zenz（GGUF、llama.cpp）による話題スコア。feature `llama` / `metal` / `vulkan` のときだけ llama.cpp をビルドする（`vulkan` は Windows の GPU。バックエンドは別の DLL）。推論を別プロセスに頼む口（`host`。取り決め `host::proto`、親の側 `host_loader`、子の側 `serve`）と、その子の bin `ikari-lm-host`（feature `llama` が要る）を持つ。`ikari-lm-host-fake` はテスト用の偽の子（配らない） | [0002 §13.2](adr/0002-phase1-architecture.md)、[0003](adr/0003-topic-ranker-decision.md)、[0059](adr/0059-windows-gpu-inference.md)、[0060 Q4](adr/0060-user-selectable-lm-model.md) |
 | `stack` | Converter、Ranker、LM の共有の組み立て（`build_stack`）。エンジン、CLI、eval が使う | [0004 §3.2](adr/0004-phase2-macos.md) |
 | `import` | 取り込みファイル（JSONL）の検証、強制アライメント、初期学習 | [0002 §11](adr/0002-phase1-architecture.md) |
 | `proto` | エンジンと殻の間のメッセージ（`proto/ikari/engine/v1/engine.proto`、prost）。設定アプリと殻の間の `proto/ikari/bridge/v1/bridge.proto` も生成する（`shell-core` の bridge が使う。Swift は `gen-proto.sh`） | [0004 §5](adr/0004-phase2-macos.md)、[0005 §6.3](adr/0005-macos-settings-and-indicator.md) |
@@ -69,8 +69,12 @@ ikari.app（殻。Swift、InputMethodKit、Sandbox なし。~/Library/Input Meth
   └─ IkariProto      生成した protobuf（engine、bridge、shell、settings の .pb.swift。macos/scripts/gen-proto.sh）
         │ XPC（Envelope。署名要件で相互に相手を確かめる）
 IkariEngine.xpc（同梱の XPC サービス。App Sandbox、ネットワークなし）
-  └─ IkariEngineService（Swift は FFI を呼ぶだけ）→ engine-ffi（Rust のエンジン。LM は llama.cpp）
+  └─ IkariEngineService（Swift は FFI を呼ぶだけ）→ engine-ffi（Rust のエンジン）
+        │ 標準入出力のパイプ（枠 + 採点の要求と NLL。lm の host::proto）
+ikari-lm-host（IkariEngine.xpc/Contents/MacOS/ に同梱。LM の推論だけ。llama.cpp、Metal。エンジンが起動し、Sandbox を引き継ぐ。ADR 0060 Q4）
 ```
+
+- LM の推論は `ikari-lm-host` が持つ。エンジンは、自分の実行ファイルの隣にそれがあれば子として起動し、採点を頼む（`engine` の `LmHostChoice::Beside`）。子が落ちても固まっても、エンジンは LM なしの順位で返し続け、次の要求で起動し直し、続けて失敗したら諦める（エンジンを起動し直すまで）。隣に無ければ、同じプロセスで動かす（llama.cpp を入れたビルドだけ。`--no-lm` のビルドは LM なし）。
 
 - `IkariSettings`（設定アプリ「ikari 設定」。`ikari.app/Contents/Helpers/` に同梱）は、殻の Unix ソケット（`IkariBridge`）だけにつなぐ。検証・整形・変更の組み立ては shell-core（`ikari_settings_app`）に頼み、Swift は画面と小さな画面の型（`ScreenTypes.swift`）だけを持つ。
 - 移行の前の Swift の状態機械（`IkariShellCore`）とその測り手（`IkariShellBench`）、旧い FFI（`ikari_composer_*`、`ikari_convert_script`）は、移行の片付け（M5、#138）で消した。
@@ -96,6 +100,7 @@ IkariEngine.xpc（同梱の XPC サービス。App Sandbox、ネットワーク�
   └─ ikari_tip.dll（windows/tip。Rust、cdylib。TSF の COM は cfg(windows) の薄い層。判断は shell-core）
        │ 名前付きパイプ（枠 + Envelope。pipe::Client）
 ikari-engine-host.exe（windows/engine-host。ユーザーのセッションで常駐。pipe::Server → engine。ADR などの `ikari-engine.exe` はこれ）
+  └─ ikari-lm-host.exe（lm の bin。エンジンの exe の隣。LM の推論だけ。エンジンが起動し、Job Object に入れる。標準入出力のパイプ。ADR 0060 Q4）
 候補窓（windows/candidate。WinUI 3 の別プロセス `ikari-candidate.exe`。engine-host が起動して見張る。TIP から片道のパイプで送る。ADR 0062。契約と TIP の送り口は入っていて、画面と起動はこれから）
 設定画面（方式は ADR 0040 §2.5 のスパイクで決める）
 ```
@@ -113,7 +118,7 @@ ikari-engine-host.exe（windows/engine-host。ユーザーのセッションで�
 | **エンジン**: TIP → engine-host。`ikari-ime-engine-v1-<SID>-s<セッション>`。起動は W5（未決）。macOS は XPC、launchd | 返事: 変換 `min(300, max(30, 6×字数)) + 40`ms、管理 3 秒、転送 30 秒、郵便 1 秒（両 OS 共通）。書き: 200ms（暫定。#392）。接続: ふさがりで 100ms × 3、失敗後は 100ms〜1 秒控える（暫定） | 返事の時間切れ → かな候補。書きの締め切り → 切断 → 落ちたと同じ。時間切れ・つなぎ直しの失敗を休止に数えるかは未決（#404。案は PR #407。値は未計測） | 次の要求でつなぎ直し、`Hello` とセッションを送り直す。60 秒に 3 回で 300 秒休止。その間はかな候補（両 OS 共通）。エンジンを開けない（辞書がない、など）ときは、engine-host は終わらずに受け口を立て、`ENGINE_NOT_READY`（殻はかな候補）を返し、前の試みから 2 秒以上あけた次の要求で開き直す（両 OS 共通。Windows は #414。`windows/engine-host/src/slot.rs`） | 版の文字列: macOS は止めて起こし直す、Windows は共存（ADR 0064）。`schema_version` 違い → かな候補。壊す変更はパイプ名の `-v1-` | 受け口: 自分のユーザーと SYSTEM だけの DACL、リモート拒否、名前の先取り防止。**TIP は相手のパスを照合していない（S1。未決）。engine-host はつないできた相手を確かめない**。macOS は署名要件で相互に確認 | 読み・左文脈・確定を運ぶ。ログは番号と固定の語だけ（NFR-19）。secure は記録しない |
 | **設定**: 設定画面 → engine-host。`ikari-ime-settings-v1-…`。画面の方式は未決（W4-s3）。macOS は殻の Unix ソケット | 管理 3 秒、転送 30 秒。書き 200ms | 未決（画面の側の扱い） | 設定の接続が切れてもエンジンのパイプは動く。画面の側は未決 | 最初の枠で照合、違えば返事を送って閉じる（shell-core `bridge`。両 OS 共通） | DACL は上と同じ。**相手の確認なし（S3。未決。W5・W6）**。macOS は同じユーザー + 署名 + cdhash + パス | 設定、ユーザー辞書、学習（書き出しを含む）。中継は許可リストだけ |
 | **候補窓**: TIP → `ikari-candidate.exe`（片道）。`ikari-ime-candidate-v1-…`。起動と見張りは engine-host で、エンジンを開く前に起動する（[ADR 0062 §5.4](adr/0062-windows-candidate-window.md)。入口は `windows/engine-host/src/candidate_window.rs`。今は何もせず、起動と Job Object は W3 の L4）。macOS は同じプロセス | 返事なし。書き 200ms | 送れなければ捨てて切断、再送しない（ADR 0062 §3 の 4）。画面が固まった窓の検知は未決 | 窓なしで続行（§5.4）。エンジンと同じ間隔でつなぎ直す。持ち主の接続が切れたら核が隠す。起動し直しの上限は未決（値） | 知らない欄と命令は無視、`Hello.schema_version` はログだけ。世代は接続ごと（#405） | DACL は上と同じ。**TIP は相手のパスを照合していない（S4。未決）。窓は送り手を確かめない（どのアプリの TIP も正当なので確かめられない）** | 候補と注釈の文字（表示に必要）。ログと既定の PNG には出さない |
-| **LM の子**: engine → `ikari-lm-host`。標準入出力（名前なし）。起動はエンジン（[ADR 0060](adr/0060-user-selectable-lm-model.md) Q4） | 未決（仮置き: 応答 500ms、準備 5 秒。掃引で決める） | 締め切りで kill → LM なしで続行（方針。スパイクで確認、本実装は未） | 起動し直す。連続 3 回で諦める（仮置き）。エンジンの再起動で忘れる | 未決（エンジンと同じ場所に置き一緒に入れ替える前提なら不要。前提を書く） | 名前がないので横取りはない。**exe の絶対パスでの起動、渡すハンドルの限定は未決（S5）**。隔離（AppContainer、Sandbox）は計測のあとに有効（Q4 の (2)） | 左文脈と読み（採点に必要）。子はネットワークなし、読めるのはモデルだけ（方針） |
+| **LM の子**: engine → `ikari-lm-host`。標準入出力（名前なし）。起動はエンジン（[ADR 0060](adr/0060-user-selectable-lm-model.md) Q4。`lm/src/host/`）。両 OS 共通 | 準備（起動からモデルの読み込みの完了まで）60 秒、採点 1 回（書きと読みを合わせて）30 秒（どちらも仮置き。計測で決める）。変換の待ち（`engine.lm_deadline_ms`。300ms まで）は別で、今までどおり | 締め切りで kill して wait → その回は LM なしの順位。変換は止めない | 次の要求で起動し直す。連続 3 回の失敗（起動できない、準備が間に合わない、落ちた、固まった、壊れた返事、版違い、読み込みの失敗）で諦め、以後は起動しない（仮置き）。採点が 1 回成功すれば数は 0 に戻る。エンジンの再起動で忘れる。子が生きていて返した採点 1 件の失敗は数えない。アイドルの解放（`engine.idle_unload_secs`）では子を終わらせ、次の要求で起動する。エンジンが死ぬと、子は stdin が閉じたことで終わる（Windows は Job Object でも） | `Ready` の枠に版（`PROTOCOL_VERSION`）。違えば使わない（失敗に数える）。子はエンジンと同じ場所に置き、一緒に入れ替える前提 | 名前がないので横取りはない。exe はエンジンの実行ファイルの隣の絶対パス（PATH から探さない）。macOS はエンジンの署名に封印。**Windows で子に渡るハンドルの限定は未確認（S5）**。隔離（AppContainer、専用の Sandbox）は計測のあとに有効（Q4 の (2)。今は、macOS はエンジンの App Sandbox を引き継ぐだけ、Windows はなし） | 左文脈と読みと候補（採点に必要）。子から受け取るのは数値と、装置の固定の語だけ（ログに書く前に文字を検査する）。子の失敗の文面はログに書かない |
 
 ## 3. データの置き場所
 

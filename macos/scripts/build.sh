@@ -6,7 +6,7 @@
 #   --signing team   Apple Development 証明書（チームID（`lib.sh` の `TEAM_ID`））で署名する。既定
 #   --signing adhoc  ad-hoc 署名（署名要件は identifier の一致だけになる）
 #   --release/--debug  Swift のビルド種別（Rust は常に release）。既定は release
-#   --no-lm          エンジンに llama.cpp（Metal）を入れない（cmake が使えないとき、LM が要らないとき）
+#   --no-lm          llama.cpp（Metal）を入れない（cmake が使えないとき、LM が要らないとき）。LM の子（ikari-lm-host）も作らない
 #   --skip-rust      cargo と XCFramework の作成を飛ばし、macos/Frameworks/ にあるものを使う
 #   --allow-stub     XCFramework がなくてもビルドする（FFI なしのスタブのエンジンになる。インストールしてはいけない）
 #   --frameworks-only  XCFramework（macos/Frameworks/）だけ作って終わる。Swift のビルド、組み立て、署名はしない（CI の swift test 用）
@@ -46,6 +46,10 @@ SETTINGS="$APP/Contents/Helpers/$SETTINGS_APP_NAME"
 TEMPLATES="$IKARI_SCRIPTS_DIR/templates"
 FRAMEWORKS="$IKARI_MACOS_DIR/Frameworks"
 RUST_TARGET=aarch64-apple-darwin
+# LM の推論を担う別プロセス（ADR 0060 Q4）。エンジンは、自分の実行ファイルの隣（XPC サービスの Contents/MacOS/）から起動する。
+# App Sandbox はエンジンから引き継ぐ（ネットワークなし）。専用の（もっと狭い）Sandbox は、計測のあとに決める
+LM_HOST_NAME=ikari-lm-host
+LM_HOST_BUILT="$IKARI_ROOT/target/lm/$RUST_TARGET/release/$LM_HOST_NAME"
 VERSION="$(workspace_version)"
 [[ -n "$VERSION" ]] || die "Cargo.toml から版を読めません"
 
@@ -130,6 +134,13 @@ build_rust() {
   [[ -n "$reported" ]] || die "native-static-libs が出力されませんでした"
   check_native_libs "$reported"
 
+  if [[ -n "$ENGINE_FEATURES" ]]; then
+    log "cargo build: $LM_HOST_NAME (features: metal)"
+    (cd "$IKARI_ROOT" && CARGO_TARGET_DIR="$IKARI_ROOT/target/lm" cargo build --release \
+      --target "$RUST_TARGET" -p ikari-lm --bin "$LM_HOST_NAME" --features metal)
+    [[ -x "$LM_HOST_BUILT" ]] || die "$LM_HOST_BUILT がありません"
+  fi
+
   log "XCFramework"
   mkdir -p "$FRAMEWORKS" "$OUT"
   make_xcframework "$IKARI_ROOT/target/$RUST_TARGET/release/libikari_shell_ffi.a" \
@@ -190,6 +201,11 @@ assemble_bundle() {
   cp "$BIN_DIR/ikari" "$APP/Contents/MacOS/ikari"
   cp "$BIN_DIR/ikari-smoke" "$APP/Contents/MacOS/ikari-smoke"
   cp "$BIN_DIR/IkariEngine" "$XPC/Contents/MacOS/IkariEngine"
+  # LM の子は、エンジンの実行ファイルの隣に置く（エンジンは隣だけを見る。無ければ LM は同じプロセスで動く）
+  if [[ -n "$ENGINE_FEATURES" ]]; then
+    [[ -x "$LM_HOST_BUILT" ]] || die "$LM_HOST_BUILT がありません（--skip-rust を外してビルドするか、--no-lm を付ける）"
+    cp "$LM_HOST_BUILT" "$XPC/Contents/MacOS/$LM_HOST_NAME"
+  fi
   cp "$BIN_DIR/IkariSettings" "$SETTINGS/Contents/MacOS/IkariSettings"
 
   cp "$TEMPLATES/ikari.Info.plist" "$APP/Contents/Info.plist"
@@ -240,6 +256,10 @@ sign_bundle() {
   local common=(--force --options runtime --timestamp=none -s "$IDENTITY")
   # 内側から
   codesign "${common[@]}" -i "$SMOKE_ID" "$APP/Contents/MacOS/ikari-smoke"
+  # LM の子: Hardened Runtime。entitlement は付けない（起動したエンジンの Sandbox をそのまま引き継ぐ）
+  if [[ -f "$XPC/Contents/MacOS/$LM_HOST_NAME" ]]; then
+    codesign "${common[@]}" -i "$LM_HOST_ID" "$XPC/Contents/MacOS/$LM_HOST_NAME"
+  fi
   codesign "${common[@]}" --entitlements "$TEMPLATES/engine.entitlements" "$XPC"
   # 設定アプリ: Hardened Runtime（--options runtime）、Sandbox なし。identifier は署名要件（SigningRequirements.settingsApp）が見る
   codesign "${common[@]}" -i "$SETTINGS_ID" --entitlements "$TEMPLATES/settings.entitlements" "$SETTINGS"
@@ -265,6 +285,24 @@ verify_bundle() {
   printf '%s' "$ents" | plutil -extract 'com\.apple\.security\.temporary-exception\.files\.home-relative-path\.read-write' xml1 -o - - \
     | grep -qF '<string>/Library/Application Support/ikari-ime/</string>' || die "エンジンのデータ用の一時例外がありません"
   echo "engine entitlements: app-sandbox=true, network=none, temporary-exception=~/Library/Application Support/ikari-ime/"
+
+  # LM の子（ADR 0060 Q4）: エンジンの隣にあり、エンジンの署名に封印されていて、network の権限がない
+  local lm_host="$XPC/Contents/MacOS/$LM_HOST_NAME"
+  if [[ -n "$ENGINE_FEATURES" ]]; then
+    [[ -x "$lm_host" ]] || die "LM の子（$LM_HOST_NAME）がエンジンの隣にありません"
+    codesign --verify --strict "$lm_host" || die "LM の子の署名を検証できません"
+    if entitlements_of "$lm_host" | grep -q 'com\.apple\.security\.network'; then
+      die "LM の子に com.apple.security.network.* があります"
+    fi
+    grep -q "MacOS/$LM_HOST_NAME" "$XPC/Contents/_CodeSignature/CodeResources" \
+      || die "エンジンの署名が $LM_HOST_NAME を封印していません"
+    if [[ "$SIGNING" == team ]]; then
+      local lm_team
+      lm_team="$(codesign -dv "$lm_host" 2>&1 | sed -n 's/^TeamIdentifier=//p')"
+      [[ "$lm_team" == "$TEAM_ID" ]] || die "LM の子のチームID が $TEAM_ID ではありません: '$lm_team'"
+    fi
+    echo "lm host: signed ($LM_HOST_ID), sealed by the engine, network=none"
+  fi
 
   # 殻は Sandbox なし
   if entitlements_of "$APP" | grep -q 'com\.apple\.security\.app-sandbox'; then

@@ -1,6 +1,8 @@
 <#
 .SYNOPSIS
   Builds the engine (ikari-engine-host.exe) and the TIP (ikari_tip.dll) in release mode. Without the LM unless -Lm.
+  With -Lm or -LmVulkan it also builds the LM child process (ikari-lm-host.exe, next to the engine exe): the engine
+  asks it to run the model (ADR 0060 Q4). Without that file next to it, the engine runs the model in its own process.
 .PARAMETER HideConsole
   Build the engine with the "hide-console" feature (no console window; failures go to logs\start-failure.log).
   Leave it off while testing: you want the console.
@@ -79,6 +81,24 @@ if ($LmVulkan) {
     Copy-Item -Path (Join-Path $sysOut 'bin\*.dll') -Destination $ReleaseDir -Force
     if (-not (Get-ChildItem -LiteralPath $ReleaseDir -File -Filter 'llama*.dll')) { throw "llama*.dll was not found in $sysOut" }
     Write-Note "backends: $backendsOut ($((Get-ChildItem -LiteralPath $backendsOut -Filter '*.dll').Count) DLLs)"
+}
+
+if ($Lm -or $LmVulkan) {
+    # The LM child process. Same llama.cpp build as the engine (the feature set of llama-cpp-sys-2 is the same).
+    $lmFeature = if ($LmVulkan) { 'vulkan' } else { 'llama' }
+    $hostArgs = @('build', '--release', '-p', 'ikari-lm', '--bin', 'ikari-lm-host', '--features', $lmFeature)
+    Write-Step "cargo $($hostArgs -join ' ')   (in $RepoRoot)"
+    Push-Location $RepoRoot
+    try {
+        & cargo @hostArgs
+        if ($LASTEXITCODE -ne 0) { throw "cargo build (ikari-lm-host) failed (exit code $LASTEXITCODE)" }
+    }
+    finally {
+        Pop-Location
+    }
+    $lmHostExe = Join-Path $ReleaseDir 'ikari-lm-host.exe'
+    if (-not (Test-Path -LiteralPath $lmHostExe)) { throw "build finished but $lmHostExe does not exist" }
+    Write-Note "LM child process: $lmHostExe"
 }
 
 foreach ($f in @($EngineExe, $TipDllBuilt)) {
