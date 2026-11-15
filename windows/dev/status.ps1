@@ -15,7 +15,7 @@ param([int]$LogLines = 20)
 Write-Step 'Settings used by these scripts'
 Write-Note "DataDir:        $DataDir"
 Write-Note "Engine exe:     $EngineExe"
-Write-Note "TIP DLL (copy): $TipDllInstalled"
+Write-Note "TIP versions:   $TipVersionsDir\<time>\$TipDllName"
 Write-Note "User SID / session: $(Get-CurrentUserSid) / $(Get-CurrentSessionId)"
 
 Write-Step 'Engine process'
@@ -39,8 +39,21 @@ if (Test-Path -LiteralPath $clsidKey) {
     $model = (Get-ItemProperty -LiteralPath $clsidKey).ThreadingModel
     Write-Note "CLSID registered: $registered   ThreadingModel=$model"
     if (-not (Test-Path -LiteralPath $registered)) { Write-Warn 'The registered DLL file does not exist.' }
+    if (-not (Get-TipVersionName $registered)) { Write-Warn "The registered DLL is not in $TipVersionsDir (not made by register.ps1)." }
 }
 else { Write-Note 'CLSID not registered.' }
+
+Write-Step "TIP version folders in $TipVersionsDir (oldest first)"
+$currentVersion = Get-TipVersionName (Get-RegisteredTipDll)
+$versionDirs = @(Get-TipVersionDirs)
+if ($versionDirs.Count -eq 0) { Write-Note '(none)' }
+foreach ($d in $versionDirs) {
+    if ($d.Name -eq $currentVersion) { Write-Note "$($d.Name)   <- registered" } else { Write-Note $d.Name }
+}
+if ($versionDirs.Count -gt 1) { Write-Note 'Delete the older ones with .\clean-tip.ps1 (folders still loaded by an app are kept).' }
+if (Test-Path -LiteralPath $LegacyTipDir) {
+    Write-Warn "Old fixed-path copy from before ADR 0063: $LegacyTipDir. When nothing points to it, delete it by hand."
+}
 
 Write-Step 'Data files'
 foreach ($rel in @('dict\grammar.bin', 'dict\system.dict', 'dict\vectors.bin', 'dict\emoji.tsv', 'dict\postal.tsv',
