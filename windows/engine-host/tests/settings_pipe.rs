@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use ikari_engine_host::serve;
 use ikari_engine_host::settings_pipe::{SettingsHost, serve_settings};
+use ikari_engine_host::slot::EngineSlot;
 use ikari_pipe::mem;
 use ikari_pipe::{Client, ClientError, Duplex, MAX_FRAME_LEN};
 use ikari_proto::SCHEMA_VERSION;
@@ -41,7 +42,11 @@ impl Fixture {
         let dir = tempfile::tempdir().unwrap();
         let settings_file = dir.path().join("settings.tsv");
         let (store, _) = SettingsStore::open(&settings_file);
-        let host = SettingsHost::new(Arc::new(engine), store, HOST_VERSION);
+        let host = SettingsHost::new(
+            Arc::new(EngineSlot::opened(Arc::new(engine))),
+            store,
+            HOST_VERSION,
+        );
         let (listener, connector) = mem::listener();
         let server = thread::spawn(move || serve_settings(listener, host).unwrap());
         Fixture {
@@ -292,7 +297,7 @@ fn a_request_over_the_pipe_limit_closes_the_connection_without_a_reply() {
 #[test]
 fn closing_a_settings_connection_does_not_stop_the_engine_pipe() {
     let (engine, _data) = open_engine();
-    let engine = Arc::new(engine);
+    let engine = Arc::new(EngineSlot::opened(Arc::new(engine)));
     let dir = tempfile::tempdir().unwrap();
     let (store, _) = SettingsStore::open(dir.path().join("settings.tsv"));
     let host = SettingsHost::new(Arc::clone(&engine), store, HOST_VERSION);

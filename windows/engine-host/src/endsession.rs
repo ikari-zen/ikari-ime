@@ -18,7 +18,6 @@ use std::sync::mpsc;
 use std::sync::{OnceLock, Weak};
 use std::thread;
 
-use ikari_engine::Engine;
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -26,6 +25,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     TranslateMessage, WM_ENDSESSION, WM_QUERYENDSESSION, WNDCLASSW, WS_OVERLAPPED,
 };
 
+use crate::slot::EngineSlot;
 use crate::{ctrl, session_end};
 
 // 判断の側（`session_end`）の定数が、OS の値と同じであることの確認（ずれたらビルドが止まる）
@@ -39,7 +39,7 @@ const _: () = {
 };
 
 /// 診断の行を書く先（`Engine` を生かし続けないよう、弱い参照）。ウィンドウの手続きから使う
-static ENGINE: OnceLock<Weak<Engine>> = OnceLock::new();
+static ENGINE: OnceLock<Weak<EngineSlot>> = OnceLock::new();
 
 /// ウィンドウクラス名（UTF-16。終端つき）。`w!` を使わず、ASCII だけを広げる
 const CLASS_NAME: [u16; 22] = ascii_to_utf16(b"IkariEngineEndSession\0");
@@ -54,16 +54,16 @@ const fn ascii_to_utf16<const N: usize>(bytes: &[u8; N]) -> [u16; N] {
     out
 }
 
-/// `engine.log` に 1 行書く（`host <note>`）。`Engine` がすでに落ちていれば何もしない
+/// `engine.log` に 1 行書く（`host <note>`）。`Engine` がすでに落ちている、まだ開けていなければ何もしない
 fn record(note: &str) {
-    if let Some(engine) = ENGINE.get().and_then(Weak::upgrade) {
-        engine.record_host_event(note);
+    if let Some(slot) = ENGINE.get().and_then(Weak::upgrade) {
+        slot.with_open(|engine| engine.record_host_event(note));
     }
 }
 
 /// 専用スレッドで非表示の最上位ウィンドウを作り、メッセージを回す。作れなかったときはエラー（動きは続けてよい）。
 /// 作成の成否は `engine.log` に書く（`window=created` / `window=failed os_error=N`）。
-pub fn spawn(engine: Weak<Engine>) -> io::Result<()> {
+pub fn spawn(engine: Weak<EngineSlot>) -> io::Result<()> {
     let _ = ENGINE.set(engine);
     let result = spawn_thread();
     match &result {

@@ -3,7 +3,11 @@
 //! 起動と終了の手順は `ikari_engine_host::run`（OS に依存しない。Mac でテストする）。ここは、`cfg(windows)` の
 //! 部分（パイプの受け口、Ctrl+C の受け取り）をつなぐだけ。判断の置き場所: Rust。判断は engine。
 //!
-//! 終了コード: 0 は正常、またはすでに別のエンジンが動いている。1 は非 Windows。2 は起動できない。
+//! 起動の順（ADR 0062 §5.4 の決定 1）: 別のエンジンが動いていないことを確かめる → 候補窓を起動する → エンジンを
+//! 開く（開けなくても終わらない）→ 受け口を作る → 受け付ける。
+//!
+//! 終了コード: 0 は正常、またはすでに別のエンジンが動いている。1 は非 Windows。2 は起動できない（エンジンを開けない
+//! だけでは終わらない。`ENGINE_NOT_READY` を返して常駐する）。
 //! 64 は引数の誤り。`hide-console` を付けたビルドは、コンソールの窓を出さない。
 
 #![cfg_attr(all(windows, feature = "hide-console"), windows_subsystem = "windows")]
@@ -30,7 +34,7 @@ fn windows_main() -> u8 {
         resolve_data_dir, run_host, start,
     };
     use ikari_engine_host::settings_pipe::bind_settings_listener;
-    use ikari_engine_host::{ctrl, endsession};
+    use ikari_engine_host::{candidate_window, ctrl, endsession};
     use ikari_pipe::Shutdown;
     use ikari_pipe::os::windows::NamedPipeListener;
 
@@ -60,7 +64,14 @@ fn windows_main() -> u8 {
         }
     };
 
-    // エンジンが開いてから受け口を作る（つながってきた相手を、開く前に待たせない）
+    // 候補窓は、エンジンを開く前に起動する（窓の寿命はこのプロセスにつなぎ、エンジンが開けたかどうかにつなげない）。
+    // 終わるまで持つ
+    let _candidate_window = candidate_window::launch();
+
+    // 最初の 1 回を開く。開けなくても終わらない（理由は `start` の開く手段が書く。次の要求で開き直す）
+    started.engine.open_now();
+
+    // 最初の試みのあとで受け口を作る（つながってきた相手を、辞書を読む間に待たせない）
     let bound = NamedPipeListener::bind_current_user()
         .and_then(|engine| bind_settings_listener().map(|settings| (engine, settings)));
     let (engine_listener, settings_listener) = match bound {

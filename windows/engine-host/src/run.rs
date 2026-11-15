@@ -6,10 +6,13 @@
 //! - データのディレクトリ: `--data-dir`、`IKARI_USER_DIR`、`%LOCALAPPDATA%\ikari-ime` の順（`UserDir::resolve_with`）。
 //!   辞書は `<データ>/dict/`、モデルは `<データ>/models/`、ログは `<データ>/logs/`、設定は `<データ>/settings.tsv`
 //!   （どれも `Engine::open` が決める配置。ここでは別の場所を持たない）。
-//! - 二重起動の防止: `Engine::open` が `engine.lock`（`EngineLock`）を取る。取れなければ、すでに動いているとして
-//!   静かに終わる（終了コード 0）。
-//! - 失敗: 開けなければ（辞書がないなど）標準エラーと `logs/start-failure.log` に書いて終了コード 2。
-//!   窓のない起動（`hide-console`）では標準エラーが見えないので、ファイルにも書く。
+//! - 二重起動の防止: 起動の最初に `engine.lock`（`EngineLock`）を試しに取る（`start`。取れたらすぐ放す。ロックは
+//!   `Engine::open` が取り直す）。取れなければ、すでに動いているとして静かに終わる（終了コード 0）。
+//!   試しのあとの隙は、パイプの `FILE_FLAG_FIRST_PIPE_INSTANCE` が受ける（後から来た方はパイプを作れずに終わる）。
+//! - 開けないとき（辞書がないなど。ADR 0062 §5.4 の決定 1、#414）: 終わらずに常駐する。理由は標準エラーと
+//!   `logs/start-failure.log` に書き（窓のない起動 `hide-console` では標準エラーが見えないため。同じ理由は繰り返さない）、
+//!   要求には `ENGINE_NOT_READY` を返し、間隔（`slot::REOPEN_INTERVAL`）をおいた次の要求で開き直す（`slot`）。
+//!   終了コード 2 で終わるのは、データのディレクトリが決まらない・作れない、ロックを試せない、受け口を作れないとき。
 //! - 終了: 受け付けを止め、残りの接続を閉じ、エンジンを閉じる（学習の保存）。ロックはエンジンが持つので、
 //!   エンジンを落とすと手放される。
 
@@ -20,21 +23,23 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use ikari_core::user::{UserDir, create_private_dir_all};
-use ikari_engine::{Engine, EngineConfig, EngineError, LockError, SETTINGS_FILE_NAME};
+use ikari_engine::{Engine, EngineConfig, EngineError, EngineLock, LockError, SETTINGS_FILE_NAME};
 use ikari_pipe::{Listener, Shutdown};
 use ikari_shell_core::settings::SettingsStore;
 
 use crate::serve;
 use crate::settings_pipe::{SettingsHost, serve_settings};
+use crate::slot::{EngineSlot, REOPEN_INTERVAL};
 
 /// 正常な終了、または、すでに別のエンジンが動いている
 pub const EXIT_OK: u8 = 0;
 /// 非 Windows で起動した
 pub const EXIT_UNSUPPORTED: u8 = 1;
-/// エンジンを開けない（データのディレクトリが決まらない、辞書がない、など）、受け口を作れない
+/// 起動できない（データのディレクトリが決まらない・作れない、受け口を作れない、など）。
+/// エンジンを開けない（辞書がない、など）だけでは終わらない（常駐する。`slot`）
 pub const EXIT_START_FAILED: u8 = 2;
 /// 引数が不正（`sysexits.h` の `EX_USAGE`）
 pub const EXIT_USAGE: u8 = 64;
@@ -141,23 +146,67 @@ pub fn engine_config(dir: &UserDir) -> EngineConfig {
     }
 }
 
-/// 開いたエンジンと、設定画面の口が共有するもの。
+/// エンジンの置き場所（まだ開いていないかもしれない）と、設定画面の口。
 pub struct Started {
-    pub engine: Arc<Engine>,
+    pub engine: Arc<EngineSlot>,
     pub settings: SettingsHost,
 }
 
-/// データのディレクトリを（なければ）作り、エンジンを開く（ロックを取る）。
+/// データのディレクトリを（なければ）作り、別のエンジンが動いていないことを確かめ、エンジンの置き場所を作る。
+/// エンジンはまだ開かない（`Started::engine` の `open_now` で開く。開けなくても常駐する）。
 pub fn start(dir: &UserDir) -> Result<Started, StartError> {
+    start_with(dir, REOPEN_INTERVAL)
+}
+
+/// `start` と同じ。開き直しの間隔を渡す（テストは 0 にする）。
+pub fn start_with(dir: &UserDir, reopen_interval: Duration) -> Result<Started, StartError> {
     create_private_dir_all(dir.root())
         .map_err(|e| StartError::Failed(format!("cannot create the data directory: {e}")))?;
-    let engine = match Engine::open(&engine_config(dir)) {
-        Ok(engine) => Arc::new(engine),
-        Err(e) => return Err(classify_open_error(&e)),
-    };
+    ensure_not_running(dir)?;
+    let engine = Arc::new(EngineSlot::new(opener(dir.clone()), reopen_interval));
     let (store, _issues) = SettingsStore::open(dir.root().join(SETTINGS_FILE_NAME));
     let settings = SettingsHost::new(Arc::clone(&engine), store, env!("CARGO_PKG_VERSION"));
     Ok(Started { engine, settings })
+}
+
+/// `engine.lock` を試しに取って、すぐ放す。取れなければ `AlreadyRunning`
+fn ensure_not_running(dir: &UserDir) -> Result<(), StartError> {
+    match EngineLock::acquire(dir.root()) {
+        Ok(lock) => {
+            drop(lock);
+            Ok(())
+        }
+        Err(LockError::Held) => Err(StartError::AlreadyRunning),
+        Err(e) => Err(StartError::Failed(format!(
+            "cannot check the engine lock: {e}"
+        ))),
+    }
+}
+
+/// エンジンを開く（ロックを取る）。
+pub fn open_engine(dir: &UserDir) -> Result<Engine, StartError> {
+    Engine::open(&engine_config(dir)).map_err(|e| classify_open_error(&e))
+}
+
+/// `EngineSlot` に渡す開く手段。開けなかった理由は、前と違うときだけ書く（開き直しのたびに同じ行を出さない）。
+/// ロックを別のプロセスが持っているとき（試しのあとに取られた）は書かない（静かに待つ。macOS と同じ）。
+fn opener(dir: UserDir) -> crate::slot::OpenEngine {
+    let mut last_failure: Option<String> = None;
+    Box::new(move || match open_engine(&dir) {
+        Ok(engine) => {
+            last_failure = None;
+            Some(engine)
+        }
+        Err(e) => {
+            let reason = e.to_string();
+            if !matches!(e, StartError::AlreadyRunning) && last_failure.as_ref() != Some(&reason) {
+                eprintln!("ikari-engine: {e}");
+                record_failure(&dir, &e);
+                last_failure = Some(reason);
+            }
+            None
+        }
+    })
 }
 
 /// ロックを取れなかった（別のエンジンが動いている）かどうかで、失敗と見分ける。
@@ -171,7 +220,7 @@ fn classify_open_error(error: &EngineError) -> StartError {
     }
 }
 
-/// 失敗を `logs/start-failure.log` に書く（最後の 1 回分。時刻は UNIX 秒）。`AlreadyRunning` は何も書かない。
+/// 失敗を `logs/start-failure.log` に書く（最後の 1 回分。時刻は UNIX 秒。常駐の間に開けたあとも消さない）。`AlreadyRunning` は何も書かない。
 /// 書けなくても、起動の失敗の扱いは変えない。書くのは固定の語と、エンジンが返した理由の文だけ
 /// （入力の内容は、この時点では持っていない）。
 pub fn record_failure(dir: &UserDir, error: &StartError) {
