@@ -5,13 +5,14 @@
 use ikari_proto::settings::v1 as app;
 use ikari_proto::shell::v1 as pb;
 use ikari_proto::v1 as engine;
+use ikari_shell_core::menu::EngineLmState;
 use ikari_shell_core::settings::{
     self, CLAUSE_MIN_CHARS_MAX, CLAUSE_MIN_CHARS_MIN, CONVERT_WAIT_RANGE, DictionaryDraft,
     DraftProblem, IDLE_UNLOAD_RANGE, ImportSize, KeyChord, KeymapBinding, KeymapPresetTable,
     KeymapRowData, LM_DEADLINE_RANGE, MAX_IMPORT_BYTES, PAGE_SIZE_MAX, PAGE_SIZE_MIN, PlanError,
     SettingsIntent, SettingsValues,
 };
-use ikari_shell_core::{KeymapPreset, SettingsChanges};
+use ikari_shell_core::{KeymapPreset, LmDeviceInfo, SettingsChanges};
 use prost::Message;
 
 use crate::convert::{
@@ -120,8 +121,35 @@ pub fn handle(body: app::app_request::Body) -> Reply {
             request.month,
             request.day,
         )),
+        In::LmNotice(request) => Out::Text(
+            settings::lm_cpu_notice(
+                request.lm_enabled,
+                lm_state_from_pb(request.lm),
+                lm_device_from_pb(request.device),
+            )
+            .unwrap_or_default()
+            .to_owned(),
+        ),
         In::Constants(_) => Out::Constants(constants()),
     })
+}
+
+fn lm_state_from_pb(value: i32) -> EngineLmState {
+    match engine::LmState::try_from(value) {
+        Ok(engine::LmState::LmDisabled) => EngineLmState::Disabled,
+        Ok(engine::LmState::LmLoading) => EngineLmState::Loading,
+        Ok(engine::LmState::LmReady) => EngineLmState::Ready,
+        Ok(engine::LmState::LmFailed) => EngineLmState::Failed,
+        Ok(engine::LmState::Unspecified) | Err(_) => EngineLmState::Unspecified,
+    }
+}
+
+fn lm_device_from_pb(value: i32) -> LmDeviceInfo {
+    match engine::LmDevice::try_from(value) {
+        Ok(engine::LmDevice::Cpu) => LmDeviceInfo::Cpu,
+        Ok(engine::LmDevice::Gpu) => LmDeviceInfo::Gpu,
+        Ok(engine::LmDevice::Unspecified) | Err(_) => LmDeviceInfo::Unspecified,
+    }
 }
 
 fn values_from(entries: &std::collections::HashMap<String, String>) -> SettingsValues {
@@ -401,6 +429,32 @@ mod tests {
             tsv: std::fs::read_to_string(format!("{root}/{name}.tsv")).unwrap_or_default(),
         })
         .collect()
+    }
+
+    fn notice(lm_enabled: bool, lm: engine::LmState, device: engine::LmDevice) -> String {
+        let Out::Text(text) = call(In::LmNotice(app::LmNoticeRequest {
+            lm_enabled,
+            lm: lm.into(),
+            device: device.into(),
+        })) else {
+            panic!("expected text");
+        };
+        text
+    }
+
+    #[test]
+    fn lm_notice_is_shown_only_for_an_enabled_ready_lm_on_the_cpu() {
+        use engine::{LmDevice, LmState};
+        assert_eq!(
+            notice(true, LmState::LmReady, LmDevice::Cpu),
+            settings::LM_CPU_NOTICE
+        );
+        assert_eq!(notice(true, LmState::LmReady, LmDevice::Gpu), "");
+        assert_eq!(notice(false, LmState::LmReady, LmDevice::Cpu), "");
+        assert_eq!(notice(true, LmState::LmDisabled, LmDevice::Cpu), "");
+        assert_eq!(notice(true, LmState::LmLoading, LmDevice::Cpu), "");
+        assert_eq!(notice(true, LmState::LmFailed, LmDevice::Cpu), "");
+        assert_eq!(notice(true, LmState::LmReady, LmDevice::Unspecified), "");
     }
 
     fn call(body: In) -> Out {

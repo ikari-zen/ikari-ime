@@ -129,4 +129,16 @@ enum SettingsCore {
         guard case .text(let text)? = call(body) else { return nil }
         return text
     }
+
+    /// LM が CPU で動いているときの案内の文（出さないなら nil）。出すかどうかと文は shell-core が決める（#425）
+    static func lmNotice(
+        enabled: Bool, state: Ikari_Engine_V1_LmState, device: Ikari_Engine_V1_LmDevice
+    ) -> String? {
+        var request = Ikari_Settings_V1_LmNoticeRequest()
+        request.lmEnabled = enabled
+        request.lm = state
+        request.device = device
+        guard let text = text(.lmNotice(request)), !text.isEmpty else { return nil }
+        return text
+    }
 }

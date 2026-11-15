@@ -22,6 +22,7 @@ message AppRequest {
     ImportSizeRequest import_size = 8;
     ExportFileNameRequest export_file_name = 9;
     ikari.shell.v1.Empty constants = 10;
+    LmNoticeRequest lm_notice = 11;
   }
 }
 
@@ -33,7 +34,7 @@ message AppReply {
     ChordInfo chord = 3;
     DictionaryEntryResult dictionary_entry = 4;
     DictionaryList dictionary_list = 5;
-    // pos_display、export_file_name の結果
+    // pos_display、export_file_name、lm_notice の結果（lm_notice は案内を出さないとき空）
     string text = 6;
     ProfileSetResult profile_set = 7;
     ImportSizeVerdict import_size = 8;
@@ -277,6 +278,14 @@ message ExportFileNameRequest {
 }
 
 // ---------------------------------------------------------------- 既定値と範囲
+
+// LM が CPU で動いているときの案内の問い合わせ（#425）。出すかどうかと文は shell-core が決める。
+// lm と device はエンジンの HelloReply の値、lm_enabled は設定 `engine.lm` の今の値。返事は `text`（出さないとき空）
+message LmNoticeRequest {
+  bool lm_enabled = 1;
+  ikari.engine.v1.LmState lm = 2;
+  ikari.engine.v1.LmDevice device = 3;
+}
 
 message IntRange {
   int64 min = 1;

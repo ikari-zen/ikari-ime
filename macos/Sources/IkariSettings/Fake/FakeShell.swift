@@ -68,6 +68,8 @@ struct FakeState: Sendable {
 
     var settings = FakeState.defaultSettings
     var userDict: [UserEntry] = []
+    /// Hello の返事の LM の実行装置（#425。既定は GPU）
+    var lmDevice: Ikari_Engine_V1_LmDevice = .gpu
     var usageRows: UInt32 = 1234
     var initialRows: UInt32 = 5678
     let maxRows: UInt32 = 200_000
@@ -250,6 +252,7 @@ final class FakeShell: @unchecked Sendable {
                 reply.engineVersion = shellVersion
                 reply.dictLabel = "SudachiDict Core 20260723 (fake)"
                 reply.lm = state.settings["engine.lm"] == "off" ? .lmDisabled : .lmReady
+                reply.lmDevice = state.lmDevice
                 $0.helloReply = reply
             }
         case .listUserDict?:
