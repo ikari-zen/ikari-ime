@@ -115,6 +115,11 @@ function Install-DevEngine([string]$SourceExe) {
         Write-Note "    to $DevEngineExe"
     }
     $sourceDir = Split-Path -Parent $SourceExe
+    # The LM host (ADR 0060 Q4) must sit next to the engine, otherwise the engine runs the LM in its own process.
+    $lmHost = Join-Path $sourceDir 'ikari-lm-host.exe'
+    if (Test-Path -LiteralPath $lmHost) {
+        Copy-Item -LiteralPath $lmHost -Destination (Join-Path $DevInstallDir 'ikari-lm-host.exe') -Force
+    }
     foreach ($pattern in $EngineSideDllPatterns) {
         foreach ($f in @(Get-ChildItem -Path (Join-Path $sourceDir $pattern) -File -ErrorAction SilentlyContinue)) {
             Copy-Item -LiteralPath $f.FullName -Destination (Join-Path $DevInstallDir $f.Name) -Force

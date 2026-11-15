@@ -56,7 +56,7 @@ use ikari_proto::v1::{Envelope, ErrorCode, ErrorReply, LmState, envelope};
 use ikari_runmark::RunMark;
 use ikari_stack::{
     LmOverrides, LmStats, ProfileSel, RankerSet, Reuse, Stack, StackError, StackOptions,
-    StackPaths, build_stack, build_stack_with,
+    StackPaths, build_stack, build_stack_with, lm_host_exe_name,
 };
 use prost::Message;
 
@@ -161,6 +161,33 @@ pub struct EngineParts {
     pub lock: Option<EngineLock>,
 }
 
+/// LM の推論をどこで動かすか（ADR 0060 Q4）。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum LmHostChoice {
+    /// エンジンの実行ファイルと同じフォルダの `ikari-lm-host` を、別プロセスとして使う（製品）。
+    /// そこに無ければ、同じプロセスで動かす（feature `lm` のビルドだけ。なければ LM なし）
+    #[default]
+    Beside,
+    /// 指定の実行ファイルを、別プロセスとして使う（テスト、計測）
+    Exe(PathBuf),
+    /// 同じプロセスで動かす（feature `lm` が要る。テスト、計測）
+    InProcess,
+}
+
+impl LmHostChoice {
+    /// 別プロセスとして起動する実行ファイル（絶対パス。PATH からは探さない）。None なら同じプロセス
+    fn resolve(&self) -> Option<PathBuf> {
+        match self {
+            LmHostChoice::Beside => std::env::current_exe()
+                .ok()
+                .and_then(|exe| exe.parent().map(|dir| dir.join(lm_host_exe_name())))
+                .filter(|path| path.is_file()),
+            LmHostChoice::Exe(path) => Some(path.clone()),
+            LmHostChoice::InProcess => None,
+        }
+    }
+}
+
 /// エンジンの Stack の設定。`idle_unload_secs == 0` は解放しない。
 pub fn stack_options(idle_unload_secs: u32, budget: LmBudget) -> StackOptions {
     let unload = if idle_unload_secs == 0 {
@@ -198,7 +225,14 @@ impl Engine {
     /// `data_dir`（ADR 0004 §2 の配置）の `dict/` を開く。`settings.tsv` の `engine.lm` と
     /// `engine.idle_unload_secs`、`engine.lm_deadline_ms`、`engine.convert_wait_ms` があれば `cfg` より優先する。LM のモデル（`models/` の GGUF）がない、
     /// またはこのビルドに LM がないときは、LM なしで動く（`HelloReply.lm = LM_FAILED`）。
+    ///
+    /// LM の推論は、エンジンの実行ファイルの隣の `ikari-lm-host` に別プロセスで頼む（[`LmHostChoice::Beside`]）。
     pub fn open(cfg: &EngineConfig) -> Result<Engine, EngineError> {
+        Engine::open_with(cfg, &LmHostChoice::default())
+    }
+
+    /// [`Engine::open`] と同じ。LM の推論の場所を選ぶ（テストと計測のため）。
+    pub fn open_with(cfg: &EngineConfig, lm_host: &LmHostChoice) -> Result<Engine, EngineError> {
         if cfg.data_dir.is_empty() {
             return Err(EngineError::Config("data_dir is empty".into()));
         }
@@ -221,12 +255,19 @@ impl Engine {
             MODEL_FILE_NAME,
             ikari_resource::KNOWN_MODELS,
         );
-        let lm_model = lm_model.filter(|_| cfg!(feature = "lm"));
+        // 別プロセスの子があれば、このビルドに llama.cpp が無くても LM を使える
+        let lm_host = lm_host.resolve();
+        let lm_model = lm_model.filter(|_| lm_host.is_some() || cfg!(feature = "lm"));
+        // GPU のときだけ解放を遅くする対象か（Vulkan。Metal の挙動は変えない）。別プロセスのときは、
+        // このビルドの feature ではなく OS で見る（子が Vulkan のビルドかは、エンジンからは分からない。
+        // GPU に載らなければ、遅くする値は使われない）
+        let slow_gpu_unload = cfg!(feature = "lm-vulkan") || (cfg!(windows) && lm_host.is_some());
         let paths = StackPaths {
             dict_dir: UserDir::new(&data_dir).dict_dir(),
             user_dir: Some(data_dir.clone()),
             vectors: None,
             lm_model,
+            lm_host,
             no_packs: settings.pack_it == Some(false),
         };
         let lm_budget = LmBudget {
@@ -235,8 +276,7 @@ impl Engine {
         };
         let mut opts = stack_options(idle_unload_secs, lm_budget);
         opts.lm.gpu = Some(settings.lm_gpu_or_default());
-        // GPU のときだけ解放を遅くする（Vulkan のビルドだけ。Metal の挙動は変えない）
-        if cfg!(feature = "lm-vulkan") {
+        if slow_gpu_unload {
             opts.lm.idle_unload_gpu_secs = Some(
                 settings
                     .idle_unload_gpu_secs()

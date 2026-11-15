@@ -20,9 +20,34 @@ vulkan = ["llama", "llama-cpp-2/vulkan", "llama-cpp-2/dynamic-backends"]
 name = "devices"
 required-features = ["llama"]
 
+# LM の推論を担う別プロセス（ADR 0060 Q4）。エンジンが標準入出力のパイプで採点を頼む。llama.cpp が要る
+[[bin]]
+name = "ikari-lm-host"
+path = "src/bin/ikari-lm-host.rs"
+required-features = ["llama"]
+
+# テスト用の偽の子（モデルなし。落ちる・固まる・壊れた返事を引数で選ぶ）。配布物には入れない
+[[bin]]
+name = "ikari-lm-host-fake"
+path = "src/bin/ikari-lm-host-fake.rs"
+test = false
+
 [dependencies]
 ikari-core.workspace = true
 llama-cpp-2 = { workspace = true, optional = true }
+
+# 子の stdin のパイプに SIGPIPE を出させない設定（`src/host/os.rs` だけが使う）
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+# Job Object（親が死んだら子も終わる。`src/host/os.rs` だけが使う）。Win32 の宣言だけ
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
 
 [dev-dependencies]
 ikari-testtime.workspace = true

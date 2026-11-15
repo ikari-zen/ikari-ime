@@ -43,6 +43,22 @@ impl GpuState {
             GpuState::NotBuilt => "not_built",
         }
     }
+
+    /// [`GpuState::word`] の逆（別プロセスの子から受け取った語を戻す。知らない語は None）
+    pub fn parse(word: &str) -> Option<GpuState> {
+        Self::ALL.into_iter().find(|s| s.word() == word)
+    }
+
+    const ALL: [GpuState; 8] = [
+        GpuState::Unknown,
+        GpuState::On,
+        GpuState::OffSetting,
+        GpuState::OffEnv,
+        GpuState::NoGpu,
+        GpuState::FallbackLoadFailed,
+        GpuState::OffAfterFailure,
+        GpuState::NotBuilt,
+    ];
 }
 
 #[derive(Default)]
@@ -63,12 +79,10 @@ fn with_record<T>(f: impl FnOnce(&mut Record) -> T) -> T {
     f(&mut guard)
 }
 
-#[cfg_attr(not(feature = "llama"), allow(dead_code))]
 pub(crate) fn set_devices(summary: String) {
     with_record(|r| r.devices = Some(summary));
 }
 
-#[cfg_attr(not(feature = "llama"), allow(dead_code))]
 pub(crate) fn set_gpu(state: GpuState) {
     with_record(|r| r.gpu = Some(state));
 }
@@ -120,16 +134,11 @@ mod tests {
 
     #[test]
     fn gpu_words_are_fixed_and_distinct() {
-        let all = [
-            GpuState::Unknown,
-            GpuState::On,
-            GpuState::OffSetting,
-            GpuState::OffEnv,
-            GpuState::NoGpu,
-            GpuState::FallbackLoadFailed,
-            GpuState::OffAfterFailure,
-            GpuState::NotBuilt,
-        ];
+        let all = GpuState::ALL;
+        for s in all {
+            assert_eq!(GpuState::parse(s.word()), Some(s));
+        }
+        assert_eq!(GpuState::parse("nope"), None);
         let mut words: Vec<&str> = all.iter().map(|s| s.word()).collect();
         words.sort_unstable();
         words.dedup();

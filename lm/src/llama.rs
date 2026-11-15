@@ -115,7 +115,6 @@ enum Placement {
     #[cfg_attr(feature = "vulkan", allow(dead_code))]
     Default,
     /// CPU だけ（GPU のデバイスを渡さない）
-    #[cfg_attr(not(feature = "vulkan"), allow(dead_code))]
     CpuOnly,
     /// 指定の GPU のデバイス（`list_llama_ggml_backend_devices` の index）に全層を載せる
     #[cfg_attr(not(feature = "vulkan"), allow(dead_code))]
@@ -248,6 +247,17 @@ impl LlamaScorer {
             }
             Err(e) => Err(e),
         }
+    }
+
+    /// GGUF を、ビルドに関わらず CPU だけで読む（Metal のビルドでも GPU に載せない）。
+    /// 別プロセスの子が GPU で失敗し続けたあとの試し直しに使う（ADR 0060 Q4）
+    pub fn load_cpu_only(path: &Path) -> Result<Self, LmError> {
+        if !path.exists() {
+            return Err(LmError::Load(format!("{} does not exist", path.display())));
+        }
+        let backend = backend()?;
+        placement::set_gpu(GpuState::OffAfterFailure);
+        Self::load_on(backend, path, Placement::CpuOnly)
     }
 
     /// `placement` に載せて、モデルとコンテキストを作る

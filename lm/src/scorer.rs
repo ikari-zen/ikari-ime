@@ -22,6 +22,12 @@ pub trait LmScorer {
     fn device(&self) -> LmDevice {
         LmDevice::Cpu
     }
+
+    /// まだ使えるか。偽なら、ワーカーはこの scorer を捨て、次の要求で読み込み直す（`LmLoader`）。
+    /// 別プロセスの子が死んだときに偽になる（ADR 0060 Q4）。既定は真
+    fn alive(&self) -> bool {
+        true
+    }
 }
 
 /// モデルを読み込む関数。ワーカースレッドの中で、必要なときに（読み直しも）呼ばれる。

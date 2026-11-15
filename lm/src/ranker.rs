@@ -589,6 +589,12 @@ fn worker_loop(rx: Receiver<Request>, loader: LmLoader, shared: Arc<Shared>, cfg
             }
             Ok(_) | Err(_) => {
                 counters.inference_errors.fetch_add(1, Ordering::Relaxed);
+                // 別プロセスの子が死んだ scorer は捨てる。次の要求で loader が起動し直す（断念は loader の側）
+                if !s.alive() {
+                    scorer = None;
+                    shared.device.store(DEVICE_UNKNOWN, Ordering::Release);
+                    shared.loaded.store(false, Ordering::Release);
+                }
             }
         }
         clear_inflight(&shared, &req.key);

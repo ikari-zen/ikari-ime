@@ -797,6 +797,7 @@ mod crash_record;
 mod diag;
 mod emoji;
 mod lifecycle;
+mod lm_host;
 mod model_check;
 mod postal;
 mod protocol;

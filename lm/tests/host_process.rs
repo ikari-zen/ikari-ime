@@ -1,0 +1,453 @@
+//! 別プロセスの LM（ADR 0060 Q4）: 子が落ちる・固まる・壊れた返事をしても、`ZenzRanker` は辞書だけの順位で
+//! 返し続け、子は回収され、起動し直され、連続失敗で諦める。偽の子（`ikari-lm-host-fake`。モデルなし）を使う。
+//! 時間は、テストが揺れない長さ（`ikari_testtime` で伸ばせる）。製品の既定値とは別。
+
+use std::cell::Cell;
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
+use std::sync::Arc;
+use std::thread;
+use std::time::{Duration, Instant};
+
+use ikari_core::{
+    AnalyzedContext, Candidate, CandidateOrigin, Context, DenseGrammar, InMemoryDictionary,
+    RankInput, Ranker, UnknownParams,
+};
+use ikari_lm::host::{HostHealth, HostLimits, HostSpec, host_loader};
+use ikari_lm::{LmDevice, ZenzConfig, ZenzRanker};
+
+const FAKE_HOST: &str = env!("CARGO_BIN_EXE_ikari-lm-host-fake");
+/// ranker が結果を待つ上限。偽の子の起動と応答より桁で長い
+const RANK_BUDGET_MS: u64 = 3000;
+const REQUEST_DEADLINE_MS: u64 = 300;
+const READY_DEADLINE_MS: u64 = 3000;
+const MAX_FAILURES: u32 = 3;
+/// 良い候補（NLL 0）と悪い候補（NLL 20）。基礎コストは悪い候補のほうが良い（LM が効くと逆転する）
+const GOOD: &str = "良";
+const BAD: &str = "悪";
+const BAD_BASE: i32 = 5000;
+const GOOD_BASE: i32 = 5200;
+const HEALTHY: &str = "nll.良=0\nnll.悪=20\n";
+
+/// 初めて実行する exe は、OS の走査で起動が 1 秒以上かかることがある。最初に 1 回だけ空打ちする
+fn warm_up_exe() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let _ = Command::new(FAKE_HOST).status();
+    });
+}
+
+fn pid_alive(pid: u32) -> bool {
+    if cfg!(windows) {
+        Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {pid}"), "/NH"])
+            .output()
+            .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains(&pid.to_string()))
+    } else {
+        Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
+    }
+}
+
+fn kill_pid(pid: u32) {
+    let status = if cfg!(windows) {
+        Command::new("taskkill")
+            .args(["/F", "/PID", &pid.to_string()])
+            .stdout(Stdio::null())
+            .status()
+    } else {
+        Command::new("kill").args(["-9", &pid.to_string()]).status()
+    };
+    assert!(status.is_ok_and(|s| s.success()), "could not kill {pid}");
+}
+
+fn wait_until(mut cond: impl FnMut() -> bool) -> bool {
+    let deadline = Instant::now() + ikari_testtime::scaled(Duration::from_secs(5));
+    while Instant::now() < deadline {
+        if cond() {
+            return true;
+        }
+        thread::sleep(ikari_testtime::ms(10));
+    }
+    false
+}
+
+struct Harness {
+    _dir: tempfile::TempDir,
+    script: PathBuf,
+    ranker: ZenzRanker,
+    health: Arc<HostHealth>,
+    readings: Cell<u32>,
+}
+
+impl Harness {
+    fn new(script: &str) -> Harness {
+        Harness::with(script, true, ZenzConfig::default())
+    }
+
+    fn with(script: &str, use_gpu: bool, base: ZenzConfig) -> Harness {
+        warm_up_exe();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("script.txt");
+        std::fs::write(&path, script).unwrap();
+        let (loader, health) = host_loader(HostSpec {
+            program: PathBuf::from(FAKE_HOST),
+            model: path.clone(),
+            use_gpu,
+            limits: HostLimits {
+                ready_deadline: ikari_testtime::ms(READY_DEADLINE_MS),
+                request_deadline: ikari_testtime::ms(REQUEST_DEADLINE_MS),
+                max_failures: MAX_FAILURES,
+            },
+        });
+        let cfg = ZenzConfig {
+            budget: ikari_testtime::ms(RANK_BUDGET_MS),
+            load_retry: Duration::ZERO,
+            ..base
+        };
+        Harness {
+            _dir: dir,
+            script: path,
+            ranker: ZenzRanker::new(loader, cfg),
+            health,
+            readings: Cell::new(0),
+        }
+    }
+
+    fn set_script(&self, script: &str) {
+        std::fs::write(&self.script, script).unwrap();
+    }
+
+    /// 偽の子が起動のたびに書いた `--gpu` の値
+    fn starts(&self) -> Vec<String> {
+        let mut path = self.script.clone().into_os_string();
+        path.push(".starts");
+        std::fs::read_to_string(path)
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_owned)
+            .collect()
+    }
+
+    /// 1 位の表記。辞書だけの順位なら BAD、LM が効けば GOOD。読みは毎回変える（遅れて届いた結果を使わせない）
+    fn first(&self) -> String {
+        let n = self.readings.get() + 1;
+        self.readings.set(n);
+        let reading = format!("よみ{n}");
+        let grammar = DenseGrammar::new(
+            1,
+            1,
+            0,
+            UnknownParams {
+                left_id: 0,
+                right_id: 0,
+                pos_id: 0,
+                cost_per_char: 1,
+            },
+        );
+        let dict = InMemoryDictionary::new(0);
+        let analysis = AnalyzedContext::default();
+        let ctx = Context::new().with_left_text("文脈");
+        let cand = |surface: &str, base: i32| Candidate {
+            surface: surface.to_owned(),
+            segments: Vec::new(),
+            base_cost: base,
+            score: base,
+            origin: CandidateOrigin::Dictionary,
+        };
+        let mut cands = vec![cand(BAD, BAD_BASE), cand(GOOD, GOOD_BASE)];
+        let input = RankInput {
+            reading: &reading,
+            context: &ctx,
+            grammar: &grammar,
+            analysis: &analysis,
+            dict: &dict,
+            deadline: Some(Instant::now() + ikari_testtime::ms(RANK_BUDGET_MS)),
+        };
+        self.ranker.rank(&input, &mut cands);
+        // LM は並べ替えるだけ（候補を足さない・消さない）
+        assert_eq!(cands.len(), 2);
+        cands.sort_by_key(|c| c.score);
+        cands[0].surface.clone()
+    }
+
+    fn child(&self) -> u32 {
+        self.health.child_id().expect("a child is running")
+    }
+}
+
+#[test]
+fn scores_come_from_the_child_and_reorder_the_candidates() {
+    let h = Harness::new(HEALTHY);
+    assert_eq!(h.first(), GOOD);
+    assert_eq!(h.first(), GOOD);
+    let stats = h.ranker.stats();
+    assert_eq!((stats.loads, stats.load_failures), (1, 0));
+    assert!(stats.loaded);
+    // 装置は子が知らせたもの（`--gpu on` の偽の子は GPU と言う）
+    assert_eq!(h.ranker.device(), LmDevice::Gpu);
+    assert_eq!(h.health.spawns(), 1);
+    assert_eq!(h.health.consecutive_failures(), 0);
+    assert_eq!(h.starts(), ["on"]);
+}
+
+#[test]
+fn gpu_off_is_passed_to_the_child() {
+    let h = Harness::with(HEALTHY, false, ZenzConfig::default());
+    assert_eq!(h.first(), GOOD);
+    assert_eq!(h.ranker.device(), LmDevice::Cpu);
+    assert_eq!(h.starts(), ["off"]);
+}
+
+#[test]
+fn a_killed_child_leaves_the_dictionary_order_and_is_restarted() {
+    let h = Harness::new(HEALTHY);
+    assert_eq!(h.first(), GOOD);
+    let old = h.child();
+    kill_pid(old);
+    // 子がいない間の 1 回は、辞書だけの順位（LM なし）
+    assert_eq!(h.first(), BAD);
+    assert!(wait_until(|| !h.ranker.stats().loaded));
+    assert_eq!(h.health.consecutive_failures(), 1);
+    // 次の要求で起動し直して、LM が戻る。成功したので数は 0 に戻る
+    assert_eq!(h.first(), GOOD);
+    assert_ne!(h.child(), old);
+    assert_eq!(h.health.spawns(), 2);
+    assert_eq!(h.health.consecutive_failures(), 0);
+    assert!(!pid_alive(old), "the killed child must be reaped");
+}
+
+#[test]
+fn a_hung_child_is_killed_at_the_deadline() {
+    let h = Harness::new("hang_after=0\n");
+    let began = Instant::now();
+    assert_eq!(h.first(), BAD);
+    // ranker は自分の待ち（変換の締め切り）で戻る。子は、要求の締め切りで kill されて回収される
+    assert!(began.elapsed() < ikari_testtime::ms(RANK_BUDGET_MS + 2000));
+    assert!(wait_until(|| h.health.consecutive_failures() == 1));
+    assert_eq!(h.health.child_id(), None);
+    assert_eq!(h.starts().len(), 1);
+    // 直った子（台本を替える）なら、次の要求で LM が戻る
+    h.set_script(HEALTHY);
+    assert!(wait_until(|| h.first() == GOOD));
+    assert_eq!(h.health.consecutive_failures(), 0);
+}
+
+#[test]
+fn consecutive_failures_give_up_and_stop_spawning() {
+    // GPU を使わない設定（GPU を使う設定では、諦める前に CPU の子で試し直す。下の別のテスト）
+    let h = Harness::with("exit_after=0\n", false, ZenzConfig::default());
+    for n in 1..=MAX_FAILURES {
+        assert_eq!(h.first(), BAD);
+        assert!(wait_until(|| h.health.consecutive_failures() == n));
+    }
+    assert!(h.health.gave_up());
+    assert_eq!(h.health.spawns(), u64::from(MAX_FAILURES));
+    // 諦めたあとは、子を起動せず、辞書だけの順位で戻り続ける（直った子に替えても、起動し直すまで試さない）
+    h.set_script(HEALTHY);
+    for _ in 0..3 {
+        assert_eq!(h.first(), BAD);
+    }
+    assert_eq!(h.health.spawns(), u64::from(MAX_FAILURES));
+    assert_eq!(h.starts().len(), MAX_FAILURES as usize);
+    let stats = h.ranker.stats();
+    assert!(!stats.loaded);
+    assert!(stats.load_failures > 0);
+}
+
+#[test]
+fn a_new_loader_forgets_that_the_old_one_gave_up() {
+    // 断念はメモリだけで覚える。エンジンを起動し直す（loader を作り直す）と、もう一度試す
+    // GPU を使わない設定（GPU を使う設定では、諦める前に CPU の子で試し直す。下の別のテスト）
+    let h = Harness::with("exit_after=0\n", false, ZenzConfig::default());
+    for n in 1..=MAX_FAILURES {
+        assert_eq!(h.first(), BAD);
+        assert!(wait_until(|| h.health.consecutive_failures() == n));
+    }
+    assert!(h.health.gave_up());
+    let again = Harness::new(HEALTHY);
+    assert_eq!(again.first(), GOOD);
+}
+
+#[test]
+fn a_success_between_failures_resets_the_count() {
+    // 1 回答えては死ぬ子: 成功、失敗、成功、失敗…と続き、連続 3 回にはならない
+    let h = Harness::new(&format!("{HEALTHY}exit_after=1\n"));
+    let mut good = 0;
+    for _ in 0..(MAX_FAILURES * 2 + 2) {
+        if h.first() == GOOD {
+            good += 1;
+        }
+        assert!(h.health.consecutive_failures() <= 1);
+    }
+    assert!(good >= MAX_FAILURES);
+    assert!(!h.health.gave_up());
+}
+
+#[test]
+fn a_child_that_never_gets_ready_is_killed_and_counted() {
+    let h = Harness::new("ready=never\n");
+    assert_eq!(h.first(), BAD);
+    assert!(wait_until(|| h.health.consecutive_failures() == 1));
+    assert_eq!(h.health.child_id(), None);
+    // ワーカーが数えるのは、loader が戻ったあと（子の失敗の数より少し遅れる）
+    assert!(wait_until(|| h.ranker.stats().load_failures == 1));
+    assert_eq!(h.ranker.stats().loads, 0);
+}
+
+#[test]
+fn a_version_mismatch_or_a_load_failure_is_counted_as_a_failure() {
+    for script in ["version=999\n", "load=fail\n"] {
+        let h = Harness::new(script);
+        assert_eq!(h.first(), BAD, "{script}");
+        assert!(
+            wait_until(|| h.health.consecutive_failures() == 1),
+            "{script}"
+        );
+        assert!(!h.ranker.stats().loaded);
+        assert_eq!(h.health.child_id(), None);
+    }
+}
+
+#[test]
+fn a_missing_program_is_a_failure_not_a_panic() {
+    let dir = tempfile::tempdir().unwrap();
+    let (loader, health) = host_loader(HostSpec {
+        program: dir.path().join("no-such-exe"),
+        model: dir.path().join("model"),
+        use_gpu: true,
+        limits: HostLimits::default(),
+    });
+    assert!(loader().is_err());
+    assert_eq!(health.consecutive_failures(), 1);
+    assert_eq!(health.spawns(), 1);
+}
+
+#[test]
+fn an_inference_error_from_a_live_child_is_not_counted() {
+    let h = Harness::new("fail_infer=1\n");
+    for _ in 0..(MAX_FAILURES + 2) {
+        assert_eq!(h.first(), BAD);
+    }
+    // 子は生きたまま（起動は 1 回）。諦めない
+    assert_eq!(h.health.spawns(), 1);
+    assert_eq!(h.health.consecutive_failures(), 0);
+    assert!(pid_alive(h.child()));
+    assert!(wait_until(
+        || h.ranker.stats().inference_errors >= u64::from(MAX_FAILURES)
+    ));
+}
+
+#[test]
+fn a_garbage_reply_kills_the_child() {
+    let h = Harness::new("garbage_after=0\n");
+    assert_eq!(h.first(), BAD);
+    assert!(wait_until(|| h.health.consecutive_failures() == 1));
+    assert_eq!(h.health.child_id(), None);
+}
+
+#[test]
+fn after_a_gpu_load_fallback_the_child_is_started_without_gpu() {
+    let h = Harness::new(&format!("{HEALTHY}gpu=fallback\n"));
+    assert_eq!(h.first(), GOOD);
+    assert_eq!(h.ranker.device(), LmDevice::Cpu);
+    kill_pid(h.child());
+    assert_eq!(h.first(), BAD);
+    assert_eq!(h.first(), GOOD);
+    // 2 回目の起動は GPU を試さない（ADR 0059 §2.4 の「この起動の間は CPU」と同じ）
+    assert_eq!(h.starts(), ["on", "cpu"]);
+    assert!(h.health.gpu_disabled());
+}
+
+#[test]
+fn dropping_the_ranker_kills_the_child() {
+    let h = Harness::new(HEALTHY);
+    assert_eq!(h.first(), GOOD);
+    let pid = h.child();
+    assert!(pid_alive(pid));
+    drop(h);
+    assert!(wait_until(|| !pid_alive(pid)));
+}
+
+#[test]
+fn idle_unload_ends_the_child_and_the_next_request_starts_a_new_one() {
+    let cfg = ZenzConfig {
+        idle_unload: ikari_testtime::ms(200),
+        ..ZenzConfig::default()
+    };
+    let h = Harness::with(HEALTHY, true, cfg);
+    assert_eq!(h.first(), GOOD);
+    let pid = h.child();
+    assert!(wait_until(|| h.ranker.stats().unloads == 1));
+    assert!(wait_until(|| !pid_alive(pid)));
+    assert_eq!(h.health.child_id(), None);
+    assert_eq!(h.first(), GOOD);
+    assert_eq!(h.health.spawns(), 2);
+    // アイドルの解放は失敗ではない
+    assert_eq!(h.health.consecutive_failures(), 0);
+}
+
+#[test]
+fn a_gpu_child_that_keeps_crashing_is_replaced_by_a_cpu_child() {
+    // GPU の子は最初の要求で落ちる。CPU の子は健康
+    let h = Harness::new(&format!("{HEALTHY}die_on_gpu=1\n"));
+    for n in 1..=MAX_FAILURES {
+        assert_eq!(h.first(), BAD);
+        // 上限に達した回で、諦めずに CPU だけに切り替わり、数は 0 に戻る
+        let expected = if n == MAX_FAILURES { 0 } else { n };
+        assert!(wait_until(
+            || h.health.consecutive_failures() == expected && h.health.child_id().is_none()
+        ));
+    }
+    assert!(h.health.gpu_disabled());
+    assert!(!h.health.gave_up());
+    // 次の要求から CPU の子で LM が戻る
+    assert!(wait_until(|| h.first() == GOOD));
+    assert_eq!(h.ranker.device(), LmDevice::Cpu);
+    let mut expected = vec!["on"; MAX_FAILURES as usize];
+    expected.push("cpu");
+    assert_eq!(h.starts(), expected);
+    assert!(!h.health.gave_up());
+}
+
+#[test]
+fn when_the_cpu_child_also_keeps_crashing_the_host_gives_up() {
+    // GPU でも CPU でも、最初の要求で落ちる
+    let h = Harness::new("exit_after=0\n");
+    for _ in 0..(MAX_FAILURES * 2) {
+        assert!(!h.health.gave_up());
+        let spawns = h.health.spawns();
+        assert_eq!(h.first(), BAD);
+        assert!(wait_until(
+            || h.health.spawns() == spawns + 1 && h.health.child_id().is_none()
+        ));
+    }
+    assert!(wait_until(|| h.health.gave_up()));
+    assert!(h.health.gpu_disabled());
+    // GPU で上限まで、そのあと CPU で上限まで。以後は起動しない
+    let mut expected = vec!["on"; MAX_FAILURES as usize];
+    expected.extend(vec!["cpu"; MAX_FAILURES as usize]);
+    assert_eq!(h.starts(), expected);
+    assert_eq!(h.first(), BAD);
+    assert_eq!(h.health.spawns(), u64::from(MAX_FAILURES * 2));
+}
+
+#[test]
+fn no_cpu_retry_when_gpu_is_off_or_was_never_used() {
+    // 設定で GPU を使わない: 上限で諦める（CPU で試し直しても同じ）
+    let off = Harness::with("exit_after=0\n", false, ZenzConfig::default());
+    // GPU を使う設定だが、子が CPU に載せたと知らせた（GPU のない機械）
+    let unused = Harness::new("gpu=unused\nexit_after=0\n");
+    for h in [&off, &unused] {
+        for n in 1..=MAX_FAILURES {
+            assert_eq!(h.first(), BAD);
+            assert!(wait_until(|| h.health.consecutive_failures() == n));
+        }
+        assert!(h.health.gave_up());
+        assert!(!h.health.gpu_disabled());
+        assert_eq!(h.health.spawns(), u64::from(MAX_FAILURES));
+    }
+}

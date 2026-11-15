@@ -1,0 +1,13 @@
+;; 計測用（製品では使わない）。ADR 0060 Q4 の (2): 隔離をかけたときの、LM の子の起動と往復を測るための Seatbelt のプロファイル。
+;; 要件（ADR 0060 §4.1）に近い形: ネットワークに出られない、書き込めない、ホームの下はモデルと実行ファイルの場所しか読めない。
+;; `allow default` から引いているので、製品の檻としては広い（システムの場所の読み取り、Mach のサービスは開いたまま）。
+;; 絞り込みは、この計測で動くことを確かめてから、設計で決める。
+;; 使い方は run.sh（HOME、MODEL、EXE_DIR を -D で渡す）。
+(version 1)
+(allow default)
+(deny network*)
+(deny file-write*)
+;; Metal のシェーダーのキャッシュなど、ユーザーごとの一時の場所（DARWIN_USER_CACHE_DIR / TEMP_DIR）
+(allow file-write* (subpath "/private/var/folders") (literal "/dev/null") (literal "/dev/dtracehelper"))
+(deny file-read-data (subpath (param "HOME")))
+(allow file-read-data (literal (param "MODEL")) (subpath (param "EXE_DIR")))

@@ -90,6 +90,9 @@ jobs:
       # 実機での時間の測定は docs/windows-real-device-check.md の項目 38
       - name: LM つきのエンジンをビルドする
         run: cargo build -p ikari-engine-host --features lm
+      # LM の推論を担う別プロセス（ADR 0060 Q4）。Job Object と TerminateProcess の経路は、上の cargo test が偽の子で通す
+      - name: LM の子（ikari-lm-host）をビルドする
+        run: cargo build -p ikari-lm --bin ikari-lm-host --features llama
 
   # 実機（VM）で試すための release ビルド（エンジンの exe と TIP の DLL）と、`windows/dev` のスクリプトを、1 つの artifact に入れる。
   # VM で Rust を入れてビルドしなくて済む（遅い機械での手間を避ける）。配置はリポジトリと同じ（`windows/dev/common.ps1` が
@@ -171,12 +174,14 @@ jobs:
       # Visual Studio のジェネレータでは、ggml-vulkan の vulkan-shaders-gen（ExternalProject）のインストールが
       # `Not a file: …/vulkan-shaders-gen-build/cmake_install.cmake` で落ちた（スパイクの最初の run）。Ninja にする。
       # 評価ツールは項目 38（LM の 1 回の時間）、devices は登録されたデバイスの確認（モデルは要らない）で使う
-      - name: release ビルド（Vulkan の LM つきのエンジン、評価ツール、devices）
+      # LM の子（ikari-lm-host.exe。ADR 0060 Q4）は、エンジンの exe の隣に置く。エンジンは隣にあれば、推論をそれに頼む
+      - name: release ビルド（Vulkan の LM つきのエンジン、LM の子、評価ツール、devices）
         env:
           CMAKE_GENERATOR: Ninja
         run: |
           ninja --version
           cargo build --release -p ikari-engine-host -p ikari-eval --features ikari-engine-host/lm-vulkan,ikari-eval/lm-vulkan
+          cargo build --release -p ikari-lm --bin ikari-lm-host --features vulkan
           cargo build --release -p ikari-lm --example devices --features vulkan
       # 窓なしのエンジン（hide-console。#372）。コンソールつき（Vulkan の LM つき）の exe は、上書きされるので先に取っておき、あとで戻す。
       # 窓なしも Vulkan の LM つき（ふだん使いの構成）。start-engine.ps1 は、-hidden があればそれを使う
@@ -203,7 +208,7 @@ jobs:
           rel="$(cygpath -u "$CARGO_TARGET_DIR")/release"
           out=dist/target/release
           mkdir -p "$out/backends" dist/windows dist/shell-core/resources dist/eval
-          cp "$rel/ikari-engine-host.exe" "$rel/ikari-engine-host-nolm.exe" "$rel/ikari-engine-host-hidden.exe" "$rel/ikari_tip.dll" "$rel/ikari-eval.exe" "$out/"
+          cp "$rel/ikari-engine-host.exe" "$rel/ikari-engine-host-nolm.exe" "$rel/ikari-engine-host-hidden.exe" "$rel/ikari_tip.dll" "$rel/ikari-eval.exe" "$rel/ikari-lm-host.exe" "$out/"
           cp "$rel/examples/devices.exe" "$out/ikari-lm-devices.exe"
           # 使う OUT_DIR: feature の組み合わせで build のフォルダが複数ありうるので、backends に ggml-vulkan を含むもの
           sysout=""

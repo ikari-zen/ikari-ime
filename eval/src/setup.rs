@@ -53,6 +53,8 @@ pub struct SetupOptions {
     pub ranker_config: Option<PathBuf>,
     /// zenz の GGUF（feature `lm` が要る）
     pub lm: Option<PathBuf>,
+    /// LM を別プロセス（`ikari-lm-host`）で動かすときの実行ファイル。None なら同じプロセス
+    pub lm_host: Option<PathBuf>,
     pub lm_budget_ms: Option<u64>,
     /// 学習ストアの置き場所。None なら一時ディレクトリ（利用者のデータを評価に混ぜない）
     pub user_dir: Option<PathBuf>,
@@ -193,6 +195,7 @@ pub fn build(
         user_dir: user_dir.clone(),
         vectors: opts.vectors.clone(),
         lm_model: opts.lm.clone(),
+        lm_host: opts.lm_host.clone(),
         no_packs: !opts.packs,
     };
     let stack_opts = StackOptions {
