@@ -174,7 +174,14 @@ fn read_aces(acl: *mut ACL) -> io::Result<Vec<Ace>> {
         if unsafe { GetAce(acl, index, &mut raw) } == FALSE {
             return Err(io::Error::last_os_error());
         }
-        // SAFETY: どの ACE も ACE_HEADER で始まる
+        // GetAce が成功すれば raw は書かれるが、使う前に空でないことを確かめる
+        if raw.is_null() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "GetAce returned a null ACE",
+            ));
+        }
+        // SAFETY: どの ACE も ACE_HEADER で始まる。raw は上で空でないと確かめた
         let header = unsafe { *(raw as *const ACE_HEADER) };
         let ace = match header.AceType {
             ALLOWED_ACE_TYPE => {
