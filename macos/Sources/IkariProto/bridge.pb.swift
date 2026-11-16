@@ -155,6 +155,25 @@ public nonisolated struct Ikari_Bridge_V1_Frame: Sendable {
     set {body = .importFromFile(newValue)}
   }
 
+  /// 自由指定のモデルをファイルから取り込む（Windows だけ。ADR 0076 §7、ADR 0060 の段 4。パスだけを流す）。
+  /// engine-host がパスを確かめて読み、inbox に束を作る。返事は ImportModelReply、失敗は BridgeError
+  /// （TRANSFER_FAILED と理由の語）。macOS の殻は受けない（NOT_ALLOWED。macOS は設定アプリが shell-ffi で取り込む）
+  public var importModelFile: Ikari_Bridge_V1_ImportModelFile {
+    get {
+      if case .importModelFile(let v)? = body {return v}
+      return Ikari_Bridge_V1_ImportModelFile()
+    }
+    set {body = .importModelFile(newValue)}
+  }
+
+  public var importModelReply: Ikari_Bridge_V1_ImportModelReply {
+    get {
+      if case .importModelReply(let v)? = body {return v}
+      return Ikari_Bridge_V1_ImportModelReply()
+    }
+    set {body = .importModelReply(newValue)}
+  }
+
   /// 管理の要求と返事。殻はそのままエンジンへ流し、返事もそのまま返す
   public var engine: Ikari_Engine_V1_Envelope {
     get {
@@ -195,6 +214,11 @@ public nonisolated struct Ikari_Bridge_V1_Frame: Sendable {
     /// macOS の殻は受けない（NOT_ALLOWED。#274 の設計のまま engine の ExportData・ImportData を中継する）
     case exportToFile(Ikari_Bridge_V1_ExportToFile)
     case importFromFile(Ikari_Bridge_V1_ImportFromFile)
+    /// 自由指定のモデルをファイルから取り込む（Windows だけ。ADR 0076 §7、ADR 0060 の段 4。パスだけを流す）。
+    /// engine-host がパスを確かめて読み、inbox に束を作る。返事は ImportModelReply、失敗は BridgeError
+    /// （TRANSFER_FAILED と理由の語）。macOS の殻は受けない（NOT_ALLOWED。macOS は設定アプリが shell-ffi で取り込む）
+    case importModelFile(Ikari_Bridge_V1_ImportModelFile)
+    case importModelReply(Ikari_Bridge_V1_ImportModelReply)
     /// 管理の要求と返事。殻はそのままエンジンへ流し、返事もそのまま返す
     case engine(Ikari_Engine_V1_Envelope)
     /// 殻 → 設定アプリ
@@ -266,6 +290,40 @@ public nonisolated struct Ikari_Bridge_V1_ImportFromFile: Sendable {
   public var path: String = String()
 
   public var dryRun: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// format は PromptFormat の語。sha256 は空なら照らさない（警告のうえで許可。ADR 0060）。name は表示の名前（空でよい）
+public nonisolated struct Ikari_Bridge_V1_ImportModelFile: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var path: String = String()
+
+  public var format: String = String()
+
+  public var sha256: String = String()
+
+  public var name: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// bundle は inbox に作った束の名前。sha256 は写しながら数えた値（sha256 なしで取り込んだときに確認の画面に出す。ADR 0076 §18.1）
+public nonisolated struct Ikari_Bridge_V1_ImportModelReply: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var bundle: String = String()
+
+  public var sha256: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -394,7 +452,7 @@ nonisolated extension Ikari_Bridge_V1_BridgeErrorCode: SwiftProtobuf._ProtoNameP
 
 nonisolated extension Ikari_Bridge_V1_Frame: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Frame"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}request_id\0\u{2}\u{9}hello\0\u{3}hello_reply\0\u{3}get_settings\0\u{1}settings\0\u{3}update_settings\0\u{3}export_to_file\0\u{3}import_from_file\0\u{2}\u{4}engine\0\u{2}\u{a}event\0\u{1}error\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}request_id\0\u{2}\u{9}hello\0\u{3}hello_reply\0\u{3}get_settings\0\u{1}settings\0\u{3}update_settings\0\u{3}export_to_file\0\u{3}import_from_file\0\u{3}import_model_file\0\u{3}import_model_reply\0\u{2}\u{2}engine\0\u{2}\u{a}event\0\u{1}error\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -494,6 +552,32 @@ nonisolated extension Ikari_Bridge_V1_Frame: SwiftProtobuf.Message, SwiftProtobu
           self.body = .importFromFile(v)
         }
       }()
+      case 17: try {
+        var v: Ikari_Bridge_V1_ImportModelFile?
+        var hadOneofValue = false
+        if let current = self.body {
+          hadOneofValue = true
+          if case .importModelFile(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.body = .importModelFile(v)
+        }
+      }()
+      case 18: try {
+        var v: Ikari_Bridge_V1_ImportModelReply?
+        var hadOneofValue = false
+        if let current = self.body {
+          hadOneofValue = true
+          if case .importModelReply(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.body = .importModelReply(v)
+        }
+      }()
       case 20: try {
         var v: Ikari_Engine_V1_Envelope?
         var hadOneofValue = false
@@ -574,6 +658,14 @@ nonisolated extension Ikari_Bridge_V1_Frame: SwiftProtobuf.Message, SwiftProtobu
     case .importFromFile?: try {
       guard case .importFromFile(let v)? = self.body else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 16)
+    }()
+    case .importModelFile?: try {
+      guard case .importModelFile(let v)? = self.body else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 17)
+    }()
+    case .importModelReply?: try {
+      guard case .importModelReply(let v)? = self.body else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 18)
     }()
     case .engine?: try {
       guard case .engine(let v)? = self.body else { preconditionFailure() }
@@ -754,6 +846,86 @@ nonisolated extension Ikari_Bridge_V1_ImportFromFile: SwiftProtobuf.Message, Swi
   public static func ==(lhs: Ikari_Bridge_V1_ImportFromFile, rhs: Ikari_Bridge_V1_ImportFromFile) -> Bool {
     if lhs.path != rhs.path {return false}
     if lhs.dryRun != rhs.dryRun {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Ikari_Bridge_V1_ImportModelFile: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ImportModelFile"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}path\0\u{1}format\0\u{1}sha256\0\u{1}name\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.path) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.format) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.sha256) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.name) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.path.isEmpty {
+      try visitor.visitSingularStringField(value: self.path, fieldNumber: 1)
+    }
+    if !self.format.isEmpty {
+      try visitor.visitSingularStringField(value: self.format, fieldNumber: 2)
+    }
+    if !self.sha256.isEmpty {
+      try visitor.visitSingularStringField(value: self.sha256, fieldNumber: 3)
+    }
+    if !self.name.isEmpty {
+      try visitor.visitSingularStringField(value: self.name, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Ikari_Bridge_V1_ImportModelFile, rhs: Ikari_Bridge_V1_ImportModelFile) -> Bool {
+    if lhs.path != rhs.path {return false}
+    if lhs.format != rhs.format {return false}
+    if lhs.sha256 != rhs.sha256 {return false}
+    if lhs.name != rhs.name {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Ikari_Bridge_V1_ImportModelReply: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ImportModelReply"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}bundle\0\u{1}sha256\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.bundle) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.sha256) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.bundle.isEmpty {
+      try visitor.visitSingularStringField(value: self.bundle, fieldNumber: 1)
+    }
+    if !self.sha256.isEmpty {
+      try visitor.visitSingularStringField(value: self.sha256, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Ikari_Bridge_V1_ImportModelReply, rhs: Ikari_Bridge_V1_ImportModelReply) -> Bool {
+    if lhs.bundle != rhs.bundle {return false}
+    if lhs.sha256 != rhs.sha256 {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

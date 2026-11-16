@@ -58,8 +58,12 @@ message Hello { string shell_version = 1; }
 // （エンジンが 1 回だけ伝える。#271。追加だけなので schema_version は 1 のまま）
 // lm_device: いま読み込まれているモデルの実行装置（設定アプリの「CPU で動いている」案内の元。#425）。
 // lm が LM_READY のときだけ意味を持つ。読まれていなければ LM_DEVICE_UNSPECIFIED。古いエンジンも UNSPECIFIED（追加だけ）
+// lm_cage: LM の子の檻の段（ADR 0072 §3、ADR 0077 §6。設定画面の「檻なし」の表示と、自由指定のモデルを出すかの判断の元）。
+// 古いエンジン、まだ子を起動していないときは LM_CAGE_UNSPECIFIED（追加だけ）
 message HelloReply { string engine_version = 1; string dict_label = 2; LmState lm = 3; bool learning_quarantined = 4;
-                     LmDevice lm_device = 5; }
+                     LmDevice lm_device = 5; LmCage lm_cage = 6; }
+// LM_CAGE_NONE: 檻に届かない（macOS で檻役の口が無い・確かめに失敗した。LM なし）。LEVEL1: 段 1。LEVEL2: 段 2
+enum LmCage { LM_CAGE_UNSPECIFIED = 0; LM_CAGE_NONE = 1; LM_CAGE_LEVEL1 = 2; LM_CAGE_LEVEL2 = 3; }
 enum LmState { LM_STATE_UNSPECIFIED = 0; LM_DISABLED = 1; LM_LOADING = 2; LM_READY = 3; LM_FAILED = 4; }
 // 4 は share_context（ADR 0015 D5、D6。ADR 0046 で借用を廃止）。番号と名前は再利用しない
 message BeginSession { reserved 4; reserved "share_context"; uint64 session_id = 1; string client_bundle_id = 2; bool secure = 3; }
