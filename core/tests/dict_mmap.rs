@@ -631,6 +631,39 @@ fn corrupt_entries_are_skipped() {
     assert_eq!(collect_prefix(&dict, "ひんし").len(), 1);
 }
 
+/// 索引部のバイト破壊は、開くときにエラーになるか、開けても検索でパニックしない。
+#[test]
+fn damaged_index_is_error_or_harmless() {
+    let dir = tempfile::tempdir().unwrap();
+    let gid = write_grammar(dir.path(), 0);
+    let mut rng = Rng(123);
+    write_dict(dir.path(), gid, &random_entries(&mut rng, 40), "m=1\n");
+    let path = dir.path().join(SYSTEM_DICT_FILE_NAME);
+    let original = fs::read(&path).unwrap();
+    let layout = parse_dict_layout(&original).unwrap();
+
+    let work = tempfile::tempdir().unwrap();
+    let copy = work.path().join("d.dict");
+    let mut rejected = 0;
+    for ranges in [layout.index.clone(), layout.surface_index.clone()] {
+        for pos in ranges {
+            let mut b = original.clone();
+            b[pos] ^= 0xa5;
+            fs::write(&copy, &b).unwrap();
+            match SystemDictionary::open(&copy) {
+                Ok(dict) => {
+                    for key in ["あ", "あいう", "ううううう"] {
+                        let _ = collect_prefix(&dict, key);
+                        dict.lookup_exact(key, &mut |_| {});
+                    }
+                }
+                Err(_) => rejected += 1,
+            }
+        }
+    }
+    assert!(rejected > 0, "damage inside the index must be detected");
+}
+
 /// ヘッダ・エントリ・文字列部のバイト破壊で、open/検索がパニックしない（索引部は fst 任せ）。
 #[test]
 fn byte_flips_outside_index_never_panic() {

@@ -1,8 +1,8 @@
 //! mmap + fst のシステム辞書（ADR 0001 §4.1）。
 //!
 //! `system.dict` を mmap し、索引（fst::Map）を mmap の部分スライス上にゼロコピーで置く。
-//! 開くときの検証は O(1) のものだけ（ヘッダ、セクション範囲、`entries_len == entry_count*16`、
-//! `fst::Map::new` の成否、メタの UTF-8）。エントリは読むたびに範囲付きスライスと UTF-8 検査で確かめ、
+//! 開くときの検証は O(1) のもの（ヘッダ、セクション範囲、`entries_len == entry_count*16`、
+//! `fst::Map::new` の成否、メタの UTF-8）と、索引ごとのキー数の上限・チェックサム。エントリは読むたびに範囲付きスライスと UTF-8 検査で確かめ、
 //! 不正なエントリは飛ばす。全エントリの走査は builder の `--verify` が担う。
 
 use std::borrow::Cow;
@@ -26,6 +26,9 @@ use super::{DictError, Dictionary, GrammarFile, Lemma, WordEntry, WordId};
 const STANDALONE_DICT_ID: u8 = 0;
 /// postings の1要素（u32 のエントリ番号）のバイト数
 const POSTING_SIZE: usize = 4;
+/// 索引（fst）のキーの数の上限。実辞書のキー数に十分な余裕をもたせた仮置き。
+/// これに加えて、キー数がエントリ数を超える索引も開かない
+const MAX_INDEX_KEYS: usize = 16_000_000;
 /// `prefault` が読む間隔（バイト）。OS のページ（4 KiB または 16 KiB）より小さければ、全ページに触れる
 const PAGE_STRIDE: usize = 4096;
 
@@ -132,7 +135,13 @@ impl ReadingIndex {
         let mut spans: Vec<ReadingSpan> = Vec::new();
         let mut text = String::new();
         let mut stream = index.stream();
-        while let Some((key, value)) = stream.next() {
+        // キー数は open で検査済み。壊れた索引が終わらない列を返しても、その数で打ち切る
+        let mut remaining = index.len();
+        while remaining > 0 {
+            let Some((key, value)) = stream.next() else {
+                break;
+            };
+            remaining -= 1;
             let Ok(reading) = std::str::from_utf8(key) else {
                 continue;
             };
@@ -169,6 +178,29 @@ impl ReadingIndex {
     }
 }
 
+/// 索引のキーの数と、索引の整合（チェックサム）を確かめる。
+fn check_index<D: AsRef<[u8]>>(
+    name: &'static str,
+    index: &fst::Map<D>,
+    entry_count: u32,
+    max_keys: usize,
+) -> Result<(), FormatError> {
+    let keys = index.len();
+    if keys > max_keys || keys as u64 > u64::from(entry_count) {
+        return Err(FormatError::BadSection {
+            name,
+            message: format!("too many keys ({keys}) for {entry_count} entries"),
+        });
+    }
+    index
+        .as_fst()
+        .verify()
+        .map_err(|e| FormatError::BadSection {
+            name,
+            message: format!("integrity check failed: {e}"),
+        })
+}
+
 pub struct SystemDictionary {
     mmap: Arc<Mmap>,
     /// キー: 正規化した読み。値: `(first_entry_index << 32) | count`
@@ -199,6 +231,13 @@ impl SystemDictionary {
             layout.surface_index.clone(),
         ))
         .map_err(|e| FormatError::Fst(e.to_string()))?;
+        check_index("index", &index, layout.entry_count, MAX_INDEX_KEYS)?;
+        check_index(
+            "surface_index",
+            &surface_index,
+            layout.entry_count,
+            MAX_INDEX_KEYS,
+        )?;
         Ok(Self {
             mmap,
             index,
@@ -324,7 +363,7 @@ impl Dictionary for SystemDictionary {
     /// 読みは `MAX_READING_CHARS` 文字までしかキーに入らないので、そこで打ち切る。
     ///
     /// 注: 索引の中身（遷移先のアドレス）が壊れている場合の挙動は fst に依存する。open 時の検証は
-    /// `fst::Map::new` までで、全体の整合は builder の `--verify` で確かめる。
+    /// キー数の上限とチェックサムまでで、全体の整合は builder の `--verify` で確かめる。
     fn common_prefix_search(&self, key: &str, f: &mut dyn FnMut(usize, WordEntry<'_>)) {
         for_each_prefix_value(&self.index, key, &mut |end, value| {
             self.emit_range(value, &mut |entry| f(end, entry));
@@ -390,5 +429,43 @@ impl Dictionary for SystemDictionary {
 
     fn prefault(&self) {
         SystemDictionary::prefault(self);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn map_of(keys: &[&str]) -> fst::Map<Vec<u8>> {
+        let pairs = keys.iter().enumerate().map(|(i, k)| (*k, i as u64));
+        fst::Map::from_iter(pairs).unwrap()
+    }
+
+    #[test]
+    fn index_within_limits_passes() {
+        let map = map_of(&["あ", "い", "う"]);
+        assert!(check_index("index", &map, 3, 3).is_ok());
+    }
+
+    #[test]
+    fn index_with_more_keys_than_limit_is_rejected() {
+        let map = map_of(&["あ", "い", "う"]);
+        assert!(check_index("index", &map, 100, 2).is_err());
+    }
+
+    #[test]
+    fn index_with_more_keys_than_entries_is_rejected() {
+        let map = map_of(&["あ", "い", "う"]);
+        assert!(check_index("index", &map, 2, 100).is_err());
+    }
+
+    #[test]
+    fn index_with_wrong_checksum_is_rejected() {
+        let mut bytes = map_of(&["あ", "い", "う"]).into_fst().into_inner();
+        // 遷移部の 1 バイトを変える。フッタは残るので、開けた場合は検査で落ちる
+        bytes[12] ^= 0x55;
+        if let Ok(map) = fst::Map::new(bytes) {
+            assert!(check_index("index", &map, 3, 3).is_err());
+        }
     }
 }
