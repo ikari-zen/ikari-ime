@@ -14,6 +14,7 @@ use crate::data::run::{
 
 mod docs;
 mod frameworks;
+mod installer;
 mod product;
 mod record;
 mod supply;
@@ -129,6 +130,7 @@ fn steps(root: &Path, plan: &Plan) -> Result<(), Failure> {
     product::crt_static(root)?;
     product::dev_knobs_wiring(root)?;
     product::dev_strings_gated(root)?;
+    installer::lint(root)?;
     docs::shell_syntax(root)?;
     docs::powershell_syntax(root)?;
     for script in [
