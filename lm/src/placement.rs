@@ -15,6 +15,18 @@ pub const GPU_ENV: &str = "IKARI_LM_GPU";
 #[cfg(all(feature = "dev-knobs", windows))]
 pub const LOW_INTEGRITY_ENV: &str = "IKARI_LM_LOW_INTEGRITY";
 
+/// 子を檻の段 2（AppContainer。ADR 0072 §3）で起動するか（開発用。VM での計測）。`appcontainer` のときだけ段 2。
+/// 製品のビルドは、この変数を読まない（段 2 を選ぶ口は、自由指定のモデルと一緒に足す）
+#[cfg(all(feature = "dev-knobs", windows))]
+pub const CAGE_ENV: &str = "IKARI_LM_CAGE";
+/// 段 2 を選ぶ値（開発用の環境変数 `IKARI_LM_CAGE` の値）
+const CAGE_APPCONTAINER: &str = "appcontainer";
+
+/// 段 2 を頼むか。`value` は環境変数の値（開発用ビルドの Windows だけが渡す）
+pub(crate) fn appcontainer_requested(value: Option<&str>) -> bool {
+    value == Some(CAGE_APPCONTAINER)
+}
+
 /// 低い整合性で起動するか。`value` は環境変数の値（開発用ビルドだけが渡す）。`0` のときだけ `false`
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn low_integrity(value: Option<&str>) -> bool {
@@ -150,6 +162,14 @@ mod tests {
         assert!(low_integrity(Some("1")));
         assert!(low_integrity(Some("")));
         assert!(low_integrity(None));
+    }
+
+    #[test]
+    fn appcontainer_is_requested_only_by_its_word() {
+        assert!(appcontainer_requested(Some("appcontainer")));
+        assert!(!appcontainer_requested(Some("AppContainer")));
+        assert!(!appcontainer_requested(Some("1")));
+        assert!(!appcontainer_requested(None));
     }
 
     #[test]

@@ -30,6 +30,13 @@ pub const ARG_GPU_ON: &str = "on";
 pub const ARG_GPU_OFF: &str = "off";
 pub const ARG_GPU_CPU: &str = "cpu";
 
+/// LM の子の檻の段 2（AppContainer）のプロファイルを消す（Windows。アンインストールのとき。無くても成功）。
+/// プロファイルは利用者ごとにあり、消えるのは呼んだ利用者のものだけ（ADR 0072 §11）
+#[cfg(windows)]
+pub fn delete_cage_profile() -> std::io::Result<()> {
+    os::delete_cage_profile()
+}
+
 /// 子の実行ファイルの名前（Windows は `.exe` つき）
 pub fn host_exe_name() -> String {
     format!("{HOST_EXE_STEM}{}", std::env::consts::EXE_SUFFIX)
