@@ -34,7 +34,7 @@ fn windows_main() -> u8 {
         parse_args, record_failure, resolve_data_dir, run_host, start,
     };
     use ikari_engine_host::settings_pipe::bind_settings_listener;
-    use ikari_engine_host::{candidate_window, ctrl, endsession};
+    use ikari_engine_host::{candidate_window, ctrl, endsession, stop_event};
     use ikari_pipe::Shutdown;
     use ikari_pipe::os::windows::NamedPipeListener;
 
@@ -98,6 +98,10 @@ fn windows_main() -> u8 {
     if let Err(e) = ctrl::install(stop.handle()) {
         // 受け取れなくても動く（プロセスの終了で止まる）
         eprintln!("ikari-engine: cannot install the Ctrl+C handler: {e}");
+    }
+    // 止める口（ADR 0068 §6.2）。作れなくても動く（口が無いだけ。理由は語だけ）
+    if let Err(e) = stop_event::start(stop.handle()) {
+        eprintln!("ikari-engine: no stop port ({})", e.as_str());
     }
     if cfg!(feature = "hide-console") {
         // コンソールがなく、制御イベントが届かない。ログオフ・シャットダウンは非表示の最上位ウィンドウで受ける（#372）
