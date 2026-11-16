@@ -191,8 +191,6 @@ fn encode(frame: Frame) -> Vec<u8> {
 
 /// 設定の口につないできた相手（実行ファイルのパス `peer_exe`）が、この engine-host（パス `own_exe`）から決まる
 /// インストール先の設定画面かを照らす（S3。ADR 0068 §4）。自分のパスが取れなければ（`None`）、常に断る。
-///
-/// 設定画面の exe の名前（`ikari_pipe::peer::SETTINGS_EXE_NAME`）が決まるまでは、どの相手も断る（安全な側）。
 pub fn verify_settings_client(own_exe: Option<&str>, peer_exe: &str) -> Result<(), PeerRejection> {
     let own_exe = own_exe.ok_or(PeerRejection::NoSelfPath)?;
     verify_peer_path(
@@ -260,14 +258,10 @@ mod tests {
     }
 
     #[test]
-    fn settings_clients_are_refused_until_the_settings_exe_name_is_decided() {
+    fn only_the_installed_settings_exe_is_accepted() {
         let engine = r"C:\Program Files\ikari-ime\ikari-engine-host.exe";
         let settings = r"C:\Program Files\ikari-ime\settings\ikari-settings.exe";
-        assert_eq!(ikari_pipe::peer::SETTINGS_EXE_NAME, None);
-        assert_eq!(
-            verify_settings_client(Some(engine), settings),
-            Err(PeerRejection::NotThePeer)
-        );
+        assert_eq!(verify_settings_client(Some(engine), settings), Ok(()));
         assert_eq!(
             verify_settings_client(None, settings),
             Err(PeerRejection::NoSelfPath)

@@ -35,11 +35,11 @@ pub const CANDIDATE_DIR_NAME: &str = "candidate";
 pub const CANDIDATE_EXE_NAME: &str = "ikari-candidate.exe";
 /// 設定画面の一式を置くフォルダの名前（`<インストール先>\settings\`。ADR 0067 §3.1）
 pub const SETTINGS_DIR_NAME: &str = "settings";
-/// 設定画面の実行ファイルの名前。
+/// 設定画面の実行ファイルの名前（`windows/settings-ui` の `AssemblyName`。2026-11-16 リード決定）。
 ///
-/// TODO(ADR 0071 §6): 設定画面の方式（WinUI 3 か Slint）を確かめたあとに決める。決まるまで `None` で、
-/// 設定画面を相手とする照合は常に拒む（安全な側）。
-pub const SETTINGS_EXE_NAME: Option<&str> = None;
+/// 型を `Option` のまま残すのは、方式（ADR 0071 §6。WinUI 3 か Slint）が VM の確認で変わったときに、`None` に戻せば
+/// 設定画面を相手とする照合が常に拒む側に倒れるため。
+pub const SETTINGS_EXE_NAME: Option<&str> = Some("ikari-settings.exe");
 
 /// 長いパスの接頭辞（`\\?\C:\…`）
 const VERBATIM_PREFIX: &str = r"\\?\";
@@ -577,19 +577,33 @@ mod tests {
         );
     }
 
-    /// engine-host → 設定画面（ADR 0068 §4）。設定画面の exe の名前が決まるまでは常に拒む
+    /// engine-host → 設定画面（ADR 0068 §4）
     #[test]
-    fn engine_host_to_settings_rejects_until_the_name_is_decided() {
-        assert_eq!(SETTINGS_EXE_NAME, None);
-        assert_eq!(
+    fn engine_host_to_settings() {
+        let check = |peer| {
             verify_peer_path(
                 SelfModule::EngineHost,
                 VERSIONED_ENGINE,
                 Endpoint::Settings,
-                SETTINGS_EXE
-            ),
+                peer,
+            )
+        };
+        assert_eq!(SETTINGS_EXE_NAME, Some("ikari-settings.exe"));
+        assert_eq!(check(SETTINGS_EXE), OK);
+        assert_eq!(
+            check(r"C:\PROGRAM FILES\ikari-ime\Settings\IKARI-SETTINGS.EXE"),
+            OK
+        );
+        // インストール先の直下や、ほかのフォルダの同名は通さない
+        assert_eq!(
+            check(r"C:\Program Files\ikari-ime\ikari-settings.exe"),
             NOT_PEER
         );
+        assert_eq!(
+            check(r"C:\Users\example\settings\ikari-settings.exe"),
+            NOT_PEER
+        );
+        assert_eq!(check(VERSIONED_CANDIDATE), NOT_PEER);
     }
 
     #[test]

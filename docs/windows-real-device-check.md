@@ -577,7 +577,7 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 
 - 前提: エンジン（`ikari-engine-host.exe`）が動いている。
 - やること: 設定の口（`\\.\pipe\` の下の設定の名前。`windows/engine-host` の `settings_pipe`）に、PowerShell など設定画面でないプロセスからつなぎ、エンジンのコンソール（または `logs\`）を見る。
-- 期待する結果（**見込み**）: つないだ直後に切られ、エンジンのコンソールに `ikari-pipe: refused a connection (not-the-peer)` が 1 行出る。エンジンのパイプ（入力）は使えたまま。**設定画面の exe の名前が決まるまで（`SETTINGS_EXE_NAME`）、本物の設定画面も断られる**（安全な側。第 2 段で決めてから、設定画面からはつながることを足す）。
+- 期待する結果（**見込み**）: つないだ直後に切られ、エンジンのコンソールに `ikari-pipe: refused a connection (not-the-peer)` が 1 行出る。エンジンのパイプ（入力）は使えたまま。インストール先の `settings\ikari-settings.exe` からはつながる（項目 59）。
 - うまくいかないとき: エンジンの出力、つないだプロセスのパスを残す（ログにはパスを出さない作りなので、手で書く）。
 
 ## 6. 結果の記録の書き方
