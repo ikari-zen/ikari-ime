@@ -44,6 +44,11 @@
   <ItemGroup>
     <None Include="$(IkariCoreDll)" Condition="Exists('$(IkariCoreDll)')" Link="ikari_candidate.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+  <!--
+    .proto から作った型を、XAML のコンパイラの前のコンパイル（XamlPreCompile。PrepareResources の中で、BeforeCompile より前）にも渡す。
+    Grpc.Tools は BeforeCompile で Compile に足すため、そのままでは XamlPreCompile に型が無く CS0246 になる（CI で起きた）
+  -->
+  <Target Name="IkariProtobufBeforeXaml" BeforeTargets="MarkupCompilePass1" DependsOnTargets="Protobuf_Compile" />
   <Target Name="IkariWarnMissingCore" BeforeTargets="Build" Condition="!Exists('$(IkariCoreDll)')">
     <Warning Code="IKARI001" Text="ikari_candidate.dll が見つかりません（$(IkariCoreDll)）。先に cargo build --release -p ikari-candidate を流す" />
   </Target>
