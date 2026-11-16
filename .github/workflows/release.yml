@@ -74,14 +74,21 @@ jobs:
         run: |
           rustc --version
           cargo --version
+      # RUSTFLAGS を設定すると .cargo/config.toml の rustflags（crt-static）は無視されるので、ここにも同じ指定を足す（xtask check が両方を見る）
       - name: ビルド機のパスを成果物に残さない設定
         shell: pwsh
         run: |
-          "RUSTFLAGS=--remap-path-prefix=$($env:GITHUB_WORKSPACE)=/src --remap-path-prefix=$($env:USERPROFILE)\.cargo=/cargo" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "RUSTFLAGS=--remap-path-prefix=$($env:GITHUB_WORKSPACE)=/src --remap-path-prefix=$($env:USERPROFILE)\.cargo=/cargo -C target-feature=+crt-static" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       # 仮: LM なし。LM つき（Vulkan）とインストーラは、形が決まってから足す（上の「未完了」）
       - name: release ビルド（--locked）
         shell: pwsh
         run: cargo build --release --locked -p ikari-engine-host -p ikari-candidate -p ikari-tip
+      # 製品のビルドに、開発用の文字列と動的な C ランタイムの取り込みが無いこと（ADR 0067 §4.4・§6）
+      - name: 製品のビルドの検査
+        shell: pwsh
+        run: |
+          cargo xtask scan-product target\release\ikari-engine-host.exe target\release\ikari_candidate.dll target\release\ikari_tip.dll
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 成果物を zip にする
         shell: pwsh
         run: |

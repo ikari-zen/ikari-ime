@@ -1,6 +1,6 @@
 //! `Shell` を作る（設定と資源の場所、トランスポート、時計）。
 //!
-//! - 設定: `%LOCALAPPDATA%\ikari-ime\settings.tsv`（`IKARI_USER_DIR` があればその下）。`core::user::UserDir` と同じ決め方を、
+//! - 設定: `%LOCALAPPDATA%\ikari-ime\settings.tsv`（開発用の口の feature があるビルドは、環境変数で指定した場所）。`core::user::UserDir` と同じ決め方を、
 //!   DLL に `ikari-core`（辞書など）を入れないために、ここで繰り返す。場所が決められなければ空の設定（既定値）で動く。
 //! - 資源（キー割り当ての表など）: DLL と同じ場所の `resources`（`deploy::resources_dir`）。DLL は版ごとのフォルダ
 //!   `<インストール先>\tip\<版>\` に置くので、資源も版ごとに分かれる（ADR 0063 §3 の 1）。
@@ -21,6 +21,7 @@ use crate::latency::{self, Meter};
 use crate::transport::{DownSink, PipeTransport};
 
 /// `core::user::dir` の `USER_DIR_ENV`・`LOCAL_APPDATA_ENV`・`APP_DIR_NAME` と同じ値
+#[cfg(feature = "dev-knobs")]
 const USER_DIR_ENV: &str = "IKARI_USER_DIR";
 const LOCAL_APPDATA_ENV: &str = "LOCALAPPDATA";
 const APP_DIR_NAME: &str = "ikari-ime";
@@ -38,8 +39,12 @@ fn env_dir(name: &str) -> Option<PathBuf> {
 }
 
 pub fn user_dir() -> Option<PathBuf> {
-    env_dir(USER_DIR_ENV)
-        .or_else(|| env_dir(LOCAL_APPDATA_ENV).map(|local| local.join(APP_DIR_NAME)))
+    // 環境変数による置き場所の指定は、開発用の口（feature `dev-knobs`）のビルドだけ
+    #[cfg(feature = "dev-knobs")]
+    if let Some(dir) = env_dir(USER_DIR_ENV) {
+        return Some(dir);
+    }
+    env_dir(LOCAL_APPDATA_ENV).map(|local| local.join(APP_DIR_NAME))
 }
 
 /// `module` の実行ファイルのパス（`None` は今のプロセスの exe）。

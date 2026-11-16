@@ -18,6 +18,8 @@
   5 seconds, the lock is released by the OS. For a normal stop, press Ctrl+C in the engine's console window.
   Only processes whose exe path is exactly our install copy (or the one built here) are touched.
   The data directory is $DataDir (common.ps1). The engine needs dict\ there (run install-data.ps1 first).
+  The engine is started with --data-dir, which only a development build (the "dev-knobs" feature: build.ps1 and the CI
+  artifact have it) accepts. A product build refuses it (exit code 64).
  
 #>
 param(

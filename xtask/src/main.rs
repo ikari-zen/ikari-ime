@@ -19,6 +19,7 @@ mod dict;
 mod eval;
 mod licenses;
 mod perf;
+mod scan;
 mod webwords;
 
 #[derive(Debug, Parser)]
@@ -48,6 +49,8 @@ enum Command {
     Cov(cov::Args),
     /// 配るバイナリの Rust 依存のライセンス一覧（THIRD_PARTY_LICENSES_RUST.md）を作る（cargo-about が要る。issue #242）
     Licenses(licenses::Args),
+    /// 製品のビルドの exe と DLL に、開発用の文字列と動的な C ランタイムが無いことを調べる（ADR 0067 §4.4・§6）
+    ScanProduct(scan::Args),
     /// Wikipedia 日本語版のダンプから外来語の一覧を作る（メンテナー用。ADR 0055 §5.1。issue #113）
     Webwords(webwords::Args),
 }
@@ -74,6 +77,7 @@ fn main() -> ExitCode {
         Command::Perf(args) => perf::run(args),
         Command::Cov(args) => cov::run(args),
         Command::Licenses(args) => licenses::run(args),
+        Command::ScanProduct(args) => scan::run(args),
         Command::Webwords(args) => webwords::run(args),
     };
     match result {
@@ -105,7 +109,15 @@ mod tests {
         assert_eq!(
             names,
             [
-                "check", "dict", "data", "eval", "perf", "cov", "licenses", "webwords"
+                "check",
+                "dict",
+                "data",
+                "eval",
+                "perf",
+                "cov",
+                "licenses",
+                "scan-product",
+                "webwords"
             ]
         );
     }

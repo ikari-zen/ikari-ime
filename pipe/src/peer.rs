@@ -82,7 +82,11 @@ pub enum TipLayout {
 }
 
 /// TIP に許す配置。**照合の規則はここ 1 か所**（平らな配置をやめるときは、ここから外す。ADR 0067 §6）。
+#[cfg(feature = "dev-knobs")]
 pub const TIP_LAYOUTS: &[TipLayout] = &[TipLayout::Versioned, TipLayout::Flat];
+/// 製品のビルドは版つきの配置だけ（平らな配置は feature `dev-knobs` のとき）
+#[cfg(not(feature = "dev-knobs"))]
+pub const TIP_LAYOUTS: &[TipLayout] = &[TipLayout::Versioned];
 
 /// 相手を拒んだ理由（診断のログに出す。パスや利用者名は含めない）
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -254,6 +258,18 @@ mod tests {
     const BAD_PEER: Result<(), PeerRejection> = Err(PeerRejection::PeerPathInvalid);
     const BAD_SELF: Result<(), PeerRejection> = Err(PeerRejection::SelfPathInvalid);
 
+    /// 平らな配置を許すビルド（`dev-knobs`）と、製品のビルドで、結果が違う場合の期待
+    fn with_flat(
+        dev: Result<(), PeerRejection>,
+        product: Result<(), PeerRejection>,
+    ) -> Result<(), PeerRejection> {
+        if cfg!(feature = "dev-knobs") {
+            dev
+        } else {
+            product
+        }
+    }
+
     fn tip_engine(tip: &str, peer: &str) -> Result<(), PeerRejection> {
         verify_peer_path(SelfModule::Tip, tip, Endpoint::Engine, peer)
     }
@@ -264,7 +280,17 @@ mod tests {
         let cases: &[(&str, &str, &str, Result<(), PeerRejection>)] = &[
             // 一致
             ("versioned", VERSIONED_DLL, VERSIONED_ENGINE, OK),
-            ("flat", FLAT_DLL, FLAT_ENGINE, OK),
+            // 平らな配置は feature `dev-knobs` のビルドだけ許す
+            (
+                "flat",
+                FLAT_DLL,
+                FLAT_ENGINE,
+                if cfg!(feature = "dev-knobs") {
+                    OK
+                } else {
+                    BAD_SELF
+                },
+            ),
             (
                 "versioned under the dev tip folder",
                 r"C:\Users\example\AppData\Local\ikari-ime-dev\tip\20261115-1200\ikari_tip.dll",
@@ -419,7 +445,11 @@ mod tests {
                 "inside the version folder of a versioned dll is flat",
                 VERSIONED_DLL,
                 r"C:\Program Files\ikari-ime\tip\0.3.1\ikari-engine-host.exe",
-                OK,
+                if cfg!(feature = "dev-knobs") {
+                    OK
+                } else {
+                    NOT_PEER
+                },
             ),
             (
                 "inside the tip folder",
@@ -431,13 +461,13 @@ mod tests {
                 "versioned rule needs the tip folder",
                 r"C:\Users\example\Downloads\x\1\ikari_tip.dll",
                 r"C:\Users\example\Downloads\ikari-engine-host.exe",
-                NOT_PEER,
+                with_flat(NOT_PEER, BAD_SELF),
             ),
             (
                 "versioned needs two folders above",
                 r"C:\tip\ikari_tip.dll",
                 r"C:\ikari-engine-host.exe",
-                NOT_PEER,
+                with_flat(NOT_PEER, BAD_SELF),
             ),
             // 空
             ("empty peer", VERSIONED_DLL, "", BAD_PEER),

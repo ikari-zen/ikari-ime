@@ -43,6 +43,7 @@ const FALLBACK_PRE_TOKENIZER: &str = "default";
 const PROMPT_SEQ: i32 = 0;
 
 /// 設定すると llama.cpp のログを標準エラーに出す
+#[cfg(feature = "dev-knobs")]
 pub const LOG_ENV: &str = "IKARI_LM_LOG";
 
 #[cfg(all(feature = "metal", feature = "vulkan"))]
@@ -60,7 +61,12 @@ static GPU_DISABLED: AtomicBool = AtomicBool::new(false);
 fn backend() -> Result<&'static LlamaBackend, LmError> {
     let b = BACKEND.get_or_init(|| {
         // llama.cpp のログは出さない（CLI の出力を汚さない）。調べるときは LOG_ENV を設定する
-        if std::env::var_os(LOG_ENV).is_none() {
+        // 環境変数での切り替えは開発用の口（feature `dev-knobs`）のビルドだけ
+        #[cfg(feature = "dev-knobs")]
+        let quiet = std::env::var_os(LOG_ENV).is_none();
+        #[cfg(not(feature = "dev-knobs"))]
+        let quiet = true;
+        if quiet {
             llama_cpp_2::send_logs_to_tracing(LogOptions::default().with_logs_enabled(false));
         }
         #[cfg(feature = "vulkan")]
@@ -125,7 +131,10 @@ enum Placement {
 #[cfg(feature = "vulkan")]
 fn choose_placement(want_gpu: bool) -> (Placement, GpuState) {
     use llama_cpp_2::LlamaBackendDeviceType as T;
+    #[cfg(feature = "dev-knobs")]
     let env = std::env::var(placement::GPU_ENV).ok();
+    #[cfg(not(feature = "dev-knobs"))]
+    let env: Option<String> = None;
     let (want, off) = match placement::env_override(env.as_deref()) {
         Some(on) => (on, GpuState::OffEnv),
         None => (want_gpu, GpuState::OffSetting),

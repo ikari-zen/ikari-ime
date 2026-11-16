@@ -2,6 +2,8 @@
 
 use std::path::{Path, PathBuf};
 
+/// データの置き場所を指す環境変数（開発用。feature `dev-knobs` のときだけ読む。製品のビルドには入れない）
+#[cfg(feature = "dev-knobs")]
 pub const USER_DIR_ENV: &str = "IKARI_USER_DIR";
 pub const LEARNING_FILE_NAME: &str = "learning.tsv";
 pub const PROFILE_FILE_NAME: &str = "profile.tsv";
@@ -64,7 +66,10 @@ impl UserDirEnv {
                 .map(PathBuf::from)
         };
         Self {
+            #[cfg(feature = "dev-knobs")]
             ikari_user_dir: get(USER_DIR_ENV),
+            #[cfg(not(feature = "dev-knobs"))]
+            ikari_user_dir: None,
             xdg_data_home: get("XDG_DATA_HOME"),
             home: get("HOME"),
             local_appdata: get(LOCAL_APPDATA_ENV),
@@ -77,7 +82,7 @@ impl UserDir {
         Self { root: root.into() }
     }
 
-    /// 優先順位: 明示の指定、`$IKARI_USER_DIR`、macOS は `~/Library/Application Support/ikari-ime`、
+    /// 優先順位: 明示の指定、環境変数による指定（feature `dev-knobs` のときだけ）、macOS は `~/Library/Application Support/ikari-ime`、
     /// Windows は `%LOCALAPPDATA%\ikari-ime`（`%LOCALAPPDATA%` がなければ決めない）、
     /// その他は `$XDG_DATA_HOME/ikari-ime`（なければ `~/.local/share/ikari-ime`）。
     /// 決められなければ None（HOME もない環境）。

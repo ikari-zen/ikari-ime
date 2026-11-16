@@ -23,7 +23,9 @@ mod llama;
 
 pub use config::{ModelKind, ZenzConfig};
 pub use error::LmError;
-pub use placement::{GPU_ENV, GpuState, devices, gpu_state, log_note};
+#[cfg(feature = "dev-knobs")]
+pub use placement::GPU_ENV;
+pub use placement::{GpuState, devices, gpu_state, log_note};
 pub use prompt::{PromptInput, build_prompt, build_prompt_for, tail_chars};
 pub use ranker::{LmStats, LmTimings, ZenzRanker};
 pub use scorer::{LmDevice, LmLoader, LmScorer};
