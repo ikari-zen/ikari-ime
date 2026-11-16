@@ -18,6 +18,7 @@
 
 pub mod client;
 pub mod duplex;
+pub mod elevation;
 pub mod frame;
 pub mod mem;
 mod mux;
