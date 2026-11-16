@@ -171,8 +171,25 @@ fn the_child_runs_confined() {
     assert!(out.contains(NESTED_BLOCKED), "{out}");
 }
 
+/// この環境で AppContainer のプロファイルが作れるか。GitHub Actions の runner では
+/// `ensure_profile` が 0x8007010A（環境が正しくない）で失敗する（VM と実機では動く。ADR 0072 §12）。
+/// その特定のエラーのときだけ、テストを飛ばす（ほかの失敗は落とす）
+fn appcontainer_unavailable_here() -> bool {
+    const ENVIRONMENT_INCORRECT: i32 = 0x8007_010Au32 as i32;
+    match appcontainer::ensure_profile() {
+        Err(e) if e.raw_os_error() == Some(ENVIRONMENT_INCORRECT) => {
+            eprintln!("skip: この環境では AppContainer のプロファイルが作れない（{e}）");
+            true
+        }
+        _ => false,
+    }
+}
+
 #[test]
 fn the_appcontainer_child_reads_only_the_granted_file() {
+    if appcontainer_unavailable_here() {
+        return;
+    }
     let dir = tempfile::tempdir().unwrap();
     let granted = dir.path().join("granted.gguf");
     let other = dir.path().join("other.txt");
@@ -229,10 +246,9 @@ fn ace_count(path: &Path) -> u16 {
         )
     };
     assert_eq!(rc, ERROR_SUCCESS);
-    assert!(!dacl.is_null(), "DACL がない");
-    // SAFETY: 成功した呼び出しが返した DACL（`sd` の中。null でないと確かめた）を読み、`sd` を 1 回だけ解放する
+    // SAFETY: 成功した呼び出しが返した DACL（`sd` の中）を読み、`sd` を 1 回だけ解放する。null なら落とす
     unsafe {
-        let count = (*dacl).AceCount;
+        let count = dacl.as_ref().expect("DACL がない").AceCount;
         LocalFree(sd);
         count
     }
@@ -240,6 +256,9 @@ fn ace_count(path: &Path) -> u16 {
 
 #[test]
 fn the_profile_and_the_grant_are_idempotent() {
+    if appcontainer_unavailable_here() {
+        return;
+    }
     let first = appcontainer::ensure_profile().unwrap();
     let second = appcontainer::ensure_profile().unwrap();
     // SAFETY: どちらも、生きている SID
