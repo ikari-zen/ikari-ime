@@ -503,7 +503,7 @@ fn list(cli: &Cli, dir: &Path) -> ExitCode {
 fn cleanup(dir: &Path) -> ExitCode {
     let mut code = ExitCode::SUCCESS;
     match sandbox::cleanup(dir) {
-        Ok(true) => println!("AppContainer のプロファイルを消しました"),
+        Ok(true) => println!("AppContainer のプロファイルを消しました（無ければ何もしていません）"),
         Ok(false) => println!("AppContainer のプロファイルは残っていません"),
         Err(e) => {
             println!("AppContainer のプロファイルを消せません: {e}");

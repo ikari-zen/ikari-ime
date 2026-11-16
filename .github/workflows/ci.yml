@@ -328,7 +328,8 @@ jobs:
           Get-ChildItem "$root\runtime\bin\intel64\Release" -File |
             Where-Object { $_.Name -notmatch '_frontend\.dll$' -or $_.Name -eq 'openvino_ir_frontend.dll' } |
             Copy-Item -Destination $out
-          foreach ($tbb in 'tbb12.dll', 'tbbmalloc.dll', 'tbbbind_2_5.dll') { Copy-Item "$root\runtime\3rdparty\tbb\bin\$tbb" $out }
+          # tbbbind_2_5.dll は入れない: VM（N150）で、あると compile_model が時々（GPU は毎回）0xc0000005 で落ちた（無いと 8/8 通った）
+          foreach ($tbb in 'tbb12.dll', 'tbbmalloc.dll') { Copy-Item "$root\runtime\3rdparty\tbb\bin\$tbb" $out }
           Copy-Item "$root\docs\licensing\*" "$out\licenses\openvino"
           if (-not (Test-Path "$out\openvino_c.dll")) { throw "openvino_c.dll was not collected" }
           # 利用状況を送る部品（テレメトリ）が入っていないこと（ADR 0075 §6）
