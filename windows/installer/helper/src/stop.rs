@@ -17,7 +17,7 @@ pub const ENGINE_EXE: &str = "ikari-engine-host.exe";
 pub const CHILD_EXES: &[&str] = &["ikari-lm-host.exe", r"candidate\ikari-candidate.exe"];
 
 /// 合図のあと、エンジンが自分で終わるのを待つ時間（ミリ秒）。
-/// TODO(ADR 0068 §6.2): 仮置き（計測なし）。実機で終了にかかる時間を測って決める（項目 47）。
+/// TODO(ADR 0068 §6.2): 仮置き（計測なし）。実機で終了にかかる時間を測って決める（実機の手順書の項目 51）。
 pub const SIGNAL_WAIT_MS: u32 = 5_000;
 
 /// 強制の終了のあと、プロセスが消えるのを待つ時間（ミリ秒）。TerminateProcess は終わりを待たないので要る。
