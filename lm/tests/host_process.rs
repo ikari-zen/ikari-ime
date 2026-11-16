@@ -13,7 +13,7 @@ use ikari_core::{
     AnalyzedContext, Candidate, CandidateOrigin, Context, DenseGrammar, InMemoryDictionary,
     RankInput, Ranker, UnknownParams,
 };
-use ikari_lm::host::{HostCage, HostHealth, HostLimits, HostSpec, host_loader};
+use ikari_lm::host::{HostCage, HostHealth, HostLauncher, HostLimits, HostSpec, host_loader};
 use ikari_lm::{CancelToken, LmDevice, ZenzConfig, ZenzRanker, cancel};
 
 const FAKE_HOST: &str = env!("CARGO_BIN_EXE_ikari-lm-host-fake");
@@ -134,6 +134,7 @@ impl Harness {
                 max_failures: MAX_FAILURES,
             },
             cage,
+            launcher: HostLauncher::Direct,
         });
         let cfg = ZenzConfig {
             budget: ikari_testtime::ms(RANK_BUDGET_MS),
@@ -358,6 +359,7 @@ fn a_missing_program_is_a_failure_not_a_panic() {
         use_gpu: true,
         limits: HostLimits::default(),
         cage: HostCage::Standard,
+        launcher: HostLauncher::Direct,
     });
     assert!(loader().is_err());
     assert_eq!(health.consecutive_failures(), 1);

@@ -149,6 +149,26 @@ pub(super) fn spawn(
     Ok((proc, stdin, stdout))
 }
 
+/// 檻役（`launcher` の口）に子の起動を頼む（macOS の段 2。ADR 0077）。
+///
+/// 契約のスタブ（第 4 弾）: 中身はレーン D-3-mac。`args` は今の `--model <path> --gpu <語>` のまま渡す
+/// （檻役には `--gpu` の語だけを [`cage::CageGpu`] で送り、モデルはエンジンが開いて fd で渡す）。
+/// 口が無い（`slot` が空）ときは「檻なし」で起動しない。今は常に `Unsupported`。
+///
+/// [`cage::CageGpu`]: crate::host::cage::CageGpu
+pub(super) fn spawn_via_cage(
+    slot: &crate::host::cage::CageSlot,
+    model: &Path,
+    args: &[OsString],
+    cage: crate::host::scorer::HostCage,
+) -> io::Result<(ChildProc, ToChild, FromChild)> {
+    let _ = (slot, model, args, cage);
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "lm cage launcher is not implemented",
+    ))
+}
+
 /// Windows でない OS の段 1 の檻
 #[cfg(target_vendor = "apple")]
 const NOT_WINDOWS_CAGE: CageState = CageState::Inherited;

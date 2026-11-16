@@ -34,6 +34,7 @@ use std::time::{Duration, Instant};
 
 use crate::cancel::CancelToken;
 use crate::error::LmError;
+use crate::host::launch::HostLauncher;
 use crate::host::os::{self, Cage, CageState, ChildProc};
 use crate::host::proto::{
     FailKind, MAX_FRAME_BYTES, PROTOCOL_VERSION, Reply, Request, read_frame, write_frame,
@@ -94,6 +95,8 @@ pub struct HostSpec {
     pub limits: HostLimits,
     /// 子にかける檻（モデルの出どころで選ぶ）
     pub cage: HostCage,
+    /// だれが子を起動するか（OS と配置で選ぶ。ADR 0077。`launch` の説明）
+    pub launcher: HostLauncher,
 }
 
 /// 子にかける檻の求め（ADR 0072 §4）
@@ -247,6 +250,10 @@ fn spawn_caged(
     spec: &HostSpec,
     args: &[OsString],
 ) -> std::io::Result<(ChildProc, os::ToChild, os::FromChild)> {
+    // 檻役に頼む（macOS の段 2。ADR 0077）。中身は D-3-mac（今は起動しない）
+    if let HostLauncher::Cage(slot) = &spec.launcher {
+        return os::spawn_via_cage(slot, &spec.model, args, cage_for(spec));
+    }
     let container = Cage::AppContainer {
         readable: &spec.model,
     };
