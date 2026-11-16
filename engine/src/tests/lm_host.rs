@@ -34,6 +34,11 @@ struct HostEngine {
 
 impl HostEngine {
     fn new() -> HostEngine {
+        HostEngine::with_script(SCRIPT)
+    }
+
+    /// 偽の子の台本を指定して作る
+    fn with_script(script_text: &str) -> HostEngine {
         let dir = temp_dir("lm-host");
         // 子は低い整合性で動く（ADR 0072）。旗のファイルを書けるよう、このフォルダだけ低いラベルにする
         #[cfg(windows)]
@@ -47,7 +52,7 @@ impl HostEngine {
             assert!(ok, "icacls /setintegritylevel failed");
         }
         let script = dir.join("script.txt");
-        std::fs::write(&script, SCRIPT).unwrap();
+        std::fs::write(&script, script_text).unwrap();
         let user = dir.join("user");
         std::fs::create_dir_all(&user).unwrap();
         let paths = StackPaths {
@@ -100,8 +105,8 @@ impl HostEngine {
             .count()
     }
 
-    /// 先行計算のあとに変換する。左文脈は毎回変える（前の結果を使わせない）
-    fn convert(&self) -> pb::ConvertReply {
+    /// 次の文脈の番号と文脈。左文脈は毎回変える（前の結果を使わせない）
+    fn next_context(&self) -> (u64, pb::SurroundingText) {
         let rev = self.rev.get() + 1;
         self.rev.set(rev);
         let context = pb::SurroundingText {
@@ -109,6 +114,11 @@ impl HostEngine {
             right: String::new(),
             available: true,
         };
+        (rev, context)
+    }
+
+    /// 先行計算を頼む（待たない）
+    fn prefetch(&self, rev: u64, context: &pb::SurroundingText) {
         send(
             self.e(),
             envelope::Body::Prefetch(pb::Prefetch {
@@ -118,6 +128,17 @@ impl HostEngine {
                 context_rev: rev,
             }),
         );
+    }
+
+    /// 先行計算のあとに変換する。左文脈は毎回変える（前の結果を使わせない）
+    fn convert(&self) -> pb::ConvertReply {
+        let (rev, context) = self.next_context();
+        self.prefetch(rev, &context);
+        self.convert_now(rev, context)
+    }
+
+    /// 先行計算を頼まずに変換する（同じ文脈の先行計算が計算中なら、`convert_wait` まで待つ）
+    fn convert_now(&self, rev: u64, context: pb::SurroundingText) -> pb::ConvertReply {
         let envelope::Body::ConvertReply(reply) = send(
             self.e(),
             envelope::Body::Convert(pb::Convert {
@@ -190,4 +211,39 @@ fn a_single_crash_is_followed_by_a_restart_without_restarting_the_engine() {
     wait_until(|| h.top() == BOOSTED);
     assert!(h.starts() > starts);
     assert_eq!(h.e().inner.lm_state(), LmState::LmReady);
+}
+
+/// 偽の子の採点 1 回の時間（ms）。#429 の再現用。打鍵の間隔より長い推論（遅い機械）に見立てる
+const SLOW_INFER_MS: u64 = 300;
+/// 古い先行計算を頼んでから、最後の読みの先行計算を頼むまで（ms）。古い推論が走り出すのに足りる長さ
+const SUPERSEDE_AFTER_MS: u64 = 30;
+
+/// #429: 走り出した古い先行計算の推論が、最後の読みの推論を待たせる。
+/// 中断がない今は「古い推論の残り + 自分の推論」（約 2 回分）かかる。中断を入れたら `#[ignore]` を外す
+#[test]
+#[ignore = "#429: 走り出した LM の推論を止める仕組みがまだない（中断の設計待ち）"]
+fn a_running_stale_inference_does_not_delay_the_newest_reading() {
+    let h = HostEngine::with_script(&format!("{SCRIPT}delay_ms={SLOW_INFER_MS}\n"));
+    // 子を起動して暖める（LM が効く）
+    wait_until(|| h.top() == BOOSTED);
+
+    // 古い読み（文脈）の先行計算。子が採点を始めるまで少し待つ
+    let (old_rev, old_context) = h.next_context();
+    h.prefetch(old_rev, &old_context);
+    std::thread::sleep(ikari_testtime::ms(SUPERSEDE_AFTER_MS));
+
+    // 最後の読みの先行計算と、すぐの Space（計算中の先行計算を待つ）
+    let (rev, context) = h.next_context();
+    let started = Instant::now();
+    h.prefetch(rev, &context);
+    let reply = h.convert_now(rev, context);
+    let elapsed = started.elapsed();
+    eprintln!(
+        "#429 newest reading: {elapsed:?} lm_applied={}",
+        reply.lm_applied
+    );
+    assert!(reply.lm_applied);
+    // 自分の推論 1 回分 + 余裕。古い推論の残りを待てば、ほぼ 2 回分になる
+    let limit = ikari_testtime::ms(SLOW_INFER_MS + SLOW_INFER_MS / 2);
+    assert!(elapsed < limit, "{elapsed:?} >= {limit:?}");
 }

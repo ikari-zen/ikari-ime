@@ -722,6 +722,40 @@ fn newest_request_wins_when_the_worker_is_busy() {
     assert!(prompts[1].contains("r3"), "{:?}", prompts[1]);
 }
 
+/// 採点 1 回の時間（ms）。#429 の再現用。打鍵の間隔より長い推論（遅い機械）に見立てる
+const SLOW_INFER_MS: u64 = 300;
+/// 古い要求を送ってから、新しい要求を送るまで（ms）。古い推論が走り出すのに足りる長さ
+const SUPERSEDE_AFTER_MS: u64 = 30;
+
+/// #429（同じプロセスの経路）: 走り出した古い推論が、新しい要求の推論を待たせる。
+/// 中断がない今は「古い推論の残り + 自分の推論」（約 2 回分）かかる。中断を入れたら `#[ignore]` を外す
+#[test]
+#[ignore = "#429: 走り出した LM の推論を止める仕組みがまだない（中断の設計待ち）"]
+fn a_running_stale_inference_does_not_delay_the_newest_request() {
+    let state = mock(&[("a", 1.0)]);
+    let r = ZenzRanker::new(loader(&state), cfg(WARM_UP_TEST_BUDGET_MS, 60_000));
+    r.warm_up();
+    *lock(&state.delay) = ikari_testtime::ms(SLOW_INFER_MS);
+    let fx = Fixture::new();
+    thread::scope(|scope| {
+        // 古い要求（先行計算）。待ちは別のスレッドで
+        scope.spawn(|| {
+            let mut c = vec![dict_cand("a", 0)];
+            fx.rank(&r, &Context::new(), "old", &mut c);
+        });
+        thread::sleep(ikari_testtime::ms(SUPERSEDE_AFTER_MS));
+        let started = Instant::now();
+        let mut c = vec![dict_cand("a", 0), dict_cand("b", 0)];
+        fx.rank(&r, &Context::new(), "new", &mut c);
+        let elapsed = started.elapsed();
+        // 新しい要求は LM の結果を受け取った（時間切れではない）
+        assert_eq!(r.stats().timeouts, 0, "{:?}", r.stats());
+        // 自分の推論 1 回分 + 余裕。古い推論の残りを待てば、ほぼ 2 回分になる
+        let limit = ikari_testtime::ms(SLOW_INFER_MS + SLOW_INFER_MS / 2);
+        assert!(elapsed < limit, "{elapsed:?} >= {limit:?}");
+    });
+}
+
 #[test]
 fn dropping_the_ranker_releases_the_model_and_joins_the_worker() {
     let state = mock(&[("a", 1.0)]);
