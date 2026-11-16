@@ -1,6 +1,6 @@
 # ADR 0065: Windows の LM の既定を、利用者の機械の自己診断で決める（下限 X。ADR 0040 Q1 の決め直し）
 
-- 状態: 提案
+- 状態: 承認（2026-11-15。Q1〜Q3 はすべて推奨どおり。値は仮置きのまま、X の最終値は検証のあとに追記する）
 - 日付: 2026-11-15
 - 対象: `lm`（検証用の遅延の口）、`engine`（自己診断、判定の保存、既定の自動判定、`HelloReply`）、`proto/ikari/engine/v1/engine.proto`（追加だけ）、`windows/engine-host/src/run.rs`（既定の方針）、`shell-core/src/settings/`（表示の文と「自動」に戻す操作）、`shell-ffi/src/settings_app.rs`、設定アプリ（macOS の `macos/Sources/IkariSettings/`、Windows の設定画面）、`eval/`（再生の評価）、文書（README、`docs/windows-real-device-check.md`、`eval/reports/`）
 - 前提: main = bbd68d6。ADR 0040 §2.3・§2.6・§9 の Q1（Windows 1.0.0 は LM を既定オフ）、ADR 0021 §0・§2.1・§10（先行計算、Space までの間、Space から 30ms 待つ）、ADR 0059（Windows は Vulkan、`engine.lm_gpu` の既定はオン、N150 の VM の参考値）、ADR 0060 の Q4（推論は別プロセス `ikari-lm-host`）、ADR 0061（`LmTrace`、`LmReport`、開発者の表示）、#426（CPU で動いているときの案内）、#429（走り出した推論の中断）、spec NFR-04・NFR-17。Fable の設計レビュー（2026-11-15）の「0. 実機が持てないとき」
