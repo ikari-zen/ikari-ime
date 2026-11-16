@@ -21,6 +21,7 @@ ikari-ime（日本語入力メソッド）の文書の索引です。文書は�
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | 貢献の方針（Issue、Pull Request、fork） |
 | [../CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) | 行動規範 |
 | [architecture.md](architecture.md) | 今の構成の地図（crate、プロセス、データの置き場所、スクリプト） |
+| [security-design.md](security-design.md) | セキュリティ設計の地図（約束の線、信頼の根、領域ごとの決定への索引。ADR 0066〜0073。承認済み、実装はこれから） |
 | [ikari-ime_spec.md](ikari-ime_spec.md) | 要件定義書。最初に「基本原則」を読むと方針が分かります |
 | [adr/README.md](adr/README.md) | 設計の判断の索引（ADR） |
 | [user-feedback.md](user-feedback.md) | ユーザーの指摘と、それを受けた決定（具体例つき） |
