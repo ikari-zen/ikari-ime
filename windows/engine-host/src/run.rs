@@ -3,7 +3,7 @@
 //! macOS の `IkariEngineService`（`main.swift`）に相当する。`main` は、ここの関数を呼んで、`cfg(windows)` の
 //! 部分（パイプの受け口、Ctrl+C の受け取り）をつなぐだけ。判断の置き場所: Rust。判断は engine。ここは起動と配線だけ。
 //!
-//! - データのディレクトリ: `--data-dir`、`IKARI_USER_DIR`、`%LOCALAPPDATA%\ikari-ime` の順（`UserDir::resolve_with`）。
+//! - データのディレクトリ: `--data-dir`（開発用の `dev-knobs` のビルドだけ。ADR 0068 §3）、`IKARI_USER_DIR`、`%LOCALAPPDATA%\ikari-ime` の順（`UserDir::resolve_with`）。
 //!   辞書は `<データ>/dict/`、モデルは `<データ>/models/`、ログは `<データ>/logs/`、設定は `<データ>/settings.tsv`
 //!   （どれも `Engine::open` が決める配置。ここでは別の場所を持たない）。
 //! - 二重起動の防止: 起動の最初に `engine.lock`（`EngineLock`）を試しに取る（`start`。取れたらすぐ放す。ロックは
@@ -43,8 +43,11 @@ pub const EXIT_UNSUPPORTED: u8 = 1;
 pub const EXIT_START_FAILED: u8 = 2;
 /// 引数が不正（`sysexits.h` の `EX_USAGE`）
 pub const EXIT_USAGE: u8 = 64;
+/// 高い権限で起動された。何もせずに終わる（`sysexits.h` の `EX_NOPERM`。ADR 0067 §4.3）
+pub const EXIT_ELEVATED: u8 = 77;
 
-/// 引数の名前
+/// 引数の名前。**開発用のビルド（`dev-knobs`）だけ**。製品は受けない（未知の引数として断る。ADR 0068 §3）
+#[cfg(feature = "dev-knobs")]
 pub const ARG_DATA_DIR: &str = "--data-dir";
 /// 起動の失敗を残すファイル（`<データ>/logs/`）。窓のない起動で標準エラーが見えないため。最後の 1 回分だけ持つ
 pub const START_FAILURE_LOG: &str = "start-failure.log";
@@ -60,7 +63,7 @@ const IDLE_UNLOAD_SECS: u32 = 300;
 /// 起動の引数
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Options {
-    /// データのディレクトリの明示の指定
+    /// データのディレクトリの明示の指定（開発用のビルド `dev-knobs` だけが受ける。製品では常に `None`）
     pub data_dir: Option<PathBuf>,
 }
 
@@ -81,6 +84,18 @@ impl fmt::Display for UsageError {
 }
 
 /// `args` は、実行ファイルの名前を除いたもの。
+///
+/// 製品のビルドは、引数を 1 つも受けない（`--data-dir` も未知の引数。ADR 0068 §3）。
+#[cfg(not(feature = "dev-knobs"))]
+pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Result<Options, UsageError> {
+    match args.into_iter().next() {
+        Some(arg) => Err(UsageError::Unknown(arg)),
+        None => Ok(Options::default()),
+    }
+}
+
+/// `args` は、実行ファイルの名前を除いたもの。開発用のビルド（`dev-knobs`）は `--data-dir` を受ける。
+#[cfg(feature = "dev-knobs")]
 pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Result<Options, UsageError> {
     let mut options = Options::default();
     let mut args = args.into_iter();
@@ -94,6 +109,13 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Result<Options, Us
         }
     }
     Ok(options)
+}
+
+/// 自分のトークンの整合性のレベル（`own_rid`。取れなければ `None`）から、起動してよいかを決める。
+/// 高い権限（管理者として実行など）なら、何もせずに終わる（ふつうの権限の TIP の相手になるのを防ぐ。ADR 0067 §4.3）。
+/// 取れないときも終わる（安全な側）。`Err` は、ログに出す固定の語。
+pub fn check_launch(own_rid: Option<u32>) -> Result<(), &'static str> {
+    ikari_pipe::elevation::check_self(own_rid).map_err(|refusal| refusal.as_str())
 }
 
 /// 起動できなかった理由。
@@ -119,11 +141,14 @@ impl StartError {
 impl fmt::Display for StartError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            #[cfg(feature = "dev-knobs")]
             StartError::NoDataDir => write!(
                 f,
                 "cannot decide the data directory (set {} or pass {ARG_DATA_DIR})",
                 ikari_core::user::USER_DIR_ENV
             ),
+            #[cfg(not(feature = "dev-knobs"))]
+            StartError::NoDataDir => write!(f, "cannot decide the data directory"),
             StartError::AlreadyRunning => write!(f, "another engine is already running"),
             StartError::Failed(reason) => write!(f, "{reason}"),
         }
@@ -274,6 +299,14 @@ impl StopWait {
     }
 }
 
+#[cfg(test)]
+impl StopWait {
+    /// 止める合図が届いているか（テスト用。届いていれば取り出す）
+    pub(crate) fn try_recv_stop(&self) -> bool {
+        matches!(self.rx.try_recv(), Ok(Event::Stop))
+    }
+}
+
 impl Default for StopWait {
     fn default() -> Self {
         Self::new()
@@ -353,6 +386,34 @@ mod tests {
         list.iter().map(|s| (*s).to_owned()).collect()
     }
 
+    #[test]
+    fn launch_is_refused_when_elevated_or_unknown() {
+        assert_eq!(check_launch(Some(0x2000)), Ok(()));
+        assert_eq!(check_launch(Some(0x3000)), Err("self-elevated"));
+        assert_eq!(check_launch(Some(0x4000)), Err("self-elevated"));
+        assert_eq!(check_launch(None), Err("self-integrity-unknown"));
+    }
+
+    /// 製品のビルドは `--data-dir` を受けない（未知の引数。値の有無にも依らない）
+    #[cfg(not(feature = "dev-knobs"))]
+    #[test]
+    fn product_build_rejects_the_data_dir_argument() {
+        assert_eq!(parse_args(args(&[])), Ok(Options::default()));
+        assert_eq!(
+            parse_args(args(&["--data-dir", "/x"])),
+            Err(UsageError::Unknown("--data-dir".into()))
+        );
+        assert_eq!(
+            parse_args(args(&["--data-dir"])),
+            Err(UsageError::Unknown("--data-dir".into()))
+        );
+        assert_eq!(
+            parse_args(args(&["--nope"])),
+            Err(UsageError::Unknown("--nope".into()))
+        );
+    }
+
+    #[cfg(feature = "dev-knobs")]
     #[test]
     fn parses_the_data_dir_argument() {
         assert_eq!(parse_args(args(&[])), Ok(Options::default()));

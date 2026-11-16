@@ -7,7 +7,19 @@ use std::sync::Mutex;
 
 /// GPU を使う設定か（`engine.lm_gpu`）の環境変数による上書き（開発用）。`1` でオン、`0` でオフ。
 /// それ以外の値、または未設定なら設定に従う。feature `vulkan` のときだけ効く
+#[cfg(feature = "dev-knobs")]
 pub const GPU_ENV: &str = "IKARI_LM_GPU";
+
+/// 子を低い整合性で起動するか（ADR 0072 §3）の環境変数による上書き（開発用）。`0` でオフ。
+/// それ以外の値、または未設定なら低い整合性（製品のビルドは、この変数を読まず常に低い整合性）
+#[cfg(all(feature = "dev-knobs", windows))]
+pub const LOW_INTEGRITY_ENV: &str = "IKARI_LM_LOW_INTEGRITY";
+
+/// 低い整合性で起動するか。`value` は環境変数の値（開発用ビルドだけが渡す）。`0` のときだけ `false`
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn low_integrity(value: Option<&str>) -> bool {
+    value != Some("0")
+}
 
 /// GPU をどう扱ったか（ログの `gpu=` の語）
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -130,6 +142,14 @@ mod tests {
         assert_eq!(env_override(Some("on")), None);
         assert_eq!(env_override(Some("")), None);
         assert_eq!(env_override(None), None);
+    }
+
+    #[test]
+    fn low_integrity_is_off_only_for_zero() {
+        assert!(!low_integrity(Some("0")));
+        assert!(low_integrity(Some("1")));
+        assert!(low_integrity(Some("")));
+        assert!(low_integrity(None));
     }
 
     #[test]

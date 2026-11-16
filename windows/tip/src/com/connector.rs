@@ -61,12 +61,12 @@ fn open_verified(name: &str, tip_dll: Option<&Path>) -> Option<(NamedPipeDuplex,
 }
 
 fn verify_peer(tip_dll: Option<&Path>, pid: Option<u32>) -> Result<(), PeerRejection> {
-    let tip_dll = tip_dll.ok_or(PeerRejection::NoTipPath)?;
+    let tip_dll = tip_dll.ok_or(PeerRejection::NoSelfPath)?;
     let pid = pid.ok_or(PeerRejection::NoPeerPid)?;
     let peer_exe = process_image_path(pid).ok_or(PeerRejection::NoPeerPath)?;
     let tip_dll = long_path(tip_dll.as_os_str());
     let peer_exe = long_path(&peer_exe);
-    let tip_dll = tip_dll.to_str().ok_or(PeerRejection::TipPathInvalid)?;
+    let tip_dll = tip_dll.to_str().ok_or(PeerRejection::SelfPathInvalid)?;
     let peer_exe = peer_exe.to_str().ok_or(PeerRejection::PeerPathInvalid)?;
     verify_engine_path(tip_dll, peer_exe)
 }
@@ -295,13 +295,17 @@ mod tests {
     }
 
     #[test]
-    fn accepts_the_engine_next_to_the_dll() {
+    fn the_engine_next_to_the_dll_is_accepted_only_by_dev_builds() {
         let temp = tempfile::tempdir().expect("temp dir");
         let root = long_dir(temp.path());
         let name = unique_name();
         let child = spawn_fake_engine(&root, &name);
         let tip_dll = root.join("ikari_tip.dll");
-        assert!(open_verified(&name, Some(&tip_dll)).is_some());
+        // 平らな配置は開発用のビルド（`dev-knobs`）だけが許す（`TIP_LAYOUTS`。製品は版つきの配置だけ）
+        assert_eq!(
+            open_verified(&name, Some(&tip_dll)).is_some(),
+            cfg!(feature = "dev-knobs")
+        );
         finish(child);
     }
 }

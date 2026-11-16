@@ -7,11 +7,8 @@ license.workspace = true
 [lib]
 crate-type = ["staticlib", "rlib"]
 
-[features]
-default = []
-# llama.cpp を含める。default-members の外に置く（ADR 0004 §3.1）
-lm = ["ikari-engine/lm"]
-lm-metal = ["lm", "ikari-engine/lm-metal"]
+# 製品のエンジンに llama.cpp を入れない（feature `lm` を持たない。ADR 0072 §5）。LM は別プロセス（ikari-lm-host）が担う。
+# 同じプロセスで動かす LM は、ikari-engine の feature（テスト、計測だけ）と、CLI、評価にある
 
 [dependencies]
 ikari-engine.workspace = true

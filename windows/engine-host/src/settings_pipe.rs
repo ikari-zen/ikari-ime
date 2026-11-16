@@ -27,7 +27,7 @@ use std::io;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use ikari_pipe::frame::KIND_SEQ_BYTES;
-use ikari_pipe::{FrameKind, Listener, MAX_FRAME_LEN, Server};
+use ikari_pipe::{FrameKind, Listener, MAX_FRAME_LEN, Port, Server};
 use ikari_shell_core::SettingsEntry;
 use ikari_shell_core::bridge::proto::{BridgeErrorCode, Frame, UpdateSettings};
 use ikari_shell_core::bridge::protocol::{error_frame, snapshot_frame};
@@ -195,7 +195,7 @@ pub fn bind_settings_listener() -> io::Result<ikari_pipe::os::windows::NamedPipe
 /// 受け口が閉じられるまで、設定画面の接続を受ける。`Server` はエンジンのパイプとは別に持つ。
 /// 戻る前に、残っている接続を閉じてスレッドを待つ。
 pub fn serve_settings<L: Listener>(listener: L, host: SettingsHost) -> io::Result<()> {
-    Server::new(listener).serve(move || host.session())
+    Server::for_port(listener, Port::Settings).serve(move || host.session())
 }
 
 #[cfg(test)]

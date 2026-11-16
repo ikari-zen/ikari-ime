@@ -12,9 +12,10 @@ name = "ikari-eval"
 path = "src/main.rs"
 
 [dependencies]
-ikari-core.workspace = true
+# 開発用の口（環境変数）は CLI と評価では使う。製品のビルドには入れない（ADR 0067 §6）
+ikari-core = { workspace = true, features = ["dev-knobs"] }
 ikari-dict-format.workspace = true
-ikari-stack.workspace = true
+ikari-stack = { workspace = true, features = ["dev-knobs"] }
 clap.workspace = true
 ikari-import.workspace = true
 serde_json.workspace = true

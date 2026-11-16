@@ -1,5 +1,6 @@
 //! ユーザーデータ（学習、プロファイル、ユーザー辞書。ADR 0002 §8〜§10）。
 
+mod acl;
 mod dictionary;
 mod dir;
 mod error;
@@ -18,9 +19,11 @@ pub use dictionary::{
     PackForm, PosCheckReport, PosOption, SkippedLine, USER_DICT_SCHEMA, UserDictEntry,
     UserDictionary, VocabularyPack, builtin_it_pack, check_pos_table, pos_options, verb_conj_types,
 };
+#[cfg(feature = "dev-knobs")]
+pub use dir::USER_DIR_ENV;
 pub use dir::{
     INGEST_CANDIDATES_FILE_NAME, INGEST_SOURCES_FILE_NAME, LEARNING_FILE_NAME, PROFILE_FILE_NAME,
-    USER_DICT_FILE_NAME, USER_DIR_ENV, UserDir, UserDirEnv,
+    USER_DICT_FILE_NAME, UserDir, UserDirEnv,
 };
 pub use error::UserDataError;
 pub use features::{ContextFeatures, Feature, FeatureKind, extract, extract_named};

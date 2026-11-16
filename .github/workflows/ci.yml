@@ -1,11 +1,12 @@
 # PR と main への push ごとに scripts/check.sh を 2 つの job に分けて流す（#290、#295）。
 #   rust  ubuntu。文書の検査、ライセンス、fmt、clippy、cargo test（--rust-only）
+#   deny    ubuntu。cargo-deny（脆弱性、取得元、ライセンス、通信の crate の禁止。必須ではない。ADR 0069 §4.2）
 #   windows windows-latest。cargo test --workspace（LM なし。必須ではない。#316）
 #   windows-artifact windows-latest。実機（VM）に持ち込む release ビルド（LM は Vulkan。ADR 0059）を artifact に保存する（必須ではない）
 #   check macOS。XCFramework のビルドと swift test（--swift-only）。Swift は Linux では作れない
 # ブランチ保護の「必要なチェック」に check を入れてある（job の名前を変えない）。rust は必須ではないが、check と同じく通らないものはマージしない。
 # 公開リポジトリでは GitHub ホストのランナーが無料。macOS は混むので、macOS で流すものを Swift だけに絞る。
-# 依存の脆弱性（cargo audit）は audit.yml が週 1 回流すので、ここでは入れない（無関係な既存の指摘で PR が止まるのを避ける）。
+# 依存の脆弱性（cargo audit）は audit.yml が週 1 回流すので、check.sh には入れない（無関係な既存の指摘で PR が止まるのを避ける）。deny job は必須にしない。
 name: CI
 on:
   pull_request:
@@ -66,9 +67,30 @@ jobs:
           IKARI_TEST_TIME_SCALE: "5"
         run: scripts/check.sh --rust-only
 
+  # 依存の検査（cargo-deny。deny.toml。ADR 0069 §4.2）: 既知の脆弱性、取得元、ライセンス、禁止する crate（通信の手段。ADR 0066 §6.2）。
+  # 必須のチェックではない（ルールセットに入れない。RustSec のデータベースを取るので、日によって結果が変わる）。
+  # 通信の crate と Action の固定の検査は、ネットワークの要らない形で scripts/check.sh（rust の job）が流す。
+  deny:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        id: deny-cache
+        with:
+          path: ~/.cargo/bin/cargo-deny
+          key: cargo-deny-0.20.2-${{ runner.os }}
+      - name: cargo-deny を入れる（版を固定）
+        if: steps.deny-cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-deny --version 0.20.2 --locked
+      - name: cargo-deny の版を表示する
+        run: cargo deny --version
+      - name: cargo deny check
+        run: cargo deny --locked check
+
   # Windows（x86_64-pc-windows-msvc）で cargo test --workspace（LM なし）を流す（ADR 0040 W1-d、#316）。
   # 必須のチェックではない（ルールセットに入れない。動きが安定してから、必須にするかをユーザーに聞く）。
-  # テストは LM（llama-cpp-2）の feature を付けない。LM つきのエンジンは、最後の step でビルドだけ確かめる。
+  # テストは LM（llama-cpp-2）の feature を付けない。LM の子は、最後の step でビルドだけ確かめる。
   # fmt と clippy は rust（ubuntu）が見る。
   windows:
     runs-on: windows-latest
@@ -86,19 +108,23 @@ jobs:
           IKARI_TEST_TIME_SCALE: "5"
         # 1 つ落ちても、ほかの crate の結果を見られるようにする
         run: cargo test --workspace --no-fail-fast
-      # LM つきのエンジンが Windows でビルドできるか（llama.cpp。ADR 0040 W4 / S4）。実行はしない（モデルがない）。
+      # LM は別プロセスだけが持つ（エンジンに llama.cpp は入れない。ADR 0072 §5）。実行はしない（モデルがない）。
       # 実機での時間の測定は docs/windows-real-device-check.md の項目 38
-      - name: LM つきのエンジンをビルドする
-        run: cargo build -p ikari-engine-host --features lm
       # LM の推論を担う別プロセス（ADR 0060 Q4）。Job Object と TerminateProcess の経路は、上の cargo test が偽の子で通す
+      # `llama` は llama.cpp を静的なライブラリとして exe に入れる。llama.cpp は動的な C ランタイム（/MD）で作られ、
+      # LLAMA_STATIC_CRT=1 でも /MT にならなかった（LNK2038）。LM の子は全アプリには入らない別プロセスなので（ADR 0067 §4.4）、
+      # この step だけ crt-static を外して /MD に揃える（RUSTFLAGS を設定すると .cargo/config.toml の rustflags は無視される）。
+      # `vulkan`（下の windows-artifact）は llama.cpp が DLL なので、この指定は要らない
       - name: LM の子（ikari-lm-host）をビルドする
+        env:
+          RUSTFLAGS: "-C target-feature=-crt-static"
         run: cargo build -p ikari-lm --bin ikari-lm-host --features llama
 
   # 実機（VM）で試すための release ビルド（エンジンの exe と TIP の DLL）と、`windows/dev` のスクリプトを、1 つの artifact に入れる。
   # VM で Rust を入れてビルドしなくて済む（遅い機械での手間を避ける）。配置はリポジトリと同じ（`windows/dev/common.ps1` が
   # `..\..` を根として `target\release\` と `shell-core\resources\keymap` を見る）ので、展開したままスクリプトが動く。
-  # エンジンの exe は LM つき・Vulkan（ADR 0059）。バックエンドの DLL（ggml-vulkan と CPU の各種）は exe の隣の `backends\` に置く
-  # （§2.3）。LM なしは `-nolm`。GPU を使うかは設定 `engine.lm_gpu`（既定はオン。GPU が無い機械では自動で CPU）。
+  # LM の子（ikari-lm-host.exe）は Vulkan（ADR 0059。エンジンは llama.cpp を持たない。ADR 0072 §5）。バックエンドの DLL（ggml-vulkan と CPU の各種）は exe の隣の `backends\` に置く
+  # （§2.3）。`-nolm` はエンジンの exe の別名（今は同じ中身）。GPU を使うかは設定 `engine.lm_gpu`（既定はオン。GPU が無い機械では自動で CPU）。
   # 配る人向けのビルドではない（インストーラと署名は W5 の残り）。必須のチェックではない。
   windows-artifact:
     runs-on: windows-latest
@@ -163,9 +189,19 @@ jobs:
               "$($Matches[1])=$($Matches[2])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
             }
           }
-      - name: release ビルド（LM なしのエンジンと TIP）
-        run: cargo build --release -p ikari-engine-host -p ikari-tip
-      # LM つきのエンジンで上書きされるので、LM なしの exe を先に別の名前で取っておく
+      # 製品のビルド（開発用の口の feature なし）を先に作って検査する（ADR 0067 §4.4・§6）。開発用の文字列が入っていないこと、
+      # 動的な C ランタイム（vcruntime など）を取り込んでいないこと。同じ場所に、次の開発用のビルドが上書きする
+      - name: 製品のビルド（dev-knobs なし）の検査
+        run: |
+          cargo build --release -p ikari-engine-host -p ikari-tip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $rel = Join-Path $env:CARGO_TARGET_DIR 'release'
+          cargo xtask scan-product "$rel\ikari_tip.dll" "$rel\ikari-engine-host.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      # 以降は開発用のビルド（実機の確認に持ち込む artifact。windows/dev のスクリプトが dev-knobs の口を使う）
+      - name: release ビルド（開発用の口つき。LM なしのエンジンと TIP）
+        run: cargo build --release -p ikari-engine-host -p ikari-tip --features ikari-engine-host/dev-knobs,ikari-tip/dev-knobs
+      # `-nolm` の名前の exe を取っておく（エンジンの exe はもう LM つきと LM なしで変わらない。名前は互換のために残す）
       - name: LM なしのエンジンを取っておく
         shell: bash
         run: |
@@ -174,17 +210,19 @@ jobs:
       # Visual Studio のジェネレータでは、ggml-vulkan の vulkan-shaders-gen（ExternalProject）のインストールが
       # `Not a file: …/vulkan-shaders-gen-build/cmake_install.cmake` で落ちた（スパイクの最初の run）。Ninja にする。
       # 評価ツールは項目 38（LM の 1 回の時間）、devices は登録されたデバイスの確認（モデルは要らない）で使う
-      # LM の子（ikari-lm-host.exe。ADR 0060 Q4）は、エンジンの exe の隣に置く。エンジンは隣にあれば、推論をそれに頼む
-      - name: release ビルド（Vulkan の LM つきのエンジン、LM の子、評価ツール、devices）
+      # LM の子（ikari-lm-host.exe。ADR 0060 Q4）は、エンジンの exe の隣に置く。エンジンは隣にあれば、推論をそれに頼む（エンジン自身は llama.cpp を持たない）
+      - name: release ビルド（評価ツール、Vulkan の LM の子、devices）
         env:
           CMAKE_GENERATOR: Ninja
         run: |
           ninja --version
-          cargo build --release -p ikari-engine-host -p ikari-eval --features ikari-engine-host/lm-vulkan,ikari-eval/lm-vulkan
-          cargo build --release -p ikari-lm --bin ikari-lm-host --features vulkan
-          cargo build --release -p ikari-lm --example devices --features vulkan
-      # 窓なしのエンジン（hide-console。#372）。コンソールつき（Vulkan の LM つき）の exe は、上書きされるので先に取っておき、あとで戻す。
-      # 窓なしも Vulkan の LM つき（ふだん使いの構成）。start-engine.ps1 は、-hidden があればそれを使う
+          # エンジンには llama.cpp を入れない（ADR 0072 §5。上の dev-knobs つきのビルドと同じ）。評価ツールは同じプロセスで LM を動かす（計測用）。
+          # 別々に流す（同じ cargo の呼び出しにすると、feature がそろってエンジンにも llama.cpp が入る）
+          cargo build --release -p ikari-eval --features lm-vulkan
+          cargo build --release -p ikari-lm --bin ikari-lm-host --features vulkan,dev-knobs
+          cargo build --release -p ikari-lm --example devices --features vulkan,dev-knobs
+      # 窓なしのエンジン（hide-console。#372）。コンソールつきの exe は、上書きされるので先に取っておき、あとで戻す。
+      # 窓なしも同じ構成（LM は隣の子。ふだん使いの構成）。start-engine.ps1 は、-hidden があればそれを使う
       # （導入先に ikari-engine-host.exe の名前で写してから起動する。TIP はその名前のエンジンだけを相手にする。ADR 0063、#409）
       - name: release ビルド（窓なしのエンジン）
         shell: pwsh
@@ -194,7 +232,7 @@ jobs:
           # bash のステップだと PATH で Git の usr\bin\link.exe が MSVC の link.exe より先に来て、リンクに失敗する。pwsh で流す
           $rel = Join-Path $env:CARGO_TARGET_DIR 'release'
           Copy-Item "$rel\ikari-engine-host.exe" "$rel\ikari-engine-host-console.exe"
-          cargo build --release -p ikari-engine-host --features lm-vulkan,hide-console
+          cargo build --release -p ikari-engine-host --features hide-console,dev-knobs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Copy-Item "$rel\ikari-engine-host.exe" "$rel\ikari-engine-host-hidden.exe"
           Copy-Item "$rel\ikari-engine-host-console.exe" "$rel\ikari-engine-host.exe" -Force

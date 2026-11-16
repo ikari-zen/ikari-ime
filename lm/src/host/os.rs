@@ -1,168 +1,198 @@
-//! 子プロセスの起動と回収の OS ごとの部分。`unsafe` はこのファイルに閉じる。
+//! 子プロセスの起動と回収の OS ごとの部分。`unsafe` はこのモジュール（`os/` の下を含む）に閉じる。
 //!
 //! - 回収: kill のあと必ず wait する（ゾンビを残さない）。`Drop` でも同じ。
-//! - 親が死んだとき: 子は stdin が閉じたことで自分で終わる（`serve`）。Windows は、それに加えて Job Object
-//!   （`KILL_ON_JOB_CLOSE`）に入れ、親のハンドルが閉じたら OS が子を終わらせる。
+//! - 子に渡すのは、標準入力・標準出力（パイプ）と標準エラー（捨て先）の 3 つだけ（ADR 0068 §6.1、0067 §4.3）。
+//!   実行ファイルは、渡された絶対パスをそのまま使い、PATH から探さない。
+//! - 親が死んだとき: 子は stdin が閉じたことで自分で終わる（`serve`）。Windows は、それに加えて Job Object に入れ、
+//!   親のハンドルが閉じたら OS が子を終わらせる。
+//! - 檻の段 1（ADR 0072 §3）: Windows は `windows` の説明のとおり（Job の制限、低い整合性）。macOS は、エンジンの
+//!   App Sandbox を引き継ぐ（今のまま）。
+//! - 絞りがかけられないときは、子を止めて失敗を返す。呼び出し側（`scorer`）は失敗に数え、LM なしで動く。
 //! - macOS: 子の stdin のパイプに `F_SETNOSIGPIPE` を付ける。エンジンは Swift の XPC サービスの中の静的ライブラリで、
 //!   Rust の `main` を通らないので SIGPIPE が無視されていない。付けないと、死んだ子への書き込みでエンジンが落ちる。
 //!   ほかの unix は、Rust の実行時（`main`）が SIGPIPE を無視している前提（製品の対象ではない。テストと CLI だけ）。
-//! - Windows: `CREATE_NO_WINDOW`（窓なしのエンジンから起動しても、コンソールの窓を出さない）。
 
 use std::ffi::OsString;
 use std::io;
 use std::path::Path;
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+#[cfg(not(windows))]
+use std::process::{ChildStdin, ChildStdout};
+
+#[cfg(target_vendor = "apple")]
+mod apple;
+#[cfg(any(windows, test))]
+mod cmdline;
+#[cfg(windows)]
+mod windows;
+
+#[cfg(target_vendor = "apple")]
+use apple as imp;
+#[cfg(not(any(target_vendor = "apple", windows)))]
+use other_unix as imp;
+#[cfg(windows)]
+use windows as imp;
+
+/// 子の標準入力に書く口
+#[cfg(not(windows))]
+pub(super) type ToChild = ChildStdin;
+/// 子の標準出力を読む口
+#[cfg(not(windows))]
+pub(super) type FromChild = ChildStdout;
+/// 子の標準入力に書く口。Windows は `CreatePipe` の同期のハンドルのまま読み書きする型を使う
+/// （`ChildStdin` / `ChildStdout` は、重なった I/O で開いたハンドルを前提に読み書きするので、同期のハンドルでは、
+/// 子が終わっても読み取りが終わらない。実機で確かめた）
+#[cfg(windows)]
+pub(super) type ToChild = io::PipeWriter;
+/// 子の標準出力を読む口（Windows。上の `ToChild` の説明のとおり）
+#[cfg(windows)]
+pub(super) type FromChild = io::PipeReader;
 
 /// 起動した子。捨てると kill して wait する
 pub(super) struct ChildProc {
-    child: Child,
-    #[cfg(windows)]
-    _job: Option<windows::Job>,
+    inner: imp::Proc,
 }
 
 impl ChildProc {
     pub(super) fn id(&self) -> u32 {
-        self.child.id()
-    }
-
-    /// 子を止めて回収する。すでに終わっていても失敗にしない
-    fn reap(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        self.inner.id()
     }
 }
 
 impl Drop for ChildProc {
     fn drop(&mut self) {
-        self.reap();
+        self.inner.reap();
     }
 }
 
-/// `program` を、標準入出力をパイプにして起動する。標準エラーは捨てる
+/// `program`（絶対パス）を、標準入出力をパイプにして起動する。標準エラーは捨てる
 pub(super) fn spawn(
     program: &Path,
     args: &[OsString],
-) -> io::Result<(ChildProc, ChildStdin, ChildStdout)> {
-    let mut command = Command::new(program);
-    command
-        .args(args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null());
-    #[cfg(windows)]
-    windows::no_window(&mut command);
-    let mut child = command.spawn()?;
-    let pipes = (child.stdin.take(), child.stdout.take());
-    #[cfg(windows)]
-    let job = windows::Job::kill_on_close(&child);
+) -> io::Result<(ChildProc, ToChild, FromChild)> {
+    let (inner, stdin, stdout) = imp::spawn(program, args)?;
     // ここから先は、失敗しても `proc` の Drop が子を回収する
-    let proc = ChildProc {
-        child,
-        #[cfg(windows)]
-        _job: job,
-    };
-    let (Some(stdin), Some(stdout)) = pipes else {
-        return Err(io::Error::other("child pipes unavailable"));
-    };
+    let proc = ChildProc { inner };
     #[cfg(target_vendor = "apple")]
-    apple::no_sigpipe(&stdin)?;
+    imp::no_sigpipe(&stdin)?;
     Ok((proc, stdin, stdout))
 }
 
-#[cfg(target_vendor = "apple")]
-mod apple {
+/// 製品の対象でない unix（テストと CLI だけ）。`std::process` で起動する。Rust の標準ライブラリが開く fd は
+/// close-on-exec なので、子に渡るのは標準入出力だけ
+#[cfg(not(any(target_vendor = "apple", windows)))]
+mod other_unix {
+    use std::ffi::OsString;
     use std::io;
-    use std::os::fd::AsRawFd;
-    use std::process::ChildStdin;
+    use std::path::Path;
+    use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
-    /// この fd への書き込みで SIGPIPE を出さない（`EPIPE` のエラーだけが返る）
-    pub(super) fn no_sigpipe(stdin: &ChildStdin) -> io::Result<()> {
-        // SAFETY: `stdin` が持つ開いた fd に、フラグを 1 つ設定するだけ（メモリには触れない）
-        let rc = unsafe { libc::fcntl(stdin.as_raw_fd(), libc::F_SETNOSIGPIPE, 1) };
-        if rc == -1 {
-            return Err(io::Error::last_os_error());
+    pub(super) struct Proc(Child);
+
+    impl Proc {
+        pub(super) fn id(&self) -> u32 {
+            self.0.id()
         }
-        Ok(())
-    }
 
-    #[cfg(test)]
-    pub(super) fn has_no_sigpipe(stdin: &ChildStdin) -> bool {
-        // SAFETY: 開いた fd のフラグを読むだけ
-        unsafe { libc::fcntl(stdin.as_raw_fd(), libc::F_GETNOSIGPIPE) == 1 }
-    }
-}
-
-#[cfg(windows)]
-mod windows {
-    use std::os::windows::io::AsRawHandle;
-    use std::os::windows::process::CommandExt;
-    use std::process::{Child, Command};
-
-    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
-    use windows_sys::Win32::System::JobObjects::{
-        AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
-        SetInformationJobObject,
-    };
-    use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
-
-    pub(super) fn no_window(command: &mut Command) {
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
-
-    /// 閉じると中のプロセスが終わる Job Object。親（エンジン）が死ぬとハンドルが閉じ、子も終わる
-    pub(super) struct Job(HANDLE);
-
-    // SAFETY: Job Object のハンドルは、どのスレッドから閉じてもよい（`CloseHandle` だけに使う）
-    unsafe impl Send for Job {}
-
-    impl Job {
-        /// Job を作って `child` を入れる。作れない・入れられないときは None（子は stdin が閉じたことで終わる
-        /// 経路だけになる。起動は続ける）
-        pub(super) fn kill_on_close(child: &Child) -> Option<Job> {
-            // SAFETY: 名前なし・既定のセキュリティで作る。戻り値は検査する
-            let handle = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
-            if handle.is_null() {
-                return None;
-            }
-            let job = Job(handle);
-            // SAFETY: すべて 0 の値は、この構造体として正しい（制限なし）
-            let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
-            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-            // SAFETY: `info` はこの呼び出しの間だけ生きていて、大きさを正しく渡す
-            let set = unsafe {
-                SetInformationJobObject(
-                    job.0,
-                    JobObjectExtendedLimitInformation,
-                    std::ptr::from_ref(&info).cast(),
-                    std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
-                )
-            };
-            if set == 0 {
-                return None;
-            }
-            // SAFETY: `child` は生きていて、そのハンドルは `Child` が持っている
-            let assigned =
-                unsafe { AssignProcessToJobObject(job.0, child.as_raw_handle() as HANDLE) };
-            (assigned != 0).then_some(job)
+        pub(super) fn reap(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
         }
     }
 
-    impl Drop for Job {
-        fn drop(&mut self) {
-            // SAFETY: `CreateJobObjectW` が返した、まだ閉じていないハンドル
-            unsafe { CloseHandle(self.0) };
+    pub(super) fn spawn(
+        program: &Path,
+        args: &[OsString],
+    ) -> io::Result<(Proc, ChildStdin, ChildStdout)> {
+        let mut child = Command::new(program)
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()?;
+        let pipes = (child.stdin.take(), child.stdout.take());
+        let mut proc = Proc(child);
+        match pipes {
+            (Some(stdin), Some(stdout)) => Ok((proc, stdin, stdout)),
+            _ => {
+                proc.reap();
+                Err(io::Error::other("child pipes unavailable"))
+            }
         }
     }
 }
 
 #[cfg(all(test, target_vendor = "apple"))]
 mod tests {
+    use std::io::{Read, Write};
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+
     use super::*;
+
+    /// 親で、close-on-exec の印なしに開いておく fd の番号（ほかのテストの fd と重ならない大きさ）
+    const PROBE_FD: i32 = 200;
+
+    fn probe_script() -> OsString {
+        format!("if [ -e /dev/fd/{PROBE_FD} ]; then echo open; else echo closed; fi").into()
+    }
+
+    fn run(stdin: ChildStdin, mut stdout: ChildStdout) -> String {
+        drop(stdin);
+        let mut out = String::new();
+        stdout.read_to_string(&mut out).unwrap();
+        out
+    }
 
     #[test]
     fn child_stdin_does_not_raise_sigpipe() {
         let (_proc, stdin, _stdout) = spawn(Path::new("/bin/cat"), &[]).unwrap();
-        assert!(apple::has_no_sigpipe(&stdin));
+        assert!(imp::has_no_sigpipe(&stdin));
+    }
+
+    #[test]
+    fn the_child_gets_only_the_three_standard_fds() {
+        let file = tempfile::tempfile().unwrap();
+        // SAFETY: 開いた fd を、使われていない番号に複製するだけ（`dup2` の結果には close-on-exec が付かない）
+        let fd = unsafe { libc::dup2(file.as_raw_fd(), PROBE_FD) };
+        assert_eq!(fd, PROBE_FD);
+        // SAFETY: いま開いた fd で、ほかに持ち主はいない
+        let _probe = unsafe { OwnedFd::from_raw_fd(fd) };
+
+        // 対照: `std::process` の子には渡る（このテストが意味を持つことの確かめ）
+        let leaked = std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg(probe_script())
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&leaked.stdout), "open\n");
+
+        let (_proc, stdin, stdout) =
+            spawn(Path::new("/bin/sh"), &["-c".into(), probe_script()]).unwrap();
+        assert_eq!(run(stdin, stdout), "closed\n");
+    }
+
+    #[test]
+    fn stdin_and_stdout_reach_the_child() {
+        let (_proc, mut stdin, stdout) = spawn(Path::new("/bin/cat"), &[]).unwrap();
+        stdin.write_all(b"ping\n").unwrap();
+        assert_eq!(run(stdin, stdout), "ping\n");
+    }
+
+    #[test]
+    fn a_missing_program_is_an_error() {
+        assert!(spawn(Path::new("/nonexistent/ikari-lm-host"), &[]).is_err());
+    }
+
+    #[test]
+    fn dropping_the_child_kills_and_reaps_it() {
+        let (proc, _stdin, _stdout) = spawn(Path::new("/bin/cat"), &[]).unwrap();
+        let pid = proc.id() as libc::pid_t;
+        drop(proc);
+        // 回収済みなら、もう自分の子ではない
+        // SAFETY: 状態を聞くだけ（WNOHANG）
+        let rc = unsafe { libc::waitpid(pid, std::ptr::null_mut(), libc::WNOHANG) };
+        assert_eq!(rc, -1);
     }
 }
+
+#[cfg(all(test, windows))]
+mod windows_tests;

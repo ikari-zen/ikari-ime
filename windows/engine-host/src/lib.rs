@@ -25,6 +25,7 @@ pub mod run;
 pub mod session_end;
 pub mod settings_pipe;
 pub mod slot;
+pub mod stop_event;
 
 use std::io;
 use std::sync::Arc;

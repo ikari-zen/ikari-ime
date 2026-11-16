@@ -20,6 +20,11 @@
 //! # 寿命
 //! `Shell` は `ActivateEx` で作り、`Deactivate` で捨てる（エンジンへの接続も閉じる）。`dispatch` の中で panic したら
 //! `Shell` を捨て、次のキーで作り直す（この回のキーはアプリへ。macOS の殻と同じ）。
+//!
+//! # 素通し（ADR 0067 §5）
+//! `ActivateEx` で、入った先のプロセスの種類から動き方（`activation`）を決める。素通しのときは `Shell` を作らず、
+//! キーと文書のフォーカスの通知を登録しない（キーはすべてアプリに渡る）。入力モードの表示だけ入れ、英語のモードと
+//! 同じにする。compartment の通知は読み捨てる。
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -423,12 +428,26 @@ impl TextService_Impl {
     }
 
     fn activate(&self, thread_mgr: &ITfThreadMgr, client_id: u32) -> windows_core::Result<()> {
+        // 入った先のプロセスの種類で、動き方を決める（ADR 0067 §5。判断は `activation`）
+        let plan = host::activation();
         {
             let mut state = self.state.try_borrow_mut().map_err(|_| E_UNEXPECTED)?;
             state.thread_mgr = Some(thread_mgr.clone());
             state.client_id = client_id;
-            state.client_name = host::client_name();
+            // 素通しでは `Shell` を作らない（`ensure_active` でも作り直さない）
+            state.shell_unavailable = !plan.shell;
         }
+        if !plan.events {
+            // 素通し: 通知を受けない（キーはすべてアプリへ）。入力モードの表示だけ入れる
+            self.install_indicator(thread_mgr, client_id)?;
+            ModeSink::show(&ServiceModes(&self.this()), plan.initial_mode);
+            self.initial_mode_pending.set(false);
+            return Ok(());
+        }
+        self.state
+            .try_borrow_mut()
+            .map_err(|_| E_UNEXPECTED)?
+            .client_name = host::client_name();
         let source: ITfSource = thread_mgr.cast()?;
         let sink: ITfThreadMgrEventSink = self.to_interface();
         // SAFETY: `sink` は生きていて、TSF が AddRef して持つ
@@ -447,8 +466,34 @@ impl TextService_Impl {
             .map_err(|_| E_UNEXPECTED)?
             .key_sink_advised = true;
 
-        // 入力モードの表示（compartment と言語バーのボタン）。なくても入力はできるので、失敗しても続ける。
-        // グローバルの compartment の通知は、届いた先を分けるために別の口（`GlobalCompartmentSink`）で受ける
+        self.install_indicator(thread_mgr, client_id)?;
+
+        let shell = host::create_shell();
+        {
+            let mut state = self.state.try_borrow_mut().map_err(|_| E_UNEXPECTED)?;
+            state.shell_unavailable = shell.is_none();
+            state.shell = shell;
+            // 新しい `Shell` は日本語から始まる。次の表示で OS の値を合わせる
+            state.modes.reset();
+        }
+        // 新しい `Shell` は日本語から始まるので、OS の「開」にも合わせる。ただし新しいプロセスでは、このあとで OS が
+        // 「閉」に書き換えることがある（最初の文書のフォーカスで、もう一度合わせる。`initial_mode_pending`）
+        ModeSink::show(&ServiceModes(&self.this()), plan.initial_mode);
+        self.initial_mode_pending.set(true);
+        // 文書にフォーカスがあれば、入力先を知らせる
+        if focused_context(&self.this()).is_some() {
+            ensure_active(&self.this());
+        }
+        Ok(())
+    }
+
+    /// 入力モードの表示（compartment と言語バーのボタン）。なくても入力はできるので、失敗しても続ける。
+    /// グローバルの compartment の通知は、届いた先を分けるために別の口（`GlobalCompartmentSink`）で受ける
+    fn install_indicator(
+        &self,
+        thread_mgr: &ITfThreadMgr,
+        client_id: u32,
+    ) -> windows_core::Result<()> {
         let compartment_sink: ITfCompartmentEventSink = self.to_interface();
         let global_sink: ITfCompartmentEventSink = GlobalCompartmentSink {
             service: self.this(),
@@ -461,29 +506,14 @@ impl TextService_Impl {
             }
             Err(e) => log::error("mode indicator install failed", &e),
         }
-
-        let shell = host::create_shell();
-        {
-            let mut state = self.state.try_borrow_mut().map_err(|_| E_UNEXPECTED)?;
-            state.shell_unavailable = shell.is_none();
-            state.shell = shell;
-            // 新しい `Shell` は日本語から始まる。次の表示で OS の値を合わせる
-            state.modes.reset();
-        }
-        // 新しい `Shell` は日本語から始まるので、OS の「開」にも合わせる。ただし新しいプロセスでは、このあとで OS が
-        // 「閉」に書き換えることがある（最初の文書のフォーカスで、もう一度合わせる。`initial_mode_pending`）
-        ModeSink::show(&ServiceModes(&self.this()), InputMode::Japanese);
-        self.initial_mode_pending.set(true);
-        // 文書にフォーカスがあれば、入力先を知らせる
-        if focused_context(&self.this()).is_some() {
-            ensure_active(&self.this());
-        }
         Ok(())
     }
 
     fn deactivate(&self) {
-        // 測定の残りを書き出す（オフなら何もしない）
-        host::meter().flush_all();
+        // 測定の残りを書き出す（オフなら何もしない）。素通しでは測定を始めない（計測の印を読まない）
+        if host::activation().shell {
+            host::meter().flush_all();
+        }
         let this = self.this();
         leave_client(&this);
         timer::cancel_all(&this);
@@ -803,7 +833,8 @@ impl TextService_Impl {
     /// 入力モードの compartment の通知。値を `mode` の表で読み、`shell-core` に通知する（判断は `shell-core`）。
     /// 自分の書き込みの通知は読み捨てる。`dispatch` は通知が戻ってから行う（`Mode::Deferred`）
     fn compartment_changed(&self, scope: Scope, guid: *const GUID) {
-        if guid.is_null() {
+        // 素通しでは通知を `Shell` に渡さない（値も読まない）
+        if guid.is_null() || !host::activation().events {
             return;
         }
         // SAFETY: null でない（上で確かめた）。TSF が渡した GUID への参照

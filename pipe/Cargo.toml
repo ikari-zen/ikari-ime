@@ -23,5 +23,10 @@ windows-sys = { workspace = true, features = [
     "Win32_System_Threading",
 ] }
 
+[features]
+# 開発用の口（ADR 0067 §6、0073 §4。R5）。名前はこの 1 つに統一する。既定はオフ。製品のビルドは付けない。
+# この crate では、相手の照合で TIP の平らな配置（開発用の導入。`peer::TIP_LAYOUTS`）を許すもの
+dev-knobs = []
+
 [dev-dependencies]
 ikari-testtime.workspace = true

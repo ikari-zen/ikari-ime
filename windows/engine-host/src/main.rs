@@ -8,7 +8,7 @@
 //!
 //! 終了コード: 0 は正常、またはすでに別のエンジンが動いている。1 は非 Windows。2 は起動できない（エンジンを開けない
 //! だけでは終わらない。`ENGINE_NOT_READY` を返して常駐する）。
-//! 64 は引数の誤り。`hide-console` を付けたビルドは、コンソールの窓を出さない。
+//! 64 は引数の誤り。77 は高い権限で起動された（何もせずに終わる。ADR 0067 §4.3）。`hide-console` を付けたビルドは、コンソールの窓を出さない。
 
 #![cfg_attr(all(windows, feature = "hide-console"), windows_subsystem = "windows")]
 
@@ -30,13 +30,19 @@ fn windows_main() -> u8 {
     use std::sync::Arc;
 
     use ikari_engine_host::run::{
-        EXIT_OK, EXIT_START_FAILED, EXIT_USAGE, StartError, StopWait, parse_args, record_failure,
-        resolve_data_dir, run_host, start,
+        EXIT_ELEVATED, EXIT_OK, EXIT_START_FAILED, EXIT_USAGE, StartError, StopWait, check_launch,
+        parse_args, record_failure, resolve_data_dir, run_host, start,
     };
     use ikari_engine_host::settings_pipe::bind_settings_listener;
-    use ikari_engine_host::{candidate_window, ctrl, endsession};
+    use ikari_engine_host::{candidate_window, ctrl, endsession, stop_event};
     use ikari_pipe::Shutdown;
     use ikari_pipe::os::windows::NamedPipeListener;
+
+    // 最初に確かめる（高い権限なら、引数もデータの場所も見ずに終わる。理由の語だけを出す。ADR 0067 §4.3）
+    if let Err(reason) = check_launch(ikari_pipe::os::windows::current_integrity_rid()) {
+        eprintln!("ikari-engine: refused to start ({reason})");
+        return EXIT_ELEVATED;
+    }
 
     let options = match parse_args(std::env::args().skip(1)) {
         Ok(options) => options,
@@ -92,6 +98,10 @@ fn windows_main() -> u8 {
     if let Err(e) = ctrl::install(stop.handle()) {
         // 受け取れなくても動く（プロセスの終了で止まる）
         eprintln!("ikari-engine: cannot install the Ctrl+C handler: {e}");
+    }
+    // 止める口（ADR 0068 §6.2）。作れなくても動く（口が無いだけ。理由は語だけ）
+    if let Err(e) = stop_event::start(stop.handle()) {
+        eprintln!("ikari-engine: no stop port ({})", e.as_str());
     }
     if cfg!(feature = "hide-console") {
         // コンソールがなく、制御イベントが届かない。ログオフ・シャットダウンは非表示の最上位ウィンドウで受ける（#372）

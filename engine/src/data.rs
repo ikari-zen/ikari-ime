@@ -80,7 +80,9 @@ pub(crate) fn load_emoji_reply(path: Option<&Path>) -> pb::EmojiTableReply {
     let Some(path) = path else {
         return pb::EmojiTableReply::default();
     };
-    let Ok(text) = std::fs::read_to_string(path) else {
+    let Ok(text) =
+        ikari_textfile::read_to_string_limited(path, ikari_textfile::MAX_TABLE_FILE_BYTES)
+    else {
         return pb::EmojiTableReply::default();
     };
     let Ok(table) = EmojiTable::from_tsv(&text) else {

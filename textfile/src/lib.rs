@@ -30,6 +30,45 @@ pub fn read_to_string(path: impl AsRef<Path>) -> io::Result<String> {
     Ok(text)
 }
 
+/// 設定ファイル（`settings.tsv`）を読む量の上限（バイト）。仮置き（計測なし。ふつうは数百バイト）。
+pub const MAX_SETTINGS_FILE_BYTES: u64 = 1024 * 1024;
+/// 絵文字の表（`emoji.tsv`）を読む量の上限（バイト）。仮置き（計測なし）。
+pub const MAX_TABLE_FILE_BYTES: u64 = 8 * 1024 * 1024;
+
+/// `read_to_string` に読む量の上限（バイト）を付けたもの。利用者が書ける場所のファイルを読むときに使う
+/// （ADR 0073 §5。読む前に大きさを見る。大きさの申告を信用せず、読む量にも上限をかける）。
+/// 上限を超えれば `ErrorKind::FileTooLarge`（中身は読み込まない）。通常のファイル以外（FIFO、
+/// デバイスなど）は `InvalidInput`（開く前に断る。開くと止まるものがあるため）。
+pub fn read_to_string_limited(path: impl AsRef<Path>, max_bytes: u64) -> io::Result<String> {
+    use std::io::Read;
+
+    let path = path.as_ref();
+    // リンクは辿る（利用者が置いた設定へのリンクは通常の使い方）。辿った先が通常のファイルかを見る
+    if !std::fs::metadata(path)?.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "not a regular file",
+        ));
+    }
+    let file = std::fs::File::open(path)?;
+    let too_large = || io::Error::new(io::ErrorKind::FileTooLarge, "file exceeds the read limit");
+    if file.metadata()?.len() > max_bytes {
+        return Err(too_large());
+    }
+    let mut bytes = Vec::new();
+    file.take(max_bytes.saturating_add(1))
+        .read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > max_bytes {
+        return Err(too_large());
+    }
+    let mut text = String::from_utf8(bytes)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.utf8_error()))?;
+    if text.starts_with(BOM) {
+        text.drain(..BOM.len_utf8());
+    }
+    Ok(text)
+}
+
 /// 文字列に CRLF（`\r\n`）が 1 つでもあるか。書き戻しの改行を元のファイルに合わせる判定に使う。
 pub fn has_crlf(text: &str) -> bool {
     text.contains(CRLF)
@@ -170,5 +209,25 @@ mod tests {
         assert_eq!(variant("a\r\nb", Variant::BomCrlf), "\u{feff}a\r\nb");
         assert_eq!(read_variants("x").len(), 3);
         assert_eq!(ALL_VARIANTS.len(), 4);
+    }
+
+    #[test]
+    fn limited_read_accepts_up_to_the_limit_and_rejects_beyond() {
+        let dir = scratch("limited");
+        let path = dir.join("a.tsv");
+        std::fs::write(&path, "\u{feff}abcd").unwrap();
+        // 上限はファイルのバイト数（BOM を含む）で数える
+        assert_eq!(read_to_string_limited(&path, 7).unwrap(), "abcd");
+        let err = read_to_string_limited(&path, 6).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::FileTooLarge);
+        let missing = read_to_string_limited(dir.join("none"), 7).unwrap_err();
+        assert_eq!(missing.kind(), io::ErrorKind::NotFound);
+        std::fs::write(dir.join("bad"), [0xff, 0xfe, 0x41]).unwrap();
+        let bad = read_to_string_limited(dir.join("bad"), 7).unwrap_err();
+        assert_eq!(bad.kind(), io::ErrorKind::InvalidData);
+        // フォルダなどは通常のファイルではない
+        let not_file = read_to_string_limited(&dir, 7).unwrap_err();
+        assert_eq!(not_file.kind(), io::ErrorKind::InvalidInput);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

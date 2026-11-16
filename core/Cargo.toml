@@ -12,6 +12,20 @@ fst.workspace = true
 memmap2.workspace = true
 jiff.workspace = true
 
+[features]
+# 開発用の口（ADR 0067 §6、0073 §4。R5）。名前はこの 1 つに統一する。既定はオフ。製品のビルドは付けない。
+# この crate では、データの場所の環境変数（`IKARI_USER_DIR`）。CLI と評価は、これを付けて使う
+dev-knobs = []
+
+# Windows のデータのフォルダの ACL（`src/user/acl.rs`）だけが使う。Win32 の関数と型の宣言だけ
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_System_Threading",
+] }
+
 [dev-dependencies]
 ikari-dict-builder.workspace = true
 tempfile.workspace = true

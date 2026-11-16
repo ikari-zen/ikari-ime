@@ -22,7 +22,8 @@ use summary::{Group, LowCriteria};
 const IGNORE_FILENAME_REGEX: &str =
     r"(xtask|/tests/|tests\.rs|benches|build\.rs|generated|\.pb\.rs)";
 /// `--lm` で有効にする機能（`check --lm` と同じ組。macOS の Metal）。
-const LM_FEATURES: &str = "ikari-lm/metal,ikari-stack/lm-metal,ikari-engine/lm-metal,ikari-engine-ffi/lm-metal,ikari-eval/lm-metal";
+const LM_FEATURES: &str =
+    "ikari-lm/metal,ikari-stack/lm-metal,ikari-engine/lm-metal,ikari-eval/lm-metal";
 /// 低いファイルの既定の目安（行数がこれ以上で、カバレッジがこれ未満）
 const DEFAULT_LOW_MIN_LINES: u64 = 60;
 const DEFAULT_LOW_BELOW_PERCENT: f64 = 70.0;

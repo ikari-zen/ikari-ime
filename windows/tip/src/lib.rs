@@ -1,12 +1,14 @@
 //! Windows の TIP（ADR 0040 §2.2）。**この crate の純粋な部分は OS に依存しない**（`cfg(windows)` なし。Mac でテストが回る）。
 //!
+//! - `activation`: 有効になるときの動き方（プロセスの種類 → `Shell` を作るか、通知を受けるか、始めの表示）
 //! - `candidate_send`: 候補窓への片道の送り口（ADR 0062 §7.4。宣言とスタブ。L1 が実装する）
 //! - `deploy`: DLL の置き方（版ごとのフォルダと、隣の `resources`）と、登録が失敗したときの後始末の判断（ADR 0063）
 //! - `keys`: Windows の仮想キー（VK）と修飾、OS が返した文字 → `ShellEvent`
 //! - `latency`: 往復時間の測定（S1。既定でオフ。入力の内容は記録しない）
 //! - `mode`: 入力モード（日本語・英語）の表示と切り替えの写し（W4。compartment の値の表、モードの通知）
 //! - `ops`: `ShellAction` → `TsfOp` の列
-//! - `peer`: パイプの相手が本物のエンジンかの判定（相手の実行ファイルのパスと、DLL の場所から決まるパスの照合。#409）
+//! - `peer`: つなぐ相手（エンジン、候補窓）の照合の入口（規則は `ikari_pipe::peer`。ADR 0068 §2 の 2。#409）
+//! - `process_kind`: TIP が入った先のプロセスの種類（通常、高い権限、ストアなど）の判定。通常以外は素通し（ADR 0067 §5）
 //! - `secure`: secure な入力欄（パスワード、PIN）の判定の表（TSF が返した入力スコープの値 → secure か）
 //! - `tsf_op`: 純粋な部分と COM の層の間の契約。COM の層は `TsfOp` を順に実行するだけで、判断を持たない
 //! - `transport`: `pipe::Client` を `shell-core` の `EngineTransport` に適合させる（落ちた通知を含む）
@@ -16,6 +18,7 @@
 
 #![deny(unsafe_code)]
 
+pub mod activation;
 pub mod candidate_send;
 pub mod deploy;
 pub mod keys;
@@ -23,6 +26,7 @@ pub mod latency;
 pub mod mode;
 pub mod ops;
 pub mod peer;
+pub mod process_kind;
 pub mod secure;
 pub mod transport;
 pub mod tsf_op;

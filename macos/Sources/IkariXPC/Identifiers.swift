@@ -38,13 +38,18 @@ public enum SigningRequirements {
         }
     }
 
-    /// エンジン → 殻: 相手（殻、または smoke）が正しいか
-    public static func shell(mode: SigningMode, teamID: String = IkariIdentifiers.teamID) -> String {
-        let identifiers =
-            "(identifier \"\(IkariIdentifiers.shell)\" or identifier \"\(IkariIdentifiers.smoke)\")"
+    /// エンジン → 殻: 相手（殻、または smoke）が正しいか。
+    /// `includeSmoke: false` は配布用のビルド（Smoke を同梱しない。ADR 0069 §6-1、#40）。許可リストからも外す
+    public static func shell(
+        mode: SigningMode, teamID: String = IkariIdentifiers.teamID, includeSmoke: Bool = true
+    ) -> String {
+        let shellClause = "identifier \"\(IkariIdentifiers.shell)\""
+        let smokeClause = "identifier \"\(IkariIdentifiers.smoke)\""
         switch mode {
-        case .team: return "\(identifiers) and \(teamClause(teamID))"
-        case .adhoc: return "identifier \"\(IkariIdentifiers.shell)\" or identifier \"\(IkariIdentifiers.smoke)\""
+        case .team:
+            let identifiers = includeSmoke ? "(\(shellClause) or \(smokeClause))" : shellClause
+            return "\(identifiers) and \(teamClause(teamID))"
+        case .adhoc: return includeSmoke ? "\(shellClause) or \(smokeClause)" : shellClause
         }
     }
 
