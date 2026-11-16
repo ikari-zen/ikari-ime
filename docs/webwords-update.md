@@ -63,7 +63,7 @@ cargo xtask webwords publish --dump "$DUMP" --out "$OUT"
 cargo xtask webwords publish --dump "$DUMP" --out "$OUT" --yes
 ```
 
-- `gh release create` で Release を作る。
+- `gh release create` で Release を作る。**データの Release は「最新」にしない**（`--latest=false`）。アプリの「新しい版を確認」は「最新の Release」のタグを読むので、データの Release が最新になると確認ができなくなる（ADR 0076 §18.2。2026-11-17 ユーザー決定）。今の `publish` はこの引数をまだ付けていない（実装の課題）。付くまでは、作ったあとに `gh release edit webwords-<日付> --latest=false` で外し、`gh release view --json tagName`（タグを付けないと最新を見る）で、最新がデータのタグでないことを確かめる。
 - `scripts/lib.sh` の `WEBWORDS_LIST_URL` と `WEBWORDS_LIST_SHA256`、`THIRD_PARTY_NOTICES.md` のダンプの日付を書き換える。
 - 書き換えは、Release を作る前に内容を作り、失敗するなら先に止まる。Release の作成が失敗したら、ファイルは変わらない。
 
