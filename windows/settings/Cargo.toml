@@ -1,0 +1,17 @@
+[package]
+name = "ikari-settings-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Windows の設定画面（ikari-settings.exe）の核（ADR 0071 §2、ADR 0068 §4）。設定の一覧の受け渡し、相手の照合、C の ABI"
+
+# 純粋な部分は OS に依存しない（Mac でテストする）。設定画面（C#。cdylib の C の ABI）が使う。
+# 依存の向き: windows/settings → shell-core, pipe（候補窓の核と同じ形。ADR 0062 §7.5）
+# 通信の手段（HTTP、TLS）を持たない（ADR 0071 §2.3。NFR-17）
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ikari-shell-core.workspace = true
+ikari-pipe.workspace = true

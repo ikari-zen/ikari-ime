@@ -637,6 +637,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ikari-settings-core"
+version = "0.1.0"
+dependencies = [
+ "ikari-pipe",
+ "ikari-shell-core",
+]
+
+[[package]]
 name = "ikari-shell-core"
 version = "0.1.0"
 dependencies = [
