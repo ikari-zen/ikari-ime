@@ -691,6 +691,7 @@ dependencies = [
 name = "ikari-setup-helper"
 version = "0.1.0"
 dependencies = [
+ "ikari-lm",
  "ikari-pipe",
  "tempfile",
  "windows-sys",

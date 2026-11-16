@@ -427,6 +427,16 @@ pub fn stop_engines(install_dir: &str) -> io::Result<Outcome> {
     Ok(outcome)
 }
 
+/// AppContainer のプロファイルを消す（動かした利用者のもの。無くても成功。ADR 0072 §12.5）。失敗は HRESULT
+pub fn delete_appcontainer_profile(name: &str) -> Result<(), i32> {
+    let wide = to_wide(name);
+    // SAFETY: wide は NUL で終わる UTF-16
+    let hr = unsafe {
+        windows_sys::Win32::Security::Isolation::DeleteAppContainerProfile(wide.as_ptr())
+    };
+    if hr >= 0 { Ok(()) } else { Err(hr) }
+}
+
 /// OS のエラー報告の対象から外す・戻す（機械全体。ADR 0073 §4）。失敗は HRESULT
 pub fn error_reporting(exe_name: &str, exclude: bool) -> Result<(), i32> {
     let wide = to_wide(exe_name);

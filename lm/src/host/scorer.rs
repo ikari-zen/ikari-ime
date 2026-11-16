@@ -14,6 +14,12 @@
 //! 数えないもの: 子が生きていて返した 1 件の採点の失敗（`Failed(Inference)`。長すぎるプロンプトなど、入力で決まる。
 //! 同じプロセスで動かすときも、数えるだけで何もしない）。取り消し（ADR 0074。打っているだけで起きる）。
 //!
+//! 檻（ADR 0072 §3・§4）: 呼び出し側が [`HostCage`] で、モデルの出どころに合わせて選ぶ。プリセット（sha256 を表で
+//! 確かめたもの）は段 1 か、段 2 を優先して張れなければ段 1 に落とす（`box=low` がログに出る）。自由指定のモデルは
+//! 段 2 だけで、張れなければ起動せず失敗に数える（LM なし）。段 2 から段 1 に落とすときは、モデルに足した段 2 の
+//! 許可を外してから起動する（許可が残ると、低い整合性の子は読めない。ADR 0072 §12.5）。開発用のビルド（`dev-knobs`）の
+//! Windows だけ、環境変数（`placement::CAGE_ENV`）で上書きできる（VM での計測。#424）。
+//!
 //! 取り消し（ADR 0074 §3.1）: 返事を待つ間に印が立ったら、`Cancel { id }` を書き込みのスレッドに渡し、子の返事を
 //! 待たずに `Cancelled` で戻る。取り消した id は覚えておき、あとで届いたその返事は読み捨てる。
 
@@ -21,14 +27,14 @@ use std::collections::HashSet;
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::cancel::CancelToken;
 use crate::error::LmError;
-use crate::host::os::{self, ChildProc};
+use crate::host::os::{self, Cage, CageState, ChildProc};
 use crate::host::proto::{
     FailKind, MAX_FRAME_BYTES, PROTOCOL_VERSION, Reply, Request, read_frame, write_frame,
 };
@@ -86,6 +92,33 @@ pub struct HostSpec {
     /// GPU を使ってよいか（設定 `engine.lm_gpu`）
     pub use_gpu: bool,
     pub limits: HostLimits,
+    /// 子にかける檻（モデルの出どころで選ぶ）
+    pub cage: HostCage,
+}
+
+/// 子にかける檻の求め（ADR 0072 §4）
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum HostCage {
+    /// 段 1（プリセット。今の製品）
+    #[default]
+    Standard,
+    /// 段 2 を優先し、張れなければ段 1 に落とす（プリセットだけに使う）
+    PreferAppContainer,
+    /// 段 2 だけ。張れなければ起動しない（自由指定のモデル。ADR 0072 Q1）
+    RequireAppContainer,
+}
+
+impl HostCage {
+    /// 開発用の上書きの語（`placement::CAGE_ENV` の値）
+    #[cfg_attr(not(all(feature = "dev-knobs", windows)), allow(dead_code))]
+    fn parse_override(value: &str) -> Option<HostCage> {
+        match value {
+            "standard" => Some(HostCage::Standard),
+            "prefer" => Some(HostCage::PreferAppContainer),
+            "appcontainer" => Some(HostCage::RequireAppContainer),
+            _ => None,
+        }
+    }
 }
 
 /// 子の様子（数だけ）。loader と scorer が書き、エンジンのログとテストが読む
@@ -104,6 +137,8 @@ pub struct HostHealth {
     gpu_unused: AtomicBool,
     /// 今の子の pid（いなければ 0）
     child_id: AtomicU32,
+    /// 最後に起動した子の檻（`CageState::ALL` の番号）
+    cage: AtomicU8,
 }
 
 impl HostHealth {
@@ -116,7 +151,18 @@ impl HostHealth {
             gpu_failed: AtomicBool::new(false),
             gpu_unused: AtomicBool::new(false),
             child_id: AtomicU32::new(0),
+            cage: AtomicU8::new(cage_index(CageState::Unknown)),
         }
+    }
+
+    /// 最後に起動した子の檻
+    pub(crate) fn cage(&self) -> CageState {
+        let i = usize::from(self.cage.load(Ordering::Acquire));
+        CageState::ALL.get(i).copied().unwrap_or(CageState::Unknown)
+    }
+
+    fn set_cage(&self, cage: CageState) {
+        self.cage.store(cage_index(cage), Ordering::Release);
     }
 
     /// 以後の子を CPU だけで起動する状態か（GPU の子の読み込みの失敗、または連続失敗のあと）
@@ -149,11 +195,12 @@ impl HostHealth {
     /// `lm_load` のログに足す固定の語（数だけ）
     pub fn log_note(&self) -> String {
         format!(
-            "host=on host_spawns={} host_failures={} host_gave_up={} host_gpu_off={}",
+            "host=on host_spawns={} host_failures={} host_gave_up={} host_gpu_off={} box={}",
             self.spawns(),
             self.consecutive_failures(),
             u8::from(self.gave_up()),
-            u8::from(self.gpu_disabled())
+            u8::from(self.gpu_disabled()),
+            self.cage().word()
         )
     }
 
@@ -172,6 +219,48 @@ impl HostHealth {
 
     fn record_success(&self) {
         self.consecutive_failures.store(0, Ordering::Release);
+    }
+}
+
+fn cage_index(cage: CageState) -> u8 {
+    CageState::ALL
+        .iter()
+        .position(|c| *c == cage)
+        .and_then(|i| u8::try_from(i).ok())
+        .unwrap_or(0)
+}
+
+/// 子にかける檻の求め（`spec.cage`。開発用のビルドの Windows だけ、環境変数で上書きできる）
+fn cage_for(spec: &HostSpec) -> HostCage {
+    #[cfg(all(feature = "dev-knobs", windows))]
+    if let Some(cage) = std::env::var(placement::CAGE_ENV)
+        .ok()
+        .and_then(|v| HostCage::parse_override(&v))
+    {
+        return cage;
+    }
+    spec.cage
+}
+
+/// 檻の求めに合わせて子を起動する（このファイルの先頭の説明）
+fn spawn_caged(
+    spec: &HostSpec,
+    args: &[OsString],
+) -> std::io::Result<(ChildProc, os::ToChild, os::FromChild)> {
+    let container = Cage::AppContainer {
+        readable: &spec.model,
+    };
+    match cage_for(spec) {
+        HostCage::Standard => os::spawn(&spec.program, args, Cage::Standard),
+        HostCage::RequireAppContainer => os::spawn(&spec.program, args, container),
+        HostCage::PreferAppContainer => match os::spawn(&spec.program, args, container) {
+            Ok(child) => Ok(child),
+            Err(_) => {
+                // 許可を外せなくても段 1 を試す（読めなければ、読み込みの失敗に数えられる）
+                let _ = os::revoke_cage_read(&spec.model);
+                os::spawn(&spec.program, args, Cage::Standard)
+            }
+        },
     }
 }
 
@@ -232,7 +321,7 @@ struct Live {
 
 impl Live {
     /// `gpu` は `--gpu` の値（[`ARG_GPU_ON`] / [`ARG_GPU_OFF`] / [`ARG_GPU_CPU`]）
-    fn spawn(spec: &HostSpec, gpu: &str) -> Result<Live, String> {
+    fn spawn(spec: &HostSpec, gpu: &str, health: &HostHealth) -> Result<Live, String> {
         let args: [OsString; 4] = [
             ARG_MODEL.into(),
             spec.model.clone().into_os_string(),
@@ -240,7 +329,8 @@ impl Live {
             gpu.into(),
         ];
         let (proc, mut stdin, mut stdout) =
-            os::spawn(&spec.program, &args).map_err(|e| format!("spawn: {e}"))?;
+            spawn_caged(spec, &args).map_err(|e| format!("spawn: {e}"))?;
+        health.set_cage(proc.cage());
 
         // パイプの読み書きには締め切りがないので、スレッドに任せて、チャネルの `recv_timeout` で待つ。
         // 書き込みが詰まっても（子が読まない）、返事が来ないので要求の締め切りで気づき、子を kill する。
@@ -334,7 +424,7 @@ impl HostScorer {
             (true, true) => ARG_GPU_CPU,
             (false, _) => ARG_GPU_OFF,
         };
-        let live = Live::spawn(spec, gpu_arg).map_err(|e| failed(&e))?;
+        let live = Live::spawn(spec, gpu_arg, health).map_err(|e| failed(&e))?;
         // ここから先の失敗では、`live` を捨てて子を回収する
         match live.recv(spec.limits.ready_deadline) {
             Ok(Reply::Ready {
@@ -503,6 +593,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_cage_defaults_to_standard_and_parses_only_its_words() {
+        assert_eq!(HostCage::default(), HostCage::Standard);
+        assert_eq!(
+            HostCage::parse_override("appcontainer"),
+            Some(HostCage::RequireAppContainer)
+        );
+        assert_eq!(
+            HostCage::parse_override("prefer"),
+            Some(HostCage::PreferAppContainer)
+        );
+        assert_eq!(
+            HostCage::parse_override("standard"),
+            Some(HostCage::Standard)
+        );
+        assert_eq!(HostCage::parse_override("AppContainer"), None);
+        assert_eq!(HostCage::parse_override(""), None);
+    }
+
+    #[test]
     fn defaults_are_the_provisional_values() {
         let l = HostLimits::default();
         assert_eq!(l.ready_deadline, Duration::from_secs(60));
@@ -522,7 +631,7 @@ mod tests {
         assert!(h.gave_up());
         assert_eq!(
             h.log_note(),
-            "host=on host_spawns=0 host_failures=2 host_gave_up=1 host_gpu_off=0"
+            "host=on host_spawns=0 host_failures=2 host_gave_up=1 host_gpu_off=0 box=unknown"
         );
     }
 
