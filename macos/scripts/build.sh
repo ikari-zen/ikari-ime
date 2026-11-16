@@ -19,7 +19,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 SIGNING=team
 CONFIG=release
-ENGINE_FEATURES=lm-metal
+# エンジン（ikari-engine-ffi）に llama.cpp は入れない（ADR 0072 §5）。LM は子（ikari-lm-host）だけが持つ
+WITH_LM=1
 SKIP_RUST=0
 ALLOW_STUB=0
 FRAMEWORKS_ONLY=0
@@ -27,7 +28,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --signing) SIGNING="${2:-}"; shift ;;
     --signing=*) SIGNING="${1#--signing=}" ;;
-    --no-lm) ENGINE_FEATURES="" ;;
+    --no-lm) WITH_LM=0 ;;
     --skip-rust) SKIP_RUST=1 ;;
     --allow-stub) ALLOW_STUB=1 ;;
     --frameworks-only) FRAMEWORKS_ONLY=1 ;;
@@ -122,11 +123,10 @@ build_rust() {
   log "cargo build: ikari-shell-ffi"
   (cd "$IKARI_ROOT" && cargo build --release --target "$RUST_TARGET" -p ikari-shell-ffi)
 
-  log "cargo rustc: ikari-engine-ffi ${ENGINE_FEATURES:+(features: $ENGINE_FEATURES)}"
-  local features_args=() output
-  [[ -z "$ENGINE_FEATURES" ]] || features_args=(--features "$ENGINE_FEATURES")
+  log "cargo rustc: ikari-engine-ffi（llama.cpp なし）"
+  local output
   output="$(cd "$IKARI_ROOT" && CARGO_TARGET_DIR="$IKARI_ROOT/target/lm" cargo rustc --release \
-    --target "$RUST_TARGET" -p ikari-engine-ffi ${features_args[@]+"${features_args[@]}"} \
+    --target "$RUST_TARGET" -p ikari-engine-ffi \
     --lib --crate-type staticlib -- --print native-static-libs 2>&1)" || { printf '%s\n' "$output" >&2; die "cargo rustc が失敗しました"; }
   printf '%s\n' "$output" | tail -3
   local reported
@@ -134,7 +134,7 @@ build_rust() {
   [[ -n "$reported" ]] || die "native-static-libs が出力されませんでした"
   check_native_libs "$reported"
 
-  if [[ -n "$ENGINE_FEATURES" ]]; then
+  if [[ "$WITH_LM" == 1 ]]; then
     log "cargo build: $LM_HOST_NAME (features: metal)"
     (cd "$IKARI_ROOT" && CARGO_TARGET_DIR="$IKARI_ROOT/target/lm" cargo build --release \
       --target "$RUST_TARGET" -p ikari-lm --bin "$LM_HOST_NAME" --features metal)
@@ -201,8 +201,8 @@ assemble_bundle() {
   cp "$BIN_DIR/ikari" "$APP/Contents/MacOS/ikari"
   cp "$BIN_DIR/ikari-smoke" "$APP/Contents/MacOS/ikari-smoke"
   cp "$BIN_DIR/IkariEngine" "$XPC/Contents/MacOS/IkariEngine"
-  # LM の子は、エンジンの実行ファイルの隣に置く（エンジンは隣だけを見る。無ければ LM は同じプロセスで動く）
-  if [[ -n "$ENGINE_FEATURES" ]]; then
+  # LM の子は、エンジンの実行ファイルの隣に置く（エンジンは隣だけを見る。無ければ LM なしで動く）
+  if [[ "$WITH_LM" == 1 ]]; then
     [[ -x "$LM_HOST_BUILT" ]] || die "$LM_HOST_BUILT がありません（--skip-rust を外してビルドするか、--no-lm を付ける）"
     cp "$LM_HOST_BUILT" "$XPC/Contents/MacOS/$LM_HOST_NAME"
   fi
@@ -286,9 +286,15 @@ verify_bundle() {
     | grep -qF '<string>/Library/Application Support/ikari-ime/</string>' || die "エンジンのデータ用の一時例外がありません"
   echo "engine entitlements: app-sandbox=true, network=none, temporary-exception=~/Library/Application Support/ikari-ime/"
 
+  # エンジンに llama.cpp が入っていない（ADR 0072 §5）。入っていれば、子が無くても LM がエンジンの中で動く
+  if grep -aqE 'llama_model_load|ggml_backend' "$XPC/Contents/MacOS/IkariEngine"; then
+    die "エンジン（IkariEngine）に llama.cpp が入っています（LM は子だけが持つ）"
+  fi
+  echo "engine: no llama.cpp linked"
+
   # LM の子（ADR 0060 Q4）: エンジンの隣にあり、エンジンの署名に封印されていて、network の権限がない
   local lm_host="$XPC/Contents/MacOS/$LM_HOST_NAME"
-  if [[ -n "$ENGINE_FEATURES" ]]; then
+  if [[ "$WITH_LM" == 1 ]]; then
     [[ -x "$lm_host" ]] || die "LM の子（$LM_HOST_NAME）がエンジンの隣にありません"
     codesign --verify --strict "$lm_host" || die "LM の子の署名を検証できません"
     if entitlements_of "$lm_host" | grep -q 'com\.apple\.security\.network'; then

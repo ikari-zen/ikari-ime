@@ -53,7 +53,7 @@ testtime（dev のみ）← pipe, engine, lm, windows/tip, windows/engine-host
 ```
 
 - `lm` と `engine-ffi` は feature なしなら llama.cpp をビルドしないので、`cargo build` / `cargo test` は workspace 全体を対象にする。
-- LM を有効にする feature は `lm`（GPU なし）、`lm-metal`（`cli`、`eval`、`stack`、`engine`、`engine-ffi`）、`lm-vulkan`（Windows。`eval`、`stack`、`engine`、`windows/engine-host`。ADR 0059）。`lm` crate の中は `llama` / `metal` / `vulkan`。Vulkan はバックエンドを別の DLL にして exe の隣の `backends\` から読み、GPU が使えなければ CPU に落ちる（デバイスの選択は `lm/src/llama.rs`、設定は `engine.lm_gpu`）。
+- LM を有効にする feature は `lm`（GPU なし）、`lm-metal`（`cli`、`eval`、`stack`、`engine`）、`lm-vulkan`（Windows。`eval`、`stack`、`engine`。ADR 0059）。製品のエンジン（`engine-ffi`、`windows/engine-host`）はこれらの feature を持たず、llama.cpp を入れない。LM は別プロセスの `ikari-lm-host`（`lm` の `metal` / `vulkan`）だけが持つ（ADR 0072 §5）。`lm` crate の中は `llama` / `metal` / `vulkan`。Vulkan はバックエンドを別の DLL にして exe の隣の `backends\` から読み、GPU が使えなければ CPU に落ちる（デバイスの選択は `lm/src/llama.rs`、設定は `engine.lm_gpu`）。
 - LM のモデルの種類は設定キー `zenz.model_kind` で選ぶ（既定は zenz。kanakanji-edge は比較用に残してある。[0003 §7.1](adr/0003-topic-ranker-decision.md)）。
 
 ## 2. macOS のプロセスの構成

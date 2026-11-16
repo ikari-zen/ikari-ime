@@ -2,7 +2,7 @@
 # コミットの前に流す門。同じものを CI（.github/workflows/ci.yml）も流し、main へのマージの必須チェックになっている（docs/refactor-plan-2026-10.md §5.5、§6.2）。
 #
 #   scripts/check.sh                 文書とスクリプトの検査、cargo fmt --check、clippy -D warnings、cargo test --workspace、swift test
-#   scripts/check.sh --lm            + ikari-lm / ikari-engine-ffi / ikari-stack を feature つきで clippy と test（cmake が要る）
+#   scripts/check.sh --lm            + ikari-lm / ikari-engine / ikari-stack を feature つきで clippy と test（cmake が要る）
 #   scripts/check.sh --real          + 実データの #[ignore] テスト（辞書とモデルを使う。--lm を含む）
 #   scripts/check.sh --perf          + 性能の #[ignore] テスト（release）
 #   scripts/check.sh --eval <基準>   + eval/scripts/snapshot.sh --compare <基準>（cargo xtask eval snapshot）（振る舞いが変わっていないことの確認）

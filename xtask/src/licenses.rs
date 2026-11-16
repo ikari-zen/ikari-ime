@@ -1,7 +1,7 @@
 //! `cargo xtask licenses`（issue #242）。配るバイナリが静的に含む Rust の依存クレートのライセンス一覧
 //! （`THIRD_PARTY_LICENSES_RUST.md`）を、cargo-about で作る。
 //!
-//! - 配るもの: macOS の ikari.app に入る Rust の成果物（`ikari-engine-ffi`（`lm-metal`）と `ikari-shell-ffi`）。
+//! - 配るもの: macOS の ikari.app に入る Rust の成果物（`ikari-lm-host`（`ikari-lm` の `metal`。llama.cpp はここだけ。ADR 0072 §5）、`ikari-engine-ffi`、`ikari-shell-ffi`）。
 //!   ビルドの引数は `macos/scripts/build.sh` と合わせる。xtask、評価、cli、dict-builder などは含めない
 //! - 設定は `about.toml`（許可するライセンスを `accepted` に明記。想定外のライセンスが入ると cargo-about が失敗する。
 //!   build.rs だけが使うもの、dev-dependencies は、成果物に入らないので除く）
@@ -22,7 +22,7 @@ use crate::data::run::repo_root;
 /// 生成物（リポジトリ直下）
 pub const OUTPUT_FILE: &str = "THIRD_PARTY_LICENSES_RUST.md";
 /// 配る Rust の成果物（パッケージ、機能）。`macos/scripts/build.sh` の `cargo build -p …` と合わせる
-const SHIPPED: [(&str, &str); 2] = [("engine-ffi", "lm-metal"), ("shell-ffi", "")];
+const SHIPPED: [(&str, &str); 3] = [("lm", "metal"), ("engine-ffi", ""), ("shell-ffi", "")];
 /// 生成物の先頭の見出し
 const TITLE: &str = "# Rust 依存クレートのライセンス";
 
@@ -149,7 +149,7 @@ fn render(groups: &BTreeMap<String, Group>) -> String {
     out.push_str(TITLE);
     out.push_str("\n\n");
     out.push_str(&format!(
-        "ikari.app に入る Rust の成果物（`ikari-engine-ffi`、`ikari-shell-ffi`）が静的に含む依存クレート（{total} 個）のライセンスです。\
+        "ikari.app に入る Rust の成果物（`ikari-engine-ffi`、`ikari-shell-ffi`、LM の子 `ikari-lm-host`）が含む依存クレート（{total} 個）のライセンスです。\
          `cargo xtask licenses` で作ります（cargo-about。設定は `about.toml`）。手で書き換えないでください。\n\n\
          ビルドのときだけ使うもの、テストだけで使うもの、配らない道具（cli、dict-builder、評価、xtask）は含みません。\
          同じ本文のライセンスはまとめてあります。\n\n"

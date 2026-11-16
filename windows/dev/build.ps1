@@ -2,17 +2,18 @@
 .SYNOPSIS
   Builds the engine (ikari-engine-host.exe) and the TIP (ikari_tip.dll) in release mode. Without the LM unless -Lm.
   With -Lm or -LmVulkan it also builds the LM child process (ikari-lm-host.exe, next to the engine exe): the engine
-  asks it to run the model (ADR 0060 Q4). Without that file next to it, the engine runs the model in its own process.
+  asks it to run the model (ADR 0060 Q4). The engine itself never contains llama.cpp (ADR 0072 section 5): without that
+  file next to it, the engine runs without the LM.
 .PARAMETER HideConsole
   Build the engine with the "hide-console" feature (no console window; failures go to logs\start-failure.log).
   Leave it off while testing: you want the console.
 .PARAMETER Lm
-  Build the engine with the "lm" feature (zenz via llama.cpp, CPU). Needs cmake. The LM stays OFF at run time until
+  Build the LM child process with the "llama" feature (zenz via llama.cpp, CPU). Needs cmake. The LM stays OFF at run time until
   you turn it on (settings.tsv in the data directory: engine.lm=true) and the model is in <DataDir>\models\.
 .PARAMETER LmVulkan
-  Build the engine with the "lm-vulkan" feature (zenz via llama.cpp, on the GPU with Vulkan; falls back to the CPU on a
+  Build the LM child process with the "vulkan" feature (zenz via llama.cpp, on the GPU with Vulkan; falls back to the CPU on a
   machine without a GPU or without vulkan-1.dll). Cannot be combined with -Lm. Needs cmake, Ninja and the Vulkan SDK
-  (VULKAN_SDK, glslc). The backend DLLs (ggml-vulkan.dll and the CPU variants) are copied next to the engine exe, in
+  (VULKAN_SDK, glslc). The backend DLLs (ggml-vulkan.dll and the CPU variants) are copied next to the engine exe (and the child), in
   <release>\backends. Turn it off at run time with "engine.lm_gpu<TAB>off" in settings.tsv (ADR 0059).
 .NOTES
   This is the development build: it always turns on the "dev-knobs" features (ikari-engine-host, ikari-tip, and the LM
@@ -41,7 +42,6 @@ if ($Lm) {
     if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
         throw 'cmake not found. The LM build (llama.cpp) needs cmake: install it (https://cmake.org/download/) and reopen the shell.'
     }
-    $features += 'ikari-engine-host/lm'
 }
 if ($LmVulkan) {
     if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
@@ -55,7 +55,6 @@ if ($LmVulkan) {
         throw 'ninja not found. The Vulkan build needs Ninja (winget install Ninja-build.Ninja) and a Developer PowerShell (cl.exe on PATH).'
     }
     if (-not $env:CMAKE_GENERATOR) { $env:CMAKE_GENERATOR = 'Ninja' }
-    $features += 'ikari-engine-host/lm-vulkan'
 }
 
 $cargoArgs = @('build', '--release', '-p', 'ikari-engine-host', '-p', 'ikari-tip')
@@ -71,25 +70,8 @@ finally {
     Pop-Location
 }
 
-if ($LmVulkan) {
-    # llama-cpp-sys-2 builds ggml as DLLs. The backends (ggml-vulkan.dll, ggml-cpu-*.dll) are in <OUT_DIR>\backends and are
-    # NOT copied to target. The engine loads them from "backends" next to its exe (lm/src/llama.rs). ggml*.dll and
-    # llama.dll are in <OUT_DIR>\bin and go next to the exe.
-    $sysOut = Get-ChildItem -LiteralPath (Join-Path $ReleaseDir 'build') -Directory -Filter 'llama-cpp-sys-2-*' |
-        ForEach-Object { Join-Path $_.FullName 'out' } |
-        Where-Object { Test-Path -Path (Join-Path $_ 'backends\ggml-vulkan*.dll') } |
-        Select-Object -First 1
-    if (-not $sysOut) { throw "no ggml-vulkan DLL under $ReleaseDir\build\llama-cpp-sys-2-*\out\backends" }
-    $backendsOut = Join-Path $ReleaseDir 'backends'
-    New-Item -ItemType Directory -Force -Path $backendsOut | Out-Null
-    Copy-Item -Path (Join-Path $sysOut 'backends\*.dll') -Destination $backendsOut -Force
-    Copy-Item -Path (Join-Path $sysOut 'bin\*.dll') -Destination $ReleaseDir -Force
-    if (-not (Get-ChildItem -LiteralPath $ReleaseDir -File -Filter 'llama*.dll')) { throw "llama*.dll was not found in $sysOut" }
-    Write-Note "backends: $backendsOut ($((Get-ChildItem -LiteralPath $backendsOut -Filter '*.dll').Count) DLLs)"
-}
-
 if ($Lm -or $LmVulkan) {
-    # The LM child process. Same llama.cpp build as the engine (the feature set of llama-cpp-sys-2 is the same).
+    # The LM child process: the only place llama.cpp is linked.
     $lmFeature = if ($LmVulkan) { 'vulkan' } else { 'llama' }
     $hostArgs = @('build', '--release', '-p', 'ikari-lm', '--bin', 'ikari-lm-host', '--features', "$lmFeature,dev-knobs")
     Write-Step "cargo $($hostArgs -join ' ')   (in $RepoRoot)"
@@ -104,6 +86,23 @@ if ($Lm -or $LmVulkan) {
     $lmHostExe = Join-Path $ReleaseDir 'ikari-lm-host.exe'
     if (-not (Test-Path -LiteralPath $lmHostExe)) { throw "build finished but $lmHostExe does not exist" }
     Write-Note "LM child process: $lmHostExe"
+}
+
+if ($LmVulkan) {
+    # llama-cpp-sys-2 builds ggml as DLLs. The backends (ggml-vulkan.dll, ggml-cpu-*.dll) are in <OUT_DIR>\backends and are
+    # NOT copied to target. The LM child process loads them from "backends" next to its exe (lm/src/llama.rs). ggml*.dll and
+    # llama.dll are in <OUT_DIR>\bin and go next to the exe.
+    $sysOut = Get-ChildItem -LiteralPath (Join-Path $ReleaseDir 'build') -Directory -Filter 'llama-cpp-sys-2-*' |
+        ForEach-Object { Join-Path $_.FullName 'out' } |
+        Where-Object { Test-Path -Path (Join-Path $_ 'backends\ggml-vulkan*.dll') } |
+        Select-Object -First 1
+    if (-not $sysOut) { throw "no ggml-vulkan DLL under $ReleaseDir\build\llama-cpp-sys-2-*\out\backends" }
+    $backendsOut = Join-Path $ReleaseDir 'backends'
+    New-Item -ItemType Directory -Force -Path $backendsOut | Out-Null
+    Copy-Item -Path (Join-Path $sysOut 'backends\*.dll') -Destination $backendsOut -Force
+    Copy-Item -Path (Join-Path $sysOut 'bin\*.dll') -Destination $ReleaseDir -Force
+    if (-not (Get-ChildItem -LiteralPath $ReleaseDir -File -Filter 'llama*.dll')) { throw "llama*.dll was not found in $sysOut" }
+    Write-Note "backends: $backendsOut ($((Get-ChildItem -LiteralPath $backendsOut -Filter '*.dll').Count) DLLs)"
 }
 
 foreach ($f in @($EngineExe, $TipDllBuilt)) {
