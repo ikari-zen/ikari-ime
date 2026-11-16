@@ -299,6 +299,14 @@ impl StopWait {
     }
 }
 
+#[cfg(test)]
+impl StopWait {
+    /// 止める合図が届いているか（テスト用。届いていれば取り出す）
+    pub(crate) fn try_recv_stop(&self) -> bool {
+        matches!(self.rx.try_recv(), Ok(Event::Stop))
+    }
+}
+
 impl Default for StopWait {
     fn default() -> Self {
         Self::new()
