@@ -29,7 +29,8 @@ use windows_sys::Win32::Security::Authorization::{
     ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
 };
 use windows_sys::Win32::Security::{
-    GetTokenInformation, PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES, TOKEN_QUERY, TOKEN_USER,
+    GetSidSubAuthority, GetSidSubAuthorityCount, GetTokenInformation, PSECURITY_DESCRIPTOR,
+    SECURITY_ATTRIBUTES, TOKEN_MANDATORY_LABEL, TOKEN_QUERY, TOKEN_USER, TokenIntegrityLevel,
     TokenUser,
 };
 use windows_sys::Win32::Storage::FileSystem::{
@@ -39,18 +40,19 @@ use windows_sys::Win32::Storage::FileSystem::{
 };
 use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
 use windows_sys::Win32::System::Pipes::{
-    ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, GetNamedPipeServerProcessId,
-    NAMED_PIPE_MODE, PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE,
-    PIPE_UNLIMITED_INSTANCES, PIPE_WAIT, WaitNamedPipeW,
+    ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, GetNamedPipeClientProcessId,
+    GetNamedPipeServerProcessId, NAMED_PIPE_MODE, PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS,
+    PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, PIPE_WAIT, WaitNamedPipeW,
 };
 use windows_sys::Win32::System::RemoteDesktop::ProcessIdToSessionId;
 use windows_sys::Win32::System::Threading::{
-    CreateEventW, GetCurrentProcess, GetCurrentProcessId, INFINITE, OpenProcessToken, ResetEvent,
-    SetEvent, WaitForMultipleObjects,
+    CreateEventW, GetCurrentProcess, GetCurrentProcessId, INFINITE, OpenProcess, OpenProcessToken,
+    PROCESS_QUERY_LIMITED_INFORMATION, ResetEvent, SetEvent, WaitForMultipleObjects,
 };
 
 use crate::client::Client;
 use crate::duplex::{Duplex, Halves, Listener, Shutdown, WRITE_DEADLINE};
+use crate::elevation::{self, Refusal};
 use crate::name::pipe_name;
 
 /// サーバーのインスタンスの開き方。読み書きの両方向、重ね合わせの I/O。
@@ -555,8 +557,29 @@ impl Listener for NamedPipeListener {
     type Conn = NamedPipeDuplex;
 
     fn accept(&mut self) -> io::Result<Option<NamedPipeDuplex>> {
+        loop {
+            match self.accept_one()? {
+                Accepted::Conn(conn) => return Ok(Some(conn)),
+                Accepted::Stopped => return Ok(None),
+                // 断った。次を待つ（誤りにしない。続けて誤りが出ると、受け付けを諦めるため）
+                Accepted::Refused => {}
+            }
+        }
+    }
+}
+
+/// `accept_one` の結果
+enum Accepted {
+    Conn(NamedPipeDuplex),
+    Stopped,
+    Refused,
+}
+
+impl NamedPipeListener {
+    /// 1 回の受け付け。高い権限の相手は、何も読まずに切る（ADR 0068 §2 の 5）。
+    fn accept_one(&mut self) -> io::Result<Accepted> {
         if self.close.closed.load(Ordering::SeqCst) {
-            return Ok(None);
+            return Ok(Accepted::Stopped);
         }
         let instance = match self.next.take() {
             Some(handle) => handle,
@@ -584,7 +607,7 @@ impl Listener for NamedPipeListener {
             Err(e) if is_code(&e, ERROR_PIPE_CONNECTED) => {}
             Ok(Completion::Cancelled | Completion::TimedOut) => {
                 self.next = Some(instance);
-                return Ok(None);
+                return Ok(Accepted::Stopped);
             }
             Err(e) if is_code(&e, ERROR_NO_DATA) => {
                 // 相手がつないですぐ閉じた。切り離して、このインスタンスを次に使う（名前を手放さない）。
@@ -596,13 +619,100 @@ impl Listener for NamedPipeListener {
             Err(e) => return Err(e),
         }
         if self.close.closed.load(Ordering::SeqCst) {
-            return Ok(None);
+            return Ok(Accepted::Stopped);
+        }
+        if let Err(refusal) = check_client(&instance) {
+            // 理由の語だけを書く（番号やパスは出さない）
+            eprintln!("ikari-pipe: refused a connection ({})", refusal.as_str());
+            // SAFETY: handle は開いたサーバーのインスタンス。失敗しても、次の ConnectNamedPipe が誤りで知らせる
+            unsafe { DisconnectNamedPipe(handle) };
+            self.next = Some(instance);
+            return Ok(Accepted::Refused);
         }
         // 渡す前に次のインスタンスを作り、名前を手放さない。作れなければ、この接続も渡さない（相手には切断に
         // 見える）。次の accept が作り直す
         self.next = Some(self.create_instance(false)?);
-        NamedPipeDuplex::new(instance, Some(Arc::clone(&self.alive))).map(Some)
+        NamedPipeDuplex::new(instance, Some(Arc::clone(&self.alive))).map(Accepted::Conn)
     }
+}
+
+/// つないできた相手（クライアント）のプロセスが、高い権限でないかを確かめる。取れなければ断る。
+fn check_client(instance: &OwnedHandle) -> Result<(), Refusal> {
+    let mut pid = 0u32;
+    // SAFETY: instance は接続済みのパイプのサーバー側。pid は書ける u32 で、この呼び出しの間生きている。
+    let ok = unsafe { GetNamedPipeClientProcessId(instance.as_raw_handle(), &mut pid) };
+    let peer_rid = if ok == FALSE {
+        None
+    } else {
+        // SAFETY: 引数は値だけ。返り値は own_handle が確かめて所有する（開けなければ None）。
+        let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid) };
+        own_handle(process)
+            .ok()
+            .and_then(|process| integrity_rid_of(process.as_raw_handle()))
+    };
+    elevation::check_peer(current_integrity_rid(), peer_rid)
+}
+
+/// このプロセスのトークンの整合性のレベル（`SECURITY_MANDATORY_*_RID`）。取れなければ `None`。
+pub fn current_integrity_rid() -> Option<u32> {
+    // SAFETY: GetCurrentProcess は引数を取らず、閉じなくてよい疑似ハンドルを返す。
+    integrity_rid_of(unsafe { GetCurrentProcess() })
+}
+
+/// `process` のトークンの整合性のレベル。トークンを開けない（高い権限のプロセスは、ふつうの権限からは開けない）、
+/// 読めないときは `None`。
+fn integrity_rid_of(process: HANDLE) -> Option<u32> {
+    let mut raw_token: HANDLE = ptr::null_mut();
+    // SAFETY: process は有効なプロセスのハンドル（呼ぶ側が生かしている）。raw_token には開いたトークンが書かれる
+    // （成功したときだけ。所有は下の own_handle）。
+    let ok = unsafe { OpenProcessToken(process, TOKEN_QUERY, &mut raw_token) };
+    if ok == FALSE {
+        return None;
+    }
+    let token = own_handle(raw_token).ok()?;
+
+    let mut needed = 0u32;
+    // SAFETY: 大きさを聞くだけ（バッファは null、長さ 0）。失敗（ERROR_INSUFFICIENT_BUFFER）で needed が埋まる。
+    unsafe {
+        GetTokenInformation(
+            token.as_raw_handle(),
+            TokenIntegrityLevel,
+            ptr::null_mut(),
+            0,
+            &mut needed,
+        )
+    };
+    if (needed as usize) < size_of::<TOKEN_MANDATORY_LABEL>() {
+        return None;
+    }
+    // TOKEN_MANDATORY_LABEL はポインタを含むので、ポインタの境界に揃ったバッファ（usize の並び）で受ける
+    let mut buf = vec![0usize; (needed as usize).div_ceil(size_of::<usize>())];
+    // SAFETY: buf は needed バイト以上あり、usize（ポインタ）の境界に揃っていて、この呼び出しの間生きている。
+    let ok = unsafe {
+        GetTokenInformation(
+            token.as_raw_handle(),
+            TokenIntegrityLevel,
+            buf.as_mut_ptr().cast(),
+            needed,
+            &mut needed,
+        )
+    };
+    if ok == FALSE {
+        return None;
+    }
+    // SAFETY: 成功したので、buf の先頭は TOKEN_MANDATORY_LABEL（揃いと大きさは上で確かめた）。Sid は buf の
+    // 中を指し、buf は下で使い終わるまで生きている。
+    let sid = unsafe { (*buf.as_ptr().cast::<TOKEN_MANDATORY_LABEL>()).Label.Sid };
+    if sid.is_null() {
+        return None;
+    }
+    // SAFETY: sid は上の有効な SID。返りは SID の中を指す（解放しない）。
+    let count = unsafe { *GetSidSubAuthorityCount(sid) };
+    if count == 0 {
+        return None;
+    }
+    // SAFETY: 添字は count - 1（0 以上 count 未満）。返りは SID の中を指す（解放しない）。
+    Some(unsafe { *GetSidSubAuthority(sid, u32::from(count) - 1) })
 }
 
 /// `name`（`\\.\pipe\…`）につなぐ。相手の PID が取れたら `Client::server_pid()` に入る。
