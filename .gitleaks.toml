@@ -26,6 +26,8 @@ regexes = [
   '''noreply''',
   '''@[0-9]+x\.''',
   '''@example\.(com|org|net)$''',
+  # URL の利用者名を拒むテストの、ダミーのホスト（fetch/src/url.rs）
+  '''@evil\.example$''',
 ]
 
 [[rules]]
