@@ -40,4 +40,4 @@ dotnet publish windows\candidate-ui -c Release -o <出力先>   # 自己完結�
 
 ## まだ無いもの
 
-`windows/candidate/README.md` の「この段でやらない」を見る（見た目の仕上げ、PNG の口、起動と見張り、診断のログ）。
+`windows/candidate/README.md` の第 2 段の「残り」を見る（見た目の仕上げ、PNG の口、診断のログ）。起動と見張りは engine-host（`windows/engine-host/src/candidate_window.rs`）。NuGet の版は `packages.lock.json` で固定する（版を上げたら Windows で `dotnet restore` を流して作り直す）。

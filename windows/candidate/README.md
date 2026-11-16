@@ -42,4 +42,24 @@ ADR 0062 §9.1 のレーン（L1〜L4）のうち、Mac で確かめられる Ru
 - 片道の遅れの計測（ADR 0062 §10 の S-2 の代わり）。値は仮置きのまま（`metrics` と `limits`）。
 - W3-c（`ITfCandidateListUIElement`）。
 
-**仮置きの値**（計測なし。PR で明示してユーザーに確認する）: 行の高さ（`metrics`。macOS の値を写した）、受け取りの上限（`limits`）。
+## 第 2 段（レーン lane/w3b。2026-11-16）
+
+**この段でやったこと**（Windows では未ビルド。実機の項目 50〜54）
+1. L1 の COM の層: `windows/tip/src/candidate_view.rs`（純粋。アンカーを `Hide` まで固定、取れないときの順、
+   送れなかったあとの `Show` の送り直し）と、`com::screen`（先頭の 1 文字の `GetTextExt`、物理の座標への変換、
+   画面の作業領域と倍率）、`com::edit`（`TsfOp` を `candidate_view` に渡す）、`com::service`（送れたら
+   `ShellEvent::PanelShown` を返す。フォーカスが外れたとき・`Shell` を捨てたときに隠し、`Deactivate` で閉じる）。
+2. L4: `windows/engine-host/src/candidate_window.rs`（起動し直す間隔と回数の上限、見張りの繰り返し。純粋）と `os.rs`
+   （Job Object、`CreateProcessW`）。`windows/dev/build.ps1`（候補窓の発行）、`common.ps1`（インストール先への写し）、
+   `candidate-probe.ps1`。
+3. C# の依存: `packages.lock.json`（CI でロックのとおりかを見る）、Dependabot の `nuget`、`THIRD_PARTY_NOTICES.md`。
+
+**残り**
+- L3: ライトとダーク、Acrylic、角丸、開発者の行の見た目、PNG の口（開発用のビルドだけ）、窓の高さを TIP と合わせる確認。
+- 窓の診断のログ（受けた `seq`、描いた矩形、かかった時間）と、窓の側の片道の遅れ。
+- アンカーの `clipped` の扱い（ログに出すだけ。ADR 0062 §6.1）、`GetGUIThreadInfo` のキャレット（S2 の結果で）。
+- W3-c（`ITfCandidateListUIElement`）。
+
+**仮置きの値**（計測なし。PR で明示してユーザーに確認する）: 行の高さ（`metrics`。macOS の値を写した）、受け取りの上限（`limits`）、
+窓を起動し直すまでの間隔（`windows/engine-host/src/candidate_window.rs` の `RESTART_DELAY` = 1 秒）。
+Job の UI の制限（クリップボード、画面とシステムの設定の書き換え、サインアウト）で WinUI 3 が描けるかは推測。
