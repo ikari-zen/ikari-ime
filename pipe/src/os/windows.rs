@@ -977,7 +977,11 @@ mod tests {
             assert!(started.elapsed() < long(), "write never blocked");
         };
         assert_eq!(err.kind(), io::ErrorKind::TimedOut, "{err:?}");
-        assert!(started.elapsed() >= WRITE_DEADLINE);
+        // 下限は締め切りの半分にとどめる。Windows の待ちはタイマーの粒度（約 15.6ms）で
+        // 締め切りより少し早く戻ることがあり、厳密に比べると揺れる（#427）。
+        // 見たいのは「待たずに即失敗しない」ことと「締め切りの数倍以内で返る」こと
+        // （上は、書きが固まらないことをループ内の long() の検査が受け持つ）
+        assert!(started.elapsed() >= WRITE_DEADLINE / 2);
     }
 
     #[test]
