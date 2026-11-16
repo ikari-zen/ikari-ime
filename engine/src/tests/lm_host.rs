@@ -35,6 +35,17 @@ struct HostEngine {
 impl HostEngine {
     fn new() -> HostEngine {
         let dir = temp_dir("lm-host");
+        // 子は低い整合性で動く（ADR 0072）。旗のファイルを書けるよう、このフォルダだけ低いラベルにする
+        #[cfg(windows)]
+        {
+            let ok = std::process::Command::new("icacls")
+                .arg(&dir)
+                .args(["/setintegritylevel", "(OI)(CI)L"])
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+            assert!(ok, "icacls /setintegritylevel failed");
+        }
         let script = dir.join("script.txt");
         std::fs::write(&script, SCRIPT).unwrap();
         let user = dir.join("user");
