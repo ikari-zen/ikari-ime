@@ -15,6 +15,7 @@ use crate::data::run::{
 mod docs;
 mod frameworks;
 mod record;
+mod supply;
 
 const SWIFT_TEST_TIMEOUT_ENV: &str = "IKARI_SWIFT_TEST_TIMEOUT";
 /// 暫定値（計測なし。通常は数分）。swift test が終わらずに固まることがあったため（check.sh から引き継ぐ）
@@ -122,6 +123,8 @@ fn steps(root: &Path, plan: &Plan) -> Result<(), Failure> {
     docs::identity(root)?;
     docs::leaks(root)?;
     docs::adr_status(root)?;
+    supply::net_crates(root)?;
+    supply::actions_pinned(root)?;
     docs::shell_syntax(root)?;
     docs::powershell_syntax(root)?;
     for script in [
