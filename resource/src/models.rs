@@ -39,6 +39,8 @@ pub struct ModelPreset {
     pub size: u64,
     /// 取得元（https。始めの URL のホストを、要求の前に確かめる）
     pub url: &'static str,
+    /// `url` のホスト（小文字。表の書き損じで別のホストに行かないよう、`ikari-data` が要求の前に照らす）
+    pub host: &'static str,
 }
 
 /// zenz-v3.2 small の取得元（`xtask/src/data/fetch.rs` の `ZENZ_URL` と同じ）
@@ -52,6 +54,7 @@ pub const MODEL_PRESETS: &[ModelPreset] = &[ModelPreset {
     sha256: ZENZ_SMALL_SHA256,
     size: ZENZ_SMALL_SIZE,
     url: ZENZ_SMALL_URL,
+    host: "huggingface.co",
 }];
 
 /// ID からプリセットを引く
@@ -76,6 +79,8 @@ mod tests {
     fn presets_are_known_models_with_https_urls() {
         for p in MODEL_PRESETS {
             assert!(p.url.starts_with("https://"), "{}", p.id);
+            let authority = p.url["https://".len()..].split('/').next().unwrap();
+            assert_eq!(authority, p.host, "{}", p.id);
             assert!(
                 KNOWN_MODELS.iter().any(|k| k.file_name == p.file_name
                     && k.sha256 == p.sha256

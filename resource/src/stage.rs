@@ -59,6 +59,8 @@ pub struct StagePlan {
     pub expected: Option<Expected>,
     /// 利用者が指定したモデルの形式（`PromptFormat` の語）。manifest の `profile.format`
     pub profile_format: Option<String>,
+    /// 利用者が付けた表示名（表示にだけ使う。ファイル名には使わない）。manifest の `profile.name`
+    pub display_name: Option<String>,
     pub source: Option<Source>,
     /// 写してよい大きさの上限（バイト）。超えたら `TooLarge`
     pub max_size: u64,
@@ -173,10 +175,7 @@ fn copy_and_publish(
             .source
             .as_ref()
             .map(|s| json!({ "url": s.url, "sha256_given": s.sha256_given })),
-        profile: plan
-            .profile_format
-            .as_ref()
-            .map(|format| json!({ "format": format })),
+        profile: profile_json(plan),
     };
     let manifest = Manifest::new(
         plan.created.clone(),
@@ -221,6 +220,17 @@ fn copy_counting(
     }
     out.sync_all().map_err(|e| io_error(dest, e))?;
     Ok((hex(&hasher.finalize()), size))
+}
+
+fn profile_json(plan: &StagePlan) -> Option<serde_json::Value> {
+    let mut profile = serde_json::Map::new();
+    if let Some(format) = &plan.profile_format {
+        profile.insert("format".into(), json!(format));
+    }
+    if let Some(name) = &plan.display_name {
+        profile.insert("name".into(), json!(name));
+    }
+    (!profile.is_empty()).then_some(serde_json::Value::Object(profile))
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -286,6 +296,7 @@ mod tests {
             created: Created::parse("2026-11-17T00:00:00Z").unwrap(),
             expected,
             profile_format: Some("zenz".into()),
+            display_name: Some("my model".into()),
             source: Some(Source {
                 url: "https://example.com/m.gguf".into(),
                 sha256_given: false,
@@ -326,6 +337,7 @@ mod tests {
         assert_eq!(c.kind, ComponentKind::Model);
         assert_eq!(c.files[0].sha256, ABC_SHA);
         assert_eq!(c.profile.as_ref().unwrap()["format"], "zenz");
+        assert_eq!(c.profile.as_ref().unwrap()["name"], "my model");
         assert_eq!(
             c.sources.as_ref().unwrap()["url"],
             "https://example.com/m.gguf"
