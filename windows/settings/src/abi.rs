@@ -69,14 +69,14 @@ pub extern "C" fn ikari_settings_core_check_self() -> i32 {
 }
 
 #[cfg(windows)]
-fn self_allowed() -> bool {
+pub(crate) fn self_allowed() -> bool {
     use ikari_pipe::elevation::check_self;
     use ikari_pipe::os::windows::current_integrity_rid;
     check_self(current_integrity_rid()).is_ok()
 }
 
 #[cfg(not(windows))]
-fn self_allowed() -> bool {
+pub(crate) fn self_allowed() -> bool {
     true
 }
 
@@ -149,6 +149,17 @@ mod tests {
     #[test]
     fn version_and_self_check() {
         assert_eq!(ikari_settings_core_abi_version(), ABI_VERSION);
-        assert_eq!(ikari_settings_core_check_self(), IKARI_SETTINGS_CORE_OK);
+        // 答えは、テストを流す権限で変わる（GitHub の Windows のランナーは管理者で動くので、高い権限と答える）
+        let expected = if self_allowed() {
+            IKARI_SETTINGS_CORE_OK
+        } else {
+            IKARI_SETTINGS_CORE_ERR_ELEVATED
+        };
+        assert_eq!(ikari_settings_core_check_self(), expected);
+        #[cfg(not(windows))]
+        assert_eq!(
+            expected, IKARI_SETTINGS_CORE_OK,
+            "Windows 以外は常に続けてよい"
+        );
     }
 }

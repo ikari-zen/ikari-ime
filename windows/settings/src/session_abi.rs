@@ -376,12 +376,24 @@ mod tests {
         let mut status = -1;
         // SAFETY: `status` は書き込める
         let session = unsafe { ikari_settings_core_open(&mut status) };
-        assert!(session.is_null(), "Windows 以外には設定の口が無い");
-        assert_eq!(status, LinkStatus::EngineNotRunning.code());
+        #[cfg(not(windows))]
+        {
+            assert!(session.is_null(), "Windows 以外には設定の口が無い");
+            assert_eq!(status, LinkStatus::EngineNotRunning.code());
+        }
+        // Windows では、テストを流す権限とエンジンの有無で変わる。高い権限（GitHub のランナーは管理者）なら、つながずに断る
+        #[cfg(windows)]
+        if !crate::abi::self_allowed() {
+            assert!(session.is_null());
+            assert_eq!(status, LinkStatus::Elevated.code());
+        }
+        // SAFETY: open が返したもの（null も約束のうち）。1 回だけ閉じる
+        unsafe { ikari_settings_core_close(session) };
+        let expected = LinkStatus::from_code(status).expect("知っている番号");
         let mut out = IkariSettingsBuf::EMPTY;
         // SAFETY: `out` は書き込める
         unsafe { ikari_settings_core_status_text(status, &mut out) };
-        assert_eq!(take(out), LinkStatus::EngineNotRunning.text());
+        assert_eq!(take(out), expected.text());
     }
 
     #[test]
