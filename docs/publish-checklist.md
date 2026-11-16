@@ -104,8 +104,15 @@
 
 ## 4. ビルド済みの配布を作るとき（今回はしない）
 
-- [ ] #241（未署名のアプリを開く手順の実機確認）が済んでいること。
-- [ ] README の冒頭（「ビルド済みのアプリは、まだ配っていません」）と SECURITY.md の同じ行を、配布に合わせて書き直す。
+設計は [security-design.md](security-design.md)（[ADR 0069](adr/0069-distribution-authenticity.md)、[0070](adr/0070-update-and-vulnerability-response.md)）。タグを打つことと Release を公開することは、**作者だけが行う**（エージェントはしない）。
+
+- [ ] #241（未署名のアプリを開く手順と、macOS の置き場所の実機確認）が済んでいること。Windows は [windows-real-device-check.md](windows-real-device-check.md) の該当の項目が済んでいること。
+- [ ] 前の節（§3）の、Private vulnerability reporting が有効であること。リリースのタグ（`v*`）を作れる者を絞り、タグの付け替えと削除を禁じる設定をしたこと。Releases を immutable（公開したら変えられない）にする設定をしたこと。
+- [ ] [security-design.md](security-design.md) §5.2 の「版を出す前」の検査が済んでいること（製品のビルドであること、インストーラの確認、送信の記録、他社の部品の版、3 つの証拠）。
+- [ ] 配る物は、GitHub のランナーで、タグから作ったものだけ（作者や利用者の機械で作ったものは配らない）。Release は下書きにし、作者が中身を見てから公開する。
+- [ ] Release に 3 つの証拠が付いていること: `SHA256SUMS`、GitHub の成果物の証明（`gh attestation verify <ファイル> -R ikari-zen/ikari-ime` で確かめられる）、作者の鍵による `SHA256SUMS` の署名。
+- [ ] README の冒頭（「ビルド済みのアプリは、まだ配っていません」）と SECURITY.md の「配布」の節の同じ行を、配布に合わせて書き直す。README には、配布元が Releases だけであること、sha256 の比べ方、証明と署名の確かめ方、OS の警告の案内（実機で確かめた手順だけ。守りを切る手順は書かない）、Watch の案内を書く。
+- [ ] 配布物と SECURITY.md の「約束すること」が合っていること（通信しない、秘密の欄、ログ）。
 - [ ] [CHANGELOG.md](../CHANGELOG.md) の 0.1.0 のリリース日を入れる。
 - [ ] 配布物に含める依存のライセンスの表示を確かめる（`cargo xtask licenses --check`、[THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)）。
-- [ ] GitHub Releases にバイナリを置く。
+- [ ] 作者が、下書きの Release を確かめて公開する。
