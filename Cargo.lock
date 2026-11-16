@@ -636,6 +636,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ikari-setup-helper"
+version = "0.1.0"
+dependencies = [
+ "ikari-pipe",
+ "tempfile",
+ "windows-sys",
+]
+
+[[package]]
 name = "ikari-shell-core"
 version = "0.1.0"
 dependencies = [
