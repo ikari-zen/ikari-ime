@@ -1,7 +1,7 @@
 # PR と main への push ごとに scripts/check.sh を 2 つの job に分けて流す（#290、#295）。
 #   rust  ubuntu。文書の検査、ライセンス、fmt、clippy、cargo test（--rust-only）
 #   deny    ubuntu。cargo-deny（脆弱性、取得元、ライセンス、通信の crate の禁止。必須ではない。ADR 0069 §4.2）
-#   windows windows-latest。cargo test --workspace（LM なし。必須ではない。#316）
+#   windows windows-latest。cargo test --workspace（LM なし。必須ではない。#316）と、候補窓（核の DLL と WinUI 3 の画面。ADR 0062）のビルド
 #   windows-artifact windows-latest。実機（VM）に持ち込む release ビルド（LM は Vulkan。ADR 0059）を artifact に保存する（必須ではない）
 #   check macOS。XCFramework のビルドと swift test（--swift-only）。Swift は Linux では作れない
 # ブランチ保護の「必要なチェック」に check を入れてある（job の名前を変えない）。rust は必須ではないが、check と同じく通らないものはマージしない。
@@ -113,6 +113,28 @@ jobs:
       # LM の推論を担う別プロセス（ADR 0060 Q4）。Job Object と TerminateProcess の経路は、上の cargo test が偽の子で通す
       - name: LM の子（ikari-lm-host）をビルドする
         run: cargo build -p ikari-lm --bin ikari-lm-host --features llama
+      # 候補窓の画面（WinUI 3、C#。ADR 0062 §3）。Mac ではビルドできないので、ここで確かめる。
+      # actions/setup-dotnet v6.1.0（コミットの SHA で固定）。.NET SDK の版は windows/candidate-ui/global.json
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73
+        with:
+          global-json-file: windows/candidate-ui/global.json
+      # 核の DLL（release）を先に作り、画面のビルドが exe の隣に写す。global.json を効かせるため、画面のフォルダで流す
+      - name: 候補窓（核の DLL と画面）をビルドする
+        shell: pwsh
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+          DOTNET_NOLOGO: "1"
+        run: |
+          cargo build --release -p ikari-candidate
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Push-Location windows/candidate-ui
+          dotnet --version
+          dotnet build -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $exe = Get-ChildItem -Recurse bin -Filter ikari-candidate.exe | Select-Object -First 1
+          if (-not $exe) { throw "ikari-candidate.exe was not built" }
+          if (-not (Test-Path (Join-Path $exe.DirectoryName 'ikari_candidate.dll'))) { throw "ikari_candidate.dll is not next to ikari-candidate.exe" }
+          Pop-Location
 
   # 実機（VM）で試すための release ビルド（エンジンの exe と TIP の DLL）と、`windows/dev` のスクリプトを、1 つの artifact に入れる。
   # VM で Rust を入れてビルドしなくて済む（遅い機械での手間を避ける）。配置はリポジトリと同じ（`windows/dev/common.ps1` が
@@ -187,10 +209,30 @@ jobs:
       # 動的な C ランタイム（vcruntime など）を取り込んでいないこと。同じ場所に、次の開発用のビルドが上書きする
       - name: 製品のビルド（dev-knobs なし）の検査
         run: |
-          cargo build --release -p ikari-engine-host -p ikari-tip
+          cargo build --release -p ikari-engine-host -p ikari-tip -p ikari-candidate
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $rel = Join-Path $env:CARGO_TARGET_DIR 'release'
-          cargo xtask scan-product "$rel\ikari_tip.dll" "$rel\ikari-engine-host.exe"
+          cargo xtask scan-product "$rel\ikari_tip.dll" "$rel\ikari-engine-host.exe" "$rel\ikari_candidate.dll"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      # 候補窓（ADR 0062）。画面は自己完結で dist\candidate に出す（核は上の製品のビルドの DLL）。
+      # 確認用の送り手（examples/candidate-send。開発用）は、あとで artifact に入れる
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73
+        with:
+          global-json-file: windows/candidate-ui/global.json
+      - name: 候補窓の画面を発行する（自己完結）
+        shell: pwsh
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+          DOTNET_NOLOGO: "1"
+        run: |
+          $rel = Join-Path $env:CARGO_TARGET_DIR 'release'
+          $out = Join-Path $PWD 'dist\candidate'
+          Push-Location windows/candidate-ui
+          dotnet publish -c Release -o $out "-p:IkariCoreDll=$rel\ikari_candidate.dll"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+          if (-not (Test-Path (Join-Path $out 'ikari_candidate.dll'))) { throw "ikari_candidate.dll is not in dist\candidate" }
+          cargo build --release -p ikari-candidate --example candidate-send
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       # 以降は開発用のビルド（実機の確認に持ち込む artifact。windows/dev のスクリプトが dev-knobs の口を使う）
       - name: release ビルド（開発用の口つき。LM なしのエンジンと TIP）
@@ -242,6 +284,7 @@ jobs:
           mkdir -p "$out/backends" dist/windows dist/shell-core/resources dist/eval
           cp "$rel/ikari-engine-host.exe" "$rel/ikari-engine-host-nolm.exe" "$rel/ikari-engine-host-hidden.exe" "$rel/ikari_tip.dll" "$rel/ikari-eval.exe" "$rel/ikari-lm-host.exe" "$out/"
           cp "$rel/examples/devices.exe" "$out/ikari-lm-devices.exe"
+          cp "$rel/examples/candidate-send.exe" "$out/ikari-candidate-send.exe"
           # 使う OUT_DIR: feature の組み合わせで build のフォルダが複数ありうるので、backends に ggml-vulkan を含むもの
           sysout=""
           for o in "$rel"/build/llama-cpp-sys-2-*/out; do
