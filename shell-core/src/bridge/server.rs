@@ -140,7 +140,7 @@ mod tests {
 
     fn error_code(frame: &Frame) -> Option<(i32, &str)> {
         match &frame.body {
-            Some(Body::Error(BridgeError { code, key })) => Some((*code, key.as_str())),
+            Some(Body::Error(BridgeError { code, key, .. })) => Some((*code, key.as_str())),
             _ => None,
         }
     }

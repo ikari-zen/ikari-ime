@@ -39,6 +39,9 @@ enum Messages {
             return describe(BridgeClientError.tooLarge)
         case .writeFailed:
             return "設定ファイルを書き込めませんでした"
+        case .transferFailed:
+            // Windows の設定の口だけが返す（パスでの書き出し・取り込み。ADR 0068 §4）。macOS の殻は返さない
+            return "ファイルを読み書きできませんでした"
         case .bridgeErrorUnspecified, .UNRECOGNIZED:
             return "予期しないエラーが起きました"
         }

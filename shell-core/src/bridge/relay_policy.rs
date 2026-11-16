@@ -174,7 +174,7 @@ mod tests {
                 panic!("expected a BridgeError for {frame:?}");
             };
             assert_eq!(rejection.request_id, 12);
-            let Some(Body::Error(BridgeError { code, key })) = rejection.body else {
+            let Some(Body::Error(BridgeError { code, key, .. })) = rejection.body else {
                 panic!("expected a BridgeError for {frame:?}");
             };
             assert_eq!(code, BridgeErrorCode::NotAllowed as i32);
@@ -230,7 +230,7 @@ mod tests {
                 panic!("expected NOT_ALLOWED");
             };
             assert_eq!(reply.request_id, 6);
-            let Some(Body::Error(BridgeError { code, key })) = reply.body else {
+            let Some(Body::Error(BridgeError { code, key, .. })) = reply.body else {
                 panic!("expected a BridgeError");
             };
             assert_eq!(code, BridgeErrorCode::NotAllowed as i32);
