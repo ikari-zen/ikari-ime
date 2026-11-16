@@ -3,7 +3,7 @@
 使い方:
   python -I check.py <fixtures.jsonl> <IR の .xml>... [--device CPU] [--precision f32|f16|default]
 
-件ごとに、候補 1 つを 1 回の推論で採点し（README の「契約」の詰め方）、次を出す:
+件ごとに、IR の形 [B, L] に候補を B 個ずつ詰めて採点し（README の「契約」の詰め方）、次を出す:
   1 位の一致（NLL 最小の候補が基準と同じ件の割合）、Kendall の τ-b の中央値、|NLL の差| の最大と中央値、
   件ごとの所要（候補の全部。ms）の p50 と p99。
 """
@@ -28,16 +28,31 @@ def log_softmax(row: np.ndarray) -> np.ndarray:
     return row - m - np.log(np.exp(row - m).sum())
 
 
-def candidate_nll(request, length, prompt, cand):
-    """README の「契約」の 4。長すぎる候補は inf"""
-    p, n = len(prompt), len(cand)
-    if n == 0 or p + n > length:
-        return float("inf")
-    ids = np.full((1, length), PAD_TOKEN, dtype=np.int64)
-    ids[0, : p + n] = prompt + cand
-    logits = request.infer({INPUT_NAME: ids})[OUTPUT_NAME][0].astype(np.float32)
+def row_nll(logits, p, cand):
+    """README の「契約」の 4。logits は 1 行分 [L, vocab]"""
     targets = cand + [END_TOKEN]
     return -sum(float(log_softmax(logits[p - 1 + j])[t]) for j, t in enumerate(targets))
+
+
+def case_nll(request, batch, length, prompt, cands):
+    """件の全部の候補の NLL。B 個ずつ 1 回に詰め、余りの行は [PAD] だけ（結果は読まない）。長すぎる候補は inf"""
+    p = len(prompt)
+    out = [float("inf")] * len(cands)
+    ok = [i for i, c in enumerate(cands) if c and p + len(c) <= length]
+    for start in range(0, len(ok), batch):
+        chunk = ok[start : start + batch]
+        ids = np.full((batch, length), PAD_TOKEN, dtype=np.int64)
+        for row, i in enumerate(chunk):
+            ids[row, : p + len(cands[i])] = prompt + cands[i]
+        logits = request.infer({INPUT_NAME: ids})[OUTPUT_NAME]
+        for row, i in enumerate(chunk):
+            out[i] = row_nll(logits[row].astype(np.float32), p, cands[i])
+    return out
+
+
+def candidate_nll(request, length, prompt, cand):
+    """B = 1 の 1 候補（ov_vs_torch などの手元の確かめ用）"""
+    return case_nll(request, 1, length, prompt, [cand])[0]
 
 
 def percentile(xs, q):
@@ -52,14 +67,15 @@ def run(path, fixtures, device, precision):
     (inp,), (out,) = model.inputs, model.outputs
     if INPUT_NAME not in inp.get_names() or OUTPUT_NAME not in out.get_names():
         raise SystemExit(f"IO names: {inp.get_names()} {out.get_names()}")
-    length = inp.get_partial_shape()[1].get_length()
+    shape = inp.get_partial_shape()
+    batch, length = shape[0].get_length(), shape[1].get_length()
     cfg = {} if precision == "default" else {"INFERENCE_PRECISION_HINT": precision}
     request = core.compile_model(model, device, cfg).create_infer_request()
 
     top1, taus, diffs, times = 0, [], [], []
     for f in fixtures:
         t0 = time.perf_counter()
-        got = [candidate_nll(request, length, f["prompt_tokens"], c) for c in f["candidate_tokens"]]
+        got = case_nll(request, batch, length, f["prompt_tokens"], f["candidate_tokens"])
         times.append((time.perf_counter() - t0) * 1000)
         ref = [float("inf") if v is None else v for v in f["nll_llama_cpu"]]
         pairs = [(r, g) for r, g in zip(ref, got) if np.isfinite(r) and np.isfinite(g)]
