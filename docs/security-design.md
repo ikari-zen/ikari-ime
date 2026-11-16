@@ -207,7 +207,7 @@ ikari-ime のセキュリティの設計を 1 か所から引けるようにし�
 | --- | --- | --- | --- |
 | D-0 スパイク | WinUI 3 の最小の設定画面と、送信の記録（main に入れない。ADR 0071 §6） | Sonnet。確認はユーザー（VM） | 候補窓の一式（W3） |
 | D-1 | 設定画面の本体 | Sonnet | D-0 の結果、B-2 |
-| D-2 | `ikari-data`（契約 → 取得 → 版の確認。ADR 0071 §3、0070 §3） | 契約は architect（Opus）、実装は Sonnet | D-1 |
+| D-2 | `ikari-data`（契約 → 取得 → 版の確認。ADR 0071 §3、0070 §3。契約は [ADR 0076](adr/0076-ikari-data-contract.md)（提案）） | 契約は architect（Opus）、実装は Sonnet | D-1 |
 | D-3 | LM の檻の段 2（Windows の AppContainer、macOS の専用の Sandbox）と計測（#424） | Opus | A-2、8.1 の調査 |
 | D-4 | 自由指定のモデル（ADR 0060 の段階 3〜5） | Sonnet | D-2、D-3 |
 
