@@ -8,6 +8,12 @@ description = "Windows の TIP（各アプリに入る DLL）。OS に依存し�
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+# 開発用の口（ADR 0067 §6、0073 §4。R5）。名前はこの 1 つに統一する。既定はオフ。製品のビルドは付けない。
+# この crate では、環境変数（`IKARI_USER_DIR`、`IKARI_TIP_LATENCY` ほか）、計測の印（`latency.on`）、
+# `OutputDebugString` の出力、相手の照合の平らな配置（`ikari-pipe` の同じ feature）
+dev-knobs = ["ikari-pipe/dev-knobs"]
+
 [dependencies]
 ikari-shell-core.workspace = true
 ikari-pipe.workspace = true

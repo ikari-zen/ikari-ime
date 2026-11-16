@@ -10,6 +10,8 @@ default = []
 lm = ["ikari-stack/lm"]
 lm-metal = ["lm", "ikari-stack/lm-metal"]
 lm-vulkan = ["lm", "ikari-stack/lm-vulkan"]
+# 開発用の口（ADR 0067 §6、0073 §4。R5）。名前はこの 1 つに統一する。既定はオフ。製品のビルドは付けない。
+dev-knobs = ["ikari-core/dev-knobs", "ikari-stack/dev-knobs"]
 
 [dependencies]
 ikari-core.workspace = true
