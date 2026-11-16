@@ -98,14 +98,14 @@ impl Harness {
         Harness::caged(script, use_gpu, base, HostCage::Standard, false)
     }
 
-    /// `locked`: 台本のファイルの許可を、利用者が書き換えられない形にする（Windows。段 2 の許可を足せない＝段 2 を
-    /// 張れない状態を作る。読むことはできる）
+    /// `missing`: 台本（モデルの代わり）のファイルを置かない。段 2 は、起動の前にモデルへ読み取りの許可を足すので、
+    /// 張れない（権限に関わらず失敗する。管理者で動く CI でも同じ）。段 1 の偽の子は、台本なしの既定で起動する
     fn caged(
         script: &str,
         use_gpu: bool,
         base: ZenzConfig,
         cage: HostCage,
-        locked: bool,
+        missing: bool,
     ) -> Harness {
         warm_up_exe();
         let dir = tempfile::tempdir().unwrap();
@@ -121,9 +121,8 @@ impl Harness {
             assert!(ok, "icacls /setintegritylevel failed");
         }
         let path = dir.path().join("script.txt");
-        std::fs::write(&path, script).unwrap();
-        if locked {
-            lock_permissions(&path);
+        if !missing {
+            std::fs::write(&path, script).unwrap();
         }
         let (loader, health) = host_loader(HostSpec {
             program: fake_host(),
@@ -531,28 +530,6 @@ fn a_cancelled_request_is_not_a_failure_and_its_late_reply_is_dropped() {
     }
 }
 
-/// `path` の許可を、利用者が書き換えられない形にする（Windows）。継承を切り、所有者の権限（OWNER RIGHTS）と Users を
-/// 読み取りだけにする。ほかの OS では何もしない（段 2 はもともと張れない）
-fn lock_permissions(path: &std::path::Path) {
-    #[cfg(windows)]
-    {
-        let ok = Command::new("icacls")
-            .arg(path)
-            .args([
-                "/inheritance:r",
-                "/grant:r",
-                "*S-1-3-4:R",
-                "*S-1-5-32-545:R",
-            ])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
-        assert!(ok, "icacls failed");
-    }
-    #[cfg(not(windows))]
-    let _ = path;
-}
-
 /// 段 2 だけを求めたとき: 張れる OS（Windows）では段 2 の子が採点し、暖機も同じ子（同じ檻）で済む。張れない OS では
 /// 子を起動せず、辞書だけの順位で返す
 #[test]
@@ -588,7 +565,8 @@ fn a_required_appcontainer_runs_the_child_in_it_or_starts_none() {
     }
 }
 
-/// 段 2 だけを求めて、段 2 を張れない（モデルに許可を足せない）とき: 段 1 に落とさず、子を起動しない（LM なし）
+/// 段 2 だけを求めて、段 2 を張れない（モデルに許可を足せない。Windows でない）とき: 段 1 に落とさず、子を起動しない
+/// （LM なし）
 #[test]
 fn a_required_appcontainer_that_cannot_be_set_up_starts_no_child() {
     let h = Harness::caged(
@@ -606,7 +584,7 @@ fn a_required_appcontainer_that_cannot_be_set_up_starts_no_child() {
     assert!(!h.health.log_note().contains("box=low"));
 }
 
-/// 段 2 を優先して、段 2 を張れないとき: 段 1 に落ちて採点する
+/// 段 2 を優先して、段 2 を張れないとき: 段 1 の子が起動して採点する（台本なしの偽の子。並びは変わらない）
 #[test]
 fn a_preferred_appcontainer_falls_back_to_the_standard_cage() {
     let h = Harness::caged(
@@ -616,7 +594,8 @@ fn a_preferred_appcontainer_falls_back_to_the_standard_cage() {
         HostCage::PreferAppContainer,
         true,
     );
-    assert_eq!(h.first(), GOOD);
+    h.first();
+    assert!(h.ranker.stats().loaded);
     assert_eq!(h.health.consecutive_failures(), 0);
     assert!(
         !h.health.log_note().contains("box=appcontainer"),
