@@ -16,7 +16,11 @@
 pub mod edit;
 pub mod link;
 pub mod peer;
+pub mod text;
 pub mod view;
 
 #[allow(unsafe_code)]
 pub mod abi;
+
+#[allow(unsafe_code)]
+pub mod session_abi;

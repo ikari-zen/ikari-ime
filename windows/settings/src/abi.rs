@@ -3,8 +3,8 @@
 //! - 受け渡しは、数と、バイト列（Rust が確保し、`ikari_settings_core_buf_free` で返してもらう）だけ。Rust の型を境界に
 //!   出さない（`shell-ffi`、候補窓の核と同じ作法）。
 //! - どの入口も panic を外へ出さない（`catch_unwind`）。
-//! - 第 1 段は、設定の一覧（`shell-core` の `settings::specs_tsv`。macOS の画面のテストが読むものと同じ形）を渡すだけ。
-//!   設定の口につなぐのは第 2 段。
+//! - ここは版、権限、設定の一覧（`shell-core` の `settings::specs_tsv`）、バイト列の返却。
+//!   設定の口へのつながりは `session_abi`。
 
 use std::panic::{UnwindSafe, catch_unwind};
 use std::ptr;
@@ -37,7 +37,7 @@ impl IkariSettingsBuf {
         len: 0,
     };
 
-    fn from_vec(v: Vec<u8>) -> IkariSettingsBuf {
+    pub(crate) fn from_vec(v: Vec<u8>) -> IkariSettingsBuf {
         let boxed = v.into_boxed_slice();
         let len = boxed.len();
         IkariSettingsBuf {
@@ -47,7 +47,7 @@ impl IkariSettingsBuf {
     }
 }
 
-fn guarded(f: impl FnOnce() -> i32 + UnwindSafe) -> i32 {
+pub(crate) fn guarded(f: impl FnOnce() -> i32 + UnwindSafe) -> i32 {
     catch_unwind(f).unwrap_or(IKARI_SETTINGS_CORE_ERR_PANIC)
 }
 
