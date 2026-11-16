@@ -1,0 +1,73 @@
+diff --git a/lm/src/llama.rs b/lm/src/llama.rs
+index 8c02d27..f7515d0 100644
+--- a/lm/src/llama.rs
++++ b/lm/src/llama.rs
+@@ -157,7 +157,7 @@ fn choose_placement(want_gpu: bool) -> (Placement, GpuState) {
+ 
+ #[cfg(not(feature = "vulkan"))]
+ fn choose_placement(_want_gpu: bool) -> (Placement, GpuState) {
+-    (Placement::Default, GpuState::NotBuilt)
++    (Placement::CpuOnly, GpuState::NotBuilt) // TEMP-NPU-DUMP
+ }
+ 
+ impl Placement {
+@@ -601,6 +601,59 @@ impl LmScorer for LlamaScorer {
+             }
+             start = end;
+         }
++        // TEMP-NPU-DUMP（コミットしない）
++        if let Some(path) = std::env::var_os("IKARI_NPU_DUMP") {
++            use std::io::Write;
++            let js = |s: &str| {
++                let mut o = String::from("\"");
++                for ch in s.chars() {
++                    match ch {
++                        '"' => o.push_str("\\\""),
++                        '\\' => o.push_str("\\\\"),
++                        c if (c as u32) < 0x20 => o.push_str(&format!("\\u{:04x}", c as u32)),
++                        c => o.push(c),
++                    }
++                }
++                o.push('"');
++                o
++            };
++            let ids = |t: &[LlamaToken]| {
++                t.iter()
++                    .map(|x| x.0.to_string())
++                    .collect::<Vec<_>>()
++                    .join(",")
++            };
++            let line = format!(
++                "{{\"prompt\":{},\"prompt_tokens\":[{}],\"candidates\":[{}],\"candidate_tokens\":[{}],\"nll_llama_cpu\":[{}]}}\n",
++                js(prompt),
++                ids(&prompt_tokens),
++                candidates
++                    .iter()
++                    .map(|c| js(c))
++                    .collect::<Vec<_>>()
++                    .join(","),
++                token_lists
++                    .iter()
++                    .map(|t| format!("[{}]", t.as_deref().map(ids).unwrap_or_default()))
++                    .collect::<Vec<_>>()
++                    .join(","),
++                out.iter()
++                    .map(|v| if v.is_finite() {
++                        format!("{v:.6}")
++                    } else {
++                        "null".into()
++                    })
++                    .collect::<Vec<_>>()
++                    .join(",")
++            );
++            if let Ok(mut f) = std::fs::OpenOptions::new()
++                .create(true)
++                .append(true)
++                .open(path)
++            {
++                let _ = f.write_all(line.as_bytes());
++            }
++        }
+         Ok(out)
+     }
+ }
