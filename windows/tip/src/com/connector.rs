@@ -341,13 +341,17 @@ mod tests {
     }
 
     #[test]
-    fn accepts_the_engine_next_to_the_dll() {
+    fn the_engine_next_to_the_dll_is_accepted_only_by_dev_builds() {
         let temp = tempfile::tempdir().expect("temp dir");
         let root = long_dir(temp.path());
         let name = unique_name();
         let child = spawn_fake_engine(&root, &name);
         let tip_dll = root.join("ikari_tip.dll");
-        assert!(open_verified(&name, Some(&tip_dll)).is_some());
+        // 平らな配置は開発用のビルド（`dev-knobs`）だけが許す（`TIP_LAYOUTS`。製品は版つきの配置だけ）
+        assert_eq!(
+            open_verified(&name, Some(&tip_dll)).is_some(),
+            cfg!(feature = "dev-knobs")
+        );
         finish(child);
     }
 
