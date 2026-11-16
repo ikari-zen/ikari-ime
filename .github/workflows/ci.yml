@@ -111,12 +111,13 @@ jobs:
       # LM は別プロセスだけが持つ（エンジンに llama.cpp は入れない。ADR 0072 §5）。実行はしない（モデルがない）。
       # 実機での時間の測定は docs/windows-real-device-check.md の項目 38
       # LM の推論を担う別プロセス（ADR 0060 Q4）。Job Object と TerminateProcess の経路は、上の cargo test が偽の子で通す
-      # `llama` は llama.cpp を静的なライブラリとして exe に入れる。Rust 側は crt-static（.cargo/config.toml）なので、
-      # llama.cpp も静的な C ランタイム（/MT）で作らせる（llama-cpp-sys-2 の既定は /MD で、LNK2038 になる）。
+      # `llama` は llama.cpp を静的なライブラリとして exe に入れる。llama.cpp は動的な C ランタイム（/MD）で作られ、
+      # LLAMA_STATIC_CRT=1 でも /MT にならなかった（LNK2038）。LM の子は全アプリには入らない別プロセスなので（ADR 0067 §4.4）、
+      # この step だけ crt-static を外して /MD に揃える（RUSTFLAGS を設定すると .cargo/config.toml の rustflags は無視される）。
       # `vulkan`（下の windows-artifact）は llama.cpp が DLL なので、この指定は要らない
       - name: LM の子（ikari-lm-host）をビルドする
         env:
-          LLAMA_STATIC_CRT: "1"
+          RUSTFLAGS: "-C target-feature=-crt-static"
         run: cargo build -p ikari-lm --bin ikari-lm-host --features llama
 
   # 実機（VM）で試すための release ビルド（エンジンの exe と TIP の DLL）と、`windows/dev` のスクリプトを、1 つの artifact に入れる。

@@ -95,7 +95,7 @@ C:\Program Files\ikari-ime\            （固定。インストーラで選ば�
 
 ### 4.4 DLL の探索
 - **TIP の DLL は、C の実行時ライブラリを静的に入れる（`crt-static`）。** TIP はほかのアプリのプロセスに読み込まれるので、OS の標準でない DLL に依存すると、そのアプリのフォルダにある同じ名前の DLL が読まれる。CI で、TIP の DLL が取り込む DLL の一覧を、OS の標準のものだけの許可リストと照らす。
-  - 実装での追記（2026-11-16）: `crt-static` は `.cargo/config.toml` で Windows の全体に効く。LM の子を `llama`（llama.cpp を静的に入れる）で作るときは、llama-cpp-sys-2 の既定（動的な C の実行時ライブラリ、/MD）と混ざってリンクできないので、`LLAMA_STATIC_CRT=1` を設定して llama.cpp も静的（/MT）で作る（CI の windows ジョブ、`windows/dev/build.ps1 -Lm`）。`vulkan` では llama.cpp と ggml が DLL になり、その DLL は動的な C の実行時ライブラリのまま（子は製品の検査 `scan-product` の対象外。全アプリには入らない）。
+  - 実装での追記（2026-11-16）: `crt-static` は `.cargo/config.toml` で Windows の全体に効く。LM の子を `llama`（llama.cpp を静的に入れる）で作るときは、llama.cpp が動的な C の実行時ライブラリ（/MD）で作られて混ざり、リンクできない（`LLAMA_STATIC_CRT=1` でも /MT にならなかった）。**LM の子は全アプリに入らない別プロセスなので、動的な C の実行時ライブラリでよい**とし、`llama` のビルドだけ `RUSTFLAGS` で crt-static を外す（CI の windows ジョブ、`windows/dev/build.ps1 -Lm`）。`vulkan` では llama.cpp と ggml が DLL になり、その DLL は動的な C の実行時ライブラリのまま。LM の子は、製品の検査 `scan-product` の対象外（TIP とエンジンが対象）。
 - TIP は名前だけで DLL を読み込まない（`LoadLibrary` に相対の名前を渡さない）。
 - engine-host と LM の子は、起動の最初に、DLL の探索を「system32 と自分のフォルダだけ」にする（`SetDefaultDllDirectories`）。`backends\` は今のとおり絶対パスで読む。
 
