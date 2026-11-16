@@ -477,9 +477,11 @@ fn a_cancelled_request_is_not_a_failure_and_its_late_reply_is_dropped() {
     // 古い要求を送ってから取り消すまで（ms）。子が採点を始めるのに足りる長さ
     const CANCEL_AFTER_MS: u64 = 30;
     // 1 = 子は止まらず最後まで採点する。4 = 子は区切りで気づいて `Failed(Cancelled)` を返す
+    // 子の推論の長さも、待ちと同じ倍率で伸ばす（伸ばさないと、倍率 5 で取り消す前に子が答え終わる）
+    let delay_ms = ikari_testtime::ms(DELAY_MS).as_millis();
     for steps in [1, 4] {
         let h = Harness::new(&format!(
-            "{HEALTHY}delay_ms={DELAY_MS}\ndelay_steps={steps}\n"
+            "{HEALTHY}delay_ms={delay_ms}\ndelay_steps={steps}\n"
         ));
         assert_eq!(h.first(), GOOD);
         let child = h.child();
