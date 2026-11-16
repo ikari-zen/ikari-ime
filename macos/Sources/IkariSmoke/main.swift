@@ -50,6 +50,8 @@ if arguments.first == "--print-requirement" {
     switch arguments[1] {
     case "engine": print(SigningRequirements.engine(mode: mode))
     case "shell": print(SigningRequirements.shell(mode: mode))
+    // 配布用のビルド（Smoke を許可しない。ADR 0069 §6-1）
+    case "shell-distribution": print(SigningRequirements.shell(mode: mode, includeSmoke: false))
     case "settings", "bridge-shell":
         let text =
             arguments[1] == "settings"

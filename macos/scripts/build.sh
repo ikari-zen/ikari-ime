@@ -1,7 +1,7 @@
 #!/bin/bash
 # ikari.app をビルドして署名する（ADR 0004 §9.2）。
 #
-#   macos/scripts/build.sh [--signing team|adhoc] [--release|--debug] [--no-lm] [--skip-rust] [--allow-stub] [--frameworks-only]
+#   macos/scripts/build.sh [--signing team|adhoc] [--release|--debug] [--no-lm] [--skip-rust] [--allow-stub] [--frameworks-only] [--distribution]
 #
 #   --signing team   Apple Development 証明書（チームID（`lib.sh` の `TEAM_ID`））で署名する。既定
 #   --signing adhoc  ad-hoc 署名（署名要件は identifier の一致だけになる）
@@ -9,6 +9,7 @@
 #   --no-lm          llama.cpp（Metal）を入れない（cmake が使えないとき、LM が要らないとき）。LM の子（ikari-lm-host）も作らない
 #   --skip-rust      cargo と XCFramework の作成を飛ばし、macos/Frameworks/ にあるものを使う
 #   --allow-stub     XCFramework がなくてもビルドする（FFI なしのスタブのエンジンになる。インストールしてはいけない）
+#   --distribution   配布用（未署名の公開物。ADR 0069 §6、#40）。--signing adhoc が要る。Smoke を同梱せず、エンジンの許可リストからも外す。出力は <種別>-adhoc-dist/
 #   --frameworks-only  XCFramework（macos/Frameworks/）だけ作って終わる。Swift のビルド、組み立て、署名はしない（CI の swift test 用）
 #
 # 出力: target/macos/<release|debug>-<team|adhoc>/ikari.app
@@ -24,6 +25,7 @@ WITH_LM=1
 SKIP_RUST=0
 ALLOW_STUB=0
 FRAMEWORKS_ONLY=0
+DISTRIBUTION=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --signing) SIGNING="${2:-}"; shift ;;
@@ -32,7 +34,8 @@ while [[ $# -gt 0 ]]; do
     --skip-rust) SKIP_RUST=1 ;;
     --allow-stub) ALLOW_STUB=1 ;;
     --frameworks-only) FRAMEWORKS_ONLY=1 ;;
-    -h | --help) sed -n '2,15p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    --distribution) DISTRIBUTION=1 ;;
+    -h | --help) sed -n '2,16p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) parse_common_flag "$1" || die "不明な引数: $1" ;;
   esac
   shift
@@ -40,7 +43,13 @@ done
 validate_signing
 [[ "$FRAMEWORKS_ONLY" -eq 0 || "$SKIP_RUST" -eq 0 ]] || die "--frameworks-only と --skip-rust は同時に使えません"
 
+[[ "$DISTRIBUTION" -eq 0 || "$SIGNING" == adhoc ]] || die "--distribution は --signing adhoc と一緒に使います（配布物は未署名。team の署名は開発用）"
 OUT="$(bundle_out_dir)"
+# 開発用の adhoc のビルドと混ざらないよう、出力先を分ける
+[[ "$DISTRIBUTION" -eq 0 ]] || OUT="$OUT-dist"
+# エンジンの許可リストに Smoke を含めるか（配布用は含めない）
+SHELL_REQ_TARGET=shell
+[[ "$DISTRIBUTION" -eq 0 ]] || SHELL_REQ_TARGET=shell-distribution
 APP="$OUT/$APP_NAME"
 XPC="$APP/Contents/XPCServices/IkariEngine.xpc"
 SETTINGS="$APP/Contents/Helpers/$SETTINGS_APP_NAME"
@@ -199,7 +208,7 @@ assemble_bundle() {
     "$SETTINGS/Contents/MacOS" "$SETTINGS/Contents/Resources"
 
   cp "$BIN_DIR/ikari" "$APP/Contents/MacOS/ikari"
-  cp "$BIN_DIR/ikari-smoke" "$APP/Contents/MacOS/ikari-smoke"
+  [[ "$DISTRIBUTION" -eq 1 ]] || cp "$BIN_DIR/ikari-smoke" "$APP/Contents/MacOS/ikari-smoke"
   cp "$BIN_DIR/IkariEngine" "$XPC/Contents/MacOS/IkariEngine"
   # LM の子は、エンジンの実行ファイルの隣に置く（エンジンは隣だけを見る。無ければ LM なしで動く）
   if [[ "$WITH_LM" == 1 ]]; then
@@ -216,7 +225,7 @@ assemble_bundle() {
 
   # XPC サービスが相手に求める署名要件は、IkariXPC の SigningRequirements が唯一の出どころ
   local peer
-  peer="$("$APP/Contents/MacOS/ikari-smoke" --print-requirement shell "$SIGNING")"
+  peer="$("$BIN_DIR/ikari-smoke" --print-requirement "$SHELL_REQ_TARGET" "$SIGNING")"
   [[ -n "$peer" ]] || die "署名要件を取得できませんでした"
   cp "$TEMPLATES/engine.Info.plist" "$XPC/Contents/Info.plist"
   render_identity "$XPC/Contents/Info.plist"
@@ -255,7 +264,7 @@ sign_bundle() {
   log "署名: $SIGNING (${IDENTITY})"
   local common=(--force --options runtime --timestamp=none -s "$IDENTITY")
   # 内側から
-  codesign "${common[@]}" -i "$SMOKE_ID" "$APP/Contents/MacOS/ikari-smoke"
+  [[ "$DISTRIBUTION" -eq 1 ]] || codesign "${common[@]}" -i "$SMOKE_ID" "$APP/Contents/MacOS/ikari-smoke"
   # LM の子: Hardened Runtime。entitlement は付けない（起動したエンジンの Sandbox をそのまま引き継ぐ）
   if [[ -f "$XPC/Contents/MacOS/$LM_HOST_NAME" ]]; then
     codesign "${common[@]}" -i "$LM_HOST_ID" "$XPC/Contents/MacOS/$LM_HOST_NAME"
@@ -317,12 +326,21 @@ verify_bundle() {
 
   # 署名要件の文字列が、実際の署名に当てはまること
   local engine_req shell_req
-  engine_req="$("$APP/Contents/MacOS/ikari-smoke" --print-requirement engine "$SIGNING")"
-  shell_req="$("$APP/Contents/MacOS/ikari-smoke" --print-requirement shell "$SIGNING")"
+  engine_req="$("$BIN_DIR/ikari-smoke" --print-requirement engine "$SIGNING")"
+  shell_req="$("$BIN_DIR/ikari-smoke" --print-requirement "$SHELL_REQ_TARGET" "$SIGNING")"
   codesign --verify -R="$engine_req" "$XPC" || die "エンジンが署名要件を満たしません: $engine_req"
   codesign --verify -R="$shell_req" "$APP" || die "殻が署名要件を満たしません: $shell_req"
-  codesign --verify -R="$shell_req" "$APP/Contents/MacOS/ikari-smoke" || die "smoke が署名要件を満たしません: $shell_req"
-  echo "signing requirements satisfied (engine, shell, smoke)"
+  if [[ "$DISTRIBUTION" -eq 1 ]]; then
+    # 配布用: Smoke が無く、エンジンの許可リスト（IkariPeerRequirement）にも smoke の識別子が無い
+    [[ ! -e "$APP/Contents/MacOS/ikari-smoke" ]] || die "配布用のバンドルに ikari-smoke があります"
+    ! grep -rqF "$SMOKE_ID" "$APP/Contents/Info.plist" "$XPC/Contents/Info.plist" \
+      || die "配布用のバンドルの Info.plist に smoke の識別子があります"
+    ! printf '%s' "$shell_req" | grep -qF smoke || die "配布用の署名要件に smoke があります: $shell_req"
+    echo "signing requirements satisfied (engine, shell); distribution: no smoke in bundle or allow-list"
+  else
+    codesign --verify -R="$shell_req" "$APP/Contents/MacOS/ikari-smoke" || die "smoke が署名要件を満たしません: $shell_req"
+    echo "signing requirements satisfied (engine, shell, smoke)"
+  fi
 
   if [[ "$SIGNING" == team ]]; then
     local team
@@ -355,10 +373,10 @@ verify_settings_app() {
 
   local requirement
   # ad-hoc の要件は cdhash を含む（#269）。同じバンドルから読んだ値で組み立てる
-  requirement="$("$APP/Contents/MacOS/ikari-smoke" --print-requirement settings "$SIGNING" "$SETTINGS")"
+  requirement="$("$BIN_DIR/ikari-smoke" --print-requirement settings "$SIGNING" "$SETTINGS")"
   codesign --verify -R="$requirement" "$SETTINGS" || die "設定アプリが署名要件を満たしません: $requirement"
   local bridge_shell_req
-  bridge_shell_req="$("$APP/Contents/MacOS/ikari-smoke" --print-requirement bridge-shell "$SIGNING" "$APP")"
+  bridge_shell_req="$("$BIN_DIR/ikari-smoke" --print-requirement bridge-shell "$SIGNING" "$APP")"
   codesign --verify -R="$bridge_shell_req" "$APP" || die "殻（ブリッジの相手）が署名要件を満たしません: $bridge_shell_req"
   echo "signing requirement satisfied (settings, bridge shell)"
 
