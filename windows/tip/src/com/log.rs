@@ -87,6 +87,11 @@ pub fn peer_rejected(reason: &'static str) {
     write(&format!("{PREFIX}engine peer rejected reason={reason}\n"));
 }
 
+/// 入った先のプロセスの種類（ADR 0067 §5）。`kind` は `ProcessKind::as_str` の固定の語だけ（値の詳細は出さない）
+pub fn process_kind(kind: &'static str) {
+    write(&format!("{PREFIX}process kind={kind}\n"));
+}
+
 /// HRESULT を出す。
 pub fn hresult(message: &'static str, code: HRESULT) {
     // HRESULT は符号つきの 32 ビット。16 進で読むのが通例なので、ビット列のまま出す

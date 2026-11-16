@@ -1,5 +1,6 @@
 //! Windows の TIP（ADR 0040 §2.2）。**この crate の純粋な部分は OS に依存しない**（`cfg(windows)` なし。Mac でテストが回る）。
 //!
+//! - `activation`: 有効になるときの動き方（プロセスの種類 → `Shell` を作るか、通知を受けるか、始めの表示）
 //! - `candidate_send`: 候補窓への片道の送り口（ADR 0062 §7.4。宣言とスタブ。L1 が実装する）
 //! - `deploy`: DLL の置き方（版ごとのフォルダと、隣の `resources`）と、登録が失敗したときの後始末の判断（ADR 0063）
 //! - `keys`: Windows の仮想キー（VK）と修飾、OS が返した文字 → `ShellEvent`
@@ -17,6 +18,7 @@
 
 #![deny(unsafe_code)]
 
+pub mod activation;
 pub mod candidate_send;
 pub mod deploy;
 pub mod keys;

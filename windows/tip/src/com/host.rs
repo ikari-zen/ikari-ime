@@ -14,7 +14,8 @@ use ikari_shell_core::{SettingsSource, Shell, ShellConfig, SystemClock};
 use windows::Win32::System::LibraryLoader::GetModuleFileNameW;
 
 use super::connector::PipeConnector;
-use super::{dll, log};
+use super::{dll, log, process_facts};
+use crate::activation::Activation;
 use crate::deploy;
 use crate::latency::{self, Meter};
 use crate::transport::{DownSink, PipeTransport};
@@ -82,8 +83,17 @@ pub fn meter() -> &'static Arc<Meter> {
     latency::global(user_dir)
 }
 
+/// このプロセスでの動き方（種類は 1 回だけ決める。`process_facts::current_kind`）
+pub fn activation() -> Activation {
+    Activation::for_kind(process_facts::current_kind())
+}
+
 /// `Shell` を作る。作れなければ `None`（キーはすべてアプリに渡す）。
+/// 素通しのプロセスでは作らない（設定の場所を決める前に戻る。ADR 0067 §5）。
 pub fn create_shell() -> Option<Shell> {
+    if !activation().shell {
+        return None;
+    }
     let settings = match user_dir() {
         Some(dir) => SettingsSource::File(dir.join(SETTINGS_FILE_NAME)),
         None => SettingsSource::Inline(String::new()),
