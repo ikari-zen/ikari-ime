@@ -492,3 +492,149 @@ fn server_gives_up_and_closes_when_the_client_stops_reading_replies() {
     // 返事を読まない。サーバーは締め切りで諦めて、その接続を閉じて戻る
     server.join().unwrap();
 }
+
+// ---- 口ごとの上限と締め切り（ADR 0068 §7。値は計測なしの仮置き） ----
+
+use ikari_pipe::{PortLimits, Refusal};
+use std::sync::Mutex;
+
+fn test_limits(max_connections: usize, max_frame_len: u32, deadline: Duration) -> PortLimits {
+    PortLimits {
+        max_connections,
+        max_frame_len,
+        frame_read_deadline: deadline,
+        write_deadline: Duration::from_millis(200),
+    }
+}
+
+fn refusals() -> (
+    Arc<Mutex<Vec<Refusal>>>,
+    impl Fn(Refusal) + Send + Sync + 'static,
+) {
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let sink = Arc::clone(&log);
+    (log, move |r| sink.lock().unwrap().push(r))
+}
+
+fn is_closed_by_peer(raw: &mut Raw) -> bool {
+    let mut rest = Vec::new();
+    raw.reader.read_to_end(&mut rest).is_ok() && rest.is_empty()
+}
+
+#[test]
+fn connections_over_the_limit_are_refused_and_a_slot_frees_when_one_closes() {
+    let (listener, connector) = mem::listener();
+    let (log, sink) = refusals();
+    let server = thread::spawn(move || {
+        Server::with_limits(listener, test_limits(2, 1024, long()))
+            .on_refuse(sink)
+            .serve(|| |b: &[u8]| Some(b.to_vec()))
+    });
+    let a = Client::new(connector.connect().unwrap(), None);
+    let b = Client::new(connector.connect().unwrap(), None);
+    assert_eq!(a.request(b"a", long()).unwrap(), b"a");
+    assert_eq!(b.request(b"b", long()).unwrap(), b"b");
+    // 3 本目は、受けてすぐ切られる
+    let mut c = raw(connector.connect().unwrap());
+    assert!(is_closed_by_peer(&mut c));
+    assert_eq!(
+        log.lock().unwrap().as_slice(),
+        [Refusal::TooManyConnections]
+    );
+    // 既存の接続は影響を受けない
+    assert_eq!(a.request(b"a2", long()).unwrap(), b"a2");
+    // 1 本閉じれば、枠が空く（接続のスレッドが終わるまで少し待つ）
+    drop(b);
+    let mut accepted = false;
+    for _ in 0..200 {
+        let d = Client::new(connector.connect().unwrap(), None);
+        if d.request(b"d", ikari_testtime::ms(200)).is_ok() {
+            accepted = true;
+            break;
+        }
+        thread::sleep(ikari_testtime::ms(20));
+    }
+    assert!(accepted);
+    drop(a);
+    drop(connector);
+    server.join().unwrap().unwrap();
+}
+
+#[test]
+fn a_frame_over_the_port_limit_closes_the_connection_without_calling_the_handler() {
+    let (listener, connector) = mem::listener();
+    let (log, sink) = refusals();
+    let (called_tx, called_rx) = mpsc::channel::<()>();
+    let called_tx = Mutex::new(called_tx);
+    let server = thread::spawn(move || {
+        Server::with_limits(listener, test_limits(4, 64, long()))
+            .on_refuse(sink)
+            .serve(move || {
+                let tx = called_tx.lock().unwrap().clone();
+                move |b: &[u8]| {
+                    let _ = tx.send(());
+                    Some(b.to_vec())
+                }
+            })
+    });
+    let mut r = raw(connector.connect().unwrap());
+    // 上限ちょうど（64 = 種類 1 + 通し番号 8 + 本体 55）は通る
+    write_frame(&mut r.writer, &frame(FrameKind::Request, 1, &[0; 55])).unwrap();
+    assert_eq!(
+        read_frame(&mut r.reader).unwrap().unwrap().kind,
+        FrameKind::Reply
+    );
+    // 1 バイト超えたら切る
+    write_frame(&mut r.writer, &frame(FrameKind::Request, 2, &[0; 56])).unwrap();
+    assert!(is_closed_by_peer(&mut r));
+    assert_eq!(called_rx.try_iter().count(), 1);
+    assert_eq!(log.lock().unwrap().as_slice(), [Refusal::FrameTooLarge]);
+    drop(connector);
+    server.join().unwrap().unwrap();
+}
+
+#[test]
+fn a_frame_stalled_midway_is_cut_at_the_deadline_but_an_idle_connection_is_not() {
+    let (listener, connector) = mem::listener();
+    let (log, sink) = refusals();
+    let deadline = ikari_testtime::ms(150);
+    let server = thread::spawn(move || {
+        Server::with_limits(listener, test_limits(4, 1024, deadline))
+            .on_refuse(sink)
+            .serve(|| |b: &[u8]| Some(b.to_vec()))
+    });
+    // 何も送らずにつないだままの接続は、締め切りを過ぎても切られない
+    let idle = Client::new(connector.connect().unwrap(), None);
+    // 枠の最初の 2 バイトだけ送って止まる接続は、切られる
+    let mut stalled = raw(connector.connect().unwrap());
+    stalled.writer.write_all(&[9, 0]).unwrap();
+    assert!(is_closed_by_peer(&mut stalled));
+    assert_eq!(log.lock().unwrap().as_slice(), [Refusal::FrameTimeout]);
+    // 締め切りを過ぎたあとの待機中の接続は、まだ使える
+    thread::sleep(deadline * 2);
+    assert_eq!(idle.request(b"still", long()).unwrap(), b"still");
+    drop(idle);
+    drop(connector);
+    server.join().unwrap().unwrap();
+}
+
+#[test]
+fn a_frame_sent_whole_is_not_cut_by_the_deadline_even_when_the_handler_is_slow() {
+    let (listener, connector) = mem::listener();
+    let deadline = ikari_testtime::ms(100);
+    let server = thread::spawn(move || {
+        Server::with_limits(listener, test_limits(4, 1024, deadline)).serve(|| {
+            |b: &[u8]| {
+                // 締め切りより長く処理する（ハンドラの時間は枠の読みに数えない）
+                thread::sleep(ikari_testtime::ms(250));
+                Some(b.to_vec())
+            }
+        })
+    });
+    let c = Client::new(connector.connect().unwrap(), None);
+    assert_eq!(c.request(b"x", long()).unwrap(), b"x");
+    assert_eq!(c.request(b"y", long()).unwrap(), b"y");
+    drop(c);
+    drop(connector);
+    server.join().unwrap().unwrap();
+}
