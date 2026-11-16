@@ -31,6 +31,9 @@ allow = [
     "Unlicense",
     "0BSD",
     "bzip2-1.0.6",
+    # libloading（DLL の実行時の読み込み）。測定ツール tools/npu-probe の openvino-sys が使う（製品には入らない。ADR 0075）。
+    # ISC は MIT と同じ程度の、表示を残せば配れる条件
+    "ISC",
 ]
 confidence-threshold = 0.8
 
