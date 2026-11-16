@@ -12,16 +12,21 @@
 //! 数えるもの（連続失敗）: 起動できない、`Ready` が締め切りまでに来ない、版が違う、読み込みの失敗、
 //! 子が終わった、返事が締め切りまでに来ない、壊れた返事。採点が 1 回成功したら 0 に戻す。
 //! 数えないもの: 子が生きていて返した 1 件の採点の失敗（`Failed(Inference)`。長すぎるプロンプトなど、入力で決まる。
-//! 同じプロセスで動かすときも、数えるだけで何もしない）。
+//! 同じプロセスで動かすときも、数えるだけで何もしない）。取り消し（ADR 0074。打っているだけで起きる）。
+//!
+//! 取り消し（ADR 0074 §3.1）: 返事を待つ間に印が立ったら、`Cancel { id }` を書き込みのスレッドに渡し、子の返事を
+//! 待たずに `Cancelled` で戻る。取り消した id は覚えておき、あとで届いたその返事は読み捨てる。
 
+use std::collections::HashSet;
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, SyncSender};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
+use crate::cancel::CancelToken;
 use crate::error::LmError;
 use crate::host::os::{self, ChildProc};
 use crate::host::proto::{
@@ -184,6 +189,17 @@ pub fn host_loader(spec: HostSpec) -> (LmLoader, Arc<HostHealth>) {
     (loader, health)
 }
 
+/// 読み取りのスレッドと、取り消しの合図から、待っている側へ
+enum Incoming {
+    Reply(Reply),
+    /// 読めない枠が来た（読み取りのスレッドは終わる）
+    Malformed,
+    /// 子の出力が閉じた
+    Closed,
+    /// 要求 `id` の待ちの間に、取り消しの印が立った
+    Cancelled(u64),
+}
+
 /// 返事を待った結果の失敗
 enum RecvError {
     Timeout,
@@ -208,7 +224,10 @@ struct Live {
     // 宣言順 = drop 順。先に子を回収すると、パイプが閉じて 2 つのスレッドが終わる
     proc: ChildProc,
     to_child: SyncSender<Vec<u8>>,
-    from_child: Receiver<Option<Reply>>,
+    from_child: Receiver<Incoming>,
+    /// 取り消しの合図で、待っている受け口を起こすための送り口。これを持つので、子の出力が閉じたことは
+    /// 読み取りのスレッドが `Incoming::Closed` で知らせる
+    wake: Sender<Incoming>,
 }
 
 impl Live {
@@ -225,17 +244,21 @@ impl Live {
 
         // パイプの読み書きには締め切りがないので、スレッドに任せて、チャネルの `recv_timeout` で待つ。
         // 書き込みが詰まっても（子が読まない）、返事が来ないので要求の締め切りで気づき、子を kill する。
-        let (reply_tx, from_child) = mpsc::channel::<Option<Reply>>();
+        let (reply_tx, from_child) = mpsc::channel::<Incoming>();
+        let wake = reply_tx.clone();
         let reader = thread::Builder::new()
             .name(READER_THREAD_NAME.to_owned())
             .spawn(move || {
                 while let Ok(Some(frame)) = read_frame(&mut stdout) {
-                    let reply = Reply::decode(&frame).ok();
-                    let malformed = reply.is_none();
-                    if reply_tx.send(reply).is_err() || malformed {
+                    let Ok(reply) = Reply::decode(&frame) else {
+                        let _ = reply_tx.send(Incoming::Malformed);
+                        return;
+                    };
+                    if reply_tx.send(Incoming::Reply(reply)).is_err() {
                         return;
                     }
                 }
+                let _ = reply_tx.send(Incoming::Closed);
             });
         let (to_child, frames) = mpsc::sync_channel::<Vec<u8>>(1);
         let writer = thread::Builder::new()
@@ -255,15 +278,29 @@ impl Live {
             proc,
             to_child,
             from_child,
+            wake,
         })
     }
 
-    fn recv(&self, deadline: Duration) -> Result<Reply, RecvError> {
+    /// 子の返事か、取り消しの合図を待つ。取り消しの合図は `Ok(Err(番号))`
+    fn recv_any(&self, deadline: Duration) -> Result<Result<Reply, u64>, RecvError> {
         match self.from_child.recv_timeout(deadline) {
-            Ok(Some(reply)) => Ok(reply),
-            Ok(None) => Err(RecvError::Malformed),
+            Ok(Incoming::Reply(reply)) => Ok(Ok(reply)),
+            Ok(Incoming::Cancelled(id)) => Ok(Err(id)),
+            Ok(Incoming::Malformed) => Err(RecvError::Malformed),
+            Ok(Incoming::Closed) | Err(RecvTimeoutError::Disconnected) => Err(RecvError::Closed),
             Err(RecvTimeoutError::Timeout) => Err(RecvError::Timeout),
-            Err(RecvTimeoutError::Disconnected) => Err(RecvError::Closed),
+        }
+    }
+
+    /// 子の返事を待つ（`Ready` を待つとき。取り消しの合図は来ない）
+    fn recv(&self, deadline: Duration) -> Result<Reply, RecvError> {
+        let until = Instant::now() + deadline;
+        loop {
+            let left = until.saturating_duration_since(Instant::now());
+            if let Ok(reply) = self.recv_any(left)? {
+                return Ok(reply);
+            }
         }
     }
 }
@@ -276,6 +313,8 @@ struct HostScorer {
     device: LmDevice,
     request_deadline: Duration,
     next_id: u64,
+    /// 取り消して、返事をまだ読んでいない id（届いたら読み捨てる）
+    abandoned: HashSet<u64>,
 }
 
 impl HostScorer {
@@ -324,6 +363,7 @@ impl HostScorer {
                     device,
                     request_deadline: spec.limits.request_deadline,
                     next_id: 0,
+                    abandoned: HashSet::new(),
                 })
             }
             Ok(Reply::Ready { .. }) => Err(failed("protocol version mismatch")),
@@ -351,10 +391,18 @@ impl HostScorer {
 }
 
 impl LmScorer for HostScorer {
-    fn nll(&mut self, prompt: &str, candidates: &[String]) -> Result<Vec<f32>, LmError> {
+    fn nll(
+        &mut self,
+        prompt: &str,
+        candidates: &[String],
+        cancel: &CancelToken,
+    ) -> Result<Vec<f32>, LmError> {
         let Some(live) = self.live.as_ref() else {
             return Err(LmError::Inference("lm host: child is gone".to_owned()));
         };
+        if cancel.is_cancelled() {
+            return Err(LmError::Cancelled);
+        }
         self.next_id += 1;
         let id = self.next_id;
         let frame = Request::Score {
@@ -370,7 +418,31 @@ impl LmScorer for HostScorer {
         if live.to_child.try_send(frame).is_err() {
             return Err(self.fail("write"));
         }
-        match live.recv(self.request_deadline) {
+        // 待ちの間だけ: 印が立ったら子に `Cancel` を送り、この受け口を起こす。どちらも詰まらない送り方にする
+        // （印を立てるのはエンジンの別のスレッド。送れなければ、子は最後まで推論し、その返事を読み捨てる）
+        let hook = {
+            let to_child = live.to_child.clone();
+            let wake = live.wake.clone();
+            cancel.on_cancel(move || {
+                let _ = to_child.try_send(Request::Cancel { id }.encode());
+                let _ = wake.send(Incoming::Cancelled(id));
+            })
+        };
+        let until = Instant::now() + self.request_deadline;
+        let outcome = loop {
+            let left = until.saturating_duration_since(Instant::now());
+            match live.recv_any(left) {
+                Ok(Err(got)) if got == id => break Err(None),
+                // 前の要求の待ちの合図が遅れて届いた
+                Ok(Err(_)) => {}
+                Ok(Ok(Reply::Scores { id: got, .. } | Reply::Failed { id: got, .. }))
+                    if self.abandoned.remove(&got) => {}
+                Ok(Ok(reply)) => break Ok(reply),
+                Err(e) => break Err(Some(e)),
+            }
+        };
+        drop(hook);
+        match outcome {
             Ok(Reply::Scores { id: got, nll }) if got == id && nll.len() == candidates.len() => {
                 self.health.record_success();
                 Ok(nll)
@@ -380,8 +452,19 @@ impl LmScorer for HostScorer {
                 kind: FailKind::Inference,
                 message,
             }) if got == id => Err(LmError::Inference(message)),
+            // 子が先に気づいた（取り消しは失敗に数えない）
+            Ok(Reply::Failed {
+                id: got,
+                kind: FailKind::Cancelled,
+                ..
+            }) if got == id => Err(LmError::Cancelled),
             Ok(_) => Err(self.fail("unexpected reply")),
-            Err(e) => Err(self.fail(e.word())),
+            // 印が立った。子の返事は待たず、届いたら読み捨てる
+            Err(None) => {
+                self.abandoned.insert(id);
+                Err(LmError::Cancelled)
+            }
+            Err(Some(e)) => Err(self.fail(e.word())),
         }
     }
 

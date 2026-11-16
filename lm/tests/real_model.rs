@@ -17,7 +17,8 @@ use ikari_core::{
     RankInput, Ranker, UnknownParams,
 };
 use ikari_lm::{
-    LlamaScorer, LmScorer, PromptInput, ZenzConfig, ZenzRanker, build_prompt, tail_chars,
+    CancelToken, LlamaScorer, LmScorer, PromptInput, ZenzConfig, ZenzRanker, build_prompt,
+    tail_chars,
 };
 
 const MODEL_ENV: &str = "IKARI_ZENZ_MODEL";
@@ -110,7 +111,9 @@ fn scorer_prefers_the_contextually_correct_candidate() {
     for (ctx, reading, expected, others) in CASES {
         let mut cands = vec![(*expected).to_owned()];
         cands.extend(to_strings(others));
-        let nll = scorer.nll(&prompt(ctx, reading), &cands).expect("score");
+        let nll = scorer
+            .nll(&prompt(ctx, reading), &cands, &CancelToken::new())
+            .expect("score");
         assert_eq!(nll.len(), cands.len());
         let best = nll
             .iter()
@@ -144,16 +147,24 @@ fn scores_are_independent_of_batch_composition() {
     let path = model_path();
     let mut scorer = LlamaScorer::load(&path).expect("load model");
     let p = prompt("原稿の誤字を", "こうせい");
-    let alone = scorer.nll(&p, &to_strings(&["校正"])).unwrap()[0];
+    let alone = scorer
+        .nll(&p, &to_strings(&["校正"]), &CancelToken::new())
+        .unwrap()[0];
     let together = scorer
-        .nll(&p, &to_strings(&["構成", "校正", "更生"]))
+        .nll(
+            &p,
+            &to_strings(&["構成", "校正", "更生"]),
+            &CancelToken::new(),
+        )
         .unwrap()[1];
     assert!(
         (alone - together).abs() < 0.05,
         "alone={alone} together={together}"
     );
     // 評価できない候補（空）は無限大で、ほかの候補に影響しない
-    let with_empty = scorer.nll(&p, &to_strings(&["", "校正"])).unwrap();
+    let with_empty = scorer
+        .nll(&p, &to_strings(&["", "校正"]), &CancelToken::new())
+        .unwrap();
     assert!(with_empty[0].is_infinite());
     assert!((with_empty[1] - alone).abs() < 0.05);
 }
@@ -202,14 +213,16 @@ fn inference_time_for_a_typical_pool() {
     let p = prompt("原稿の誤字を", "こうせい");
 
     let t = Instant::now();
-    let nll = scorer.nll(&p, &pool).expect("first run");
+    let nll = scorer
+        .nll(&p, &pool, &CancelToken::new())
+        .expect("first run");
     let first = t.elapsed();
     assert_eq!(nll.len(), pool.len());
 
     let mut times: Vec<Duration> = Vec::new();
     for _ in 0..TIMING_RUNS {
         let t = Instant::now();
-        scorer.nll(&p, &pool).expect("run");
+        scorer.nll(&p, &pool, &CancelToken::new()).expect("run");
         times.push(t.elapsed());
     }
     times.sort();
@@ -225,7 +238,9 @@ fn inference_time_for_a_typical_pool() {
     let mut small: Vec<Duration> = Vec::new();
     for _ in 0..TIMING_RUNS {
         let t = Instant::now();
-        scorer.nll(&p, &pool[..9]).expect("run");
+        scorer
+            .nll(&p, &pool[..9], &CancelToken::new())
+            .expect("run");
         small.push(t.elapsed());
     }
     small.sort();
