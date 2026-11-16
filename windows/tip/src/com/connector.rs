@@ -58,8 +58,7 @@ impl Connector for PipeConnector {
 }
 
 /// 候補窓への接続（`candidate_send::CandidateConnector` の Windows の実装）。送る前に相手を照らす（S4）。
-// TODO(W3 の次の段): 編集セッション（`edit.rs`）が `CandidateLink` を持って使う。それまでは試験だけが使う
-#[allow(dead_code)]
+/// テキストサービスの `CandidateView` が持ち、編集セッション（`edit::Exec`）が使う。
 pub struct CandidatePipeConnector;
 
 impl CandidateConnector for CandidatePipeConnector {

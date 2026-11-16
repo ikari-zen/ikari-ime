@@ -58,8 +58,12 @@ windows = { version = "0.62.2", features = [
     "Win32_System_Threading",
     # OpenProcessToken、GetTokenInformation（入った先のプロセスの種類。ADR 0067 §5）
     "Win32_Security",
-    # SetTimer、KillTimer
+    # SetTimer、KillTimer。GetCursorPos（候補窓のアンカーが取れないときのマウスのある画面。ADR 0062 §6.1）
     "Win32_UI_WindowsAndMessaging",
+    # 候補窓の位置（ADR 0062 §6.3）: LogicalToPhysicalPointForPerMonitorDPI（アプリの座標を物理の座標に）、
+    # SetThreadDpiAwarenessContext（画面の値を読む間だけ Per-Monitor V2 に）、GetDpiForMonitor（画面の倍率）。
+    # 画面の作業領域（MonitorFromRect、GetMonitorInfoW）は上の Win32_Graphics_Gdi
+    "Win32_UI_HiDpi",
 ] }
 
 [dev-dependencies]

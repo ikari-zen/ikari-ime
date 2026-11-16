@@ -173,6 +173,11 @@ impl<P: CandidatePost> CandidateSender<P> {
         }
     }
 
+    /// 最後に送った命令の `seq`（まだ何も送っていなければ 0）
+    pub fn last_seq(&self) -> u64 {
+        self.last_seq
+    }
+
     fn post_one(&mut self, mut command: CandidateCommand) -> Result<(), SendError> {
         self.last_seq += 1;
         command.seq = self.last_seq;
@@ -230,6 +235,14 @@ impl<C: CandidateConnector> CandidateLink<C> {
     /// つながっているか（診断ログ用）。
     pub fn is_connected(&self) -> bool {
         self.sender.is_some()
+    }
+
+    /// 今の接続で最後に送った命令の `seq`（つながっていない、まだ送っていなければ `None`。診断ログ用）。
+    pub fn last_seq(&self) -> Option<u64> {
+        self.sender
+            .as_ref()
+            .map(CandidateSender::last_seq)
+            .filter(|seq| *seq > 0)
     }
 
     /// 計画の命令を送る。命令がなければ何もしない（`Ok`）。送れなかったら接続を捨てる。

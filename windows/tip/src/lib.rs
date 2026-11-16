@@ -2,6 +2,7 @@
 //!
 //! - `activation`: 有効になるときの動き方（プロセスの種類 → `Shell` を作るか、通知を受けるか、始めの表示）
 //! - `candidate_send`: 候補窓への片道の送り口（ADR 0062 §7.4。上下の決定、`seq` と世代、つなぎ直し。相手の確認は COM の層）
+//! - `candidate_view`: 候補窓の表示の状態（アンカーを `Hide` まで固定、取れないときの順、送り直し。ADR 0062 §6.1）
 //! - `deploy`: DLL の置き方（版ごとのフォルダと、隣の `resources`）と、登録が失敗したときの後始末の判断（ADR 0063）
 //! - `keys`: Windows の仮想キー（VK）と修飾、OS が返した文字 → `ShellEvent`
 //! - `latency`: 往復時間の測定（S1。既定でオフ。入力の内容は記録しない）
@@ -20,6 +21,7 @@
 
 pub mod activation;
 pub mod candidate_send;
+pub mod candidate_view;
 pub mod deploy;
 pub mod keys;
 pub mod latency;
