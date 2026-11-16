@@ -189,6 +189,7 @@ impl Drop for CandidateWindow {
 }
 
 /// ログの 1 行（固定の語と数だけ）
+#[cfg(windows)]
 fn log_event(event: &WatchEvent) {
     match event {
         WatchEvent::Started => eprintln!("ikari-engine: candidate window started"),
