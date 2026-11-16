@@ -2,6 +2,7 @@
 //! ファイルのバイト列を読むだけで、道具は要らない（Windows の成果物ができたあとに、CI で流す）。
 //!   - 開発用の口の文字列（環境変数の名前、計測の印、デバッグ出力の語）が入っていないこと
 //!   - llama.cpp が入っていないこと（LM は別プロセスの `ikari-lm-host` だけが持つ。ADR 0072 §5）
+//!   - 測定ツール（`tools/npu-probe`。ADR 0075 §4）の印が入っていないこと（製品の外の道具）
 //!   - 動的な C ランタイムを取り込んでいないこと（`crt-static` が効いていること。取り込む DLL の名前は、
 //!     PE の import 表に ASCII で入っているので、名前の有無で見る）
 //!
@@ -25,6 +26,10 @@ pub const DEV_STRINGS: &[&str] = &[
     "ikari-tip: ",
     "--data-dir",
 ];
+
+/// 製品に入れてはいけない測定ツール（`tools/npu-probe`。ADR 0075 §4）の印。crate の名前（ASCII と UTF-16LE）と、
+/// 測定ツールだけが読む OpenVINO の DLL の名前。製品の crate はこの crate に依存しない
+pub const PROBE_MARKS: &[&str] = &["ikari-npu-probe", "ikari_npu_probe", "openvino_c"];
 
 /// エンジンに入れてはいけない llama.cpp の印（C の関数名。`ikari-lm-host` には入る。エンジンと TIP の検査にだけ使う）
 const LLAMA_MARKS: &[&str] = &["llama_model_load", "ggml_backend"];
@@ -76,6 +81,12 @@ fn check_bytes(file: &Path, bytes: &[u8]) -> Vec<String> {
             file.display()
         ));
     }
+    for word in find_probe(bytes) {
+        problems.push(format!(
+            "{}: 測定ツールの印 `{word}` が入っています（tools/npu-probe は製品に入れない。ADR 0075 §4）",
+            file.display()
+        ));
+    }
     for name in find_dynamic_crt(bytes) {
         problems.push(format!(
             "{}: 動的な C ランタイム（`{name}`）を取り込んでいます（crt-static が効いていません）",
@@ -88,6 +99,15 @@ fn check_bytes(file: &Path, bytes: &[u8]) -> Vec<String> {
 /// 開発用の文字列のうち、`bytes` に（ASCII か UTF-16LE で）入っているもの
 pub fn find_dev_strings(bytes: &[u8]) -> Vec<&'static str> {
     DEV_STRINGS
+        .iter()
+        .copied()
+        .filter(|word| contains(bytes, word.as_bytes()) || contains(bytes, &utf16le(word)))
+        .collect()
+}
+
+/// 測定ツールの印のうち、`bytes` に（ASCII か UTF-16LE で）入っているもの
+pub fn find_probe(bytes: &[u8]) -> Vec<&'static str> {
+    PROBE_MARKS
         .iter()
         .copied()
         .filter(|word| contains(bytes, word.as_bytes()) || contains(bytes, &utf16le(word)))
@@ -198,6 +218,15 @@ mod tests {
         );
         let problems = check_bytes(Path::new("e.exe"), b"llama_model_load_from_file");
         assert_eq!(problems.len(), 1);
+    }
+
+    #[test]
+    fn probe_marks_are_found() {
+        assert!(find_probe(b"MZ ikari-engine-host").is_empty());
+        let mut bytes = b"..ikari_npu_probe::main..".to_vec();
+        bytes.extend(utf16le("openvino_c.dll"));
+        assert_eq!(find_probe(&bytes), ["ikari_npu_probe", "openvino_c"]);
+        assert_eq!(check_bytes(Path::new("t.dll"), b"ikari-npu-probe").len(), 1);
     }
 
     #[test]
