@@ -480,7 +480,10 @@ mod tests {
 
     fn repo_file(relative: &str) -> String {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-        std::fs::read_to_string(root.join(relative)).unwrap()
+        // Windows の checkout は改行が CRLF になる（core.autocrlf）。置き換える文字列は LF で書くので揃える
+        std::fs::read_to_string(root.join(relative))
+            .unwrap()
+            .replace("\r\n", "\n")
     }
 
     #[test]
