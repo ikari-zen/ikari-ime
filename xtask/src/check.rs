@@ -131,6 +131,7 @@ fn steps(root: &Path, plan: &Plan) -> Result<(), Failure> {
     product::dev_knobs_wiring(root)?;
     product::dev_strings_gated(root)?;
     product::lm_spawn_single(root)?;
+    product::net_call_single(root)?;
     installer::lint(root)?;
     docs::shell_syntax(root)?;
     docs::powershell_syntax(root)?;
