@@ -29,9 +29,69 @@ pub const KNOWN_MODELS: &[KnownModel] = &[KnownModel {
     size: ZENZ_SMALL_SIZE,
 }];
 
+/// 取得できるプリセットのモデル 1 件（ADR 0076 §4.2。表はアプリに埋め、遠くから取らない）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModelPreset {
+    /// `ikari-data model fetch --preset <id>` の ID
+    pub id: &'static str,
+    pub file_name: &'static str,
+    pub sha256: &'static str,
+    pub size: u64,
+    /// 取得元（https。始めの URL のホストを、要求の前に確かめる）
+    pub url: &'static str,
+    /// `url` のホスト（小文字。表の書き損じで別のホストに行かないよう、`ikari-data` が要求の前に照らす）
+    pub host: &'static str,
+}
+
+/// zenz-v3.2 small の取得元（`xtask/src/data/fetch.rs` の `ZENZ_URL` と同じ）
+pub const ZENZ_SMALL_URL: &str =
+    "https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf/resolve/main/ggml-model-Q5_K_M.gguf";
+
+/// 取得できるプリセット。`KNOWN_MODELS` の値と同じものから作る
+pub const MODEL_PRESETS: &[ModelPreset] = &[ModelPreset {
+    id: "zenz-small",
+    file_name: ZENZ_SMALL_FILE_NAME,
+    sha256: ZENZ_SMALL_SHA256,
+    size: ZENZ_SMALL_SIZE,
+    url: ZENZ_SMALL_URL,
+    host: "huggingface.co",
+}];
+
+/// ID からプリセットを引く
+pub fn preset_by_id(id: &str) -> Option<&'static ModelPreset> {
+    MODEL_PRESETS.iter().find(|p| p.id == id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preset_url_matches_xtask_fetch_table() {
+        let fetch = include_str!("../../xtask/src/data/fetch.rs");
+        assert!(
+            fetch.contains(&format!("\"{ZENZ_SMALL_URL}\";")),
+            "xtask の ZENZ_URL と食い違っています"
+        );
+    }
+
+    #[test]
+    fn presets_are_known_models_with_https_urls() {
+        for p in MODEL_PRESETS {
+            assert!(p.url.starts_with("https://"), "{}", p.id);
+            let authority = p.url["https://".len()..].split('/').next().unwrap();
+            assert_eq!(authority, p.host, "{}", p.id);
+            assert!(
+                KNOWN_MODELS.iter().any(|k| k.file_name == p.file_name
+                    && k.sha256 == p.sha256
+                    && k.size == p.size),
+                "{}",
+                p.id
+            );
+        }
+        assert!(preset_by_id("zenz-small").is_some());
+        assert!(preset_by_id("nope").is_none());
+    }
 
     /// 固定表が 2 か所に分かれている間の取り違えを防ぐ（xtask は変えない契約のため、ソースの文字列で照合）
     #[test]

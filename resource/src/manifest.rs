@@ -40,6 +40,10 @@ pub enum Origin {
     Release,
     /// 開発者の `install-data.sh`
     Local,
+    /// アプリに埋めた表のモデルを取得した（`ikari-data`。ADR 0076 §5.1）
+    Preset,
+    /// 利用者が指定した URL かファイルのモデル（ADR 0060、0076 §4.3・§7）
+    User,
 }
 
 const CREATED_LEN: usize = "2026-11-10T03:00:00Z".len();
@@ -108,6 +112,9 @@ pub struct Component {
     /// 元データの出所（URL、版、sha256）。入れる対象ではない。中身は見ない
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sources: Option<serde_json::Value>,
+    /// 利用者が指定したモデルの形式の指定など（`origin = user`。ADR 0076 §5.1）。中身は見ない
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<serde_json::Value>,
 }
 
 /// 同じ部品の版の比べ方の結果（ADR 0058 §6.3）
@@ -300,6 +307,7 @@ mod tests {
                 }],
                 builder: None,
                 sources: Some(serde_json::json!({"abr": {"sha256": "x"}})),
+                profile: None,
             },
         );
         Manifest::new(

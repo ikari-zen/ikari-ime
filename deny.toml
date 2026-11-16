@@ -43,10 +43,10 @@ multiple-versions = "allow"
 wildcards = "allow"
 # 製品に入れない crate: HTTP・TLS・ソケット・非同期の実行環境（ADR 0066 §6.2 の L1。「通信しない」）。
 # 一覧は xtask/src/check/supply.rs の NET_CRATES と同じにする（そちらは cargo-deny が無くても check.sh で流れる）。
-# 取得する部品（ikari-data。ADR 0071）を足すときは、別の実行ファイルにして、wrappers でその crate だけに許す。
+# 取得する部品 ikari-data（ADR 0076）だけが ureq と OS の TLS への橋を使える（wrappers。native-tls は ureq の、schannel と security-framework は native-tls の下だけ）。根の証明書の埋め込みと ring は入れない。
 deny = [
     { crate = "reqwest" },
-    { crate = "ureq" },
+    { crate = "ureq", wrappers = ["ikari-data"] },
     { crate = "hyper" },
     { crate = "hyper-util" },
     { crate = "h2" },
@@ -57,11 +57,14 @@ deny = [
     { crate = "curl-sys" },
     { crate = "tiny_http" },
     { crate = "rustls" },
-    { crate = "native-tls" },
+    { crate = "native-tls", wrappers = ["ureq"] },
     { crate = "openssl" },
     { crate = "openssl-sys" },
-    { crate = "schannel" },
-    { crate = "security-framework" },
+    { crate = "schannel", wrappers = ["native-tls"] },
+    { crate = "webpki-roots" },
+    { crate = "webpki-root-certs" },
+    { crate = "ring" },
+    { crate = "security-framework", wrappers = ["native-tls"] },
     { crate = "tokio" },
     { crate = "mio" },
     { crate = "socket2" },

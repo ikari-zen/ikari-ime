@@ -1,17 +1,26 @@
-//! 配る物の供給の検査（ADR 0069 §4.1、ADR 0066 §6.2 の層 1）。どちらもファイルを読むだけで、道具もネットワークも要らない。
-//!   - `Cargo.lock` に、通信の手段（HTTP・TLS・ソケットの crate）が無いこと
+//! 配る物の供給の検査（ADR 0069 §4.1、ADR 0066 §6.2 の層 1、ADR 0076 §9）。どちらもファイルと `cargo tree` を読むだけで、
+//! 道具もネットワークも要らない。
+//!   - 配る対象（Windows、macOS）の依存に、通信の手段（HTTP・TLS・ソケットの crate）が無いこと。
+//!     例外は取得する部品 `ikari-data`（ADR 0076）の下だけ（`ONLY_UNDER_DATA`）。
 //!   - `.github/workflows` の Action が、すべてコミットの SHA で固定されていること
 
+use std::collections::BTreeSet;
 use std::path::Path;
 
-use crate::data::run::{Failure, log};
+use crate::data::run::{Failure, capture, cargo, log};
 
-const LOCK_FILE: &str = "Cargo.lock";
 const WORKFLOW_DIR: &str = ".github/workflows";
 const SHA_LEN: usize = 40;
 
-/// 製品に入れない crate（HTTP・TLS・ソケット・非同期の実行環境）。`deny.toml` の `bans.deny` と同じ一覧にする。
-/// 取得する部品（`ikari-data`。ADR 0071）を足すときは、別の実行ファイルにして、`NET_CRATES_ALLOWED` に名前で足す。
+/// 配る対象（`deny.toml` の `[graph] targets` と同じ）。`Cargo.lock` は対象の OS を区別せず、`native-tls` の Linux 向けの
+/// 依存（`openssl` など）も載るので、対象ごとの `cargo tree --target` で見る（ADR 0076 §9）
+const DIST_TARGETS: &[&str] = &["aarch64-apple-darwin", "x86_64-pc-windows-msvc"];
+
+/// 取得する部品の crate。通信の手段は、この crate の下にしか置けない
+const DATA_CRATE: &str = "ikari-data";
+
+/// 製品に入れない crate（HTTP・TLS・ソケット・非同期の実行環境、根の証明書の埋め込み、暗号の実装）。
+/// `deny.toml` の `bans.deny` と同じ一覧にする。
 const NET_CRATES: &[&str] = &[
     "reqwest",
     "ureq",
@@ -30,6 +39,9 @@ const NET_CRATES: &[&str] = &[
     "openssl-sys",
     "schannel",
     "security-framework",
+    "webpki-roots",
+    "webpki-root-certs",
+    "ring",
     "tokio",
     "mio",
     "socket2",
@@ -44,39 +56,106 @@ const NET_CRATES: &[&str] = &[
     "warp",
     "actix-web",
 ];
-/// 上の一覧のうち、例外として許す crate の名前。今は無い（取得する部品は未実装）。
-const NET_CRATES_ALLOWED: &[&str] = &[];
+/// 上の一覧のうち、`ikari-data` の下（このワークスペースの crate で、これに依存するのが `ikari-data` だけ）なら許すもの。
+/// OS の TLS への橋（ADR 0076 §9）。`deny.toml` の `wrappers` と同じ
+const ONLY_UNDER_DATA: &[&str] = &["ureq", "native-tls", "schannel", "security-framework"];
 
-/// `Cargo.lock` の `name = "…"`（`[[package]]` の名前）を並べる。
-fn lock_package_names(lock: &str) -> Vec<&str> {
-    lock.lines()
-        .filter_map(|l| l.strip_prefix("name = \""))
-        .filter_map(|l| l.strip_suffix('"'))
+/// `cargo tree --prefix none --format "{p}"` の出力にある crate の名前
+fn tree_names(out: &str) -> BTreeSet<&str> {
+    out.lines()
+        .filter_map(|l| l.split_whitespace().next())
         .collect()
 }
 
-fn forbidden_in_lock(lock: &str) -> Vec<&str> {
-    let mut found: Vec<&str> = lock_package_names(lock)
-        .into_iter()
-        .filter(|n| NET_CRATES.contains(n) && !NET_CRATES_ALLOWED.contains(n))
-        .collect();
-    found.sort_unstable();
-    found.dedup();
-    found
+/// `cargo tree --prefix depth --invert …` の出力で、このワークスペースの crate（パス依存。`name v0.1.0 (/path)`）の名前。
+/// 深さ 0（逆向きの起点の crate 自身）は数えない
+fn member_dependents(inverted: &str) -> BTreeSet<String> {
+    inverted
+        .lines()
+        .filter_map(|l| {
+            let rest = l.trim_start_matches(|c: char| c.is_ascii_digit());
+            let depth: &str = &l[..l.len() - rest.len()];
+            if depth == "0" {
+                return None;
+            }
+            let (name, source) = rest.split_once(' ')?;
+            // `(*)`（重複の印）と `(proc-macro)` はパス依存ではない
+            let is_path = source
+                .split_once('(')
+                .is_some_and(|(_, tail)| !tail.starts_with('*') && !tail.starts_with("proc-macro"));
+            is_path.then(|| name.to_owned())
+        })
+        .collect()
 }
 
-/// 依存に、通信の手段の crate が無いこと（ADR 0066 §6.2 の L1）
+/// 1 つの対象の依存の木を調べて、問題の文を返す
+fn check_target(root: &Path, target: &str) -> Result<Vec<String>, Failure> {
+    let tree = |extra: &[&str]| {
+        let mut cmd = cargo(root);
+        cmd.args([
+            "tree",
+            "--locked",
+            "--workspace",
+            "-e",
+            "normal,build",
+            "--target",
+            target,
+        ]);
+        cmd.args(extra);
+        capture(&mut cmd)
+            .ok_or_else(|| Failure::new(format!("cargo tree（{target}）に失敗しました")))
+    };
+    let all = tree(&["--prefix", "none", "--format", "{p}"])?;
+    let present: Vec<&str> = NET_CRATES
+        .iter()
+        .copied()
+        .filter(|n| tree_names(&all).contains(n))
+        .collect();
+    let mut problems = Vec::new();
+    for name in &present {
+        if !ONLY_UNDER_DATA.contains(name) {
+            problems.push(format!("{target}: {name}（どこにも置けない）"));
+        }
+    }
+    let allowed: Vec<&str> = present
+        .iter()
+        .copied()
+        .filter(|n| ONLY_UNDER_DATA.contains(n))
+        .collect();
+    if !allowed.is_empty() {
+        let mut args = vec!["--prefix", "depth"];
+        for name in &allowed {
+            args.push("-i");
+            args.push(name);
+        }
+        let inverted = tree(&args)?;
+        for member in member_dependents(&inverted) {
+            if member != DATA_CRATE {
+                problems.push(format!(
+                    "{target}: {member} が通信の手段（{}）に依存している（{DATA_CRATE} の下にだけ置ける）",
+                    allowed.join(", ")
+                ));
+            }
+        }
+    }
+    Ok(problems)
+}
+
+/// 配る対象の依存に、通信の手段の crate が `ikari-data` の下以外に無いこと（ADR 0066 §6.2 の L1、ADR 0076 §9）
 pub fn net_crates(root: &Path) -> Result<(), Failure> {
-    log("依存に通信の手段の crate が無いこと（Cargo.lock。ADR 0066 §6.2）");
-    let lock = std::fs::read_to_string(root.join(LOCK_FILE))
-        .map_err(|e| Failure::new(format!("{LOCK_FILE} を読めません: {e}")))?;
-    let found = forbidden_in_lock(&lock);
-    if found.is_empty() {
+    log(
+        "依存の通信の手段の crate が ikari-data の下だけにあること（cargo tree。ADR 0066 §6.2、0076 §9）",
+    );
+    let mut problems = Vec::new();
+    for target in DIST_TARGETS {
+        problems.extend(check_target(root, target)?);
+    }
+    if problems.is_empty() {
         return Ok(());
     }
     Err(Failure::new(format!(
-        "{LOCK_FILE} に通信の手段の crate があります: {}（取得する部品だけに許す。ADR 0066 §6.2）",
-        found.join(", ")
+        "通信の手段の crate が許した場所の外にあります:\n  {}",
+        problems.join("\n  ")
     )))
 }
 
@@ -147,22 +226,52 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lock_with_clean_deps_passes() {
-        let lock = "[[package]]\nname = \"serde\"\n\n[[package]]\nname = \"windows-sys\"\n";
-        assert!(forbidden_in_lock(lock).is_empty());
+    fn tree_names_take_the_first_word_of_each_line() {
+        let out = "ikari-data v0.1.0 (/x/fetch)\nureq v3.5.2\nnative-tls v0.2.18\n";
+        assert_eq!(
+            tree_names(out).into_iter().collect::<Vec<_>>(),
+            ["ikari-data", "native-tls", "ureq"]
+        );
     }
 
     #[test]
-    fn lock_with_net_crate_is_found_once() {
-        let lock = "[[package]]\nname = \"tokio\"\n[[package]]\nname = \"tokio\"\n[[package]]\nname = \"ureq\"\n";
-        assert_eq!(forbidden_in_lock(lock), ["tokio", "ureq"]);
+    fn only_workspace_members_count_as_dependents() {
+        let inverted = "0ureq v3.5.2\n1ikari-data v0.1.0 (/x/fetch)\n2other v0.1.0 (/x/o)\n1http v1.0.0\n1dup v1.0.0 (*)\n1macro v1.0.0 (proc-macro) (/x/m)\n";
+        let members: Vec<String> = member_dependents(inverted).into_iter().collect();
+        assert_eq!(members, ["ikari-data", "other"]);
     }
 
     #[test]
-    fn similar_names_are_not_flagged() {
-        // 部分一致で誤検出しない（名前が完全に一致したものだけ）
-        let lock = "[[package]]\nname = \"tokio-like\"\n[[package]]\nname = \"ikari-socket2\"\n";
-        assert!(forbidden_in_lock(lock).is_empty());
+    fn the_starting_crate_itself_is_not_a_dependent() {
+        // 起点がパス依存でも（深さ 0）、依存元には数えない
+        assert!(member_dependents("0ikari-data v0.1.0 (/x/fetch)\n").is_empty());
+    }
+
+    #[test]
+    fn allowed_set_is_inside_the_banned_list() {
+        for name in ONLY_UNDER_DATA {
+            assert!(NET_CRATES.contains(name), "{name}");
+        }
+        for name in [
+            "ring",
+            "webpki-roots",
+            "webpki-root-certs",
+            "rustls",
+            "openssl",
+            "openssl-sys",
+        ] {
+            assert!(
+                NET_CRATES.contains(&name) && !ONLY_UNDER_DATA.contains(&name),
+                "{name}"
+            );
+        }
+    }
+
+    /// 本物のワークスペースで通る（`cargo tree` が使える環境）
+    #[test]
+    fn the_real_workspace_passes() {
+        let root = crate::data::run::repo_root();
+        net_crates(&root).unwrap_or_else(|e| panic!("{}", e.message));
     }
 
     #[test]

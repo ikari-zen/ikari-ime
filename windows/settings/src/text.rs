@@ -3,6 +3,7 @@
 //! 文に入れるのは、キーの名前、件数、理由の種類だけ。パスやファイルの中身は入れない。
 
 use ikari_proto::v1::{DataCounts, DataIssue, DataIssueKind, ErrorCode, ExportReply, ImportReply};
+use ikari_resource::fetch_report::FetchErrorCode;
 use ikari_shell_core::bridge::proto::BridgeErrorCode;
 
 use crate::edit::EditError;
@@ -31,6 +32,48 @@ fn transfer_reason(reason: &str) -> &'static str {
             "このファイルの場所は使えません"
         }
         _ => "ファイルを読み書きできませんでした",
+    }
+}
+
+/// 取得の失敗の文（理由の語から。ADR 0076 §8.2）。URL、ホスト、パスは入れない
+pub fn fetch_error(code: FetchErrorCode) -> &'static str {
+    match code {
+        FetchErrorCode::Cancelled => "取り消しました",
+        FetchErrorCode::Network => {
+            "つながりませんでした。ネットワークとプロキシの設定を確かめてください"
+        }
+        FetchErrorCode::Tls => "安全な接続を確かめられませんでした",
+        FetchErrorCode::HttpStatus => "配布元が受け付けませんでした",
+        FetchErrorCode::Stalled => "通信が止まりました",
+        FetchErrorCode::TooLarge => "ファイルが大きすぎます",
+        FetchErrorCode::Checksum => "取ったファイルが期待したものと違いました",
+        FetchErrorCode::DiskFull => "ディスクの空きが足りません",
+        FetchErrorCode::BadUrl => "この URL は使えません",
+        FetchErrorCode::BadReply => "配布元の返事が読めませんでした",
+        FetchErrorCode::Tool => "取得の部品を起動できませんでした",
+        FetchErrorCode::Busy => "ほかの取得が進んでいます",
+        FetchErrorCode::Refused => "この権限では取得できません",
+        FetchErrorCode::Internal => "取得に失敗しました",
+    }
+}
+
+const MEGABYTE: u64 = 1024 * 1024;
+
+/// 取得の今の様子の文
+pub fn fetch_snapshot(s: &crate::fetch::Snapshot) -> String {
+    use crate::fetch::Phase;
+    match s.phase {
+        Phase::Running => match s.total {
+            Some(total) if total > 0 => format!(
+                "取得しています（{} MB / {} MB）",
+                s.received / MEGABYTE,
+                total / MEGABYTE
+            ),
+            _ => format!("取得しています（{} MB）", s.received / MEGABYTE),
+        },
+        Phase::Done => "取得しました。内容を確かめています".to_owned(),
+        Phase::Cancelled => fetch_error(FetchErrorCode::Cancelled).to_owned(),
+        Phase::Failed => fetch_error(s.error.unwrap_or(FetchErrorCode::Internal)).to_owned(),
     }
 }
 
