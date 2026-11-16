@@ -26,7 +26,7 @@ regexes = [
   '''noreply''',
   '''@[0-9]+x\.''',
   '''@example\.(com|org|net)$''',
-  # URL の利用者名を拒むテストの、ダミーのホスト（fetch/src/url.rs）
+  # 予約されたテスト用のドメイン（RFC 2606）。取得の URL の検査のテストが「ホストに見えるユーザー情報」に使う
   '''@evil\.example$''',
 ]
 
