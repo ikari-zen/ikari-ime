@@ -12,6 +12,15 @@ fst.workspace = true
 memmap2.workspace = true
 jiff.workspace = true
 
+# Windows のデータのフォルダの ACL（`src/user/acl.rs`）だけが使う。Win32 の関数と型の宣言だけ
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_System_Threading",
+] }
+
 [dev-dependencies]
 ikari-dict-builder.workspace = true
 tempfile.workspace = true

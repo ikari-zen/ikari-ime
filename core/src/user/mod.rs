@@ -1,5 +1,6 @@
 //! ユーザーデータ（学習、プロファイル、ユーザー辞書。ADR 0002 §8〜§10）。
 
+mod acl;
 mod dictionary;
 mod dir;
 mod error;
