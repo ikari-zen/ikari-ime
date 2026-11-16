@@ -155,6 +155,17 @@ const NOT_WINDOWS_CAGE: CageState = CageState::Inherited;
 #[cfg(not(any(target_vendor = "apple", windows)))]
 const NOT_WINDOWS_CAGE: CageState = CageState::None;
 
+/// `path` から、段 2 の子への読み取りの許可を外す（Windows。無くても成功）。ほかの OS では何もしない
+pub(super) fn revoke_cage_read(path: &Path) -> io::Result<()> {
+    #[cfg(windows)]
+    return appcontainer::revoke_read(path);
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+        Ok(())
+    }
+}
+
 /// 段 2 の AppContainer のプロファイルを消す（Windows。アンインストールのとき。無くても成功）。
 /// 消えるのは、呼んだ利用者のものだけ（プロファイルは利用者ごと）
 #[cfg(windows)]

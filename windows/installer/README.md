@@ -40,6 +40,7 @@ Inno Setup のスクリプト（`ikari.iss`）と、インストーラが管理�
 `regsvr32` で登録 → ファイアウォールの送信ブロックの規則 → HKLM の Run → エラー報告の除外 → 古い版の `tip\` を消す。
 
 削除: Run → 規則 → エラー報告の除外を戻す → 登録の解除 → エンジンを止める → ファイル（使用中は再起動で）。
+LM の子の檻（AppContainer）のプロファイルは利用者ごとにあり、helper の `cage-profile-delete` で消せるのは、削除を動かした利用者の分だけ（ほかの利用者の分は、空のプロファイルとして残る。ADR 0072 §12.8 の 3）。
 利用者のデータ（各利用者の `%LOCALAPPDATA%\ikari-ime`）には触れない。
 
 インストーラは、利用者ごとのもの（HKCU、利用者のフォルダ、入力方式の一覧）に触れない。入力方式の追加は、最後の画面で案内する。
@@ -52,6 +53,10 @@ Inno Setup のスクリプト（`ikari.iss`）と、インストーラが管理�
 - 外のプログラムの起動は `RunTrusted` の 1 か所だけ。相手は system32 の道具（`regsvr32`、`netsh`）と helper だけで、絶対パス。
 - `[Files]` の `regserver`、`restartreplace` の印を使わない。インストール先の項目は、検査の Check を通る。
 - 使用中のファイルを持つアプリを閉じさせない（`CloseApplications=no`）。ログを出さない（利用者の TEMP に書かれるため）。
+
+## 統合のときの作業（インストーラのレーンで足す）
+
+- 削除の手順に、helper の `cage-profile-delete`（引数なし）の呼び出しを足す。場所は `ikari.iss` の削除の流れで、`IncludeInErrorReporting` の隣（エンジンを止めたあと、ファイルを消す前。helper はインストール先の中の `AppHelper`）。形は `RunTrusted(AppHelper, 'cage-profile-delete', Code);`。失敗しても削除は続ける（`wer-include` と同じ扱い）。終了コードは 0 が成功、4 が OS の失敗（`hr=` を 1 行出す）。プロファイルが無くても成功。
 
 ## 限界（分かっていること）
 

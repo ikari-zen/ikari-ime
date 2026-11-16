@@ -14,9 +14,11 @@
 //! 数えないもの: 子が生きていて返した 1 件の採点の失敗（`Failed(Inference)`。長すぎるプロンプトなど、入力で決まる。
 //! 同じプロセスで動かすときも、数えるだけで何もしない）。取り消し（ADR 0074。打っているだけで起きる）。
 //!
-//! 檻（ADR 0072 §3）: 製品は段 1（`os::Cage::Standard`）。段 2（AppContainer）を選ぶ口は、自由指定のモデル
-//! （ADR 0060 の段階 3〜5）と一緒に足す。今は、開発用のビルド（`dev-knobs`）の Windows だけが、環境変数
-//! （`placement::CAGE_ENV`）で段 2 にできる（VM での計測。#424）。段 2 を頼んで張れなければ、段 1 に落とさず失敗に数える。
+//! 檻（ADR 0072 §3・§4）: 呼び出し側が [`HostCage`] で、モデルの出どころに合わせて選ぶ。プリセット（sha256 を表で
+//! 確かめたもの）は段 1 か、段 2 を優先して張れなければ段 1 に落とす（`box=low` がログに出る）。自由指定のモデルは
+//! 段 2 だけで、張れなければ起動せず失敗に数える（LM なし）。段 2 から段 1 に落とすときは、モデルに足した段 2 の
+//! 許可を外してから起動する（許可が残ると、低い整合性の子は読めない。ADR 0072 §12.5）。開発用のビルド（`dev-knobs`）の
+//! Windows だけ、環境変数（`placement::CAGE_ENV`）で上書きできる（VM での計測。#424）。
 //!
 //! 取り消し（ADR 0074 §3.1）: 返事を待つ間に印が立ったら、`Cancel { id }` を書き込みのスレッドに渡し、子の返事を
 //! 待たずに `Cancelled` で戻る。取り消した id は覚えておき、あとで届いたその返事は読み捨てる。
@@ -90,6 +92,33 @@ pub struct HostSpec {
     /// GPU を使ってよいか（設定 `engine.lm_gpu`）
     pub use_gpu: bool,
     pub limits: HostLimits,
+    /// 子にかける檻（モデルの出どころで選ぶ）
+    pub cage: HostCage,
+}
+
+/// 子にかける檻の求め（ADR 0072 §4）
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum HostCage {
+    /// 段 1（プリセット。今の製品）
+    #[default]
+    Standard,
+    /// 段 2 を優先し、張れなければ段 1 に落とす（プリセットだけに使う）
+    PreferAppContainer,
+    /// 段 2 だけ。張れなければ起動しない（自由指定のモデル。ADR 0072 Q1）
+    RequireAppContainer,
+}
+
+impl HostCage {
+    /// 開発用の上書きの語（`placement::CAGE_ENV` の値）
+    #[cfg_attr(not(all(feature = "dev-knobs", windows)), allow(dead_code))]
+    fn parse_override(value: &str) -> Option<HostCage> {
+        match value {
+            "standard" => Some(HostCage::Standard),
+            "prefer" => Some(HostCage::PreferAppContainer),
+            "appcontainer" => Some(HostCage::RequireAppContainer),
+            _ => None,
+        }
+    }
 }
 
 /// 子の様子（数だけ）。loader と scorer が書き、エンジンのログとテストが読む
@@ -201,18 +230,37 @@ fn cage_index(cage: CageState) -> u8 {
         .unwrap_or(0)
 }
 
-/// 子にかける檻（このファイルの先頭の説明）
-fn cage_for(spec: &HostSpec) -> Cage<'_> {
+/// 子にかける檻の求め（`spec.cage`。開発用のビルドの Windows だけ、環境変数で上書きできる）
+fn cage_for(spec: &HostSpec) -> HostCage {
     #[cfg(all(feature = "dev-knobs", windows))]
-    let value = std::env::var(placement::CAGE_ENV).ok();
-    #[cfg(not(all(feature = "dev-knobs", windows)))]
-    let value: Option<String> = None;
-    if placement::appcontainer_requested(value.as_deref()) {
-        Cage::AppContainer {
-            readable: &spec.model,
-        }
-    } else {
-        Cage::Standard
+    if let Some(cage) = std::env::var(placement::CAGE_ENV)
+        .ok()
+        .and_then(|v| HostCage::parse_override(&v))
+    {
+        return cage;
+    }
+    spec.cage
+}
+
+/// 檻の求めに合わせて子を起動する（このファイルの先頭の説明）
+fn spawn_caged(
+    spec: &HostSpec,
+    args: &[OsString],
+) -> std::io::Result<(ChildProc, os::ToChild, os::FromChild)> {
+    let container = Cage::AppContainer {
+        readable: &spec.model,
+    };
+    match cage_for(spec) {
+        HostCage::Standard => os::spawn(&spec.program, args, Cage::Standard),
+        HostCage::RequireAppContainer => os::spawn(&spec.program, args, container),
+        HostCage::PreferAppContainer => match os::spawn(&spec.program, args, container) {
+            Ok(child) => Ok(child),
+            Err(_) => {
+                // 許可を外せなくても段 1 を試す（読めなければ、読み込みの失敗に数えられる）
+                let _ = os::revoke_cage_read(&spec.model);
+                os::spawn(&spec.program, args, Cage::Standard)
+            }
+        },
     }
 }
 
@@ -281,7 +329,7 @@ impl Live {
             gpu.into(),
         ];
         let (proc, mut stdin, mut stdout) =
-            os::spawn(&spec.program, &args, cage_for(spec)).map_err(|e| format!("spawn: {e}"))?;
+            spawn_caged(spec, &args).map_err(|e| format!("spawn: {e}"))?;
         health.set_cage(proc.cage());
 
         // パイプの読み書きには締め切りがないので、スレッドに任せて、チャネルの `recv_timeout` で待つ。
@@ -543,6 +591,25 @@ fn sanitize_devices(devices: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_cage_defaults_to_standard_and_parses_only_its_words() {
+        assert_eq!(HostCage::default(), HostCage::Standard);
+        assert_eq!(
+            HostCage::parse_override("appcontainer"),
+            Some(HostCage::RequireAppContainer)
+        );
+        assert_eq!(
+            HostCage::parse_override("prefer"),
+            Some(HostCage::PreferAppContainer)
+        );
+        assert_eq!(
+            HostCage::parse_override("standard"),
+            Some(HostCage::Standard)
+        );
+        assert_eq!(HostCage::parse_override("AppContainer"), None);
+        assert_eq!(HostCage::parse_override(""), None);
+    }
 
     #[test]
     fn defaults_are_the_provisional_values() {

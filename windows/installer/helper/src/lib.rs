@@ -40,15 +40,22 @@ pub enum Command {
     WerExclude(Vec<String>),
     /// `wer-include <exe の名前>...`: 外したのを戻す（削除のとき）
     WerInclude(Vec<String>),
+    /// `cage-profile-delete`: LM の子の檻の段 2（AppContainer）のプロファイルを消す（削除のとき。ADR 0072 §12.8）。
+    /// プロファイルは利用者ごとにあり、消えるのは、この道具を動かした利用者のものだけ
+    CageProfileDelete,
 }
 
-pub const USAGE: &str = "usage: ikari-setup-helper (check-dir <dir> | stop <dir> | wer-exclude <exe>... | wer-include <exe>...)";
+/// LM の子の AppContainer のプロファイルの名前（`ikari_lm::host::CAGE_PROFILE_NAME` と同じ。テストで照らす）
+pub const LM_CAGE_PROFILE: &str = "io.github.ikari-zen.lm-host";
+
+pub const USAGE: &str = "usage: ikari-setup-helper (check-dir <dir> | stop <dir> | wer-exclude <exe>... | wer-include <exe>... | cage-profile-delete)";
 
 /// 引数を解く。パスは絶対パスだけを受ける（カレントディレクトリに頼らない。R2）。
 pub fn parse(args: &[String]) -> Result<Command, &'static str> {
     match args {
         [cmd, dir] if cmd == "check-dir" => absolute(dir).map(Command::CheckDir),
         [cmd, dir] if cmd == "stop" => absolute(dir).map(Command::Stop),
+        [cmd] if cmd == "cage-profile-delete" => Ok(Command::CageProfileDelete),
         [cmd, names @ ..] if cmd == "wer-exclude" || cmd == "wer-include" => {
             if names.is_empty() || !names.iter().all(|n| stop::valid_exe_name(n)) {
                 return Err("exe names only (no paths)");
@@ -100,6 +107,16 @@ mod tests {
             parse(&args(&["wer-include", "a.exe"])),
             Ok(Command::WerInclude(vec!["a.exe".into()]))
         );
+        assert_eq!(
+            parse(&args(&["cage-profile-delete"])),
+            Ok(Command::CageProfileDelete)
+        );
+        assert!(parse(&args(&["cage-profile-delete", "other-name"])).is_err());
+    }
+
+    #[test]
+    fn the_cage_profile_name_is_the_lm_one() {
+        assert_eq!(LM_CAGE_PROFILE, ikari_lm::host::CAGE_PROFILE_NAME);
     }
 
     #[test]

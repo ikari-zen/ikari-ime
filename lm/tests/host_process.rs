@@ -13,10 +13,16 @@ use ikari_core::{
     AnalyzedContext, Candidate, CandidateOrigin, Context, DenseGrammar, InMemoryDictionary,
     RankInput, Ranker, UnknownParams,
 };
-use ikari_lm::host::{HostHealth, HostLimits, HostSpec, host_loader};
+use ikari_lm::host::{HostCage, HostHealth, HostLimits, HostSpec, host_loader};
 use ikari_lm::{CancelToken, LmDevice, ZenzConfig, ZenzRanker, cancel};
 
 const FAKE_HOST: &str = env!("CARGO_BIN_EXE_ikari-lm-host-fake");
+/// 偽の子の場所の差し替え（ビルドした機械と別の機械、たとえば VM で、このテストを動かすとき）
+const FAKE_HOST_ENV: &str = "IKARI_TEST_LM_HOST_FAKE";
+
+fn fake_host() -> PathBuf {
+    std::env::var_os(FAKE_HOST_ENV).map_or_else(|| PathBuf::from(FAKE_HOST), PathBuf::from)
+}
 /// ranker が結果を待つ上限。偽の子の起動と応答より桁で長い
 const RANK_BUDGET_MS: u64 = 3000;
 const REQUEST_DEADLINE_MS: u64 = 300;
@@ -33,7 +39,7 @@ const HEALTHY: &str = "nll.良=0\nnll.悪=20\n";
 fn warm_up_exe() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
-        let _ = Command::new(FAKE_HOST).status();
+        let _ = Command::new(fake_host()).status();
     });
 }
 
@@ -89,6 +95,18 @@ impl Harness {
     }
 
     fn with(script: &str, use_gpu: bool, base: ZenzConfig) -> Harness {
+        Harness::caged(script, use_gpu, base, HostCage::Standard, false)
+    }
+
+    /// `locked`: 台本のファイルの許可を、利用者が書き換えられない形にする（Windows。段 2 の許可を足せない＝段 2 を
+    /// 張れない状態を作る。読むことはできる）
+    fn caged(
+        script: &str,
+        use_gpu: bool,
+        base: ZenzConfig,
+        cage: HostCage,
+        locked: bool,
+    ) -> Harness {
         warm_up_exe();
         let dir = tempfile::tempdir().unwrap();
         // 子は低い整合性で動く（ADR 0072）。旗のファイル（`.starts`）を書けるよう、このフォルダだけ低いラベルにする
@@ -104,8 +122,11 @@ impl Harness {
         }
         let path = dir.path().join("script.txt");
         std::fs::write(&path, script).unwrap();
+        if locked {
+            lock_permissions(&path);
+        }
         let (loader, health) = host_loader(HostSpec {
-            program: PathBuf::from(FAKE_HOST),
+            program: fake_host(),
             model: path.clone(),
             use_gpu,
             limits: HostLimits {
@@ -113,6 +134,7 @@ impl Harness {
                 request_deadline: ikari_testtime::ms(REQUEST_DEADLINE_MS),
                 max_failures: MAX_FAILURES,
             },
+            cage,
         });
         let cfg = ZenzConfig {
             budget: ikari_testtime::ms(RANK_BUDGET_MS),
@@ -336,6 +358,7 @@ fn a_missing_program_is_a_failure_not_a_panic() {
         model: dir.path().join("model"),
         use_gpu: true,
         limits: HostLimits::default(),
+        cage: HostCage::Standard,
     });
     assert!(loader().is_err());
     assert_eq!(health.consecutive_failures(), 1);
@@ -505,5 +528,119 @@ fn a_cancelled_request_is_not_a_failure_and_its_late_reply_is_dropped() {
             (1, 0, 0),
             "steps={steps} {st:?}"
         );
+    }
+}
+
+/// `path` の許可を、利用者が書き換えられない形にする（Windows）。継承を切り、所有者の権限（OWNER RIGHTS）と Users を
+/// 読み取りだけにする。ほかの OS では何もしない（段 2 はもともと張れない）
+fn lock_permissions(path: &std::path::Path) {
+    #[cfg(windows)]
+    {
+        let ok = Command::new("icacls")
+            .arg(path)
+            .args([
+                "/inheritance:r",
+                "/grant:r",
+                "*S-1-3-4:R",
+                "*S-1-5-32-545:R",
+            ])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        assert!(ok, "icacls failed");
+    }
+    #[cfg(not(windows))]
+    let _ = path;
+}
+
+/// 段 2 だけを求めたとき: 張れる OS（Windows）では段 2 の子が採点し、暖機も同じ子（同じ檻）で済む。張れない OS では
+/// 子を起動せず、辞書だけの順位で返す
+#[test]
+fn a_required_appcontainer_runs_the_child_in_it_or_starts_none() {
+    let h = Harness::caged(
+        HEALTHY,
+        true,
+        ZenzConfig::default(),
+        HostCage::RequireAppContainer,
+        false,
+    );
+    h.ranker.warm_up();
+    if cfg!(windows) {
+        assert!(
+            h.health.log_note().contains("box=appcontainer"),
+            "{}",
+            h.health.log_note()
+        );
+        assert_eq!(h.health.spawns(), 1);
+        assert_eq!(h.first(), GOOD);
+        // 暖機の子のまま（起動し直していない）
+        assert_eq!(h.health.spawns(), 1);
+    } else {
+        assert_eq!(h.first(), BAD);
+        assert!(h.health.consecutive_failures() >= 1);
+        assert_eq!(h.health.child_id(), None);
+        assert!(h.starts().is_empty());
+        assert!(
+            h.health.log_note().contains("box=unknown"),
+            "{}",
+            h.health.log_note()
+        );
+    }
+}
+
+/// 段 2 だけを求めて、段 2 を張れない（モデルに許可を足せない）とき: 段 1 に落とさず、子を起動しない（LM なし）
+#[test]
+fn a_required_appcontainer_that_cannot_be_set_up_starts_no_child() {
+    let h = Harness::caged(
+        HEALTHY,
+        true,
+        ZenzConfig::default(),
+        HostCage::RequireAppContainer,
+        true,
+    );
+    assert_eq!(h.first(), BAD);
+    assert!(h.health.consecutive_failures() >= 1);
+    assert_eq!(h.health.child_id(), None);
+    // 段 1 の子も起動していない（起動すれば、偽の子が `.starts` に書く）
+    assert!(h.starts().is_empty(), "{:?}", h.starts());
+    assert!(!h.health.log_note().contains("box=low"));
+}
+
+/// 段 2 を優先して、段 2 を張れないとき: 段 1 に落ちて採点する
+#[test]
+fn a_preferred_appcontainer_falls_back_to_the_standard_cage() {
+    let h = Harness::caged(
+        HEALTHY,
+        true,
+        ZenzConfig::default(),
+        HostCage::PreferAppContainer,
+        true,
+    );
+    assert_eq!(h.first(), GOOD);
+    assert_eq!(h.health.consecutive_failures(), 0);
+    assert!(
+        !h.health.log_note().contains("box=appcontainer"),
+        "{}",
+        h.health.log_note()
+    );
+    assert_eq!(h.starts(), ["on"]);
+}
+
+/// 段 2 を優先して、張れるとき（Windows）は段 2。張れない OS では段 1
+#[test]
+fn a_preferred_appcontainer_is_used_when_it_can_be_set_up() {
+    let h = Harness::caged(
+        HEALTHY,
+        true,
+        ZenzConfig::default(),
+        HostCage::PreferAppContainer,
+        false,
+    );
+    assert_eq!(h.first(), GOOD);
+    let note = h.health.log_note();
+    if cfg!(windows) {
+        assert!(note.contains("box=appcontainer"), "{note}");
+    } else {
+        assert!(!note.contains("box=appcontainer"), "{note}");
     }
 }

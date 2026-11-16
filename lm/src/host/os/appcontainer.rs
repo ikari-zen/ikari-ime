@@ -5,7 +5,9 @@
 //!   消すのはアンインストールのとき（[`delete_profile`]。消すのは、呼んだ利用者のものだけ）。
 //! - 能力（capability）は 1 つも付けない。ネットワーク、ほかのプロセスの口、利用者のファイルに届かない。
 //! - 読み取りを許すのは、渡されたファイル 1 つ（継承しない ACE。`FILE_GENERIC_READ`）。何度呼んでも ACE は増えない
-//!   （`GRANT_ACCESS` は同じ相手の ACE にまとめる）。
+//!   （`GRANT_ACCESS` は同じ相手の ACE にまとめる）。許可は、子が読み込んだあとも外さない（アイドルの解放のあとに
+//!   読み直すため）。外すのは、モデルを置き換えるとき・消すとき（エンジン。[`revoke_read`]）と、段 2 を諦めて
+//!   段 1 に落とすとき（許した ACE があると、低い整合性の子は読めない。ADR 0072 §12.5）。
 //! - 実行ファイルのフォルダは、ここでは許さない。製品のインストール先（Program Files の下）は、すべてのアプリの
 //!   パッケージ（`ALL APPLICATION PACKAGES`）に読み取りと実行が開いている前提（ADR 0067。§12 の実測）。
 
@@ -17,8 +19,9 @@ use std::ptr;
 
 use windows_sys::Win32::Foundation::{ERROR_ALREADY_EXISTS, ERROR_SUCCESS, LocalFree};
 use windows_sys::Win32::Security::Authorization::{
-    EXPLICIT_ACCESS_W, GRANT_ACCESS, GetNamedSecurityInfoW, NO_MULTIPLE_TRUSTEE, SE_FILE_OBJECT,
-    SetEntriesInAclW, SetNamedSecurityInfoW, TRUSTEE_IS_SID, TRUSTEE_IS_UNKNOWN, TRUSTEE_W,
+    ACCESS_MODE, EXPLICIT_ACCESS_W, GRANT_ACCESS, GetNamedSecurityInfoW, NO_MULTIPLE_TRUSTEE,
+    REVOKE_ACCESS, SE_FILE_OBJECT, SetEntriesInAclW, SetNamedSecurityInfoW, TRUSTEE_IS_SID,
+    TRUSTEE_IS_UNKNOWN, TRUSTEE_W,
 };
 use windows_sys::Win32::Security::Isolation::{
     CreateAppContainerProfile, DeleteAppContainerProfile, DeriveAppContainerSidFromAppContainerName,
@@ -31,7 +34,7 @@ use windows_sys::core::HRESULT;
 
 /// プロファイルの名前（利用者ごとに 1 つ。英数字と `.` `-` で 64 文字まで）
 #[cfg(not(test))]
-pub(super) const PROFILE_NAME: &str = "io.github.ikari-zen.lm-host";
+pub(super) const PROFILE_NAME: &str = crate::host::CAGE_PROFILE_NAME;
 /// 単体テストの名前（製品のプロファイルに触れない）
 #[cfg(test)]
 pub(super) const PROFILE_NAME: &str = "io.github.ikari-zen.lm-host-test";
@@ -120,6 +123,23 @@ pub(super) fn delete_profile() -> io::Result<()> {
 
 /// `path`（ファイル 1 つ）に、`sid` の読み取りを許す ACE を足す。継承させない
 pub(super) fn grant_read(path: &Path, sid: &AppContainerSid) -> io::Result<()> {
+    set_entry(path, sid, GRANT_ACCESS)
+}
+
+/// `path` から、このプロファイルの SID の ACE を外す（無くても成功）。プロファイルが無くても SID は名前から決まる
+pub(super) fn revoke_read(path: &Path) -> io::Result<()> {
+    let name = wide_nul(OsStr::new(PROFILE_NAME))?;
+    let mut sid: PSID = ptr::null_mut();
+    // SAFETY: NUL で終わる名前と、書き込み先を渡すだけ
+    hresult(unsafe { DeriveAppContainerSidFromAppContainerName(name.as_ptr(), &mut sid) })?;
+    if sid.is_null() {
+        return Err(io::Error::other("appcontainer sid unavailable"));
+    }
+    let sid = AppContainerSid(sid);
+    set_entry(path, &sid, REVOKE_ACCESS)
+}
+
+fn set_entry(path: &Path, sid: &AppContainerSid, mode: ACCESS_MODE) -> io::Result<()> {
     let path = wide_nul(path.as_os_str())?;
     let mut old: *mut ACL = ptr::null_mut();
     let mut sd: PSECURITY_DESCRIPTOR = ptr::null_mut();
@@ -139,7 +159,7 @@ pub(super) fn grant_read(path: &Path, sid: &AppContainerSid) -> io::Result<()> {
     let sd = LocalMem(sd);
     let entry = EXPLICIT_ACCESS_W {
         grfAccessPermissions: FILE_GENERIC_READ,
-        grfAccessMode: GRANT_ACCESS,
+        grfAccessMode: mode,
         grfInheritance: NO_INHERITANCE,
         Trustee: TRUSTEE_W {
             pMultipleTrustee: ptr::null_mut(),
