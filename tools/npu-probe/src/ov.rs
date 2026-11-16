@@ -1,28 +1,25 @@
 //! OpenVINO Runtime を直に使う採点（ADR 0075 §3「C」）。`openvino` crate の実行時の読み込み（`runtime-linking`）で、
 //! exe の隣の `openvino_c.dll` を読む。ビルドに OpenVINO は要らない。
 //!
-//! IR の取り決め（**仮置き**。lane/npu-adr の契約が出たら合わせる。README の「契約」）:
-//!   - 置き場所: `models\ir\<fp16|int8>\openvino_model.xml` と `.bin`。形ごとの IR
-//!     （`openvino_model_b<B>_t<T>.xml`）があれば、そちらを使う
-//!   - 入力: `input_ids`（必須）、`attention_mask`、`position_ids`（あれば）。i64 か i32。形 [B, T]
-//!   - 出力: 最初の出力が logits。f32 か f16。形 [B, T, 語彙]
-//!   - KV キャッシュなし（stateless）。動的な形の IR は、ここで [B, T] に固定してからコンパイルする
+//! IR の取り決めは README の「契約」（lane/npu-adr）:
+//!   - ファイル: `models\zenz-v3.2-small-L128-<fp16|int8>.xml`（B = 1）、`models\zenz-v3.2-small-B32-L128-<…>.xml`（B = 32）
+//!   - 入力: `input_ids` だけ。`i64`、静的な形 [B, L]。B と L は IR から読む（決め打ちしない）
+//!   - 出力: `logits`。`f32`、形 [B, L, 語彙]。KV キャッシュなし
 
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use openvino::{
-    CompiledModel, Core, DeviceType, ElementType, InferRequest, PartialShape, PropertyKey,
-    RwPropertyKey, Shape, Tensor,
+    CompiledModel, Core, DeviceType, ElementType, InferRequest, PropertyKey, RwPropertyKey, Shape,
+    Tensor,
 };
 
 use crate::device::{OvTarget, Precision};
-use crate::score::{self, Plan, SEQ_LENS, TokenSet};
+use crate::score::{self, Plan, TokenSet};
 use crate::worker::{ItemScorer, Job, Opened};
 
-/// IR の置き場所（`models\` の下）
-pub const IR_DIR: &str = "ir";
-const IR_STEM: &str = "openvino_model";
+const IR_PREFIX: &str = "zenz-v3.2-small";
+const INPUT_NAME: &str = "input_ids";
 
 /// C API の DLL の名前
 #[cfg(windows)]
@@ -35,27 +32,19 @@ pub const LIB_NAME: &str = "libopenvino_c.so";
 /// NPU のドライバの版の属性（NPU のプラグイン）
 const NPU_DRIVER_VERSION: &str = "NPU_DRIVER_VERSION";
 
-/// 精度ごとの IR のフォルダ
-pub fn ir_dir(dir: &Path, precision: Precision) -> PathBuf {
-    dir.join(crate::MODELS_DIR)
-        .join(IR_DIR)
-        .join(precision.name())
+/// IR のファイルの名前（契約）。B = 1 は `…-L128-…`、ほかは `…-B<B>-L128-…`
+pub fn ir_name(precision: Precision, batch: usize) -> String {
+    let p = precision.name();
+    if batch == 1 {
+        format!("{IR_PREFIX}-L128-{p}.xml")
+    } else {
+        format!("{IR_PREFIX}-B{batch}-L128-{p}.xml")
+    }
 }
 
-/// 形 [B, T] に使う IR（xml と bin）。形ごとの IR があればそれ、無ければ共通の IR
-pub fn ir_files(
-    dir: &Path,
-    precision: Precision,
-    batch: usize,
-    seq_len: usize,
-) -> (PathBuf, PathBuf) {
-    let base = ir_dir(dir, precision);
-    let shaped = base.join(format!("{IR_STEM}_b{batch}_t{seq_len}.xml"));
-    let xml = if shaped.is_file() {
-        shaped
-    } else {
-        base.join(format!("{IR_STEM}.xml"))
-    };
+/// 精度と B の IR（xml と bin）
+pub fn ir_files(dir: &Path, precision: Precision, batch: usize) -> (PathBuf, PathBuf) {
+    let xml = dir.join(crate::MODELS_DIR).join(ir_name(precision, batch));
     let bin = xml.with_extension("bin");
     (xml, bin)
 }
@@ -112,129 +101,77 @@ pub fn info(ov_lib: Option<&Path>) -> Result<OvInfo, String> {
     Ok(OvInfo { version, devices })
 }
 
-/// 何を詰めるかで決まる入力の種類
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum InputKind {
-    Ids,
-    Mask,
-    Positions,
-}
-
-fn input_kind(name: &str) -> Option<InputKind> {
-    match name {
-        "input_ids" => Some(InputKind::Ids),
-        "attention_mask" => Some(InputKind::Mask),
-        "position_ids" => Some(InputKind::Positions),
-        _ => None,
-    }
-}
-
-/// 長さ T ごとのコンパイル済みのモデルと、使い回す入力のテンソル
-struct Bucket {
-    seq_len: usize,
+struct OvItems {
     // 宣言順 = drop 順。要求を先に捨てる
     request: InferRequest,
-    inputs: Vec<(InputKind, ElementType, Tensor)>,
+    input: Tensor,
     _compiled: CompiledModel,
-}
-
-struct OvItems {
-    buckets: Vec<Bucket>,
     plans: Vec<Plan>,
     batch: usize,
+    seq_len: usize,
 }
 
 fn ov_err(what: &str) -> impl Fn(openvino::InferenceError) -> String + '_ {
     move |e| format!("{what}: {e}")
 }
 
-fn write_ints(tensor: &mut Tensor, et: ElementType, values: &[i64]) -> Result<(), String> {
-    match et {
-        ElementType::I64 => {
-            let dst = tensor.get_data_mut::<i64>().map_err(ov_err("tensor"))?;
-            dst.copy_from_slice(values);
-        }
-        ElementType::I32 => {
-            let dst = tensor.get_data_mut::<i32>().map_err(ov_err("tensor"))?;
-            for (d, &v) in dst.iter_mut().zip(values) {
-                *d = i32::try_from(v).map_err(|_| "トークンの id が i32 に入らない")?;
-            }
-        }
-        other => return Err(format!("入力の型が整数でない: {other:?}")),
-    }
-    Ok(())
-}
-
 impl ItemScorer for OvItems {
     fn score(&mut self, index: usize) -> Result<Vec<Option<f32>>, String> {
         let plan = self.plans.get(index).ok_or("件の番号が範囲の外")?;
-        let n_cands = plan.rows.len() + plan.too_long.len();
-        let mut out = vec![None; n_cands];
+        let mut out = vec![None; plan.rows.len() + plan.too_long.len()];
+        let (b_n, t) = (self.batch, self.seq_len);
         for chunk in &plan.chunks {
-            let bucket = self
-                .buckets
-                .iter_mut()
-                .find(|b| b.seq_len == chunk.seq_len)
-                .ok_or("長さの合うモデルが無い")?;
-            let filled = score::fill(plan, chunk, self.batch);
-            for (kind, et, tensor) in &mut bucket.inputs {
-                let values = match kind {
-                    InputKind::Ids => &filled.input_ids,
-                    InputKind::Mask => &filled.attention_mask,
-                    InputKind::Positions => &filled.position_ids,
-                };
-                write_ints(tensor, *et, values)?;
-            }
-            bucket.request.infer().map_err(ov_err("infer"))?;
-            let logits = bucket
+            let ids = score::fill(plan, chunk, b_n, t);
+            self.input
+                .get_data_mut::<i64>()
+                .map_err(ov_err("input"))?
+                .copy_from_slice(&ids);
+            self.request.infer().map_err(ov_err("infer"))?;
+            let logits = self
                 .request
                 .get_output_tensor_by_index(0)
                 .map_err(ov_err("output"))?;
             let shape = logits.get_shape().map_err(ov_err("output shape"))?;
             let dims = shape.get_dimensions();
-            let t = chunk.seq_len;
-            if dims.len() != 3 || dims[0] as usize != self.batch || dims[1] as usize != t {
+            if dims.len() != 3 || dims[0] as usize != b_n || dims[1] as usize != t {
                 return Err(format!(
-                    "出力の形が [B={}, T={t}, 語彙] でない: {dims:?}",
-                    self.batch
+                    "出力の形が [B={b_n}, L={t}, 語彙] でない: {dims:?}"
                 ));
             }
             let vocab = dims[2] as usize;
-            let values: Vec<f32> = match logits.get_element_type().map_err(ov_err("output type"))? {
-                ElementType::F32 => logits.get_data::<f32>().map_err(ov_err("output"))?.to_vec(),
-                ElementType::F16 => logits
-                    .get_data::<u16>()
-                    .map_err(ov_err("output"))?
-                    .iter()
-                    .map(|&b| score::f16_to_f32(b))
-                    .collect(),
-                other => return Err(format!("出力の型が f32 / f16 でない: {other:?}")),
-            };
+            let et = logits.get_element_type().map_err(ov_err("output type"))?;
+            if et != ElementType::F32 {
+                return Err(format!("出力の型が f32 でない: {et:?}"));
+            }
+            let values = logits.get_data::<f32>().map_err(ov_err("output"))?;
+            // 余りの行は読まない（契約）
             for (b, &r) in chunk.rows.iter().enumerate() {
                 let row = &plan.rows[r];
-                let slice = &values[b * t * vocab..(b + 1) * t * vocab];
-                let nll = score::row_nll(slice, vocab, row);
-                out[row.candidate] = Some(nll).filter(|x| x.is_finite());
+                let slice = values
+                    .get(b * t * vocab..(b + 1) * t * vocab)
+                    .ok_or("出力が短い")?;
+                out[row.candidate] =
+                    Some(score::row_nll(slice, vocab, row)).filter(|x| x.is_finite());
             }
         }
         Ok(out)
     }
 }
 
-/// IR を読み、長さごとに [B, T] に固定してコンパイルする
+/// IR を読み、形を確かめてコンパイルする
 pub fn open(
     job: &Job,
     target: OvTarget,
     precision: Precision,
     tokens: &TokenSet,
 ) -> Result<Opened, String> {
-    let batch = job.batch.unwrap_or(1).max(1);
-    let (xml, _) = ir_files(&job.dir, precision, batch, SEQ_LENS[0]);
+    let want_batch = job.batch.unwrap_or(1);
+    let (xml, bin) = ir_files(&job.dir, precision, want_batch);
     if !xml.is_file() {
         return Err(format!(
-            "IR が無い（{}\\{IR_DIR}\\{}\\{IR_STEM}.xml）",
+            "IR が無い（{}\\{}）",
             crate::MODELS_DIR,
-            precision.name()
+            ir_name(precision, want_batch)
         ));
     }
     load_lib(job.ov_lib.as_deref())?;
@@ -269,27 +206,69 @@ pub fn open(
         }
     }
 
-    let mut buckets = Vec::new();
-    let mut compile_ms = Vec::new();
-    for &t in &SEQ_LENS {
-        let t0 = Instant::now();
-        let bucket = compile(&mut core, &job.dir, precision, batch, t, &dev)?;
-        compile_ms.push((t, t0.elapsed().as_secs_f64() * 1000.0));
-        buckets.push(bucket);
+    let path = |p: &Path| {
+        p.to_str()
+            .map(str::to_owned)
+            .ok_or("IR の場所が UTF-8 でない")
+    };
+    let model = core
+        .read_model_from_file(&path(&xml)?, &path(&bin)?)
+        .map_err(ov_err("read_model"))?;
+    let n_inputs = model.get_inputs_len().map_err(ov_err("inputs"))?;
+    let node = model.get_input_by_index(0).map_err(ov_err("input"))?;
+    let name = node.get_name().map_err(ov_err("input name"))?;
+    let et = node.get_element_type().map_err(ov_err("input type"))?;
+    if n_inputs != 1 || name != INPUT_NAME || et != ElementType::I64 {
+        return Err(format!(
+            "入力が契約（{INPUT_NAME} だけ、i64）と違う: {n_inputs} 個、{name}、{et:?}"
+        ));
     }
-    let load: Duration = started.elapsed();
+    let dims = node
+        .get_shape()
+        .map_err(ov_err("input shape（静的な形が要る）"))?
+        .get_dimensions()
+        .to_vec();
+    let [b, l] = dims[..] else {
+        return Err(format!("入力の形が [B, L] でない: {dims:?}"));
+    };
+    let (batch, seq_len) = (b as usize, l as usize);
+    if batch != want_batch {
+        return Err(format!(
+            "IR の B（{batch}）がファイル名（{want_batch}）と違う"
+        ));
+    }
+    let compile_started = Instant::now();
+    let mut compiled = core
+        .compile_model(&model, dev.to_owned())
+        .map_err(ov_err(&format!("compile [B={batch}, L={seq_len}]")))?;
+    let mut request = compiled
+        .create_infer_request()
+        .map_err(ov_err("infer request"))?;
+    let compile_ms = vec![(seq_len, compile_started.elapsed().as_secs_f64() * 1000.0)];
+    let input = Tensor::new(
+        ElementType::I64,
+        &Shape::new(&dims).map_err(ov_err("shape"))?,
+    )
+    .map_err(ov_err("tensor"))?;
+    request
+        .set_tensor(INPUT_NAME, &input)
+        .map_err(ov_err("set_tensor"))?;
+    let load = started.elapsed();
 
     let plans: Vec<Plan> = tokens
         .items
         .iter()
-        .map(|it| score::plan(it, tokens.eos, batch, &SEQ_LENS))
+        .map(|it| score::plan(it, tokens.eos, batch, seq_len))
         .collect();
     let too_long = plans.iter().map(|p| p.too_long.len()).sum();
     Ok(Opened {
         scorer: Box::new(OvItems {
-            buckets,
+            request,
+            input,
+            _compiled: compiled,
             plans,
             batch,
+            seq_len,
         }),
         load,
         ran_on: Some(full_name),
@@ -301,90 +280,20 @@ pub fn open(
     })
 }
 
-fn compile(
-    core: &mut Core,
-    dir: &Path,
-    precision: Precision,
-    batch: usize,
-    seq_len: usize,
-    dev: &DeviceType<'static>,
-) -> Result<Bucket, String> {
-    let (xml, bin) = ir_files(dir, precision, batch, seq_len);
-    let path = |p: &Path| {
-        p.to_str()
-            .map(str::to_owned)
-            .ok_or("IR の場所が UTF-8 でない")
-    };
-    let mut model = core
-        .read_model_from_file(&path(&xml)?, &path(&bin)?)
-        .map_err(ov_err("read_model"))?;
-    let n = model.get_inputs_len().map_err(ov_err("inputs"))?;
-    let mut specs = Vec::with_capacity(n);
-    for i in 0..n {
-        let node = model.get_input_by_index(i).map_err(ov_err("input"))?;
-        let name = node.get_name().map_err(ov_err("input name"))?;
-        let et = node.get_element_type().map_err(ov_err("input type"))?;
-        let kind = input_kind(&name)
-            .ok_or_else(|| format!("知らない入力 `{name}`（KV キャッシュつきの IR は使えない）"))?;
-        specs.push((name, kind, et));
-    }
-    if !specs.iter().any(|(_, k, _)| *k == InputKind::Ids) {
-        return Err("入力 input_ids が無い".into());
-    }
-    let dims = [batch as i64, seq_len as i64];
-    let shape = PartialShape::new_static(2, &dims).map_err(ov_err("shape"))?;
-    let reshape: Vec<(&str, &PartialShape)> = specs
-        .iter()
-        .map(|(name, _, _)| (name.as_str(), &shape))
-        .collect();
-    model
-        .reshape(&reshape)
-        .map_err(ov_err(&format!("reshape [B={batch}, T={seq_len}]")))?;
-    let mut compiled = core
-        .compile_model(&model, dev.to_owned())
-        .map_err(ov_err(&format!("compile [B={batch}, T={seq_len}]")))?;
-    let mut request = compiled
-        .create_infer_request()
-        .map_err(ov_err("infer request"))?;
-    let tensor_shape = Shape::new(&dims).map_err(ov_err("shape"))?;
-    let mut inputs = Vec::with_capacity(specs.len());
-    for (name, kind, et) in specs {
-        let tensor = Tensor::new(et, &tensor_shape).map_err(ov_err("tensor"))?;
-        request
-            .set_tensor(&name, &tensor)
-            .map_err(ov_err("set_tensor"))?;
-        inputs.push((kind, et, tensor));
-    }
-    Ok(Bucket {
-        seq_len,
-        request,
-        inputs,
-        _compiled: compiled,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn ir_files_prefers_shaped_ir() {
-        let dir = tempfile::tempdir().unwrap();
-        let base = ir_dir(dir.path(), Precision::Int8);
-        std::fs::create_dir_all(&base).unwrap();
-        let (xml, bin) = ir_files(dir.path(), Precision::Int8, 8, 32);
-        assert_eq!(xml, base.join("openvino_model.xml"));
-        assert_eq!(bin, base.join("openvino_model.bin"));
-        std::fs::write(base.join("openvino_model_b8_t32.xml"), "").unwrap();
-        let (xml, bin) = ir_files(dir.path(), Precision::Int8, 8, 32);
-        assert_eq!(xml, base.join("openvino_model_b8_t32.xml"));
-        assert_eq!(bin, base.join("openvino_model_b8_t32.bin"));
-    }
-
-    #[test]
-    fn known_inputs() {
-        assert_eq!(input_kind("input_ids"), Some(InputKind::Ids));
-        assert_eq!(input_kind("beam_idx"), None);
+    fn ir_names_follow_the_contract() {
+        assert_eq!(ir_name(Precision::Fp16, 1), "zenz-v3.2-small-L128-fp16.xml");
+        assert_eq!(
+            ir_name(Precision::Int8, 32),
+            "zenz-v3.2-small-B32-L128-int8.xml"
+        );
+        let (xml, bin) = ir_files(Path::new("d"), Precision::Int8, 1);
+        assert_eq!(xml, Path::new("d/models/zenz-v3.2-small-L128-int8.xml"));
+        assert_eq!(bin, Path::new("d/models/zenz-v3.2-small-L128-int8.bin"));
     }
 
     #[test]

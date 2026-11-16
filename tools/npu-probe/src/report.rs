@@ -36,7 +36,7 @@ pub struct Header {
     pub models: Vec<(String, String)>,
     pub inputs: usize,
     pub candidates: usize,
-    /// llama のトークン列と、入力の `prompt_ids` の一致（一致した件、比べた件）
+    /// この機械の llama.cpp のトークン列と、fixture のトークン列の一致（一致した件、比べた件）
     pub token_match: Option<(usize, usize)>,
 }
 
@@ -70,6 +70,8 @@ pub struct Run {
     /// 檻の確認を飛ばした理由（Windows でない、`--no-appcontainer` など）
     pub sandbox_notes: Vec<String>,
     pub elapsed: Duration,
+    /// fixture の llama.cpp の CPU の NLL（Mac で取った参照）。この機械の llama-cpu が動かないときの基準
+    pub reference: Vec<Vec<Option<f32>>>,
 }
 
 /// 時間の要約（µs）
@@ -127,14 +129,22 @@ impl Run {
         self.devices.iter().find(|d| d.device == device)
     }
 
-    fn base(&self) -> Option<&WorkerResult> {
-        self.get(Device::LlamaCpu).and_then(DeviceRun::best)
+    /// 基準の NLL: この機械の llama-cpu、動かなければ fixture の参照
+    fn base(&self) -> Option<&[Vec<Option<f32>>]> {
+        match self.get(Device::LlamaCpu).and_then(DeviceRun::best) {
+            Some(r) => Some(&r.nll),
+            None => (!self.reference.is_empty()).then_some(&self.reference[..]),
+        }
     }
 
     /// llama-cpu を基準にした一致度
     pub fn agreement(&self, r: &WorkerResult) -> Option<Agreement> {
-        let base = self.base()?;
-        Some(stats::agreement(&base.nll, &r.nll))
+        Some(stats::agreement(self.base()?, &r.nll))
+    }
+
+    /// fixture の参照（Mac の llama.cpp の CPU）を基準にした一致度
+    pub fn agreement_ref(&self, r: &WorkerResult) -> Option<Agreement> {
+        (!self.reference.is_empty()).then(|| stats::agreement(&self.reference, &r.nll))
     }
 
     /// 同じ精度の ov-cpu を基準にした一致度（装置の差を量子化の差から分ける）
@@ -468,13 +478,13 @@ pub fn report(run: &Run) -> String {
         Some((same, all)) => {
             let _ = writeln!(
                 s,
-                "トークン列: llama.cpp と入力の prompt_ids の一致 {same}/{all} 件"
+                "トークン列: この機械の llama.cpp と fixture の一致 {same}/{all} 件（OpenVINO は fixture の列を使う）"
             );
         }
         None => {
             let _ = writeln!(
                 s,
-                "トークン列: llama.cpp の語彙で作った（入力に prompt_ids なし）"
+                "トークン列: 比べていない（llama-cpu が動かない）。OpenVINO は fixture の列を使う"
             );
         }
     }
@@ -520,16 +530,16 @@ pub fn report(run: &Run) -> String {
 
     let _ = writeln!(
         s,
-        "\n== 一致度（基準 llama-cpu / OpenVINO は同じ精度の ov-cpu も）==\n装置 B 件数 1位一致 τ中央値 NLL差最大 NLL差中央値"
+        "\n== 一致度（基準 llama-cpu。参照 = fixture の Mac の llama.cpp CPU。OpenVINO は同じ精度の ov-cpu も）==\n装置 B 基準 件数 1位一致 τ中央値 NLL差最大 NLL差中央値"
     );
     for d in &run.devices {
-        for r in d
-            .full
-            .iter()
-            .filter(|r| r.ok && d.device != Device::LlamaCpu)
-        {
-            let mut rows = vec![("llama-cpu", run.agreement(r))];
-            rows.push(("ov-cpu", run.agreement_ov(d.device, r)));
+        for r in d.full.iter().filter(|r| r.ok) {
+            let own = d.device == Device::LlamaCpu;
+            let rows = [
+                ("llama-cpu", run.agreement(r).filter(|_| !own)),
+                ("参照", run.agreement_ref(r)),
+                ("ov-cpu", run.agreement_ov(d.device, r)),
+            ];
             for (base, a) in rows {
                 let Some(a) = a else { continue };
                 let f = |x: Option<f64>| x.map_or("-".into(), |v| format!("{v:.3}"));
@@ -725,6 +735,7 @@ mod tests {
             ],
             sandbox_notes: vec![],
             elapsed: Duration::from_secs(600),
+            reference: Vec::new(),
         }
     }
 
@@ -746,6 +757,18 @@ mod tests {
         let v = verdict(&run, Device::Ov(OvTarget::Npu, Precision::Int8));
         assert_eq!(v.overall(), '×');
         assert_eq!(v.failed.as_deref(), Some("compile failed"));
+    }
+
+    #[test]
+    fn reference_is_the_base_without_llama_cpu() {
+        let mut run = sample_run();
+        run.devices.retain(|d| d.device != Device::LlamaCpu);
+        let npu = run.get(Device::Ov(OvTarget::Npu, Precision::Fp16)).unwrap();
+        let best = npu.best().unwrap().clone();
+        assert!(run.agreement(&best).is_none());
+        run.reference = nll(1);
+        assert_eq!(run.agreement(&best).unwrap().top1_rate(), Some(0.0));
+        assert_eq!(run.agreement_ref(&best).unwrap().items, 20);
     }
 
     #[test]

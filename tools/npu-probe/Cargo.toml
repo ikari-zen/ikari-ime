@@ -17,7 +17,7 @@ publish = false
 default = []
 # llama.cpp を使う装置（llama-cpu）。cmake が要る。付けないビルドは llama の行を「このビルドに無い」と書く
 llama = ["ikari-lm/llama"]
-# macOS で入力を作る（`npu-probe-record-host`）ときと、Mac での試し
+# Mac での試し（llama-cpu・llama-vulkan は Metal になる）
 metal = ["llama", "ikari-lm/metal"]
 # llama-vulkan（Windows。exe の隣の `backends\` から ggml の DLL を読む。ADR 0059 §2.3）。ビルドに Vulkan SDK が要る
 vulkan = ["llama", "ikari-lm/vulkan"]
@@ -25,12 +25,6 @@ vulkan = ["llama", "ikari-lm/vulkan"]
 [[bin]]
 name = "ikari-npu-probe"
 path = "src/main.rs"
-
-# 入力を作る道具（Mac。`scripts/make-inputs.sh`）。評価の `--lm-host` に渡し、LM に届いた採点の頼み（プロンプトと候補）を記録する
-[[bin]]
-name = "npu-probe-record-host"
-path = "src/bin/record-host.rs"
-required-features = ["llama"]
 
 [dependencies]
 ikari-lm.workspace = true

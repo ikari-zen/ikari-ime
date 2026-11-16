@@ -53,8 +53,6 @@ pub struct Job {
     pub dir: PathBuf,
     /// 入力（無ければ埋めたもの）
     pub inputs: Option<PathBuf>,
-    /// トークン列（llama-cpu の子が出したもの。OpenVINO の子が使う）
-    pub tokens: Option<PathBuf>,
     /// OpenVINO のモデルのキャッシュ（`CACHE_DIR`）。無ければキャッシュしない
     pub cache: Option<PathBuf>,
     /// OpenVINO の C API の DLL（無ければ exe の隣）
@@ -256,52 +254,25 @@ fn ms(d: Duration) -> f64 {
 fn open(job: &Job, items: &[Item]) -> Result<Opened, String> {
     match job.device {
         Device::LlamaCpu | Device::LlamaVulkan => crate::llama_dev::open(job, items),
-        Device::Ov(target, precision) => {
-            let tokens = read_tokens(job, items)?;
-            crate::ov::open(job, target, precision, &tokens)
-        }
+        Device::Ov(target, precision) => crate::ov::open(job, target, precision, &token_set(items)),
         Device::LlamaOvNpu => {
             Err("このツールでは作っていない（後回し。ADR 0075 §4.3 の A）".into())
         }
     }
 }
 
-/// OpenVINO の子が使うトークン列。llama-cpu の子が出したものを優先し、無ければ入力の `prompt_ids`
-fn read_tokens(job: &Job, items: &[Item]) -> Result<TokenSet, String> {
-    if let Some(path) = &job.tokens {
-        let text =
-            std::fs::read_to_string(path).map_err(|e| format!("トークン列を読めない: {e}"))?;
-        let set: TokenSet =
-            serde_json::from_str(&text).map_err(|e| format!("トークン列が壊れている: {e}"))?;
-        if set.items.len() != items.len() {
-            return Err("トークン列の件数が入力と違う".into());
-        }
-        return Ok(set);
+/// 入力（fixture）のトークン列。OpenVINO の子はこれを使う（契約の「トークン化」。llama.cpp で作ったもの）
+pub fn token_set(items: &[Item]) -> TokenSet {
+    TokenSet {
+        eos: crate::score::END_TOKEN,
+        items: items
+            .iter()
+            .map(|i| crate::score::ItemTokens {
+                prompt: i.prompt_tokens.clone(),
+                candidates: i.candidate_tokens.clone(),
+            })
+            .collect(),
     }
-    tokens_from_inputs(items)
-}
-
-/// 入力に埋めたトークン列（契約のトークン化）。llama-cpu が動かないときに使う
-fn tokens_from_inputs(items: &[Item]) -> Result<TokenSet, String> {
-    let mut out = Vec::with_capacity(items.len());
-    let mut eos = None;
-    for item in items {
-        let (Some(p), Some(c), Some(e)) = (&item.prompt_ids, &item.candidate_ids, item.eos_id)
-        else {
-            return Err(
-                "トークン列が無い（llama-cpu が動かず、入力にも prompt_ids が無い）".into(),
-            );
-        };
-        eos = Some(e);
-        out.push(crate::score::ItemTokens {
-            prompt: p.clone(),
-            candidates: c.clone(),
-        });
-    }
-    Ok(TokenSet {
-        eos: eos.ok_or("入力が空")?,
-        items: out,
-    })
 }
 
 /// `models\` の中の GGUF（決まった名前、無ければ最初の `.gguf`）

@@ -42,7 +42,6 @@ pub const GGUF_NAME: &str = "zenz-v3.2-small-Q5_K_M.gguf";
 /// OpenVINO のキャッシュとトークン列を置くフォルダ（実行のはじめに空にする）
 const CACHE_DIR: &str = "cache";
 const REPORT_FILE: &str = "report.txt";
-const TOKENS_FILE: &str = "tokens.json";
 /// 子が結果を書く行の印
 const RESULT_PREFIX: &str = "IKARI_NPU_PROBE_RESULT ";
 /// AppContainer の許可を足してよいフォルダの名前の先頭（デスクトップなどに直に展開したときは足さない）
@@ -57,6 +56,8 @@ const SHORT_TIMEOUT: Duration = Duration::from_secs(8 * 60);
 const MIN_REDACT_LEN: usize = 3;
 /// ハッシュの先頭の桁数（ADR 0075 §4.4）
 const SHA_PREFIX: usize = 12;
+/// モデルの sha256 の一覧（lane/npu-adr の変換が出す。models\ に置く）
+const SUMS_FILE: &str = "SHA256SUMS";
 
 /// 自分の exe のフォルダ
 pub fn exe_dir() -> Option<PathBuf> {
@@ -109,28 +110,7 @@ struct Cli {
     #[arg(long, hide = true)]
     mode: Option<String>,
     #[arg(long, hide = true)]
-    tokens: Option<PathBuf>,
-    #[arg(long, hide = true)]
     cache: Option<PathBuf>,
-    #[command(subcommand)]
-    cmd: Option<Cmd>,
-}
-
-#[derive(clap::Subcommand, Debug)]
-enum Cmd {
-    /// 入力を作る（Mac。`scripts/make-inputs.sh` が呼ぶ）
-    #[command(hide = true)]
-    MakeInputs {
-        /// 選んだ id を 1 行ずつ出して終わる
-        #[arg(long)]
-        print_ids: bool,
-        #[arg(long, required_unless_present = "print_ids")]
-        records: Option<PathBuf>,
-        #[arg(long, required_unless_present = "print_ids")]
-        set: Option<PathBuf>,
-        #[arg(long, required_unless_present = "print_ids")]
-        out: Option<PathBuf>,
-    },
 }
 
 /// 一覧の子の結果
@@ -145,20 +125,6 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     if let Some(kind) = cli.worker.clone() {
         return worker_main(&cli, &kind);
-    }
-    if let Some(Cmd::MakeInputs {
-        print_ids,
-        records,
-        set,
-        out,
-    }) = &cli.cmd
-    {
-        return make_inputs(
-            *print_ids,
-            records.as_deref(),
-            set.as_deref(),
-            out.as_deref(),
-        );
     }
     let Some(dir) = cli.dir.clone().or_else(exe_dir) else {
         eprintln!("exe の場所が分からない");
@@ -256,7 +222,6 @@ fn worker_main(cli: &Cli, kind: &str) -> ExitCode {
         budget: Duration::from_secs(cli.budget_secs),
         dir,
         inputs: cli.inputs.clone(),
-        tokens: cli.tokens.clone(),
         cache: cli.cache.clone(),
         ov_lib: cli.ov_lib.clone(),
     };
@@ -295,7 +260,6 @@ fn job_args(job: &Job) -> Vec<OsString> {
     };
     push("--batch", job.batch.map(|b| b.to_string().into()));
     push("--inputs", job.inputs.clone().map(Into::into));
-    push("--tokens", job.tokens.clone().map(Into::into));
     push("--cache", job.cache.clone().map(Into::into));
     push("--ov-lib", job.ov_lib.clone().map(Into::into));
     a
@@ -393,7 +357,7 @@ fn progress(msg: &str) {
     eprintln!("… {msg}");
 }
 
-fn sha12(path: &Path) -> Option<String> {
+fn sha256_hex(path: &Path) -> Option<String> {
     const CHUNK: usize = 1 << 20;
     let mut f = std::fs::File::open(path).ok()?;
     let mut h = Sha256::new();
@@ -405,37 +369,54 @@ fn sha12(path: &Path) -> Option<String> {
         }
         h.update(&buf[..n]);
     }
-    let hex: String = h.finalize().iter().map(|b| format!("{b:02x}")).collect();
-    Some(hex[..SHA_PREFIX].to_owned())
+    Some(h.finalize().iter().map(|b| format!("{b:02x}")).collect())
 }
 
+/// `SHA256SUMS`（`<hex>  <名前>` の行）を読む。名前はパスの最後だけ
+fn read_sums(text: &str) -> Vec<(String, String)> {
+    text.lines()
+        .filter_map(|l| {
+            let (hex, name) = l.trim().split_once(char::is_whitespace)?;
+            let name = name.trim().trim_start_matches('*');
+            let name = name.rsplit(['/', '\\']).next().unwrap_or(name);
+            Some((name.to_owned(), hex.to_ascii_lowercase()))
+        })
+        .collect()
+}
+
+/// models\ の GGUF と IR の sha256 の先頭 12 桁。`SHA256SUMS` があれば、全桁で照らした結果を名前の後ろに付ける
+/// （契約: IR は作り直すたびに sha256 が変わるので、zip の中の `SHA256SUMS` を正とする）
 fn model_hashes(dir: &Path) -> Vec<(String, String)> {
-    let mut files = Vec::new();
-    if let Some(g) = worker::gguf_path(dir) {
-        files.push(g);
-    }
-    for p in Precision::ALL {
-        let base = ov::ir_dir(dir, p);
-        let Ok(entries) = std::fs::read_dir(&base) else {
-            continue;
-        };
-        let mut found: Vec<PathBuf> = entries
-            .filter_map(|e| e.ok().map(|e| e.path()))
-            .filter(|f| f.extension().is_some_and(|x| x == "xml" || x == "bin"))
-            .collect();
-        found.sort();
-        files.extend(found);
-    }
     let models = dir.join(MODELS_DIR);
+    let mut files: Vec<PathBuf> = std::fs::read_dir(&models)
+        .map(|rd| {
+            rd.filter_map(|e| e.ok().map(|e| e.path()))
+                .filter(|f| {
+                    f.extension()
+                        .is_some_and(|x| x == "xml" || x == "bin" || x == "gguf")
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    files.sort();
+    let sums = std::fs::read_to_string(models.join(SUMS_FILE))
+        .map(|t| read_sums(&t))
+        .ok();
     files
         .into_iter()
         .filter_map(|f| {
-            let name = f
-                .strip_prefix(&models)
-                .unwrap_or(&f)
-                .to_string_lossy()
-                .replace('\\', "/");
-            sha12(&f).map(|h| (name, h))
+            let name = f.file_name()?.to_string_lossy().into_owned();
+            let hex = sha256_hex(&f)?;
+            let check = match sums
+                .as_ref()
+                .map(|s| s.iter().find(|(n, _)| *n == name).map(|(_, h)| *h == hex))
+            {
+                None => "",
+                Some(None) => "（SHA256SUMS に無い）",
+                Some(Some(true)) => "（SHA256SUMS と一致）",
+                Some(Some(false)) => "（SHA256SUMS と違う）",
+            };
+            Some((format!("{name}{check}"), hex[..SHA_PREFIX].to_owned()))
         })
         .collect()
 }
@@ -507,12 +488,14 @@ fn list(cli: &Cli, dir: &Path) -> ExitCode {
         }
     );
     for p in Precision::ALL {
-        let (xml, _) = ov::ir_files(dir, p, 1, score::SEQ_LENS[0]);
-        println!(
-            "IR {}: {}",
-            p.name(),
-            if xml.is_file() { "あり" } else { "無い" }
-        );
+        for b in score::BATCH_SIZES {
+            let (xml, _) = ov::ir_files(dir, p, b);
+            println!(
+                "IR {}: {}",
+                ov::ir_name(p, b),
+                if xml.is_file() { "あり" } else { "無い" }
+            );
+        }
     }
     ExitCode::SUCCESS
 }
@@ -538,35 +521,6 @@ fn cleanup(dir: &Path) -> ExitCode {
         }
     }
     code
-}
-
-fn make_inputs(
-    print_ids: bool,
-    records: Option<&Path>,
-    set: Option<&Path>,
-    out: Option<&Path>,
-) -> ExitCode {
-    if print_ids {
-        for id in input::SELECTED_IDS {
-            println!("{id}");
-        }
-        return ExitCode::SUCCESS;
-    }
-    let (Some(records), Some(set), Some(out)) = (records, set, out) else {
-        return ExitCode::FAILURE;
-    };
-    let read = |p: &Path| std::fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()));
-    let made = read(records)
-        .and_then(|r| read(set).map(|s| (r, s)))
-        .and_then(|(r, s)| input::make_inputs(&r, &s))
-        .and_then(|text| std::fs::write(out, text).map_err(|e| e.to_string()));
-    match made {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(e) => {
-            eprintln!("{e}");
-            ExitCode::FAILURE
-        }
-    }
 }
 
 /// 全部を測る
@@ -602,6 +556,7 @@ fn run_all(cli: &Cli, dir: &Path) -> Result<(), String> {
             candidates: items.iter().map(|i| i.candidates.len()).sum(),
             token_match: None,
         },
+        reference: items.iter().map(|i| i.nll_llama_cpu.clone()).collect(),
         ..Run::default()
     };
     let ov_devices: Option<Vec<String>> =
@@ -616,12 +571,9 @@ fn run_all(cli: &Cli, dir: &Path) -> Result<(), String> {
         budget: Duration::from_secs(cli.budget_secs),
         dir: dir.to_path_buf(),
         inputs: cli.inputs.clone(),
-        tokens: None,
         cache: None,
         ov_lib: cli.ov_lib.clone(),
     };
-    let tokens_path = cache.join(TOKENS_FILE);
-    let mut tokens_written = false;
     for device in devices {
         let mut d = DeviceRun {
             device,
@@ -644,22 +596,20 @@ fn run_all(cli: &Cli, dir: &Path) -> Result<(), String> {
                     };
                     let r = spawn_worker(&exe, &job, &Confine::Normal, &redact);
                     if let Some(t) = r.tokens.as_ref().filter(|_| device == Device::LlamaCpu) {
-                        run.header.token_match = token_match(t, &items);
-                        let json = serde_json::to_string(t).map_err(|e| e.to_string())?;
-                        std::fs::write(&tokens_path, json)
-                            .map_err(|e| format!("トークン列を書けない: {e}"))?;
-                        tokens_written = true;
+                        run.header.token_match = Some(token_match(t, &items));
                     }
                     d.full.push(r);
                 }
             }
             Device::Ov(target, precision) => {
-                let (xml, _) = ov::ir_files(dir, precision, 1, score::SEQ_LENS[0]);
-                if !xml.is_file() {
+                let batches: Vec<usize> = score::BATCH_SIZES
+                    .into_iter()
+                    .filter(|&b| ov::ir_files(dir, precision, b).0.is_file())
+                    .collect();
+                if batches.is_empty() {
                     d.skipped = Some(format!(
-                        "IR が無い（{MODELS_DIR}\\{}\\{}）",
-                        ov::IR_DIR,
-                        precision.name()
+                        "IR が無い（{MODELS_DIR}\\{}）",
+                        ov::ir_name(precision, 1)
                     ));
                 } else if let Some(list) = ov_devices
                     .as_ref()
@@ -667,11 +617,10 @@ fn run_all(cli: &Cli, dir: &Path) -> Result<(), String> {
                 {
                     d.skipped = Some(format!("装置が見えない（OpenVINO: {}）", list.join(", ")));
                 } else {
-                    for &b in &score::BATCH_SIZES {
+                    for &b in &batches {
                         let job = Job {
                             device,
                             batch: Some(b),
-                            tokens: tokens_written.then(|| tokens_path.clone()),
                             cache: Some(cache.join(format!("{device}-b{b}"))),
                             ..base_job.clone()
                         };
@@ -697,15 +646,7 @@ fn run_all(cli: &Cli, dir: &Path) -> Result<(), String> {
         run.devices.push(d);
     }
 
-    sandbox_checks(
-        &mut run,
-        &exe,
-        dir,
-        cli,
-        &base_job,
-        tokens_written.then_some(&tokens_path),
-        &redact,
-    );
+    sandbox_checks(&mut run, &exe, dir, cli, &base_job, &redact);
     run.elapsed = started.elapsed();
 
     let summary = report::summary(&run);
@@ -729,32 +670,23 @@ fn run_all(cli: &Cli, dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// llama.cpp のトークン列と、入力の `prompt_ids` の一致（入力に無ければ None）
-fn token_match(t: &score::TokenSet, items: &[input::Item]) -> Option<(usize, usize)> {
-    let mut compared = 0;
-    let mut same = 0;
-    for (tok, item) in t.items.iter().zip(items) {
-        let (Some(p), Some(c)) = (&item.prompt_ids, &item.candidate_ids) else {
-            continue;
-        };
-        compared += 1;
-        if &tok.prompt == p && &tok.candidates == c && item.eos_id.is_none_or(|e| e == t.eos) {
-            same += 1;
-        }
-    }
-    (compared > 0).then_some((same, compared))
+/// llama.cpp のトークン列と、入力（fixture）のトークン列の一致（一致した件、比べた件）
+fn token_match(t: &score::TokenSet, items: &[input::Item]) -> (usize, usize) {
+    let same = t
+        .items
+        .iter()
+        .zip(items)
+        .filter(|(tok, item)| {
+            tok.prompt == item.prompt_tokens
+                && tok.candidates == item.candidate_tokens
+                && t.eos == score::END_TOKEN
+        })
+        .count();
+    (same, items.len())
 }
 
 /// 檻の中で装置に触れるか（ADR 0075 §6）。ふつうに動いた装置だけを、1 件ずつ
-fn sandbox_checks(
-    run: &mut Run,
-    exe: &Path,
-    dir: &Path,
-    cli: &Cli,
-    base: &Job,
-    tokens: Option<&PathBuf>,
-    redact: &Redactor,
-) {
+fn sandbox_checks(run: &mut Run, exe: &Path, dir: &Path, cli: &Cli, base: &Job, redact: &Redactor) {
     if !cfg!(windows) {
         run.sandbox_notes.push("檻の確認は Windows だけ".into());
         return;
@@ -768,11 +700,9 @@ fn sandbox_checks(
     for target in OvTarget::ALL {
         let ran = Precision::ALL.into_iter().find_map(|p| {
             let d = Device::Ov(target, p);
-            run.get(d).and_then(DeviceRun::best).map(|_| d)
+            run.get(d).and_then(DeviceRun::best).map(|r| (d, r.batch))
         });
-        if let Some(d) = ran {
-            targets.push((d, Some(1)));
-        }
+        targets.extend(ran);
     }
     if targets.is_empty() {
         run.sandbox_notes
@@ -785,7 +715,6 @@ fn sandbox_checks(
             device,
             batch,
             mode: Mode::Quick,
-            tokens: tokens.cloned(),
             cache: None,
             ..base.clone()
         })
@@ -886,7 +815,6 @@ mod tests {
             budget: Duration::from_secs(9),
             dir: PathBuf::from("/tmp/ikari-npu-probe"),
             inputs: None,
-            tokens: Some(PathBuf::from("/tmp/t.json")),
             cache: Some(PathBuf::from("/tmp/c")),
             ov_lib: None,
         };
@@ -898,29 +826,29 @@ mod tests {
         assert_eq!(cli.mode.as_deref(), Some("first"));
         assert_eq!(cli.reps, 3);
         assert_eq!(cli.budget_secs, 9);
-        assert_eq!(cli.tokens, job.tokens);
         assert_eq!(cli.cache, job.cache);
     }
 
     #[test]
-    fn token_match_compares_when_inputs_have_ids() {
-        let t = score::TokenSet {
-            eos: 2,
-            items: vec![score::ItemTokens {
-                prompt: vec![1],
-                candidates: vec![vec![5]],
-            }],
-        };
-        let mut items = input::parse(input::EMBEDDED).unwrap_or_default();
-        items.truncate(1);
-        if items.is_empty() {
-            return;
-        }
-        assert_eq!(token_match(&t, &items), None);
-        items[0].prompt_ids = Some(vec![1]);
-        items[0].candidate_ids = Some(vec![vec![5]]);
-        assert_eq!(token_match(&t, &items), Some((1, 1)));
-        items[0].eos_id = Some(9);
-        assert_eq!(token_match(&t, &items), Some((0, 1)));
+    fn token_match_compares_with_fixture() {
+        let items = input::parse(input::EMBEDDED).unwrap();
+        let mut t = worker::token_set(&items);
+        assert_eq!(token_match(&t, &items), (items.len(), items.len()));
+        t.items[0].prompt.push(9);
+        assert_eq!(token_match(&t, &items), (items.len() - 1, items.len()));
+        t.eos = 2;
+        assert_eq!(token_match(&t, &items).0, 0);
+    }
+
+    #[test]
+    fn sums_are_read_by_file_name() {
+        let sums = read_sums("ABC  ir/zenz-v3.2-small-L128-fp16.xml\ndef *x.bin\n\n");
+        assert_eq!(
+            sums,
+            [
+                ("zenz-v3.2-small-L128-fp16.xml".to_owned(), "abc".to_owned()),
+                ("x.bin".to_owned(), "def".to_owned())
+            ]
+        );
     }
 }
