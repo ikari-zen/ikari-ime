@@ -15,6 +15,8 @@ struct MockState {
     prompts: Mutex<Vec<String>>,
     /// 1回の採点にかかる時間
     delay: Mutex<Duration>,
+    /// `delay` を分ける区切りの数（decode に見立てる。区切りで取り消しの印を見る。0 は 1 と同じ）
+    steps: AtomicUsize,
     /// 読み込みにかかる時間
     load_delay: Mutex<Duration>,
     fail_load: AtomicBool,
@@ -27,11 +29,22 @@ struct MockScorer {
 }
 
 impl LmScorer for MockScorer {
-    fn nll(&mut self, prompt: &str, candidates: &[String]) -> Result<Vec<f32>, LmError> {
+    fn nll(
+        &mut self,
+        prompt: &str,
+        candidates: &[String],
+        cancel: &CancelToken,
+    ) -> Result<Vec<f32>, LmError> {
         self.state.calls.fetch_add(1, Ordering::SeqCst);
         lock(&self.state.prompts).push(prompt.to_owned());
         let delay = *lock(&self.state.delay);
-        thread::sleep(delay);
+        let steps = self.state.steps.load(Ordering::SeqCst).max(1);
+        for _ in 0..steps {
+            if cancel.is_cancelled() {
+                return Err(LmError::Cancelled);
+            }
+            thread::sleep(delay / steps as u32);
+        }
         let table = lock(&self.state.table);
         Ok(candidates
             .iter()
@@ -720,6 +733,77 @@ fn newest_request_wins_when_the_worker_is_busy() {
     assert_eq!(prompts.len(), 2);
     assert!(prompts[0].contains("r1"), "{:?}", prompts[0]);
     assert!(prompts[1].contains("r3"), "{:?}", prompts[1]);
+}
+
+/// 採点 1 回の時間（ms）。#429 の再現用。打鍵の間隔より長い推論（遅い機械）に見立てる
+const SLOW_INFER_MS: u64 = 300;
+/// 古い要求を送ってから、新しい要求を送るまで（ms）。古い推論が走り出すのに足りる長さ
+const SUPERSEDE_AFTER_MS: u64 = 30;
+/// 採点 1 回を分ける区切り（decode に見立てる。ADR 0074 §4 の段階 1 は区切りの間で止める）
+const SLOW_INFER_STEPS: u64 = 4;
+
+/// #429（同じプロセスの経路）: 走り出した古い推論は、取り消しの印で次の区切りで止まり、新しい要求を待たせない。
+/// 印を立てるのはエンジン（ADR 0074 §5）なので、ここでは新しい要求の前にテストが立てる
+#[test]
+fn a_running_stale_inference_does_not_delay_the_newest_request() {
+    let state = mock(&[("a", 1.0)]);
+    let r = ZenzRanker::new(loader(&state), cfg(WARM_UP_TEST_BUDGET_MS, 60_000));
+    r.warm_up();
+    *lock(&state.delay) = ikari_testtime::ms(SLOW_INFER_MS);
+    state
+        .steps
+        .store(SLOW_INFER_STEPS as usize, Ordering::SeqCst);
+    let fx = Fixture::new();
+    let old = CancelToken::new();
+    thread::scope(|scope| {
+        // 古い要求（先行計算）。待ちは別のスレッドで、取り消しの印の範囲の中
+        scope.spawn(|| {
+            let _scope = cancel::scope(old.clone());
+            let mut c = vec![dict_cand("a", 0)];
+            fx.rank(&r, &Context::new(), "old", &mut c);
+        });
+        thread::sleep(ikari_testtime::ms(SUPERSEDE_AFTER_MS));
+        let started = Instant::now();
+        old.cancel();
+        let mut c = vec![dict_cand("a", 0), dict_cand("b", 0)];
+        fx.rank(&r, &Context::new(), "new", &mut c);
+        let elapsed = started.elapsed();
+        let s = r.stats();
+        // 新しい要求は LM の結果を受け取った（時間切れではない）。古い要求は取り消しに数え、失敗に数えない
+        assert_eq!(s.timeouts, 0, "{s:?}");
+        assert_eq!(s.inference_errors, 0, "{s:?}");
+        assert_eq!(s.cancelled, 1, "{s:?}");
+        // 段階 1 の見込み: 自分の推論 1 回分 + 古い推論の区切り 1 つ分。余裕は推論の 1/4。
+        // 止まらなければ、古い推論の残りを待って、ほぼ 2 回分になる
+        let limit = ikari_testtime::ms(
+            SLOW_INFER_MS + SLOW_INFER_MS / SLOW_INFER_STEPS + SLOW_INFER_MS / 4,
+        );
+        assert!(elapsed < limit, "{elapsed:?} >= {limit:?}");
+    });
+}
+
+/// 範囲の印がもう立っていれば、`rank` は要求を出さずに戻る（ADR 0074 §6）。時間切れに数えない
+#[test]
+fn a_cancelled_scope_sends_no_request() {
+    let state = mock(&[("a", 1.0)]);
+    let r = ZenzRanker::new(loader(&state), cfg(500, 60_000));
+    let fx = Fixture::new();
+    let token = CancelToken::new();
+    token.cancel();
+    trace::begin();
+    {
+        let _scope = cancel::scope(token);
+        let mut c = vec![dict_cand("a", 0)];
+        fx.rank(&r, &Context::new(), "x", &mut c);
+    }
+    let t = trace::take();
+    let s = r.stats();
+    assert_eq!((s.requests, s.calls, s.timeouts, s.cancelled), (0, 0, 0, 1));
+    assert_eq!((t.calls, t.timeouts, t.cancelled), (0, 0, 1));
+    // 範囲の外（Convert）は止めない
+    let mut c = vec![dict_cand("a", 0)];
+    fx.rank(&r, &Context::new(), "x", &mut c);
+    assert_eq!(r.stats().requests, 1);
 }
 
 #[test]

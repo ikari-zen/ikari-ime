@@ -8,6 +8,8 @@
 //! - `warm_up()` は短い採点を1回済ませて、モデルの読み込みと Metal の初期化を終わらせる（ADR 0003 §6-4）。
 //! - 最後の要求から `idle_unload` が経つと、ワーカーがモデルを解放する（NFR-11）。
 //!   次の要求で読み直し、読み直している間は時間切れとして扱う（NFR-15: n-gram 相当の順位のまま）。
+//! - 呼んだスレッドに取り消しの印（`cancel::scope`）があれば、要求に付ける（ADR 0074）。印が立っていれば
+//!   要求を出さずに戻り、ワーカーは取り出したときと推論の中で印を見て止める。取り消しは時間切れにも失敗にも数えない。
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
@@ -18,7 +20,9 @@ use std::time::{Duration, Instant};
 
 use ikari_core::{Candidate, CandidateOrigin, RankInput, Ranker};
 
+use crate::cancel::{self, CancelToken};
 use crate::config::{COST_PER_NAT, ModelKind, ZenzConfig};
+use crate::error::LmError;
 use crate::prompt::{
     PromptInput, build_prompt_for, head_chars, join_topic, tail_chars, topic_words,
 };
@@ -41,6 +45,8 @@ struct Request {
     prompt: String,
     candidates: Vec<String>,
     reply: SyncSender<Replied>,
+    /// 取り消しの印（範囲の外の要求は、立たない印）
+    cancel: CancelToken,
 }
 
 /// `warm_up()` が採点させる読みと候補（短い読みで、候補は2つ）
@@ -91,6 +97,7 @@ struct Counters {
     load_failures: AtomicU64,
     unloads: AtomicU64,
     inference_errors: AtomicU64,
+    cancelled: AtomicU64,
 }
 
 struct Shared {
@@ -158,6 +165,9 @@ pub struct LmStats {
     pub load_failures: u64,
     pub unloads: u64,
     pub inference_errors: u64,
+    /// 取り消しの印が立っていて、要求を出さずに、またはワーカーが推論をやめて戻った数（ADR 0074。
+    /// `timeouts` と `inference_errors` に含まない）
+    pub cancelled: u64,
     /// いまモデルが読み込まれているか
     pub loaded: bool,
     /// いま読み込まれているモデルの装置（読まれていなければ `Unknown`。ADR 0061 §4.1）
@@ -247,6 +257,7 @@ impl ZenzRanker {
             load_failures: c.load_failures.load(Ordering::Relaxed),
             unloads: c.unloads.load(Ordering::Relaxed),
             inference_errors: c.inference_errors.load(Ordering::Relaxed),
+            cancelled: c.cancelled.load(Ordering::Relaxed),
             loaded: self.shared.loaded.load(Ordering::Acquire),
             device: self.device(),
         }
@@ -374,6 +385,7 @@ impl ZenzRanker {
             prompt,
             candidates: WARM_UP_CANDIDATES.iter().map(|s| (*s).to_owned()).collect(),
             reply: reply_tx,
+            cancel: CancelToken::new(),
         };
         let sent = {
             let tx = lock(&self.tx);
@@ -406,6 +418,13 @@ impl Ranker for ZenzRanker {
             counters.declined.fetch_add(1, Ordering::Relaxed);
             return;
         };
+        // 取り消された先行計算の中の呼び出し（ADR 0074 §6）。要求を出し直さない。時間切れの分母にも入れない
+        let cancel = cancel::current().unwrap_or_default();
+        if cancel.is_cancelled() {
+            counters.cancelled.fetch_add(1, Ordering::Relaxed);
+            trace::record_cancel();
+            return;
+        }
         counters.calls.fetch_add(1, Ordering::Relaxed);
         trace::record_call(self.device());
         let (key, prompt) = self.build_request_parts(input);
@@ -457,6 +476,7 @@ impl Ranker for ZenzRanker {
             prompt,
             candidates: surfaces.iter().map(|s| (*s).to_owned()).collect(),
             reply: reply_tx,
+            cancel: cancel.clone(),
         };
         let sent = {
             let tx = lock(&self.tx);
@@ -480,6 +500,10 @@ impl Ranker for ZenzRanker {
                 trace::record_reply(waiting_since.elapsed(), infer);
                 clear_inflight(&self.shared, &key);
                 self.apply(&scored, cands);
+            }
+            // 取り消されて、ワーカーが返事の送り口を落とした（ADR 0074 §3）。時間切れには数えない
+            Err(RecvTimeoutError::Disconnected) if cancel.is_cancelled() => {
+                trace::record_cancel();
             }
             Err(RecvTimeoutError::Timeout | RecvTimeoutError::Disconnected) => {
                 counters.timeouts.fetch_add(1, Ordering::Relaxed);
@@ -546,6 +570,13 @@ fn worker_loop(rx: Receiver<Request>, loader: LmLoader, shared: Arc<Shared>, cfg
             req = newer;
         }
 
+        // 取り消された要求は推論しない。返事の送り口を落とすので、待っている `rank` はすぐ戻る（ADR 0074 §3）
+        if req.cancel.is_cancelled() {
+            counters.cancelled.fetch_add(1, Ordering::Relaxed);
+            clear_inflight(&shared, &req.key);
+            continue;
+        }
+
         if scorer.is_none() {
             let blocked = last_load_failure.is_some_and(|t| t.elapsed() < cfg.load_retry);
             if !blocked {
@@ -575,7 +606,7 @@ fn worker_loop(rx: Receiver<Request>, loader: LmLoader, shared: Arc<Shared>, cfg
         };
 
         let infer_started = Instant::now();
-        let result = s.nll(&req.prompt, &req.candidates);
+        let result = s.nll(&req.prompt, &req.candidates, &req.cancel);
         let infer = infer_started.elapsed();
         match result {
             Ok(nlls) if nlls.len() == req.candidates.len() => {
@@ -586,6 +617,10 @@ fn worker_loop(rx: Receiver<Request>, loader: LmLoader, shared: Arc<Shared>, cfg
                 if req.reply.send((Arc::clone(&scored), infer)).is_err() {
                     *lock(&shared.late) = Some((req.key.clone(), scored, infer));
                 }
+            }
+            // 取り消しは失敗に数えない。子も捨てない（ADR 0074 §3）。返事の送り口は落とす
+            Err(LmError::Cancelled) => {
+                counters.cancelled.fetch_add(1, Ordering::Relaxed);
             }
             Ok(_) | Err(_) => {
                 counters.inference_errors.fetch_add(1, Ordering::Relaxed);

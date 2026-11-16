@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use ikari_core::Context;
 use ikari_proto::v1 as pb;
 
-use ikari_stack::LmTrace;
+use ikari_stack::{CancelToken, LmTrace};
 
 use crate::connection::{ConnectionId, SessionKey};
 use crate::segments::SegEntry;
@@ -443,6 +443,8 @@ impl ConversionTable {
 pub struct Job {
     pub entry: Arc<CacheEntry>,
     pub context: Context,
+    /// 取り消しの印（ADR 0074）。このジョブが出す LM の要求すべてが持つ。もう要らなくなったら待ち行列が立てる
+    pub cancel: CancelToken,
     seq: u64,
 }
 
@@ -454,9 +456,25 @@ struct QueueState {
     closed: bool,
     /// ワーカーが処理中の依頼の数（`next` で取り出してから `finish` まで）
     running: usize,
+    /// 処理中の依頼の鍵と取り消しの印（ワーカーは 1 本なので 1 件。ADR 0074 §5）
+    running_job: Option<(CacheKey, CancelToken)>,
+}
+
+impl QueueState {
+    /// 処理中の依頼の印を立てる（`keep` と同じ鍵なら立てない。同じ結果を捨てないため）
+    fn cancel_running(&self, keep: Option<&CacheKey>, only_session: Option<SessionKey>) {
+        let Some((key, token)) = self.running_job.as_ref() else {
+            return;
+        };
+        if keep == Some(key) || only_session.is_some_and(|s| s != key.session) {
+            return;
+        }
+        token.cancel();
+    }
 }
 
 /// 先行計算の待ち行列。古い依頼は捨て、ワーカーは最後に出された依頼から処理する。
+/// 新しい依頼が来たら、処理中の依頼（別の鍵）の取り消しの印を立てる。セッションをまたいでも立てる（ADR 0074 §5 Q1）。
 #[derive(Default)]
 pub struct PrefetchQueue {
     state: Mutex<QueueState>,
@@ -465,12 +483,15 @@ pub struct PrefetchQueue {
 
 impl PrefetchQueue {
     /// 依頼を置く。同じセッションの古い依頼は捨てる（その `entry` は中止扱いになる）。
+    /// 処理中の依頼が別の鍵なら、その取り消しの印を立てる。
     pub fn submit(&self, entry: Arc<CacheEntry>, context: Context) -> Option<Arc<CacheEntry>> {
         let mut state = lock(&self.state);
+        state.cancel_running(Some(&entry.key), None);
         state.seq += 1;
         let job = Job {
             entry: Arc::clone(&entry),
             context,
+            cancel: CancelToken::new(),
             seq: state.seq,
         };
         let replaced = state.jobs.insert(entry.key.session, job);
@@ -478,9 +499,11 @@ impl PrefetchQueue {
         replaced.map(|j| j.entry)
     }
 
-    /// セッションの待ち依頼を捨てる。
+    /// セッションの待ち依頼を捨てる。処理中の依頼がそのセッションのものなら、取り消しの印を立てる。
     pub fn forget_session(&self, session: SessionKey) -> Option<Arc<CacheEntry>> {
-        lock(&self.state).jobs.remove(&session).map(|j| j.entry)
+        let mut state = lock(&self.state);
+        state.cancel_running(None, Some(session));
+        state.jobs.remove(&session).map(|j| j.entry)
     }
 
     /// まだ終わっていない依頼の数（待っているもの + 処理中のもの）。診断ログの `qlen=` 用。
@@ -493,14 +516,14 @@ impl PrefetchQueue {
     pub fn finish(&self) {
         let mut state = lock(&self.state);
         state.running = state.running.saturating_sub(1);
+        state.running_job = None;
     }
 
+    /// 待ち依頼をすべて捨て、処理中の依頼の取り消しの印を立てる。
     pub fn clear(&self) -> Vec<Arc<CacheEntry>> {
-        lock(&self.state)
-            .jobs
-            .drain()
-            .map(|(_, j)| j.entry)
-            .collect()
+        let mut state = lock(&self.state);
+        state.cancel_running(None, None);
+        state.jobs.drain().map(|(_, j)| j.entry).collect()
     }
 
     /// 次の依頼を待つ。閉じられたら None。
@@ -515,9 +538,10 @@ impl PrefetchQueue {
                 .iter()
                 .max_by_key(|(_, j)| j.seq)
                 .map(|(session, _)| *session);
-            if let Some(session) = newest {
+            if let Some(job) = newest.and_then(|session| state.jobs.remove(&session)) {
                 state.running += 1;
-                return state.jobs.remove(&session);
+                state.running_job = Some((job.entry.key.clone(), job.cancel.clone()));
+                return Some(job);
             }
             state = self.wake.wait(state).unwrap_or_else(|e| e.into_inner());
         }
@@ -526,6 +550,7 @@ impl PrefetchQueue {
     pub fn close(&self) {
         let mut state = lock(&self.state);
         state.closed = true;
+        state.cancel_running(None, None);
         for (_, job) in state.jobs.drain() {
             job.entry.abandon();
         }
@@ -684,6 +709,56 @@ mod tests {
         std::thread::sleep(Duration::from_millis(10));
         queue.close();
         assert!(waiter.join().unwrap());
+    }
+
+    /// ADR 0074 §5: 新しい依頼は、処理中の別の鍵の依頼の印を立てる（セッションをまたいでも）。同じ鍵なら立てない
+    #[test]
+    fn submitting_cancels_the_running_job_unless_it_is_the_same_key() {
+        let queue = PrefetchQueue::default();
+        queue.submit(CacheEntry::new(key(1, "あ", 1)), Context::new());
+        let running = queue.next().unwrap();
+        queue.submit(CacheEntry::new(key(1, "あ", 1)), Context::new());
+        assert!(!running.cancel.is_cancelled(), "same key keeps the result");
+        queue.submit(CacheEntry::new(key(2, "い", 1)), Context::new());
+        assert!(running.cancel.is_cancelled(), "another session cancels");
+        queue.finish();
+
+        // 取り出した次の依頼は、立っていない印を持つ
+        let next = queue.next().unwrap();
+        assert!(!next.cancel.is_cancelled());
+        queue.submit(CacheEntry::new(key(1, "あい", 2)), Context::new());
+        assert!(next.cancel.is_cancelled(), "same session, newer reading");
+        queue.finish();
+        // 終わった依頼には触れない
+        let last = queue.next().unwrap();
+        queue.finish();
+        queue.submit(CacheEntry::new(key(3, "う", 1)), Context::new());
+        assert!(!last.cancel.is_cancelled());
+    }
+
+    #[test]
+    fn forgetting_clearing_and_closing_cancel_the_running_job() {
+        let queue = PrefetchQueue::default();
+        queue.submit(CacheEntry::new(key(1, "あ", 1)), Context::new());
+        let running = queue.next().unwrap();
+        queue.forget_session(sk(2));
+        assert!(!running.cancel.is_cancelled(), "another session");
+        queue.forget_session(sk(1));
+        assert!(running.cancel.is_cancelled());
+        queue.finish();
+        for stop in [
+            PrefetchQueue::clear as fn(&PrefetchQueue) -> _,
+            |q: &PrefetchQueue| {
+                q.close();
+                Vec::new()
+            },
+        ] {
+            let queue = PrefetchQueue::default();
+            queue.submit(CacheEntry::new(key(1, "あ", 1)), Context::new());
+            let running = queue.next().unwrap();
+            let _ = stop(&queue);
+            assert!(running.cancel.is_cancelled());
+        }
     }
 
     #[test]

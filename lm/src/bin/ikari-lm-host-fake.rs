@@ -11,6 +11,7 @@
 //!   gpu=unused             `--gpu on` でも、装置を CPU と報告する（GPU のない機械）
 //!   die_on_gpu=1           `--gpu on` のとき、最初の要求で（答えずに）終わる（GPU のドライバで落ちる子）
 //!   delay_ms=N             採点 1 回に N ms かける
+//!   delay_steps=N          `delay_ms` を N 個の区切り（decode に見立てる）に分け、区切りで取り消しの印を見る（既定 1）
 //!   exit_after=N           N 回答えたあと、次の要求で（答えずに）終わる
 //!   hang_after=N           N 回答えたあと、次の要求で（答えずに）止まる
 //!   garbage_after=N        N 回答えたあと、次の要求に壊れた枠を返す
@@ -30,7 +31,7 @@ use std::time::Duration;
 
 use ikari_lm::host::proto::{Reply, write_frame};
 use ikari_lm::host::{ARG_GPU, ARG_GPU_ON, ARG_MODEL, ReadyInfo, serve};
-use ikari_lm::{GpuState, LmDevice, LmError, LmScorer};
+use ikari_lm::{CancelToken, GpuState, LmDevice, LmError, LmScorer};
 
 const NLL_PREFIX: &str = "nll.";
 const DIE_SUFFIX: &str = ".die";
@@ -77,7 +78,12 @@ impl FakeScorer {
 }
 
 impl LmScorer for FakeScorer {
-    fn nll(&mut self, _prompt: &str, candidates: &[String]) -> Result<Vec<f32>, LmError> {
+    fn nll(
+        &mut self,
+        _prompt: &str,
+        candidates: &[String],
+        cancel: &CancelToken,
+    ) -> Result<Vec<f32>, LmError> {
         if self.die_now || self.die_flag.exists() || self.reached("exit_after") {
             std::process::exit(1);
         }
@@ -91,7 +97,13 @@ impl LmScorer for FakeScorer {
             thread::sleep(FOREVER);
         }
         if let Some(ms) = self.script.number("delay_ms") {
-            thread::sleep(Duration::from_millis(ms));
+            let steps = self.script.number("delay_steps").unwrap_or(1).max(1);
+            for _ in 0..steps {
+                if cancel.is_cancelled() {
+                    return Err(LmError::Cancelled);
+                }
+                thread::sleep(Duration::from_millis(ms / steps));
+            }
         }
         if self.script.is("fail_infer", "1") {
             return Err(LmError::Inference("fake failure".to_owned()));

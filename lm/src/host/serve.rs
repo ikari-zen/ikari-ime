@@ -1,10 +1,15 @@
 //! 子（`ikari-lm-host`）の側の繰り返し。標準入力の要求を読み、採点して、標準出力に返す。
+//!
+//! 取り消し（ADR 0074 §3.1）: 読み取りのスレッドが `Cancel { id }` を受けたら、「ここまで取り消し済み」の番号を上げ、
+//! 今の採点がその番号以下なら印を立てる（枠を本体に回さない）。本体は、要求を取り出したときと、推論の止めどころで見る。
 
 use std::io::{self, Read, Write};
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, mpsc};
 use std::thread;
 use std::time::Duration;
 
+use crate::cancel::CancelToken;
 use crate::error::LmError;
 use crate::host::proto::{FailKind, PROTOCOL_VERSION, Reply, Request, read_frame, write_frame};
 use crate::placement::GpuState;
@@ -23,6 +28,50 @@ pub struct ReadyInfo {
     pub devices: String,
 }
 
+/// 読み取りのスレッドと本体が共有する、取り消しの状態
+#[derive(Default)]
+struct Cancels {
+    /// この番号以下の要求は取り消し済み（0 = なし。親の番号は 1 から）
+    upto: AtomicU64,
+    /// 今の採点の番号と印
+    current: Mutex<Option<(u64, CancelToken)>>,
+}
+
+impl Cancels {
+    fn current(&self) -> MutexGuard<'_, Option<(u64, CancelToken)>> {
+        self.current.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// 読み取りのスレッドから: `id` とそれより古い要求を取り消す
+    fn cancel_upto(&self, id: u64) {
+        self.upto.fetch_max(id, Ordering::AcqRel);
+        if let Some((running, token)) = self.current().as_ref()
+            && *running <= id
+        {
+            token.cancel();
+        }
+    }
+
+    fn is_cancelled(&self, id: u64) -> bool {
+        id <= self.upto.load(Ordering::Acquire)
+    }
+
+    /// 本体から: 採点を始める。始める前に取り消されていれば立った印を返す
+    fn begin(&self, id: u64) -> CancelToken {
+        let token = CancelToken::new();
+        *self.current() = Some((id, token.clone()));
+        // 番号の更新（読み取り）→ 今の採点の確認、の順と逆にして、どちらかが必ず気づく
+        if self.is_cancelled(id) {
+            token.cancel();
+        }
+        token
+    }
+
+    fn end(&self) {
+        *self.current() = None;
+    }
+}
+
 /// 要求を読んで採点し、返す。入力が閉じる（親が終わった・子を手放した）か、出力に書けなくなったら戻る。
 ///
 /// - `load`: モデルを読み込む。失敗したら `Failed(Load)` を 1 枚返して戻る。
@@ -37,13 +86,24 @@ where
     L: FnOnce() -> Result<(Box<dyn LmScorer>, ReadyInfo), LmError>,
     E: FnOnce() + Send + 'static,
 {
-    let (tx, rx) = mpsc::channel::<Vec<u8>>();
+    // 本体に回すのは採点の要求だけ。None は読めない枠（本体が終わる）
+    let (tx, rx) = mpsc::channel::<Option<Request>>();
+    let cancels = Arc::new(Cancels::default());
+    let reader_cancels = Arc::clone(&cancels);
     thread::Builder::new()
         .name(READER_THREAD_NAME.to_owned())
         .spawn(move || {
             let mut input = input;
             while let Ok(Some(frame)) = read_frame(&mut input) {
-                if tx.send(frame).is_err() {
+                let request = match Request::decode(&frame) {
+                    Ok(Request::Cancel { id }) => {
+                        reader_cancels.cancel_upto(id);
+                        continue;
+                    }
+                    Ok(r) => Some(r),
+                    Err(_) => None,
+                };
+                if tx.send(request).is_err() {
                     return;
                 }
             }
@@ -73,18 +133,32 @@ where
         }
     };
 
-    for frame in rx {
+    for request in rx {
         // 読めない要求は、親が壊れている。続けずに終わる（親は子がいなくなったと見て、起動し直す）
-        let Ok(Request::Score {
+        let Some(Request::Score {
             id,
             prompt,
             candidates,
-        }) = Request::decode(&frame)
+        }) = request
         else {
             return Err(io::ErrorKind::InvalidData.into());
         };
-        let reply = match scorer.nll(&prompt, &candidates) {
+        let cancelled = || Reply::Failed {
+            id,
+            kind: FailKind::Cancelled,
+            message: String::new(),
+        };
+        // 取り出したときに、もう取り消されていれば推論しない
+        if cancels.is_cancelled(id) {
+            write_frame(&mut output, &cancelled().encode())?;
+            continue;
+        }
+        let token = cancels.begin(id);
+        let result = scorer.nll(&prompt, &candidates, &token);
+        cancels.end();
+        let reply = match result {
             Ok(nll) if nll.len() == candidates.len() => Reply::Scores { id, nll },
+            Err(LmError::Cancelled) => cancelled(),
             Ok(_) => Reply::Failed {
                 id,
                 kind: FailKind::Inference,
@@ -111,7 +185,15 @@ mod tests {
     struct LenScorer;
 
     impl LmScorer for LenScorer {
-        fn nll(&mut self, prompt: &str, candidates: &[String]) -> Result<Vec<f32>, LmError> {
+        fn nll(
+            &mut self,
+            prompt: &str,
+            candidates: &[String],
+            cancel: &CancelToken,
+        ) -> Result<Vec<f32>, LmError> {
+            if cancel.is_cancelled() {
+                return Err(LmError::Cancelled);
+            }
             if prompt == "fail" {
                 return Err(LmError::Inference("no".to_owned()));
             }
@@ -192,6 +274,40 @@ mod tests {
             }
         ));
         assert_eq!(got[3], Reply::Scores { id: 3, nll: vec![] });
+    }
+
+    #[test]
+    fn a_cancelled_request_gets_one_cancelled_reply_and_newer_ones_are_scored() {
+        let mut input = Vec::new();
+        write_frame(&mut input, &Request::Cancel { id: 2 }.encode()).unwrap();
+        input.extend(requests(&[
+            (1, "p", &["a"]),
+            (2, "p", &["a"]),
+            (3, "p", &["あい"]),
+        ]));
+        let mut output = Vec::new();
+        serve(
+            io::Cursor::new(input),
+            &mut output,
+            || Ok((Box::new(LenScorer) as Box<dyn LmScorer>, info())),
+            || {},
+        )
+        .unwrap();
+        let got = replies(&output);
+        assert_eq!(got.len(), 4, "{got:?}");
+        for (reply, want) in got[1..3].iter().zip([1, 2]) {
+            assert!(
+                matches!(reply, Reply::Failed { id, kind: FailKind::Cancelled, .. } if *id == want),
+                "{reply:?}"
+            );
+        }
+        assert_eq!(
+            got[3],
+            Reply::Scores {
+                id: 3,
+                nll: vec![2.0]
+            }
+        );
     }
 
     #[test]
