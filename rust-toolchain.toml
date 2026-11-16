@@ -1,0 +1,7 @@
+# Rust のツールチェーンの版を固定する（ADR 0069 §4.1。リリースのビルドと CI を同じ版にする）。
+# 版は、固定した時点で使っていたもの。上げるのは PR で行う（勝手に上げない）。
+# CI の `rustup target add` はこのファイルのツールチェーンに対して効く。
+[toolchain]
+channel = "1.99.1"
+profile = "minimal"
+components = ["rustfmt", "clippy"]
