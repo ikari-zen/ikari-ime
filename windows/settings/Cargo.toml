@@ -19,12 +19,9 @@ ikari-proto.workspace = true
 ikari-resource.workspace = true
 prost.workspace = true
 
-# 取得する部品（`ikari-data.exe`）を起こす Job Object（`src/fetch_os.rs`）だけが使う。通信の手段ではない
+# 取得する部品（`ikari-data.exe`）の絞った起動（`src/fetch_os.rs`）だけが使う。通信の手段ではない
 [target.'cfg(windows)'.dependencies]
-windows-sys = { workspace = true, features = [
-    "Win32_Foundation",
-    "Win32_System_JobObjects",
-] }
+ikari-sandbox.workspace = true
 
 [dev-dependencies]
 ikari-engine-host = { path = "../engine-host" }

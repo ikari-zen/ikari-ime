@@ -588,6 +588,7 @@ dependencies = [
  "ikari-core",
  "ikari-pipe",
  "ikari-resource",
+ "ikari-sandbox",
  "jiff",
  "libc",
  "tempfile",
@@ -759,6 +760,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ikari-sandbox"
+version = "0.1.0"
+dependencies = [
+ "windows-sys",
+]
+
+[[package]]
 name = "ikari-settings-core"
 version = "0.1.0"
 dependencies = [
@@ -766,10 +774,10 @@ dependencies = [
  "ikari-pipe",
  "ikari-proto",
  "ikari-resource",
+ "ikari-sandbox",
  "ikari-shell-core",
  "prost",
  "tempfile",
- "windows-sys",
 ]
 
 [[package]]

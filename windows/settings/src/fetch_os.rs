@@ -2,8 +2,10 @@
 //!
 //! - 実行ファイルは、自分（設定画面）の場所から決めたインストール先の絶対パス（PATH から探さない。シェルを通さない）。
 //!   `<インストール先>\settings\ikari-settings.exe` の隣の `<インストール先>\ikari-data.exe`。
-//! - 子は Job Object に入れる（閉じたら終わる。プロセスの数の上限は `ikari-data` と `transfer` の 2）。
-//!   標準入力と標準エラーは渡さず、標準出力のパイプだけを読む。窓を出さない。
+//! - 起動の作りは `ikari-sandbox`: 止めた状態で作り、Job Object に入れてから動かす（入る前に動く隙を作らない）。
+//!   Job: 閉じたら終わる。プロセスの数の上限は `ikari-data` と `transfer` の 2。
+//!   継承するハンドルは標準出力のパイプだけ（標準入力と標準エラーは渡さない）。窓を出さない。
+//!   整合性は設定画面と同じ（中。`inbox` に書くため。ADR 0076 §3.2）。
 //! - 設定画面のプロセス自身は通信しない（通信するのは `ikari-data` だけ。ADR 0066 §6.2 の L2）。
 //!
 //! 判断の置き場所: Rust。Windows 以外では起こせない（`Unsupported`。画面は取得の入口を出さない）。
@@ -42,114 +44,56 @@ impl Launcher for ProductLauncher {
     }
 }
 
+/// `ikari-data` の Job の制限（`ikari-data` と、その子の `transfer`。`transfer` の UI の制限は `ikari-data` が
+/// 自分の Job でかける）
+#[cfg(windows)]
+const DATA_JOB: ikari_sandbox::JobLimits = ikari_sandbox::JobLimits {
+    max_processes: 2,
+    ui_restricted: false,
+};
+
 #[cfg(windows)]
 impl Launcher for ProductLauncher {
     fn launch(&self, args: &[String]) -> io::Result<Running> {
-        use std::os::windows::process::CommandExt;
-        use std::process::{Command, Stdio};
-        use std::sync::{Arc, Mutex};
+        use std::ffi::OsString;
+        use std::os::windows::io::{AsHandle, OwnedHandle};
+        use std::sync::Arc;
 
-        use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
+        use ikari_sandbox::{Integrity, Launch, Stdio, spawn};
 
         let own = std::env::current_exe()?;
         let exe = data_exe_path(&own)
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "not installed"))?;
-        let job = job::Job::confined()?;
-        let mut child = Command::new(&exe)
-            .args(args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn()?;
-        if let Err(e) = job.assign(&child) {
-            let _ = child.kill();
-            return Err(e);
-        }
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| io::Error::other("no stdout"))?;
-        // Job を閉じると子の木が終わる。`kill` と `wait` が同じ Job を持つ
-        let job = Arc::new(Mutex::new(Some(job)));
-        let kill_job = Arc::clone(&job);
+        let args: Vec<OsString> = args.iter().map(OsString::from).collect();
+        // 子が書く側（標準出力）。親の端は継承できない形のまま
+        let (stdout, child_out) = io::pipe()?;
+        let child_out = OwnedHandle::from(child_out);
+        let child = spawn(&Launch {
+            program: &exe,
+            args: &args,
+            environment: None,
+            integrity: Integrity::Inherit,
+            job: DATA_JOB,
+            stdio: Stdio {
+                output: Some(child_out.as_handle()),
+                ..Stdio::default()
+            },
+        })?;
+        // 子の側の端は、親では閉じる（閉じないと、子が終わっても読み取りが終わらない）
+        drop(child_out);
+        // `kill` は Job の中をすべて止める（`transfer` も）。`wait` は、`ikari-data` が終わったあとに Job の中の
+        // 残りを止める（Job を閉じたのと同じ）
+        let child = Arc::new(child);
+        let kill_child = Arc::clone(&child);
         Ok(Running {
             stdout: Box::new(stdout),
-            kill: Box::new(move || {
-                kill_job.lock().unwrap_or_else(|e| e.into_inner()).take();
-            }),
+            kill: Box::new(move || kill_child.terminate()),
             wait: Box::new(move || {
-                let status = child.wait().ok().and_then(|s| s.code());
-                drop(job);
-                status
+                let status = child.wait().ok();
+                child.terminate();
+                status.map(|code| i32::from_ne_bytes(code.to_ne_bytes()))
             }),
         })
-    }
-}
-
-#[cfg(windows)]
-mod job {
-    use std::io;
-    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
-    use std::process::Child;
-    use std::ptr;
-
-    use windows_sys::Win32::Foundation::HANDLE;
-    use windows_sys::Win32::System::JobObjects::{
-        AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_ACTIVE_PROCESS,
-        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-        JobObjectExtendedLimitInformation, SetInformationJobObject,
-    };
-
-    /// Job の中のプロセスの上限（`ikari-data` と、その子の `transfer`）
-    const MAX_ACTIVE_PROCESSES: u32 = 2;
-
-    /// 閉じる（捨てる）と中のプロセスが終わる Job Object
-    pub struct Job(OwnedHandle);
-
-    impl Job {
-        pub fn confined() -> io::Result<Job> {
-            // SAFETY: 名前なし・既定のセキュリティで作る。戻り値は検査する
-            let handle = unsafe { CreateJobObjectW(ptr::null(), ptr::null()) };
-            if handle.is_null() {
-                return Err(io::Error::last_os_error());
-            }
-            // SAFETY: 成功した `CreateJobObjectW` が返した、まだ誰も持っていないハンドル
-            let job = Job(unsafe { OwnedHandle::from_raw_handle(handle) });
-            // SAFETY: すべて 0 の値は、この構造体として正しい（制限なし）
-            let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
-            limits.BasicLimitInformation.LimitFlags =
-                JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
-            limits.BasicLimitInformation.ActiveProcessLimit = MAX_ACTIVE_PROCESSES;
-            // SAFETY: `limits` は呼び出しの間生きていて、クラスに合う型で、大きさを正しく渡す
-            let ok = unsafe {
-                SetInformationJobObject(
-                    job.0.as_raw_handle() as HANDLE,
-                    JobObjectExtendedLimitInformation,
-                    ptr::from_ref(&limits).cast(),
-                    size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
-                )
-            };
-            if ok == 0 {
-                return Err(io::Error::last_os_error());
-            }
-            Ok(job)
-        }
-
-        pub fn assign(&self, child: &Child) -> io::Result<()> {
-            // SAFETY: どちらも、まだ閉じていないハンドル
-            let ok = unsafe {
-                AssignProcessToJobObject(
-                    self.0.as_raw_handle() as HANDLE,
-                    child.as_raw_handle() as HANDLE,
-                )
-            };
-            if ok == 0 {
-                Err(io::Error::last_os_error())
-            } else {
-                Ok(())
-            }
-        }
     }
 }
 

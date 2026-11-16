@@ -1,10 +1,9 @@
 //! 通信する子（Windows の `ikari-data transfer`）の起動の、OS に依存しない部分（ADR 0076 §3.2、§3.4）。
-//! Mac でもテストする。OS を呼ぶ部分は `spawn_windows.rs`。
+//! Mac でもテストする。OS を呼ぶ部分は `spawn_windows.rs`（起動の作りとコマンドラインは `ikari-sandbox`）。
 
 #![cfg_attr(not(windows), allow(dead_code))]
 
 use std::ffi::OsString;
-use std::path::Path;
 
 use crate::args::TransferArgs;
 
@@ -56,59 +55,6 @@ pub fn transfer_args(args: &TransferArgs) -> Vec<String> {
         v.push(expect.to_string());
     }
     v
-}
-
-const QUOTE: u16 = b'"' as u16;
-const BACKSLASH: u16 = b'\\' as u16;
-const SPACE: u16 = b' ' as u16;
-const NUL: u16 = 0;
-
-/// 実行ファイルと引数から、終端の NUL つきのコマンドライン（UTF-16）を作る。すべて引用符で囲み、`"` と、その前と
-/// 閉じの前の `\` は、`CommandLineToArgvW` で元に戻る形にする（`lm` の子の起動と同じ規則）。
-/// 実行ファイルのパスに `"` や NUL があれば `None`
-pub fn command_line(program: &Path, args: &[String]) -> Option<Vec<u16>> {
-    let program: Vec<u16> = program
-        .as_os_str()
-        .to_string_lossy()
-        .encode_utf16()
-        .collect();
-    if program.contains(&QUOTE) || program.contains(&NUL) {
-        return None;
-    }
-    let mut out = vec![QUOTE];
-    out.extend_from_slice(&program);
-    out.push(QUOTE);
-    for arg in args {
-        let arg: Vec<u16> = arg.encode_utf16().collect();
-        if arg.contains(&NUL) {
-            return None;
-        }
-        out.push(SPACE);
-        push_quoted(&mut out, &arg);
-    }
-    out.push(NUL);
-    Some(out)
-}
-
-fn push_quoted(out: &mut Vec<u16>, arg: &[u16]) {
-    out.push(QUOTE);
-    let mut backslashes = 0usize;
-    for &c in arg {
-        if c == BACKSLASH {
-            backslashes += 1;
-            continue;
-        }
-        let repeat = if c == QUOTE {
-            backslashes * 2 + 1
-        } else {
-            backslashes
-        };
-        out.extend(std::iter::repeat_n(BACKSLASH, repeat));
-        out.push(c);
-        backslashes = 0;
-    }
-    out.extend(std::iter::repeat_n(BACKSLASH, backslashes * 2));
-    out.push(QUOTE);
 }
 
 #[cfg(test)]
@@ -169,32 +115,5 @@ mod tests {
         };
         let parsed = crate::args::parse(&transfer_args(&args)).unwrap();
         assert_eq!(parsed, crate::args::Command::Transfer(args));
-    }
-
-    fn line(program: &str, args: &[&str]) -> String {
-        let args: Vec<String> = args.iter().map(|s| (*s).to_owned()).collect();
-        let mut out = command_line(Path::new(program), &args).unwrap();
-        assert_eq!(out.pop(), Some(NUL));
-        String::from_utf16(&out).unwrap()
-    }
-
-    #[test]
-    fn command_line_quotes_every_word() {
-        assert_eq!(
-            line(
-                r"C:\Program Files\ikari-ime\ikari-data.exe",
-                &["transfer", "--out", r"C:\Users\a b\x.bin"]
-            ),
-            r#""C:\Program Files\ikari-ime\ikari-data.exe" "transfer" "--out" "C:\Users\a b\x.bin""#
-        );
-        assert_eq!(line("p", &[r"a\"]), r#""p" "a\\""#);
-        assert_eq!(line("p", &[r#"a"b"#]), r#""p" "a\"b""#);
-        assert_eq!(line("p", &[r#"a\"b"#]), r#""p" "a\\\"b""#);
-    }
-
-    #[test]
-    fn command_line_refuses_quotes_in_the_program_and_nul_anywhere() {
-        assert!(command_line(Path::new("a\"b"), &[]).is_none());
-        assert!(command_line(Path::new("p"), &["a\0b".to_owned()]).is_none());
     }
 }
