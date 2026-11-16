@@ -93,10 +93,7 @@ fn probe_middle() {
         args: &probe_args(PROBE_TEST),
         environment: Some(&env),
         integrity: Integrity::Low,
-        job: JobLimits {
-            max_processes: 1,
-            ui_restricted: true,
-        },
+        job: JobLimits { max_processes: 1 },
         stdio: Stdio {
             output: Some(writer.as_handle()),
             ..Stdio::default()
@@ -223,10 +220,7 @@ fn only_stdout_is_inherited_and_the_low_child_runs_in_the_job() {
         args: &probe_args(PROBE_TEST),
         environment: Some(&env),
         integrity: Integrity::Low,
-        job: JobLimits {
-            max_processes: 1,
-            ui_restricted: true,
-        },
+        job: JobLimits { max_processes: 1 },
         stdio: Stdio {
             output: Some(writer.as_handle()),
             ..Stdio::default()
@@ -248,7 +242,7 @@ fn only_stdout_is_inherited_and_the_low_child_runs_in_the_job() {
     let lines = probe_lines(&out);
     assert_eq!(
         lines,
-        ["stdin=none", "stderr=none", "leak=failed", "nested=blocked"],
+        ["stdin=none", "stderr=none", "leak=failed", "nested=blocked",],
         "{out}"
     );
     // 子が書けていれば、ここに届く
@@ -267,10 +261,7 @@ fn two_processes_allow_one_nested_child_and_the_integrity_is_inherited() {
         args: &probe_args(PROBE_TEST),
         environment: None,
         integrity: Integrity::Inherit,
-        job: JobLimits {
-            max_processes: 2,
-            ui_restricted: false,
-        },
+        job: JobLimits { max_processes: 2 },
         stdio: Stdio {
             output: Some(writer.as_handle()),
             ..Stdio::default()
@@ -305,10 +296,7 @@ fn terminate_ends_the_child() {
         args: &probe_args(PROBE_TEST),
         environment: Some(&env),
         integrity: Integrity::Low,
-        job: JobLimits {
-            max_processes: 1,
-            ui_restricted: true,
-        },
+        job: JobLimits { max_processes: 1 },
         stdio: Stdio {
             output: Some(writer.as_handle()),
             ..Stdio::default()
@@ -379,13 +367,130 @@ fn a_bad_environment_block_is_refused_before_spawning() {
         args: &[],
         environment: Some(&bad),
         integrity: Integrity::Inherit,
-        job: JobLimits {
-            max_processes: 1,
-            ui_restricted: true,
-        },
+        job: JobLimits { max_processes: 1 },
         stdio: Stdio::default(),
     })
     .err()
     .unwrap();
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+}
+
+/// 入れ子の起動（設定画面の核 → `ikari-data` → `transfer` の形）の、まん中の Job の中で動く側
+const NESTED_MIDDLE_TEST: &str = "os::tests::probe_nested_middle";
+/// 実機で手で流す `transfer_runs_inside_both_jobs` の、`ikari-data.exe` の場所、URL、出力先（低い整合性で書ける
+/// 場所）。`ikari-data.exe` の場所が無ければ、まん中は孫として `probe_child` を起こす
+const TRANSFER_EXE_ENV: &str = "IKARI_SANDBOX_TEST_DATA_EXE";
+const TRANSFER_URL_ENV: &str = "IKARI_SANDBOX_TEST_URL";
+const TRANSFER_OUT_ENV: &str = "IKARI_SANDBOX_TEST_OUT";
+const TRANSFER_MAX_SIZE: &str = "16777216";
+
+/// `ikari-data` の役。自分の Job の中から、孫を子 1 の Job に入れて起こし、孫の行と終了コードを印つきで出す。
+/// 孫が `transfer` なら低い整合性、`probe_child` なら親と同じ（UI の制限が整合性でなく Job から来ることを見るため）
+#[test]
+#[ignore = "入れ子のテストが子として起動するときだけ動かす"]
+fn probe_nested_middle() {
+    let integrity = if std::env::var_os(TRANSFER_EXE_ENV).is_some() {
+        Integrity::Low
+    } else {
+        Integrity::Inherit
+    };
+    let (program, args) = match std::env::var(TRANSFER_EXE_ENV) {
+        Ok(exe) => {
+            let var = |name: &str| std::env::var(name).unwrap();
+            let args = [
+                "transfer".to_owned(),
+                "--url".to_owned(),
+                var(TRANSFER_URL_ENV),
+                "--out".to_owned(),
+                var(TRANSFER_OUT_ENV),
+                "--max-size".to_owned(),
+                TRANSFER_MAX_SIZE.to_owned(),
+            ];
+            (
+                std::path::PathBuf::from(exe),
+                args.into_iter().map(OsString::from).collect(),
+            )
+        }
+        Err(_) => (std::env::current_exe().unwrap(), probe_args(PROBE_TEST)),
+    };
+    let (mut reader, writer) = io::pipe().unwrap();
+    let writer = OwnedHandle::from(writer);
+    let spawned = spawn(&Launch {
+        program: &program,
+        args: &args,
+        environment: None,
+        integrity,
+        job: JobLimits { max_processes: 1 },
+        stdio: Stdio {
+            output: Some(writer.as_handle()),
+            ..Stdio::default()
+        },
+    });
+    // 標準エラーは親に渡っていないので、起こせなかった理由は印つきの行で出す
+    let child = match spawned {
+        Ok(child) => child,
+        Err(e) => {
+            println!("{MARK}spawn-error={e}");
+            return;
+        }
+    };
+    drop(writer);
+    let mut out = String::new();
+    reader.read_to_string(&mut out).unwrap();
+    let code = child.wait().unwrap();
+    for line in out.lines() {
+        // 孫が `probe_child` なら、印のある行だけ（libtest の行は捨てる）。`transfer` なら全部の行に印を付ける
+        match line.find(MARK) {
+            Some(at) => println!("{}", &line[at..]),
+            None if integrity == Integrity::Low => println!("{MARK}{line}"),
+            None => {}
+        }
+    }
+    println!("{MARK}exit={code}");
+}
+
+/// 外の Job（子 2）にまん中を入れて起こし、まん中の印つきの行を返す
+fn run_nested(environment: Option<&[u16]>) -> String {
+    let (mut reader, writer) = io::pipe().unwrap();
+    let writer = OwnedHandle::from(writer);
+    let child = spawn(&Launch {
+        program: &std::env::current_exe().unwrap(),
+        args: &probe_args(NESTED_MIDDLE_TEST),
+        environment,
+        integrity: Integrity::Inherit,
+        job: JobLimits { max_processes: 2 },
+        stdio: Stdio {
+            output: Some(writer.as_handle()),
+            ..Stdio::default()
+        },
+    })
+    .unwrap();
+    drop(writer);
+    let mut out = String::new();
+    reader.read_to_string(&mut out).unwrap();
+    child.wait().unwrap();
+    out
+}
+
+/// UI の制限つきの Job の中から、さらに絞った子（UI の制限つきの Job に入れる形）を起こせること。
+/// 孫に UI の制限が効いていること（外の Job の制限が入れ子の中にもかかること）は、このテストでは確かめていない
+#[test]
+fn a_nested_child_starts_inside_a_ui_restricted_job() {
+    let env = test_env(&[]);
+    let out = run_nested(Some(&env));
+    assert_eq!(
+        probe_lines(&out),
+        ["stdin=none", "stderr=none", "nested=blocked", "exit=0"],
+        "{out}"
+    );
+}
+
+#[test]
+#[ignore = "実機で手で流す（通信する。環境変数が要る）"]
+fn transfer_runs_inside_both_jobs() {
+    let out = run_nested(None);
+    println!("{out}");
+    let lines = probe_lines(&out);
+    assert!(lines.contains(&"exit=0"), "{out}");
+    assert!(lines.iter().any(|l| l.starts_with("progress ")), "{out}");
 }

@@ -50,9 +50,10 @@
 ### 3.2 Windows の権限
 | プロセス | 整合性 | ほかの絞り | 理由 |
 | --- | --- | --- | --- |
-| `ikari-data` | 中（設定画面と同じ。`asInvoker`） | 高い権限で起動されたら何もせずに終わる（A-3 と同じ規則）。設定画面の核が Job Object に入れる（止めた状態で作り、入れてから動かす。閉じたら終わる。子の数の上限は、`ikari-data` と `transfer` の 2）。渡すハンドルは標準出力のパイプだけ（`PROC_THREAD_ATTRIBUTE_HANDLE_LIST`。S5）。起動の作りは `transfer` と同じ `ikari-sandbox`（§17） | `inbox` に書くため。受け取ったバイト列の解釈（TLS、HTTP）をしないので、中の整合性で動かしても、外から来たものを読むのは自分の作業の場所のファイルを写すところだけ |
+| `ikari-data` | 中（設定画面と同じ。`asInvoker`） | 高い権限で起動されたら何もせずに終わる（A-3 と同じ規則）。設定画面の核が Job Object に入れる（止めた状態で作り、入れてから動かす。閉じたら終わる。子の数の上限は、`ikari-data` と `transfer` の 2。UI の制限は `transfer` と同じ）。渡すハンドルは標準出力のパイプだけ（`PROC_THREAD_ATTRIBUTE_HANDLE_LIST`。S5）。起動の作りは `transfer` と同じ `ikari-sandbox`（§17） | `inbox` に書くため。受け取ったバイト列の解釈（TLS、HTTP）をしないので、中の整合性で動かしても、外から来たものを読むのは自分の作業の場所のファイルを写すところだけ |
 | `ikari-data transfer` | **低**（`lm/src/host/os/windows.rs` と同じ作り） | `ikari-data` が作る Job Object の中（`ikari-data` が終われば終わる。子の数の上限 1、UI の制限は LM の子と同じ）。継承するハンドルは標準出力のパイプだけ（`PROC_THREAD_ATTRIBUTE_HANDLE_LIST`。標準入力と標準エラーは渡さない） | ネットワークから来たものを解釈するのはこの子。利用者のファイルに書けないようにする |
 
+- **Job の UI の制限**（2026-11-17 リード決定）: `ikari-data` の Job にも、`transfer` の Job と同じ UI の制限（クリップボードの読み書き、ほかのプロセスの窓、デスクトップの切り替え、画面とシステムの設定の変更、グローバルなアトム、サインアウト）をかける。理由: `ikari-data` に画面は無く、失うものが無い。中の整合性で動く分、ほかのアプリの窓や設定に触れられないようにしておく。`ikari-sandbox` はどの子にも必ずかける（選べる形にしない）。
 - `transfer` は、自分の整合性が低でなければ、何もせずに `refused` で終わる（人が手で打っても、中の整合性では通信しない。検査は §10）。
 - 低い整合性の子が書けるのは、低い整合性の場所だけ。作業の場所は `%USERPROFILE%\AppData\LocalLow\ikari-ime\fetch\`（OS が低い整合性に用意している場所。ikari が ACL を変えない）。
 - **作業の場所のファイルは信じない**（低い権限のほかのプログラムも書けるため）。`ikari-data` は、作業の場所のファイルを rename せず、`inbox/<名前>.partial/` に**写しながら sha256 を数える**。確かめるのは、写した先のバイト列の sha256。rename にしない理由は、低い整合性の印がファイルについたまま `models/` まで移ってしまうため。
@@ -288,8 +289,10 @@ error <理由の語>
 
 ## 17. 子の絞った起動の共通化（`ikari-sandbox`。2026-11-17）
 
-- **今**: `windows/sandbox`（`ikari-sandbox`）に、止めた状態で作り → Job Object に入れ → 渡すハンドルを限って動かす起動を置いた。使うのは `transfer` の起動（`fetch/src/spawn_windows.rs`。低、子 1、UI の制限、環境はプロキシと OS の分だけ）と、設定画面の核の `ikari-data` の起動（`windows/settings/src/fetch_os.rs`。中、子 2、環境は受け継ぐ）。どちらも標準出力のパイプだけを渡す。取り消しは Job の中をすべて止める（`TerminateJobObject`）。
+- **今**: `windows/sandbox`（`ikari-sandbox`）に、止めた状態で作り → Job Object に入れ → 渡すハンドルを限って動かす起動を置いた。使うのは `transfer` の起動（`fetch/src/spawn_windows.rs`。低、子 1、環境はプロキシと OS の分だけ）と、設定画面の核の `ikari-data` の起動（`windows/settings/src/fetch_os.rs`。中、子 2、環境は受け継ぐ）。どちらも UI の制限をかけ、標準出力のパイプだけを渡す。取り消しは Job の中をすべて止める（`TerminateJobObject`）。
 - 確かめたこと（VM、管理者の SSH。`ikari-sandbox` のテスト）: 子が Job に入っている、低の子の整合性が 0x1000、渡さない標準入力と標準エラーは null か子の新しいコンソール、親が継承の印を付けたままの別のハンドルは子に届かない、子 1 の Job では子がさらにプロセスを作れない（子 2 では作れる）、Job を持つ親が終わると子も終わる、渡したハンドルの継承の印は起動のあとに外れる。
+- **入れ子の Job と UI の制限**（VM で見つけた）: UI の制限つきの Job の中のプロセスは、UI の制限つきの別の Job に子を入れられない（`AssignProcessToJobObject` が `ERROR_NOT_SUPPORTED`。外と内のどちらにも、どの 1 つの制限をかけても同じ。外だけ、内だけなら入れられる）。そのため `ikari-sandbox` は、自分の Job がすでに UI の制限を全部かけていれば、新しい Job にはかけない（外の Job の制限が入れ子の中にもかかる前提）。一部だけなら、かけて、入れるところで失敗にする（起動しない側に倒す）。この形で、設定画面の核 → `ikari-data`（子 2、UI の制限）→ `transfer`（子 1、低）の入れ子から、`transfer` が https のファイル（11,358 バイト）を最後まで取れた（`transfer_runs_inside_both_jobs`、手で流すテスト）。
+  - **推測（確かめていない）**: 外の Job の UI の制限が、入れ子の内の Job の孫にもかかること（Microsoft の入れ子の Job の説明による）。管理者の SSH（セッション 0）では、確かめの手段にしたクリップボード（整合性でも拒まれ、区別できない）とグローバルなアトム（親が足せない）が使えなかった。ふだんのログオンで確かめる（§11 の 2 と一緒に）。
 - **LM の子（`lm/src/host/os/windows.rs`）はまだ移していない**。段 2（AppContainer。`lane/d3-win`）が同じ関数（起動の本体と属性の一覧）を書き換えていて、先に移すと衝突するため。段 2 を統合したあとで、次の形で移す:
   - `ikari-sandbox` の `Integrity` に、段 2 の値（AppContainer の SID を借りる形。SID の作成と許可は `lm` の `appcontainer` に残す）を足し、属性の一覧に `PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES` を足す（今の `AttrList` の中身）。
   - `lm` の `spawn` は、整合性の決め方（`low_integrity_enabled`、`Cage`、`CageState`）と、渡す 3 つのハンドル（標準エラーは `NUL`）を決めて `ikari_sandbox::spawn` を呼ぶだけにする。`Proc` は `Confined` を包む（`id`、`reap`）。`cmdline.rs` は `ikari_sandbox::cmdline` に替える。

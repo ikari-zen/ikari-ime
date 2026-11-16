@@ -17,10 +17,7 @@ use ikari_sandbox::{Confined, Integrity, JobLimits, Launch, Stdio, environment_b
 use crate::child::filter_env;
 
 /// `transfer` の子の Job の制限（子そのもの 1 つ。窓を持たない）
-const TRANSFER_JOB: JobLimits = JobLimits {
-    max_processes: 1,
-    ui_restricted: true,
-};
+const TRANSFER_JOB: JobLimits = JobLimits { max_processes: 1 };
 
 /// `program args…` を低い整合性で起こす。子の標準出力の読み取り側を返す。子は、捨てると（Job を閉じると）終わる
 pub fn spawn_low(program: &Path, args: &[String]) -> io::Result<(Confined, PipeReader)> {

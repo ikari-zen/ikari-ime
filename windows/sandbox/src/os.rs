@@ -21,8 +21,8 @@ use windows_sys::Win32::System::JobObjects::{
     JOB_OBJECT_UILIMIT_GLOBALATOMS, JOB_OBJECT_UILIMIT_HANDLES, JOB_OBJECT_UILIMIT_READCLIPBOARD,
     JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS, JOB_OBJECT_UILIMIT_WRITECLIPBOARD,
     JOBOBJECT_BASIC_UI_RESTRICTIONS, JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOBOBJECTINFOCLASS,
-    JobObjectBasicUIRestrictions, JobObjectExtendedLimitInformation, SetInformationJobObject,
-    TerminateJobObject,
+    JobObjectBasicUIRestrictions, JobObjectExtendedLimitInformation, QueryInformationJobObject,
+    SetInformationJobObject, TerminateJobObject,
 };
 use windows_sys::Win32::System::Threading::{
     CREATE_NO_WINDOW, CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT, CreateProcessAsUserW,
@@ -447,6 +447,25 @@ impl Drop for HandleList {
     }
 }
 
+/// 自分のプロセスが入っている Job の UI の制限。Job に入っていない、または読めなければ 0（制限なしとみなし、
+/// 新しい Job にかける側に倒す）
+fn own_job_ui_restrictions() -> u32 {
+    let mut ui = JOBOBJECT_BASIC_UI_RESTRICTIONS {
+        UIRestrictionsClass: 0,
+    };
+    // SAFETY: null は「自分の Job」の意味。`ui` は書き込める、クラスに合う大きさの値
+    let ok = unsafe {
+        QueryInformationJobObject(
+            ptr::null_mut(),
+            JobObjectBasicUIRestrictions,
+            ptr::from_mut(&mut ui).cast(),
+            size_of::<JOBOBJECT_BASIC_UI_RESTRICTIONS>() as u32,
+            ptr::null_mut(),
+        )
+    };
+    if ok == 0 { 0 } else { ui.UIRestrictionsClass }
+}
+
 /// 子を入れる Job Object。閉じると中のプロセスが終わる
 struct Job(OwnedHandle);
 
@@ -467,9 +486,13 @@ impl Job {
             JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
         info.BasicLimitInformation.ActiveProcessLimit = limits.max_processes;
         job.set(JobObjectExtendedLimitInformation, &info)?;
-        if limits.ui_restricted {
+        let wanted = UI_RESTRICTIONS;
+        // 自分が UI の制限つきの Job の中にいると、UI の制限つきの Job には入れられない（VM で
+        // `ERROR_NOT_SUPPORTED`。ADR 0076 §17）。入れ子の Job の中のプロセスには外の Job の制限もかかるので、
+        // 外の Job がすでに全部かけていれば、ここではかけない。一部だけなら、かけて、入れるところで失敗にする
+        if own_job_ui_restrictions() & wanted != wanted {
             let ui = JOBOBJECT_BASIC_UI_RESTRICTIONS {
-                UIRestrictionsClass: UI_RESTRICTIONS,
+                UIRestrictionsClass: wanted,
             };
             job.set(JobObjectBasicUIRestrictions, &ui)?;
         }

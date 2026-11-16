@@ -44,13 +44,10 @@ impl Launcher for ProductLauncher {
     }
 }
 
-/// `ikari-data` の Job の制限（`ikari-data` と、その子の `transfer`。`transfer` の UI の制限は `ikari-data` が
-/// 自分の Job でかける）
+/// `ikari-data` の Job の制限（`ikari-data` と、その子の `transfer`）。UI の制限は `ikari-sandbox` が必ずかける
+/// （`ikari-data` に画面は無い。ADR 0076 §3.2）
 #[cfg(windows)]
-const DATA_JOB: ikari_sandbox::JobLimits = ikari_sandbox::JobLimits {
-    max_processes: 2,
-    ui_restricted: false,
-};
+const DATA_JOB: ikari_sandbox::JobLimits = ikari_sandbox::JobLimits { max_processes: 2 };
 
 #[cfg(windows)]
 impl Launcher for ProductLauncher {
