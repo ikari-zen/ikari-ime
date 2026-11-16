@@ -15,3 +15,9 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 ikari-shell-core.workspace = true
 ikari-pipe.workspace = true
+ikari-proto.workspace = true
+prost.workspace = true
+
+[dev-dependencies]
+ikari-engine-host = { path = "../engine-host" }
+tempfile.workspace = true

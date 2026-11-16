@@ -640,8 +640,12 @@ dependencies = [
 name = "ikari-settings-core"
 version = "0.1.0"
 dependencies = [
+ "ikari-engine-host",
  "ikari-pipe",
+ "ikari-proto",
  "ikari-shell-core",
+ "prost",
+ "tempfile",
 ]
 
 [[package]]
