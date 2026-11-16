@@ -24,7 +24,7 @@ pub const DEV_STRINGS: &[&str] = &[
     "--data-dir",
 ];
 
-/// 取り込んではいけない DLL の名前の一部（大文字小文字を区別しない）。`crt-static` なら、どれも入らない
+/// 取り込んではいけない DLL の名前の前置き（大文字小文字を区別しない。`.dll` で終わる名前のときだけ数える）。`crt-static` なら、どれも入らない
 const DYNAMIC_CRT: &[&str] = &[
     "vcruntime",
     "msvcp",
@@ -83,13 +83,40 @@ pub fn find_dev_strings(bytes: &[u8]) -> Vec<&'static str> {
         .collect()
 }
 
-/// 動的な C ランタイムの名前のうち、`bytes` に（大文字小文字を区別せず）入っているもの
-pub fn find_dynamic_crt(bytes: &[u8]) -> Vec<&'static str> {
-    DYNAMIC_CRT
-        .iter()
-        .copied()
-        .filter(|name| contains_ignore_case(bytes, name.as_bytes()))
-        .collect()
+/// 動的な C ランタイムの DLL 名（`vcruntime140.dll` など）で、`bytes` に（大文字小文字を区別せず）入っているもの。
+/// 名前の前置きに続く名前の文字が `.dll` で終わるときだけ数える（ほかの文字列の一部には当たらない）
+pub fn find_dynamic_crt(bytes: &[u8]) -> Vec<String> {
+    let is_name_byte = |b: u8| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.');
+    let mut found: Vec<String> = Vec::new();
+    for prefix in DYNAMIC_CRT {
+        let needle = prefix.as_bytes();
+        if bytes.len() < needle.len() {
+            continue;
+        }
+        for i in 0..=bytes.len() - needle.len() {
+            if !bytes[i..i + needle.len()].eq_ignore_ascii_case(needle) {
+                continue;
+            }
+            // 名前の途中から始まる当たり（`xvcomp...`）は数えない
+            if i > 0 && is_name_byte(bytes[i - 1]) {
+                continue;
+            }
+            let run_end = bytes[i..]
+                .iter()
+                .take(64)
+                .position(|&b| !is_name_byte(b))
+                .unwrap_or((bytes.len() - i).min(64));
+            let token = &bytes[i..i + run_end];
+            let lower = String::from_utf8_lossy(token).to_ascii_lowercase();
+            if let Some(end) = lower.find(".dll") {
+                let name = lower[..end + 4].to_string();
+                if !found.contains(&name) {
+                    found.push(name);
+                }
+            }
+        }
+    }
+    found
 }
 
 fn utf16le(word: &str) -> Vec<u8> {
@@ -98,10 +125,6 @@ fn utf16le(word: &str) -> Vec<u8> {
 
 fn contains(haystack: &[u8], needle: &[u8]) -> bool {
     find(haystack, needle, false)
-}
-
-fn contains_ignore_case(haystack: &[u8], needle: &[u8]) -> bool {
-    find(haystack, needle, true)
 }
 
 fn find(haystack: &[u8], needle: &[u8], ignore_case: bool) -> bool {
@@ -149,7 +172,23 @@ mod tests {
     #[test]
     fn dynamic_crt_is_found_ignoring_case() {
         let bytes = b"\0VCRUNTIME140.dll\0api-ms-win-crt-runtime-l1-1-0.dll\0";
-        assert_eq!(find_dynamic_crt(bytes), ["vcruntime", "api-ms-win-crt-"]);
+        assert_eq!(
+            find_dynamic_crt(bytes),
+            ["vcruntime140.dll", "api-ms-win-crt-runtime-l1-1-0.dll"]
+        );
+    }
+
+    #[test]
+    fn dll_names_only_not_other_strings_that_contain_the_prefix() {
+        // 名前の一部にたまたま当たる文字列や、`.dll` で終わらない語は数えない
+        let bytes = b"\0vcompare\0 the msvcrt-like word\0 concrete\0 xvcomp140.dll\0";
+        assert!(
+            find_dynamic_crt(bytes).is_empty(),
+            "{:?}",
+            find_dynamic_crt(bytes)
+        );
+        assert_eq!(find_dynamic_crt(b"\0VCOMP140.DLL\0"), ["vcomp140.dll"]);
+        assert_eq!(find_dynamic_crt(b"\0msvcp140_1.dll\0"), ["msvcp140_1.dll"]);
     }
 
     #[test]

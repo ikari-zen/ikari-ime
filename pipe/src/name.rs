@@ -121,7 +121,7 @@ mod tests {
         );
         // イベントの名前に `\` を足させない（`Global\` のあとに区切りは 1 つも無い）
         let name = stop_event_name(SID, 1).unwrap();
-        assert_eq!(name.matches('\\').count(), 1, "{name}");
+        assert_eq!(name.matches('\\').count(), 1);
         assert_eq!(
             stop_event_name(r"S-1\..\x", 1),
             Err(PipeNameError::InvalidSid)
