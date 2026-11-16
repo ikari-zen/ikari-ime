@@ -34,9 +34,29 @@ pub struct ScopeDiag<'a> {
     pub empty: Option<i32>,
 }
 
+/// 候補窓への 1 回の送りの診断（ADR 0062 §9.2。数値と固定の語だけで、候補の文字は持たない）。
+/// `dbgcap` の行と候補窓のログを `seq` で突き合わせる。
+#[cfg_attr(not(feature = "dev-knobs"), allow(dead_code))]
+pub struct CandidateDiag {
+    /// `show`、`move`、`hide`
+    pub op: &'static str,
+    /// 送れたか
+    pub sent: bool,
+    /// 送った最後の `seq`（つながっていなければ `None`）
+    pub seq: Option<u64>,
+    /// 決めた上下（`below`、`above`。送れなかった・決めていなければ `None`）
+    pub side: Option<&'static str>,
+    /// アンカーの出どころ（`client`、`last-known`、`mouse-screen`。新しく決めたときだけ）
+    pub source: Option<&'static str>,
+    /// 固定したアンカーの矩形（物理の画面座標。x、y、幅、高さ）と倍率
+    pub anchor: Option<([f64; 4], f64)>,
+    /// `GetTextExt` の `clipped`（アンカーを新しく取ったときだけ）
+    pub clipped: Option<bool>,
+}
+
 #[cfg(feature = "dev-knobs")]
 mod on {
-    use super::{ScopeDiag, ScopeOutcome};
+    use super::{CandidateDiag, ScopeDiag, ScopeOutcome};
     use windows::Win32::System::Diagnostics::Debug::OutputDebugStringW;
     use windows_core::{HRESULT, HSTRING};
 
@@ -128,6 +148,24 @@ mod on {
         write(&format!("{PREFIX}process kind={kind}\n"));
     }
 
+    /// 候補窓への送り（ADR 0062 §9.2）。行の頭は `show candidates` などのまま（前の段の手順書と同じ語）
+    pub fn candidates(diag: &CandidateDiag) {
+        let anchor = diag.anchor.map_or_else(
+            || "none".to_owned(),
+            |([x, y, w, h], scale)| format!("{x:.0},{y:.0},{w:.0},{h:.0} scale={scale:.2}"),
+        );
+        write(&format!(
+            "{PREFIX}{} candidates sent={} seq={} side={} source={} clipped={} anchor={anchor}\n",
+            diag.op,
+            u8::from(diag.sent),
+            diag.seq
+                .map_or_else(|| "none".to_owned(), |seq| seq.to_string()),
+            diag.side.unwrap_or("none"),
+            diag.source.unwrap_or("none"),
+            diag.clipped.map_or("none", |c| if c { "1" } else { "0" }),
+        ));
+    }
+
     /// HRESULT を出す。
     pub fn hresult(message: &'static str, code: HRESULT) {
         // HRESULT は符号つきの 32 ビット。16 進で読むのが通例なので、ビット列のまま出す
@@ -174,7 +212,9 @@ pub use on::*;
 
 #[cfg(not(feature = "dev-knobs"))]
 mod off {
-    use super::ScopeDiag;
+    use super::{CandidateDiag, ScopeDiag};
+
+    pub fn candidates(_diag: &CandidateDiag) {}
 
     pub fn event(_message: &'static str) {}
 

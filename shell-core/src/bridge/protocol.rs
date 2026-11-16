@@ -23,6 +23,19 @@ pub fn error_frame(request_id: u64, code: BridgeErrorCode, key: &str) -> Frame {
         body: Some(Body::Error(BridgeError {
             code: code as i32,
             key: key.to_owned(),
+            reason: String::new(),
+        })),
+    }
+}
+
+/// 書き出し・取り込みの失敗（`TRANSFER_FAILED`）の枠。`reason` は理由の固定の語だけ（パスや中身は入れない。ADR 0068 §4）
+pub fn transfer_failure(request_id: u64, reason: &'static str) -> Frame {
+    Frame {
+        request_id,
+        body: Some(Body::Error(BridgeError {
+            code: BridgeErrorCode::TransferFailed as i32,
+            key: String::new(),
+            reason: reason.to_owned(),
         })),
     }
 }

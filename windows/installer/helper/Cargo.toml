@@ -1,0 +1,38 @@
+[package]
+name = "ikari-setup-helper"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Windows のインストーラ（Inno Setup）が管理者で呼ぶ小さな道具。置き場所の検査、エンジンを止める、OS のエラー報告からの除外（ADR 0067 §3、0068 §6.2、0073 §4）"
+
+# 判断（検査の規則、止める相手の選び方、名前の検査）は OS に依存しない部分に置き、Mac でテストする。
+# Win32 の呼び出しは `src/os.rs`（cfg(windows)）だけ。
+[dependencies]
+ikari-pipe.workspace = true
+
+# features は使う API の名前空間だけ（管理者で動く道具なので、増やすときは理由を書く）
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = [
+    # HANDLE、CloseHandle、LocalFree、GetLastError
+    "Win32_Foundation",
+    # トークン（相手のユーザーの SID）、ACL と ACE
+    "Win32_Security",
+    # GetNamedSecurityInfoW、ConvertSidToStringSidW
+    "Win32_Security_Authorization",
+    # ファイルの属性（リンクの検出）
+    "Win32_Storage_FileSystem",
+    # プロセスの一覧
+    "Win32_System_Diagnostics_ToolHelp",
+    # OpenProcess、QueryFullProcessImageNameW、OpenEventW、SetEvent、待つ、終わらせる
+    "Win32_System_Threading",
+    # ProcessIdToSessionId
+    "Win32_System_RemoteDesktop",
+    # WerAddExcludedApplication、WerRemoveExcludedApplication
+    "Win32_System_ErrorReporting",
+    # SetDefaultDllDirectories
+    "Win32_System_LibraryLoader",
+] }
+
+[dev-dependencies]
+tempfile.workspace = true

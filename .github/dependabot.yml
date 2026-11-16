@@ -14,6 +14,12 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 3
+  # 候補窓の画面（C#。windows/candidate-ui）の NuGet。版を上げたら Windows で packages.lock.json を作り直す
+  - package-ecosystem: "nuget"
+    directory: "/windows/candidate-ui"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

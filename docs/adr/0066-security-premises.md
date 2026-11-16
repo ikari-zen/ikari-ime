@@ -92,6 +92,7 @@ ikari は打鍵のすべてを受け取り、Windows ではすべてのアプリ
 
 - 分かったこと: 今の `Cargo.lock` に、HTTP・TLS・非同期のソケットの crate は入っていない（`reqwest`、`ureq`、`hyper`、`rustls`、`tokio`、`mio`、`socket2` が 0 件）。取得は `xtask` が外の `curl` を呼んでいる（製品ではない）。
 - 取得する部品を足すときは、別の実行ファイルにし、L1 の検査の対象から名前で外す（「通信してよいのは `ikari-data` だけ」を検査の文にする）。
+- （2026-11-17 追記）取得の通信は、`ikari-data` の crate にだけ `ureq` と OS の TLS（`native-tls`）を入れる形に決まった（[ADR 0076](0076-ikari-data-contract.md) §9）。L1 の依存の検査は、`Cargo.lock` の名前ではなく、配る対象ごとの依存の木で「`ikari-data` の下に限る」を見る形に替える。通信の DLL の検査は、`ikari-data.exe` だけを外す。
 
 ## 7. 検討した案
 

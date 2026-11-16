@@ -3,7 +3,9 @@
 //! - 枠: 長さ（u32、リトルエンディアン）+ 中身。中身は [`MAX_FRAME_BYTES`] まで。超えたら相手が壊れたと見なす。
 //! - 親 → 子（stdin）: [`Request`]。**親が stdin を閉じたら、子は終わる**（終了の合図は別に持たない）。
 //! - 子 → 親（stdout）: [`Reply`]。最初の 1 枚は `Ready`（読み込みが済んだ）か `Failed`（読み込めなかった）。
-//!   以降は、要求 1 つにつき、同じ `id` の `Scores` か `Failed` を 1 枚。
+//!   以降は、`Score` 1 つにつき、同じ `id` の `Scores` か `Failed` を 1 枚。
+//! - 版 2（ADR 0074 §3.1）: 親 → 子の `Cancel { id }`（「`id` とそれより古い要求は要らない」）。返事はない。
+//!   取り消された `Score` にも返事は 1 枚来る（`Scores` か `Failed { kind: Cancelled }`）。
 //! - 文字列は長さ（u32）+ UTF-8。プロンプトは改行やタブを含みうるので、行では区切らない。
 //! - NLL は f32 のビット列のまま運ぶ（同じプロセスで採点したときと値が変わらない。無限大も通る）。
 //! - 版（[`PROTOCOL_VERSION`]）は `Ready` に入れる。違えば親は子を使わない。子はエンジンと同じ場所に置き、
@@ -15,11 +17,12 @@ use crate::placement::GpuState;
 use crate::scorer::LmDevice;
 
 /// 取り決めの版。枠や欄の意味を変えたら上げる
-pub const PROTOCOL_VERSION: u16 = 1;
+pub const PROTOCOL_VERSION: u16 = 2;
 /// 枠の中身の上限（バイト）。プロンプト（左文脈 40 字ほど + 読み 256 字まで）と候補 32 個が十分に入る
 pub const MAX_FRAME_BYTES: usize = 1024 * 1024;
 
 const TAG_SCORE: u8 = 0x01;
+const TAG_CANCEL: u8 = 0x02;
 const TAG_READY: u8 = 0x81;
 const TAG_SCORES: u8 = 0x82;
 const TAG_FAILED: u8 = 0x83;
@@ -30,6 +33,7 @@ const DEVICE_GPU: u8 = 2;
 
 const FAIL_LOAD: u8 = 1;
 const FAIL_INFERENCE: u8 = 2;
+const FAIL_CANCELLED: u8 = 3;
 
 /// 失敗の文面の上限（バイト）。超えた分は切る
 const MAX_MESSAGE_BYTES: usize = 512;
@@ -43,6 +47,8 @@ pub enum Request {
         prompt: String,
         candidates: Vec<String>,
     },
+    /// `id` とそれより古い要求は要らない（返事はない。ADR 0074 §3.1）
+    Cancel { id: u64 },
 }
 
 /// 失敗の種類
@@ -52,6 +58,8 @@ pub enum FailKind {
     Load,
     /// この要求の採点に失敗した（子は生きていて、次の要求を受ける）
     Inference,
+    /// この要求は取り消された（`Cancel` を受けた。失敗には数えない）
+    Cancelled,
 }
 
 /// 子 → 親
@@ -179,6 +187,10 @@ impl Request {
                     put_str(&mut out, c);
                 }
             }
+            Request::Cancel { id } => {
+                out.push(TAG_CANCEL);
+                out.extend_from_slice(&id.to_le_bytes());
+            }
         }
         out
     }
@@ -200,6 +212,11 @@ impl Request {
                     prompt,
                     candidates,
                 })
+            }
+            TAG_CANCEL => {
+                let id = c.u64()?;
+                c.end()?;
+                Ok(Request::Cancel { id })
             }
             _ => Err(Malformed("unknown request tag")),
         }
@@ -240,6 +257,7 @@ impl Reply {
                 out.push(match kind {
                     FailKind::Load => FAIL_LOAD,
                     FailKind::Inference => FAIL_INFERENCE,
+                    FailKind::Cancelled => FAIL_CANCELLED,
                 });
                 put_str(&mut out, truncate_message(message));
             }
@@ -284,6 +302,7 @@ impl Reply {
                 let kind = match c.u8()? {
                     FAIL_LOAD => FailKind::Load,
                     FAIL_INFERENCE => FailKind::Inference,
+                    FAIL_CANCELLED => FailKind::Cancelled,
                     _ => return Err(Malformed("unknown failure kind")),
                 };
                 let message = c.string()?;
@@ -350,6 +369,13 @@ mod tests {
     fn request_round_trips() {
         let r = score();
         assert_eq!(Request::decode(&r.encode()), Ok(r));
+        let c = Request::Cancel { id: u64::MAX };
+        assert_eq!(Request::decode(&c.encode()), Ok(c));
+        // 取り消しが運ぶのは番号だけ
+        assert_eq!(Request::Cancel { id: 1 }.encode().len(), 1 + 8);
+        let mut extra = Request::Cancel { id: 1 }.encode();
+        extra.push(0);
+        assert_eq!(Request::decode(&extra), Err(Malformed("trailing bytes")));
     }
 
     #[test]
@@ -380,6 +406,11 @@ mod tests {
             Reply::Failed {
                 id: 3,
                 kind: FailKind::Inference,
+                message: String::new(),
+            },
+            Reply::Failed {
+                id: 4,
+                kind: FailKind::Cancelled,
                 message: String::new(),
             },
         ] {

@@ -13,10 +13,11 @@
 //! - `ikari.settings.v1` の `AppRequest` / `AppReply`（`ikari_settings_app`。状態を持たない純関数の口）は、このパイプでは
 //!   運ばない。答えるのは `ikari_shell_core::settings` の関数で、画面が同じプロセスの中で呼べる（W4-s3 の方式で決める）。
 //!   運ぶ必要が出たら、`Frame` の種類を足すのでなく、版を分けた別の枠にする（`SETTINGS_PIPE_PROTOCOL`）。
-//! - 上限: パイプの枠は `ikari_pipe::MAX_FRAME_LEN`（16 MiB）。超える要求は、枠の本体を読まずに接続を切る
-//!   （枠の位置が分からなくなるため、返事を返せない）。画面は送る前に `settings::import_size` で
-//!   見るので（`MAX_IMPORT_BYTES` は 64 MiB。16 MiB を超える分は未解決。PR に書いた）、通常は起きない。
-//!   返事が上限を超えるとき（大きな `ExportData`）は、接続を保ったまま `TOO_LARGE` の枠を返す。
+//! - 学習の全文を運ばない（ADR 0068 §4。B-2）: `ExportData` と `ImportData` の中継は `NOT_ALLOWED` で断る
+//!   （`relay_policy::whole_data_rejection`）。書き出しと取り込みは、画面が選んだファイルのパスで engine-host が行う
+//!   （`transfer`。枠は `bridge.proto` の `ExportToFile` と `ImportFromFile`。失敗は `TRANSFER_FAILED` と理由の語）。これで、枠の上限（16 MiB）と取り込みの上限（64 MiB）のずれも無くなる。
+//! - 上限: パイプの枠は口ごとの上限（`Port::Settings`）。超える要求は、枠の本体を読まずに接続を切る
+//!   （枠の位置が分からなくなるため、返事を返せない）。返事が上限を超えるときは、接続を保ったまま `TOO_LARGE` の枠を返す。
 //! - TIP が設定の変更を知る方法（ファイルの変更を見るか、engine-host から知らせるか）は W4-s2 では決めない
 //!   （この口は `settings.tsv` を書くだけ。`SettingsChanged` の通知は、要求と返事の流れでは送れないので送らない。画面は
 //!   `UpdateSettings` の返事で反映後の一式を受け取る）。
@@ -27,10 +28,13 @@ use std::io;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use ikari_pipe::frame::KIND_SEQ_BYTES;
+use ikari_pipe::peer::{Endpoint, PeerRejection, SelfModule, verify_peer_path};
 use ikari_pipe::{FrameKind, Listener, MAX_FRAME_LEN, Port, Server};
 use ikari_shell_core::SettingsEntry;
+use ikari_shell_core::bridge::proto::frame::Body;
 use ikari_shell_core::bridge::proto::{BridgeErrorCode, Frame, UpdateSettings};
-use ikari_shell_core::bridge::protocol::{error_frame, snapshot_frame};
+use ikari_shell_core::bridge::protocol::{error_frame, snapshot_frame, transfer_failure};
+use ikari_shell_core::bridge::relay_policy::whole_data_rejection;
 use ikari_shell_core::bridge::server::{relay_reply, update_failure};
 use ikari_shell_core::bridge::{Handshake, RelayGate, Route, frame_codec, handshake, route};
 use ikari_shell_core::settings::{
@@ -39,6 +43,7 @@ use ikari_shell_core::settings::{
 use prost::Message;
 
 use crate::slot::EngineSlot;
+use crate::transfer;
 
 /// 枠の本体のプロトコル。`bridge.proto` の `Frame`（版は `BridgeHello.bridge_version`。接続の最初の `Hello` で照合し、
 /// 合わなければ `VERSION_MISMATCH` を返す。判断は shell-core の `handshake`）。
@@ -94,6 +99,34 @@ impl SettingsHost {
                 // 最初の枠が `Hello` でない。macOS は何も返さずに閉じる。ここは閉じられないので `Error` にする
                 Handshake::Close => None,
             };
+        }
+        // 学習の全文（書き出しと取り込み）は、この口で運ばない（ADR 0068 §4。パスで行う。`transfer`）
+        if let Some(reply) = whole_data_rejection(&frame) {
+            return Some(encode(reply));
+        }
+        let request_id = frame.request_id;
+        let transferred = match &frame.body {
+            Some(Body::ExportToFile(export)) => Some(transfer::export_to_path(
+                &self.engine,
+                &export.path,
+                export.replace,
+            )),
+            Some(Body::ImportFromFile(import)) => Some(transfer::import_from_path(
+                &self.engine,
+                &import.path,
+                import.dry_run,
+            )),
+            _ => None,
+        };
+        if let Some(result) = transferred {
+            let reply = match result {
+                Ok(envelope) => Frame {
+                    request_id,
+                    body: Some(Body::Engine(envelope)),
+                },
+                Err(e) => transfer_failure(request_id, e.as_str()),
+            };
+            return Some(encode(reply));
         }
         let reply = match route(frame, &self.gate) {
             Route::Reply(reply) => reply,
@@ -182,14 +215,35 @@ fn encode(frame: Frame) -> Vec<u8> {
     error_frame(request_id, BridgeErrorCode::TooLarge, "").encode_to_vec()
 }
 
+/// 設定の口につないできた相手（実行ファイルのパス `peer_exe`）が、この engine-host（パス `own_exe`）から決まる
+/// インストール先の設定画面かを照らす（S3。ADR 0068 §4）。自分のパスが取れなければ（`None`）、常に断る。
+pub fn verify_settings_client(own_exe: Option<&str>, peer_exe: &str) -> Result<(), PeerRejection> {
+    let own_exe = own_exe.ok_or(PeerRejection::NoSelfPath)?;
+    verify_peer_path(
+        SelfModule::EngineHost,
+        own_exe,
+        Endpoint::Settings,
+        peer_exe,
+    )
+}
+
 /// このプロセスのユーザーとセッションの、設定画面のパイプの受け口（`cfg(windows)`。Windows の CI か実機で確かめる）。
-/// DACL は自分のユーザーと SYSTEM だけ（`NamedPipeListener::bind`）。
+/// DACL は自分のユーザーと SYSTEM だけ（`NamedPipeListener::bind`）。受け付けるたびに、最初の枠を読む前に、相手が
+/// インストール先の設定画面かを照らす（`verify_settings_client`）。
 #[cfg(windows)]
 pub fn bind_settings_listener() -> io::Result<ikari_pipe::os::windows::NamedPipeListener> {
-    use ikari_pipe::os::windows::{current_session_id, current_user_sid};
+    use ikari_pipe::os::windows::{current_session_id, current_user_sid, long_path_name};
     let name = ikari_pipe::settings_pipe_name(&current_user_sid()?, current_session_id()?)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "unexpected user SID format"))?;
-    ikari_pipe::os::windows::NamedPipeListener::bind(&name)
+    // 自分のパスは、起動のときに 1 回だけ取る（OS が記録したパス。環境変数などから決めない）
+    let own_exe = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.to_str().map(long_path_name));
+    Ok(
+        ikari_pipe::os::windows::NamedPipeListener::bind(&name)?.require_client(Box::new(
+            move |peer| verify_settings_client(own_exe.as_deref(), peer),
+        )),
+    )
 }
 
 /// 受け口が閉じられるまで、設定画面の接続を受ける。`Server` はエンジンのパイプとは別に持つ。
@@ -201,7 +255,6 @@ pub fn serve_settings<L: Listener>(listener: L, host: SettingsHost) -> io::Resul
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ikari_shell_core::bridge::proto::frame::Body;
 
     mod envelope {
         use ikari_proto::v1::{Envelope, ExportReply, envelope::Body};
@@ -227,6 +280,27 @@ mod tests {
         assert!(settings.starts_with(ikari_pipe::SETTINGS_NAME_PREFIX));
         assert_ne!(engine, settings);
         assert_eq!(SETTINGS_PIPE_PROTOCOL, "ikari.bridge.v1");
+    }
+
+    #[test]
+    fn only_the_installed_settings_exe_is_accepted() {
+        let engine = r"C:\Program Files\ikari-ime\ikari-engine-host.exe";
+        let settings = r"C:\Program Files\ikari-ime\settings\ikari-settings.exe";
+        assert_eq!(verify_settings_client(Some(engine), settings), Ok(()));
+        assert_eq!(
+            verify_settings_client(None, settings),
+            Err(PeerRejection::NoSelfPath)
+        );
+        // 自分のパスが engine-host の形でなければ、インストール先を決めない
+        assert_eq!(
+            verify_settings_client(Some(r"C:\Users\example\x.exe"), settings),
+            Err(PeerRejection::SelfPathInvalid)
+        );
+        // TIP やほかのアプリは、設定の口の相手ではない
+        assert_eq!(
+            verify_settings_client(Some(engine), r"C:\Windows\notepad.exe"),
+            Err(PeerRejection::NotThePeer)
+        );
     }
 
     #[test]

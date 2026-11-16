@@ -21,9 +21,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock, RwLockReadGuard};
 
 use windows_sys::Win32::Foundation::{
-    ERROR_BROKEN_PIPE, ERROR_IO_PENDING, ERROR_NO_DATA, ERROR_OPERATION_ABORTED, ERROR_PIPE_BUSY,
-    ERROR_PIPE_CONNECTED, ERROR_PIPE_NOT_CONNECTED, GENERIC_READ, GENERIC_WRITE, HANDLE, HLOCAL,
-    INVALID_HANDLE_VALUE, LocalFree, WAIT_OBJECT_0, WAIT_TIMEOUT,
+    ERROR_BROKEN_PIPE, ERROR_INSUFFICIENT_BUFFER, ERROR_IO_PENDING, ERROR_NO_DATA,
+    ERROR_OPERATION_ABORTED, ERROR_PIPE_BUSY, ERROR_PIPE_CONNECTED, ERROR_PIPE_NOT_CONNECTED,
+    GENERIC_READ, GENERIC_WRITE, HANDLE, HLOCAL, INVALID_HANDLE_VALUE, LocalFree, WAIT_OBJECT_0,
+    WAIT_TIMEOUT,
 };
 use windows_sys::Win32::Security::Authorization::{
     ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
@@ -35,8 +36,8 @@ use windows_sys::Win32::Security::{
 };
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FILE_FLAG_FIRST_PIPE_INSTANCE, FILE_FLAG_OVERLAPPED, FILE_FLAGS_AND_ATTRIBUTES,
-    FILE_SHARE_NONE, OPEN_EXISTING, PIPE_ACCESS_DUPLEX, ReadFile, SECURITY_IDENTIFICATION,
-    SECURITY_SQOS_PRESENT, WriteFile,
+    FILE_SHARE_NONE, GetLongPathNameW, OPEN_EXISTING, PIPE_ACCESS_DUPLEX, ReadFile,
+    SECURITY_IDENTIFICATION, SECURITY_SQOS_PRESENT, WriteFile,
 };
 use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
 use windows_sys::Win32::System::Pipes::{
@@ -47,13 +48,15 @@ use windows_sys::Win32::System::Pipes::{
 use windows_sys::Win32::System::RemoteDesktop::ProcessIdToSessionId;
 use windows_sys::Win32::System::Threading::{
     CreateEventW, GetCurrentProcess, GetCurrentProcessId, INFINITE, OpenProcess, OpenProcessToken,
-    PROCESS_QUERY_LIMITED_INFORMATION, ResetEvent, SetEvent, WaitForMultipleObjects,
+    PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW, ResetEvent,
+    SetEvent, WaitForMultipleObjects,
 };
 
 use crate::client::Client;
 use crate::duplex::{Duplex, Halves, Listener, Shutdown, WRITE_DEADLINE};
 use crate::elevation::{self, Refusal};
 use crate::name::pipe_name;
+use crate::peer::PeerRejection;
 
 /// サーバーのインスタンスの開き方。読み書きの両方向、重ね合わせの I/O。
 const SERVER_OPEN_MODE: FILE_FLAGS_AND_ATTRIBUTES = PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED;
@@ -481,7 +484,13 @@ pub struct NamedPipeListener {
     close: Arc<ListenerClose>,
     /// 受け付けた接続が持つ印。数が 1（自分だけ）なら、この名前のインスタンスは `next` のほかにない
     alive: Arc<()>,
+    /// つないできた相手の実行ファイルのパスを照らす規則（`require_client`。無ければ照らさない）
+    client_rule: Option<ClientRule>,
 }
+
+/// 受け口が、つないできた相手の実行ファイルのパス（OS が起動のときに記録したフルパス。8.3 の短い名前は展開済み）を
+/// 照らす規則。判断は `peer::verify_peer_path`（OS に依存しない）で、ここは呼ぶだけ。
+pub type ClientRule = Box<dyn Fn(&str) -> Result<(), PeerRejection> + Send>;
 
 impl NamedPipeListener {
     /// `name`（`\\.\pipe\…`）で受け口を作る。最初のインスタンスを `FILE_FLAG_FIRST_PIPE_INSTANCE` で作るので、
@@ -502,9 +511,17 @@ impl NamedPipeListener {
                 closed: AtomicBool::new(false),
             }),
             alive: Arc::new(()),
+            client_rule: None,
         };
         listener.next = Some(listener.create_instance(true)?);
         Ok(listener)
+    }
+
+    /// 受け付けるたびに、最初の枠を読む前に、相手の実行ファイルのパスを `rule` で照らす（設定の口の S3。
+    /// ADR 0068 §4）。PID やパスが取れないときも断る。断った接続は、何も読まず・書かずに切る。
+    pub fn require_client(mut self, rule: ClientRule) -> NamedPipeListener {
+        self.client_rule = Some(rule);
+        self
     }
 
     /// このプロセスのユーザーとセッションの名前（`current_pipe_name`）で受け口を作る。
@@ -621,9 +638,17 @@ impl NamedPipeListener {
         if self.close.closed.load(Ordering::SeqCst) {
             return Ok(Accepted::Stopped);
         }
-        if let Err(refusal) = check_client(&instance) {
+        let refusal = match check_client(&instance) {
+            Err(refusal) => Some(refusal.as_str()),
+            Ok(()) => self
+                .client_rule
+                .as_ref()
+                .and_then(|rule| check_client_path(&instance, rule).err())
+                .map(PeerRejection::as_str),
+        };
+        if let Some(reason) = refusal {
             // 理由の語だけを書く（番号やパスは出さない）
-            eprintln!("ikari-pipe: refused a connection ({})", refusal.as_str());
+            eprintln!("ikari-pipe: refused a connection ({reason})");
             // SAFETY: handle は開いたサーバーのインスタンス。失敗しても、次の ConnectNamedPipe が誤りで知らせる
             unsafe { DisconnectNamedPipe(handle) };
             self.next = Some(instance);
@@ -651,6 +676,94 @@ fn check_client(instance: &OwnedHandle) -> Result<(), Refusal> {
             .and_then(|process| integrity_rid_of(process.as_raw_handle()))
     };
     elevation::check_peer(current_integrity_rid(), peer_rid)
+}
+
+/// つないできた相手（クライアント）の実行ファイルのパスを `rule` で照らす。相手のプロセスのハンドルを開いたまま
+/// パスを取って比べる（PID の使い回しで、別のプロセスのパスを見ないため。ADR 0068 §10）。
+fn check_client_path(instance: &OwnedHandle, rule: &ClientRule) -> Result<(), PeerRejection> {
+    let mut pid = 0u32;
+    // SAFETY: instance は接続済みのパイプのサーバー側。pid は書ける u32 で、この呼び出しの間生きている。
+    let ok = unsafe { GetNamedPipeClientProcessId(instance.as_raw_handle(), &mut pid) };
+    if ok == FALSE {
+        return Err(PeerRejection::NoPeerPid);
+    }
+    // SAFETY: 引数は値だけ。返り値は own_handle が確かめて所有する（開けなければ誤り）。
+    let process = own_handle(unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid) })
+        .map_err(|_| PeerRejection::NoPeerPath)?;
+    let path = image_path_of(&process).ok_or(PeerRejection::NoPeerPath)?;
+    let path = long_path_name(&path);
+    let result = rule(&path);
+    drop(process);
+    result
+}
+
+/// パスを取るときの最初のバッファの長さ（UTF-16 の単位。ふつうのパスはこれに収まる）
+const INITIAL_PATH_LEN: usize = 260;
+/// パスの長さの上限（UTF-16 の単位。Windows の長いパスの上限と NUL）
+const MAX_LONG_PATH: usize = 32_768;
+
+/// プロセス `pid` の実行ファイルのフルパス（Win32 の形。OS が起動のときに記録したもの。8.3 の短い名前は展開する）。
+/// 取れなければ `None`。設定画面の核が、設定の口の相手（engine-host）を照らすときに使う。
+pub fn process_image_path(pid: u32) -> Option<String> {
+    // SAFETY: 引数は値だけ。返り値は own_handle が確かめて所有する（開けなければ None）。
+    let process =
+        own_handle(unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid) }).ok()?;
+    image_path_of(&process).map(|path| long_path_name(&path))
+}
+
+/// 開いたプロセスの実行ファイルのフルパス
+fn image_path_of(process: &OwnedHandle) -> Option<String> {
+    let mut buffer = vec![0u16; INITIAL_PATH_LEN];
+    loop {
+        let mut len = u32::try_from(buffer.len()).ok()?;
+        // SAFETY: process は開いたプロセスのハンドル（呼ぶ側が生かしている）。buffer は len 個の u16 を書ける。
+        // 成功すると len に NUL を除いた長さが入る。
+        let ok = unsafe {
+            QueryFullProcessImageNameW(
+                process.as_raw_handle(),
+                PROCESS_NAME_WIN32,
+                buffer.as_mut_ptr(),
+                &mut len,
+            )
+        };
+        if ok != FALSE {
+            let len = usize::try_from(len).ok()?.min(buffer.len());
+            return String::from_utf16(&buffer[..len]).ok();
+        }
+        let err = io::Error::last_os_error();
+        if !is_code(&err, ERROR_INSUFFICIENT_BUFFER) || buffer.len() >= MAX_LONG_PATH {
+            return None;
+        }
+        buffer.resize((buffer.len() * 2).min(MAX_LONG_PATH), 0);
+    }
+}
+
+/// 8.3 の短い名前を長い名前に直す（`GetLongPathNameW`）。直せなければそのまま返す（そのままでは期待のパスと
+/// 一致しないので、照合は拒む側に倒れる）。各段の名前を同じフォルダの中の長い名前に置き換えるだけで、リンクはたどらない。
+pub fn long_path_name(path: &str) -> String {
+    let Ok(wide) = to_wide(path) else {
+        return path.to_owned();
+    };
+    let mut buffer = vec![0u16; INITIAL_PATH_LEN];
+    loop {
+        let Ok(capacity) = u32::try_from(buffer.len()) else {
+            return path.to_owned();
+        };
+        // SAFETY: wide は NUL で終わる UTF-16 で、この呼び出しの間生きている。buffer は capacity 個まで書ける。
+        let written =
+            unsafe { GetLongPathNameW(wide.as_ptr(), buffer.as_mut_ptr(), capacity) } as usize;
+        if written == 0 {
+            return path.to_owned();
+        }
+        if written < buffer.len() {
+            return String::from_utf16(&buffer[..written]).unwrap_or_else(|_| path.to_owned());
+        }
+        // 足りないときは、NUL を含めた要る長さが返る
+        if written > MAX_LONG_PATH {
+            return path.to_owned();
+        }
+        buffer.resize(written, 0);
+    }
 }
 
 /// このプロセスのトークンの整合性のレベル（`SECURITY_MANDATORY_*_RID`）。取れなければ `None`。
@@ -1033,6 +1146,52 @@ mod tests {
         let mut all = Vec::new();
         reader.read_to_end(&mut all).unwrap();
         assert_eq!(all, b"xy");
+    }
+
+    /// 相手のパスの規則（設定の口の S3）: 断った接続は切られ、受け口は次の接続を待ち続ける。規則が受けるのは、
+    /// 相手（ここでは同じテストの exe）のフルパス
+    #[test]
+    fn require_client_refuses_by_the_peer_path_and_keeps_listening() {
+        let name = unique_name();
+        let own = long_path_name(&std::env::current_exe().unwrap().to_string_lossy());
+        let calls = Arc::new(AtomicU32::new(0));
+        let seen = Arc::clone(&calls);
+        let expected = own.clone();
+        let mut listener = NamedPipeListener::bind(&name)
+            .unwrap()
+            .require_client(Box::new(move |peer| {
+                assert!(peer.eq_ignore_ascii_case(&expected), "{peer} vs {expected}");
+                // 最初の 1 本は断り、次は通す
+                if seen.fetch_add(1, Ordering::SeqCst) == 0 {
+                    Err(PeerRejection::NotThePeer)
+                } else {
+                    Ok(())
+                }
+            }));
+        let server = thread::spawn(move || listener.accept().unwrap().unwrap());
+        let (refused, _) = connect_duplex(&name).unwrap();
+        let (mut refused_reader, _w, _s) = refused.split();
+        let mut rest = Vec::new();
+        // 切られたので、何も来ずに終わる（EOF か切断の誤り）
+        let _ = refused_reader.read_to_end(&mut rest);
+        assert!(rest.is_empty());
+        let (accepted, _) = connect_duplex(&name).unwrap();
+        let (mut reader, _writer, _shutdown) = server.join().unwrap().split();
+        let (_client_reader, mut client_writer, client_shutdown) = accepted.split();
+        client_writer.write_all(b"ok").unwrap();
+        drop(client_writer);
+        client_shutdown.shutdown();
+        let mut all = Vec::new();
+        reader.read_to_end(&mut all).unwrap();
+        assert_eq!(all, b"ok");
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn process_image_path_of_self_is_the_current_exe() {
+        let own = long_path_name(&std::env::current_exe().unwrap().to_string_lossy());
+        let path = process_image_path(std::process::id()).unwrap();
+        assert!(path.eq_ignore_ascii_case(&own), "{path} vs {own}");
     }
 
     #[test]

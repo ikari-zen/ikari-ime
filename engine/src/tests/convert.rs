@@ -392,7 +392,7 @@ fn engine_log_never_contains_the_text() {
         assert!(!text.contains(secret), "{secret} leaked: {text}");
     }
     // 注記は固定の語（key=value）だけ
-    const KEYS: [&str; 37] = [
+    const KEYS: [&str; 39] = [
         "session",
         "conv",
         "app",
@@ -424,6 +424,8 @@ fn engine_log_never_contains_the_text() {
         "lm_deadline_us",
         "lm_dev",
         "lm_to",
+        "lm_cancel",
+        "cancelled",
         "dev",
         "by",
         "fill",

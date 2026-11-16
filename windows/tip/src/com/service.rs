@@ -17,6 +17,11 @@
 //! - アプリが合成を終わらせたら（`OnCompositionTerminated`）、`CommitComposition` を文書なしで送る（文字列は文書に
 //!   残っているので、もう一度入れない）。
 //!
+//! # 候補窓（ADR 0062 §7.4）
+//! `TsfOp::ShowCandidates` などは `edit::Exec` が `candidate_view` に渡す。送れたら、置いた上下を
+//! `ShellEvent::PanelShown` として、同じ文書の中で `dispatch` し直す（macOS の `ShellDriver.perform` と同じ）。
+//! 文書のフォーカスが外れたとき、`Shell` を捨てたときは隠し、`Deactivate` では接続も閉じる。
+//!
 //! # 寿命
 //! `Shell` は `ActivateEx` で作り、`Deactivate` で捨てる（エンジンへの接続も閉じる）。`dispatch` の中で panic したら
 //! `Shell` を捨て、次のキーで作り直す（この回のキーはアプリへ。macOS の殻と同じ）。
@@ -28,6 +33,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::time::Instant;
 
 use ikari_shell_core::english::InputMode;
 use ikari_shell_core::{SelectedText, Shell, ShellEvent, SurroundingText, TextAccess, TimerId};
@@ -41,11 +47,13 @@ use windows::Win32::UI::TextServices::{
 };
 use windows_core::{BOOL, ComObject, GUID, IUnknownImpl, Interface, Ref, implement};
 
+use super::connector::CandidatePipeConnector;
 use super::dll::DllRef;
 use super::edit::{self, Doc, Exec, ModeSink, Timers, TsfText};
 use super::guard::guard;
 use super::indicator::{Indicator, Scope};
 use super::{field, host, keyboard, log, timer};
+use crate::candidate_view::CandidateView;
 use crate::keys;
 use crate::latency::Kind;
 use crate::mode::{self, ModeTracker};
@@ -53,6 +61,9 @@ use crate::ops::OpsTranslator;
 
 /// `ActivateEx` の旗（使わない）
 const NO_ACTIVATE_FLAGS: u32 = 0;
+/// 候補窓を出した・動かしたあと、`ShellEvent::PanelShown` を続けて返す回数の上限（返した知らせの動作がまた窓を
+/// 変えることがある。実際は 1〜2 回）。macOS の `ShellDriver.maxPanelReports` と同じ値
+const MAX_PANEL_REPORTS: u32 = 4;
 
 /// 食べたと答えたキー（`OnTestKeyDown` のあとの `OnKeyDown` を照合する）。
 ///
@@ -64,7 +75,6 @@ struct KeyId {
     wparam: usize,
 }
 
-#[derive(Default)]
 struct State {
     thread_mgr: Option<ITfThreadMgr>,
     client_id: u32,
@@ -85,6 +95,28 @@ struct State {
     active: bool,
     /// 入力先のアプリの名前（実行ファイルの名前）
     client_name: String,
+    /// 候補窓の表示の状態（ADR 0062 §7.4。アンカーの固定、候補窓への接続）
+    candidates: CandidateView<CandidatePipeConnector>,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            thread_mgr: None,
+            client_id: 0,
+            thread_mgr_cookie: None,
+            key_sink_advised: false,
+            shell: None,
+            shell_unavailable: false,
+            translator: OpsTranslator::default(),
+            modes: ModeTracker::default(),
+            composition: None,
+            eaten_key: None,
+            active: false,
+            client_name: String::new(),
+            candidates: CandidateView::new(CandidatePipeConnector),
+        }
+    }
 }
 
 #[implement(
@@ -262,6 +294,7 @@ fn dispatch_and_run_inner(
         translator,
         modes,
         composition,
+        candidates,
         ..
     } = &mut *state;
     let shell = shell.as_mut()?;
@@ -278,36 +311,60 @@ fn dispatch_and_run_inner(
     if let (ShellEvent::Key(input), Some((ec, context))) = (&mut event, doc) {
         input.secure = input.secure || field::is_secure(ec, context);
     }
-    let mut actions = match doc {
-        Some((ec, context)) => {
-            let mut text = TsfText {
-                ec,
-                context,
-                composition: composition.as_ref(),
-            };
-            shell.dispatch(event, &mut text)
-        }
-        None => shell.dispatch(event, &mut NoText),
-    };
-    // `shell-core` が頼んだモード（キー割り当て）と、英数・かなキーの行き先を、OS からの通知として返す
-    actions.extend(mode::settle(shell, requested_mode));
-    let mut ops = translator.translate_all(&actions);
-    // モードが変わっていれば（または最初なら）表示する
-    ops.extend(modes.sync(shell.input_mode()));
     let sink: ITfCompositionSink = this.to_interface();
     let timers = ServiceTimers(this);
     let mode_sink = ServiceModes(this);
-    let mut exec = Exec {
-        doc: doc.map(|(ec, context)| Doc {
-            ec,
-            context,
-            sink: &sink,
-        }),
-        composition,
-        timers: &timers,
-        modes: &mode_sink,
-    };
-    Some(exec.run(&ops))
+    let mut eaten = None;
+    let mut next = Some(event);
+    let mut reports = 0u32;
+    while let Some(event) = next.take() {
+        let first = eaten.is_none();
+        let mut actions = match doc {
+            Some((ec, context)) => {
+                let mut text = TsfText {
+                    ec,
+                    context,
+                    composition: composition.as_ref(),
+                };
+                shell.dispatch(event, &mut text)
+            }
+            None => shell.dispatch(event, &mut NoText),
+        };
+        if first {
+            // `shell-core` が頼んだモード（キー割り当て）と、英数・かなキーの行き先を、OS からの通知として返す
+            actions.extend(mode::settle(shell, requested_mode));
+        }
+        let mut ops = translator.translate_all(&actions);
+        // モードが変わっていれば（または最初なら）表示する
+        ops.extend(modes.sync(shell.input_mode()));
+        let mut exec = Exec {
+            doc: doc.map(|(ec, context)| Doc {
+                ec,
+                context,
+                sink: &sink,
+            }),
+            composition: &mut *composition,
+            timers: &timers,
+            modes: &mode_sink,
+            candidates: &mut *candidates,
+            panel_report: None,
+        };
+        let ran = exec.run(&ops);
+        let report = exec.panel_report;
+        // キーを食べたかは、最初の知らせ（キーそのもの）で決める。`PanelShown` の動作は数えない
+        if first {
+            eaten = Some(ran);
+        }
+        // 候補窓に送れたら、置いた上下（と新しいアンカーの出どころ）を `shell-core` に返す（ADR 0062 §5.4 の
+        // 決定 3 の (c)。送れなければ返さない）。返した知らせの動作も同じ文書で実行する
+        if let Some((side, source)) = report
+            && reports < MAX_PANEL_REPORTS
+        {
+            reports += 1;
+            next = Some(ShellEvent::PanelShown { side, source });
+        }
+    }
+    eaten
 }
 
 fn poison(this: &ComObject<TextService>) {
@@ -323,8 +380,17 @@ fn poison(this: &ComObject<TextService>) {
         Err(_) => None,
     };
     timer::cancel_all(this);
+    hide_candidates(this);
     // 錠の外で落とす（エンジンへの接続を閉じる）
     drop(shell);
+}
+
+/// 候補窓を隠す（文書のフォーカスが外れた、`Shell` を捨てた。shell-core が `HideCandidates` を出さない経路の
+/// 取りこぼしを防ぐ。ADR 0062 §7.4）。つながっていなければ何もしない
+fn hide_candidates(this: &ComObject<TextService>) {
+    if let Ok(mut state) = this.state.try_borrow_mut() {
+        state.candidates.hide(Instant::now());
+    }
 }
 
 /// `Shell` がなければ作り、入力先を知らせていなければ `Activate` を送る
@@ -390,6 +456,7 @@ fn leave_client(this: &ComObject<TextService>) {
     if active {
         dispatch_and_run(this, None, ShellEvent::Deactivate);
     }
+    hide_candidates(this);
 }
 
 /// 合成を、いまの文字列のまま終える（文書の編集セッションで。取れるときに TSF が呼ぶ）
@@ -527,13 +594,17 @@ impl TextService_Impl {
             indicator.remove();
         }
         let (thread_mgr, cookie, key_sink, client_id, shell) = match self.state.try_borrow_mut() {
-            Ok(mut state) => (
-                state.thread_mgr.take(),
-                state.thread_mgr_cookie.take(),
-                std::mem::take(&mut state.key_sink_advised),
-                state.client_id,
-                state.shell.take(),
-            ),
+            Ok(mut state) => {
+                // TIP が外れる: 窓を隠して、候補窓への接続を閉じる（持ち主の接続が切れたら、候補窓も隠す）
+                state.candidates.close(Instant::now());
+                (
+                    state.thread_mgr.take(),
+                    state.thread_mgr_cookie.take(),
+                    std::mem::take(&mut state.key_sink_advised),
+                    state.client_id,
+                    state.shell.take(),
+                )
+            }
             Err(_) => return,
         };
         if let Some(thread_mgr) = thread_mgr {

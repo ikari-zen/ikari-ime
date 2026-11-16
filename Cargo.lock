@@ -327,6 +327,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "env_filter"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "900d271a03799a1ee8d1ca9b19893b48ca674a9284fefcfb85f05e74ed314217"
+dependencies = [
+ "log",
+ "regex",
+]
+
+[[package]]
+name = "env_logger"
+version = "0.11.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "de671bd27a75a797dc9ae289ba1e77276e75e2026408aab65185384e2d5cd3f6"
+dependencies = [
+ "anstream",
+ "anstyle",
+ "env_filter",
+ "jiff",
+ "log",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -458,6 +481,7 @@ dependencies = [
  "ikari-pipe",
  "ikari-proto",
  "ikari-shell-core",
+ "prost",
 ]
 
 [[package]]
@@ -599,6 +623,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "ikari-npu-probe"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "ikari-lm",
+ "libc",
+ "openvino",
+ "openvino-sys",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "windows-sys",
+]
+
+[[package]]
 name = "ikari-pipe"
 version = "0.1.0"
 dependencies = [
@@ -631,6 +671,27 @@ name = "ikari-runmark"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "tempfile",
+ "windows-sys",
+]
+
+[[package]]
+name = "ikari-settings-core"
+version = "0.1.0"
+dependencies = [
+ "ikari-engine-host",
+ "ikari-pipe",
+ "ikari-proto",
+ "ikari-shell-core",
+ "prost",
+ "tempfile",
+]
+
+[[package]]
+name = "ikari-setup-helper"
+version = "0.1.0"
+dependencies = [
+ "ikari-pipe",
  "tempfile",
  "windows-sys",
 ]
@@ -684,6 +745,7 @@ dependencies = [
  "ikari-pipe",
  "ikari-shell-core",
  "ikari-testtime",
+ "prost",
  "tempfile",
  "windows",
  "windows-core",
@@ -985,6 +1047,37 @@ name = "once_cell_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
+
+[[package]]
+name = "openvino"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bce5a0a21345e3dd092850ac7e32f10a679ab1f87d60a8839688198269b23a77"
+dependencies = [
+ "openvino-finder",
+ "openvino-sys",
+]
+
+[[package]]
+name = "openvino-finder"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14d20df8d1f4fc84259d47cc9e816e9ce6d2e7a6e56c910005ad4fd1384d4b4f"
+dependencies = [
+ "cfg-if",
+ "log",
+]
+
+[[package]]
+name = "openvino-sys"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "775748e90aab1c4e923c8676e0b2401fadf8a9c6d25ff8e18ac5039a0a1c549e"
+dependencies = [
+ "env_logger",
+ "libloading",
+ "openvino-finder",
+]
 
 [[package]]
 name = "parking_lot"

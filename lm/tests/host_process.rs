@@ -14,7 +14,7 @@ use ikari_core::{
     RankInput, Ranker, UnknownParams,
 };
 use ikari_lm::host::{HostHealth, HostLimits, HostSpec, host_loader};
-use ikari_lm::{LmDevice, ZenzConfig, ZenzRanker};
+use ikari_lm::{CancelToken, LmDevice, ZenzConfig, ZenzRanker, cancel};
 
 const FAKE_HOST: &str = env!("CARGO_BIN_EXE_ikari-lm-host-fake");
 /// ranker が結果を待つ上限。偽の子の起動と応答より桁で長い
@@ -147,47 +147,51 @@ impl Harness {
     fn first(&self) -> String {
         let n = self.readings.get() + 1;
         self.readings.set(n);
-        let reading = format!("よみ{n}");
-        let grammar = DenseGrammar::new(
-            1,
-            1,
-            0,
-            UnknownParams {
-                left_id: 0,
-                right_id: 0,
-                pos_id: 0,
-                cost_per_char: 1,
-            },
-        );
-        let dict = InMemoryDictionary::new(0);
-        let analysis = AnalyzedContext::default();
-        let ctx = Context::new().with_left_text("文脈");
-        let cand = |surface: &str, base: i32| Candidate {
-            surface: surface.to_owned(),
-            segments: Vec::new(),
-            base_cost: base,
-            score: base,
-            origin: CandidateOrigin::Dictionary,
-        };
-        let mut cands = vec![cand(BAD, BAD_BASE), cand(GOOD, GOOD_BASE)];
-        let input = RankInput {
-            reading: &reading,
-            context: &ctx,
-            grammar: &grammar,
-            analysis: &analysis,
-            dict: &dict,
-            deadline: Some(Instant::now() + ikari_testtime::ms(RANK_BUDGET_MS)),
-        };
-        self.ranker.rank(&input, &mut cands);
-        // LM は並べ替えるだけ（候補を足さない・消さない）
-        assert_eq!(cands.len(), 2);
-        cands.sort_by_key(|c| c.score);
-        cands[0].surface.clone()
+        rank_once(&self.ranker, &format!("よみ{n}"))
     }
 
     fn child(&self) -> u32 {
         self.health.child_id().expect("a child is running")
     }
+}
+
+/// `reading` を 1 回並べ替えて、1 位の表記を返す（[`Harness::first`] の中身。別のスレッドからも呼べる）
+fn rank_once(ranker: &ZenzRanker, reading: &str) -> String {
+    let grammar = DenseGrammar::new(
+        1,
+        1,
+        0,
+        UnknownParams {
+            left_id: 0,
+            right_id: 0,
+            pos_id: 0,
+            cost_per_char: 1,
+        },
+    );
+    let dict = InMemoryDictionary::new(0);
+    let analysis = AnalyzedContext::default();
+    let ctx = Context::new().with_left_text("文脈");
+    let cand = |surface: &str, base: i32| Candidate {
+        surface: surface.to_owned(),
+        segments: Vec::new(),
+        base_cost: base,
+        score: base,
+        origin: CandidateOrigin::Dictionary,
+    };
+    let mut cands = vec![cand(BAD, BAD_BASE), cand(GOOD, GOOD_BASE)];
+    let input = RankInput {
+        reading,
+        context: &ctx,
+        grammar: &grammar,
+        analysis: &analysis,
+        dict: &dict,
+        deadline: Some(Instant::now() + ikari_testtime::ms(RANK_BUDGET_MS)),
+    };
+    ranker.rank(&input, &mut cands);
+    // LM は並べ替えるだけ（候補を足さない・消さない）
+    assert_eq!(cands.len(), 2);
+    cands.sort_by_key(|c| c.score);
+    cands[0].surface.clone()
 }
 
 #[test]
@@ -311,7 +315,8 @@ fn a_child_that_never_gets_ready_is_killed_and_counted() {
 
 #[test]
 fn a_version_mismatch_or_a_load_failure_is_counted_as_a_failure() {
-    for script in ["version=999\n", "load=fail\n"] {
+    // 版 1（取り消しを知らない子。ADR 0074）も使わない
+    for script in ["version=999\n", "version=1\n", "load=fail\n"] {
         let h = Harness::new(script);
         assert_eq!(h.first(), BAD, "{script}");
         assert!(
@@ -460,5 +465,47 @@ fn no_cpu_retry_when_gpu_is_off_or_was_never_used() {
         assert!(h.health.gave_up());
         assert!(!h.health.gpu_disabled());
         assert_eq!(h.health.spawns(), u64::from(MAX_FAILURES));
+    }
+}
+
+/// 取り消し（ADR 0074 §3.1）は失敗に数えず、子も替えない。取り消した要求の返事（子が最後まで採点した `Scores`、
+/// または子が気づいた `Failed(Cancelled)`）は読み捨て、次の要求は同じ子で LM が効く
+#[test]
+fn a_cancelled_request_is_not_a_failure_and_its_late_reply_is_dropped() {
+    // 子の推論（ms）。古い要求の残り + 次の要求が `REQUEST_DEADLINE_MS` に収まる長さ
+    const DELAY_MS: u64 = 100;
+    // 古い要求を送ってから取り消すまで（ms）。子が採点を始めるのに足りる長さ
+    const CANCEL_AFTER_MS: u64 = 30;
+    // 1 = 子は止まらず最後まで採点する。4 = 子は区切りで気づいて `Failed(Cancelled)` を返す
+    // 子の推論の長さも、待ちと同じ倍率で伸ばす（伸ばさないと、倍率 5 で取り消す前に子が答え終わる）
+    let delay_ms = ikari_testtime::ms(DELAY_MS).as_millis();
+    for steps in [1, 4] {
+        let h = Harness::new(&format!(
+            "{HEALTHY}delay_ms={delay_ms}\ndelay_steps={steps}\n"
+        ));
+        assert_eq!(h.first(), GOOD);
+        let child = h.child();
+        let token = CancelToken::new();
+        thread::scope(|s| {
+            let ranker = &h.ranker;
+            let t = token.clone();
+            let old = s.spawn(move || {
+                let _scope = cancel::scope(t);
+                rank_once(ranker, "古い")
+            });
+            thread::sleep(ikari_testtime::ms(CANCEL_AFTER_MS));
+            token.cancel();
+            // 取り消された要求は LM なし（辞書の順位）で戻る
+            assert_eq!(old.join().unwrap(), BAD, "steps={steps}");
+        });
+        assert_eq!(h.first(), GOOD, "steps={steps}");
+        assert_eq!(h.child(), child, "steps={steps}");
+        assert_eq!(h.health.consecutive_failures(), 0, "steps={steps}");
+        let st = h.ranker.stats();
+        assert_eq!(
+            (st.cancelled, st.inference_errors, st.timeouts),
+            (1, 0, 0),
+            "steps={steps} {st:?}"
+        );
     }
 }

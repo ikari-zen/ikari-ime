@@ -3,7 +3,10 @@ resolver = "2"
 members = [
     "core", "cli", "dict-builder", "dict-format", "resource", "eval", "import", "lm",
     "input", "stack", "runmark", "testtime", "proto", "engine", "engine-ffi", "shell-ffi", "shell-core", "xtask",
-    "pipe", "windows/engine-host", "windows/tip", "windows/candidate",
+    "pipe", "windows/engine-host", "windows/tip", "windows/candidate", "windows/installer/helper", "windows/settings",
+    # 測定ツール（ADR 0075 §4。製品には入らない。配る物の検査 `cargo xtask scan-product` が、製品の成果物に
+    # この crate の印が無いことを見る）
+    "tools/npu-probe",
 ]
 # default-members は置かない（refactor-plan-2026-10 §9 P4）。lm と engine-ffi も feature を付けなければ
 # llama.cpp をビルドしないので、`cargo test` が両 crate の単体テストを飛ばさない。
@@ -49,6 +52,7 @@ ikari-engine = { path = "engine" }
 ikari-shell-core = { path = "shell-core" }
 ikari-pipe = { path = "pipe" }
 ikari-candidate = { path = "windows/candidate" }
+ikari-settings-core = { path = "windows/settings" }
 
 # xtask は debug ビルドで走る（`cargo xtask`）。辞書の入力（数百 MB）の sha256 を取るので、この crate だけ最適化する
 [profile.dev.package.xtask]

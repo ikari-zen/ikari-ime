@@ -1,0 +1,58 @@
+[package]
+name = "ikari-npu-probe"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# NPU の測定ツール（ADR 0075 §4）。作者が会社 PC に zip で持ち込み、手で 1〜2 回動かす。製品には入らない
+# （製品の crate はこの crate に依存しない。`cargo xtask scan-product` が、製品の成果物にこの crate の印が無いことを見る）。
+# 通信しない（ネットワークの crate を使わない。URL を持たない）。書くのはツールのフォルダの中（report.txt、cache\）だけ。
+#
+# 装置:
+#   llama-cpu / llama-vulkan  今の経路（ikari-lm の LlamaScorer）。基準
+#   ov-{cpu,gpu,npu}-{fp16,int8}  OpenVINO Runtime の C API（`openvino` crate を実行時に読み込む。ビルドに SDK は要らない）
+
+[features]
+default = []
+# llama.cpp を使う装置（llama-cpu）。cmake が要る。付けないビルドは llama の行を「このビルドに無い」と書く
+llama = ["ikari-lm/llama"]
+# Mac での試し（llama-cpu・llama-vulkan は Metal になる）
+metal = ["llama", "ikari-lm/metal"]
+# llama-vulkan（Windows。exe の隣の `backends\` から ggml の DLL を読む。ADR 0059 §2.3）。ビルドに Vulkan SDK が要る
+vulkan = ["llama", "ikari-lm/vulkan"]
+
+[[bin]]
+name = "ikari-npu-probe"
+path = "src/main.rs"
+
+[dependencies]
+ikari-lm.workspace = true
+# OpenVINO Runtime の C API の薄い包み（Apache-2.0）。`runtime-linking` は DLL を実行時に読む（ビルドに OpenVINO が要らない）
+openvino = { version = "=0.11.1", features = ["runtime-linking"] }
+openvino-sys = { version = "=0.11.1", features = ["runtime-linking"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+
+clap.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+# 低い整合性・AppContainer での起動（`src/sandbox/windows.rs`）、メモリの最大（`src/mem.rs`）、OS と CPU の名前（レジストリ）
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Security_Isolation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Memory",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+] }

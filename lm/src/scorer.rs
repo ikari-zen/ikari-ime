@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::cancel::CancelToken;
 use crate::error::LmError;
 
 /// モデルが動く装置（ADR 0061 §4.2）。
@@ -16,7 +17,13 @@ pub enum LmDevice {
 pub trait LmScorer {
     /// `prompt` の続きとして各候補を出力する確率の負の対数（nat。EOS を含む）。
     /// 返す長さは `candidates` と同じ。評価できない候補（長すぎるなど）は `f32::INFINITY`。
-    fn nll(&mut self, prompt: &str, candidates: &[String]) -> Result<Vec<f32>, LmError>;
+    /// `cancel` が立ったら、止めどころ（decode の間など）で [`LmError::Cancelled`] を返してよい（ADR 0074 §4）。
+    fn nll(
+        &mut self,
+        prompt: &str,
+        candidates: &[String],
+        cancel: &CancelToken,
+    ) -> Result<Vec<f32>, LmError>;
 
     /// モデルが動いている装置（ADR 0061 D3）。既定は `Cpu`。
     fn device(&self) -> LmDevice {

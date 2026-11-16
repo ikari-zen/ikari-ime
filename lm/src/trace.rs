@@ -21,6 +21,8 @@ pub struct LmTrace {
     pub wait_micros: u64,
     /// 受け取った返事の、ワーカーでの推論の時間の合計（us）
     pub infer_micros: u64,
+    /// 取り消しの印が立っていて、要求を出さずに、または推論を途中でやめて戻った回数（ADR 0074。時間切れに数えない）
+    pub cancelled: u32,
     /// 取り出したときの装置。モデルが読まれていなければ `Unknown`
     pub device: LmDevice,
 }
@@ -33,6 +35,7 @@ thread_local! {
             late_hits: 0,
             wait_micros: 0,
             infer_micros: 0,
+            cancelled: 0,
             device: LmDevice::Unknown,
         })
     };
@@ -83,6 +86,11 @@ pub fn record_reply(waited: Duration, infer: Duration) {
         t.wait_micros = t.wait_micros.saturating_add(micros(waited));
         t.infer_micros = t.infer_micros.saturating_add(micros(infer));
     });
+}
+
+#[doc(hidden)]
+pub fn record_cancel() {
+    update(|t| t.cancelled = t.cancelled.saturating_add(1));
 }
 
 #[doc(hidden)]

@@ -21,6 +21,7 @@ use llama_cpp_2::model::params::LlamaModelParams;
 use llama_cpp_2::model::params::kv_overrides::ParamOverrideValue;
 use llama_cpp_2::token::LlamaToken;
 
+use crate::cancel::CancelToken;
 use crate::error::LmError;
 use crate::placement::{self, GpuState};
 use crate::scorer::{LmDevice, LmLoader, LmScorer};
@@ -472,7 +473,20 @@ impl LmScorer for LlamaScorer {
         self.device
     }
 
-    fn nll(&mut self, prompt: &str, candidates: &[String]) -> Result<Vec<f32>, LmError> {
+    /// 取り消しの印は decode の間で見る（ADR 0074 §4 の段階 1。decode の最中には止めない）
+    fn nll(
+        &mut self,
+        prompt: &str,
+        candidates: &[String],
+        cancel: &CancelToken,
+    ) -> Result<Vec<f32>, LmError> {
+        let stop_if_cancelled = || {
+            if cancel.is_cancelled() {
+                Err(LmError::Cancelled)
+            } else {
+                Ok(())
+            }
+        };
         let err =
             |what: &str, e: &dyn std::fmt::Display| LmError::Inference(format!("{what}: {e}"));
         let mut out = vec![f32::INFINITY; candidates.len()];
@@ -489,6 +503,8 @@ impl LmScorer for LlamaScorer {
                 prompt_tokens.len()
             )));
         }
+        // (b) プロンプトの decode の前
+        stop_if_cancelled()?;
         self.ctx.clear_kv_cache();
         let mut batch = LlamaBatch::new(BATCH_TOKENS as usize, 1);
         batch
@@ -513,6 +529,8 @@ impl LmScorer for LlamaScorer {
         // 3. 候補をバッチに詰めて評価する（seq 1.. に KV をコピーして使う）
         let mut start = 0;
         while start < candidates.len() {
+            // (c) プロンプトの decode のあと、(d) 候補のバッチの decode の間
+            stop_if_cancelled()?;
             // バッチの容量とシーケンス数の範囲で詰められるだけ詰める
             let mut end = start;
             let mut tokens_in_batch = 0usize;

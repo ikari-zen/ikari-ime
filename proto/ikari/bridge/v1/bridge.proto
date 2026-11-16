@@ -1,7 +1,8 @@
 // 設定アプリ（IkariSettings.app）と殻の間のメッセージ（ADR 0005 §6.3。契約）。
-// Swift だけが使う（Rust は生成しない。proto/build.rs の対象外）。
+// Swift（macos/scripts/gen-proto.sh）と Rust（proto/build.rs。shell-core の bridge、Windows の engine-host と設定画面の核）が使う。
 // 変更したら macos/scripts/gen-proto.sh を流して bridge.pb.swift の差分をコミットする。
-// 輸送: Unix ドメインソケット。枠は 4 バイト（ビッグエンディアン）の長さ + この Frame（docs/phase2-contract.md §5）。
+// 輸送: macOS は Unix ドメインソケット。枠は 4 バイト（ビッグエンディアン）の長さ + この Frame（docs/phase2-contract.md §5）。
+// Windows は engine-host の設定の口（名前付きパイプ。枠は ikari_pipe::Frame。windows/engine-host/src/settings_pipe.rs）。
 syntax = "proto3";
 package ikari.bridge.v1;
 
@@ -13,6 +14,11 @@ message Frame {
     BridgeHello hello = 10;               BridgeHelloReply hello_reply = 11;
     GetSettings get_settings = 12;        SettingsSnapshot settings = 13;
     UpdateSettings update_settings = 14;  // 返事は SettingsSnapshot（反映後）
+    // 書き出しと取り込みをファイルのパスで行う（Windows だけ。ADR 0068 §4。学習の全文を口に流さない）。
+    // 返事は engine に入れた ExportReply（content は空）と ImportReply。失敗は BridgeError（TRANSFER_FAILED と reason）。
+    // macOS の殻は受けない（NOT_ALLOWED。#274 の設計のまま engine の ExportData・ImportData を中継する）
+    ExportToFile export_to_file = 15;
+    ImportFromFile import_from_file = 16;
     ikari.engine.v1.Envelope engine = 20; // 管理の要求と返事。殻はそのままエンジンへ流し、返事もそのまま返す
     Event event = 30;                     // 殻 → 設定アプリ
     BridgeError error = 31;
@@ -21,12 +27,16 @@ message Frame {
 message BridgeHello { uint32 bridge_version = 1; string app_version = 2; }   // bridge_version = 1
 message BridgeHelloReply { uint32 bridge_version = 1; string shell_version = 2; }
 message GetSettings {}
+message ExportToFile { string path = 1; bool replace = 2; }      // replace = 画面で上書きの確認を済ませた
+message ImportFromFile { string path = 1; bool dry_run = 2; }    // dry_run = 検証して件数を返すだけ
 message SettingEntry { string key = 1; string value = 2; }       // docs/phase2-contract.md §3 のキーと値
 message SettingsSnapshot { repeated SettingEntry effective = 1; } // すべての既知のキーの、今効いている値
 message UpdateSettings { repeated SettingEntry set = 1; repeated string reset = 2; }   // reset = その行を消して既定に戻す
 message Event { oneof kind { SettingsChanged settings_changed = 1; OpenTab open_tab = 2; } }
 message SettingsChanged {}                                        // メニューや手の編集で変わった。設定アプリは取り直す
 message OpenTab { string tab = 1; }                               // 設定アプリのタブの名前（input、conversion、dictionary、learning、about）
-message BridgeError { BridgeErrorCode code = 1; string key = 2; }  // key は不正だった設定のキー名だけ
+message BridgeError { BridgeErrorCode code = 1; string key = 2; string reason = 3; }  // key は不正だった設定のキー名だけ。
+                                                                 // reason は TRANSFER_FAILED の理由の固定の語（パスは入れない）
 enum BridgeErrorCode { BRIDGE_ERROR_UNSPECIFIED = 0; VERSION_MISMATCH = 1; INVALID_SETTING = 2; NOT_ALLOWED = 3;
-                       ENGINE_UNAVAILABLE = 4; TOO_LARGE = 5; WRITE_FAILED = 6; }
+                       ENGINE_UNAVAILABLE = 4; TOO_LARGE = 5; WRITE_FAILED = 6;
+                       TRANSFER_FAILED = 7; }

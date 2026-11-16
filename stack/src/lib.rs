@@ -16,11 +16,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+/// LM の推論の取り消しの印と、スレッドの範囲（ADR 0074。エンジンが先行計算のジョブに付ける）
+pub use ikari_lm::cancel as lm_cancel;
 /// 別プロセスの LM（`ikari-lm-host`）の実行ファイルの名前（Windows は `.exe` つき）
 pub use ikari_lm::host::host_exe_name as lm_host_exe_name;
 /// LM の計測の型と記録（エンジンが `ikari-lm` を直接知らずに使う。ADR 0061）
 pub use ikari_lm::trace as lm_trace;
-pub use ikari_lm::{LmDevice, LmTrace};
+pub use ikari_lm::{CancelToken, LmDevice, LmTrace};
 
 use ikari_core::user::{IT_PACK_ID, UserDictionary, UserDir, builtin_it_pack};
 use ikari_core::{

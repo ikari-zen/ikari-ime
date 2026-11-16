@@ -1,8 +1,8 @@
 # PR と main への push ごとに scripts/check.sh を 2 つの job に分けて流す（#290、#295）。
 #   rust  ubuntu。文書の検査、ライセンス、fmt、clippy、cargo test（--rust-only）
 #   deny    ubuntu。cargo-deny（脆弱性、取得元、ライセンス、通信の crate の禁止。必須ではない。ADR 0069 §4.2）
-#   windows windows-latest。cargo test --workspace（LM なし。必須ではない。#316）
-#   windows-artifact windows-latest。実機（VM）に持ち込む release ビルド（LM は Vulkan。ADR 0059）を artifact に保存する（必須ではない）
+#   windows windows-latest。cargo test --workspace（LM なし。必須ではない。#316）と、候補窓（核の DLL と WinUI 3 の画面。ADR 0062）のビルド
+#   windows-artifact windows-latest。実機（VM）に持ち込む release ビルド（LM は Vulkan。ADR 0059）と、NPU の測定ツール（ADR 0075）を artifact に保存する（必須ではない）
 #   check macOS。XCFramework のビルドと swift test（--swift-only）。Swift は Linux では作れない
 # ブランチ保護の「必要なチェック」に check を入れてある（job の名前を変えない）。rust は必須ではないが、check と同じく通らないものはマージしない。
 # 公開リポジトリでは GitHub ホストのランナーが無料。macOS は混むので、macOS で流すものを Swift だけに絞る。
@@ -119,6 +119,44 @@ jobs:
         env:
           RUSTFLAGS: "-C target-feature=-crt-static"
         run: cargo build -p ikari-lm --bin ikari-lm-host --features llama
+      # 候補窓の画面（WinUI 3、C#。ADR 0062 §3）。Mac ではビルドできないので、ここで確かめる。
+      # actions/setup-dotnet v6.1.0（コミットの SHA で固定）。.NET SDK の版は windows/candidate-ui/global.json
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73
+        with:
+          global-json-file: windows/candidate-ui/global.json
+      # 核の DLL（release）を先に作り、画面のビルドが exe の隣に写す。global.json を効かせるため、画面のフォルダで流す
+      - name: 候補窓（核の DLL と画面）をビルドする
+        shell: pwsh
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+          DOTNET_NOLOGO: "1"
+        run: |
+          cargo build --release -p ikari-candidate
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Push-Location windows/candidate-ui
+          dotnet --version
+          dotnet build -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $exe = Get-ChildItem -Recurse bin -Filter ikari-candidate.exe | Select-Object -First 1
+          if (-not $exe) { throw "ikari-candidate.exe was not built" }
+          if (-not (Test-Path (Join-Path $exe.DirectoryName 'ikari_candidate.dll'))) { throw "ikari_candidate.dll is not next to ikari-candidate.exe" }
+          Pop-Location
+      # 設定画面（WinUI 3、C#。ADR 0071 §2）。候補窓と同じ .NET SDK（setup-dotnet は上のもの）
+      - name: 設定画面（核の DLL と画面）をビルドする
+        shell: pwsh
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+          DOTNET_NOLOGO: "1"
+        run: |
+          cargo build --release -p ikari-settings-core
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Push-Location windows/settings-ui
+          dotnet build -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $exe = Get-ChildItem -Recurse bin -Filter ikari-settings.exe | Select-Object -First 1
+          if (-not $exe) { throw "ikari-settings.exe was not built" }
+          if (-not (Test-Path (Join-Path $exe.DirectoryName 'ikari_settings_core.dll'))) { throw "ikari_settings_core.dll is not next to ikari-settings.exe" }
+          Pop-Location
 
   # 実機（VM）で試すための release ビルド（エンジンの exe と TIP の DLL）と、`windows/dev` のスクリプトを、1 つの artifact に入れる。
   # VM で Rust を入れてビルドしなくて済む（遅い機械での手間を避ける）。配置はリポジトリと同じ（`windows/dev/common.ps1` が
@@ -193,11 +231,47 @@ jobs:
       # 動的な C ランタイム（vcruntime など）を取り込んでいないこと。同じ場所に、次の開発用のビルドが上書きする
       - name: 製品のビルド（dev-knobs なし）の検査
         run: |
-          cargo build --release -p ikari-engine-host -p ikari-tip
+          cargo build --release -p ikari-engine-host -p ikari-tip -p ikari-candidate -p ikari-settings-core
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $rel = Join-Path $env:CARGO_TARGET_DIR 'release'
-          cargo xtask scan-product "$rel\ikari_tip.dll" "$rel\ikari-engine-host.exe"
+          cargo xtask scan-product "$rel\ikari_tip.dll" "$rel\ikari-engine-host.exe" "$rel\ikari_candidate.dll" "$rel\ikari_settings_core.dll"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      # 候補窓（ADR 0062）。画面は自己完結で dist\target\release\candidate に出す（エンジンの exe の隣の candidate。
+      # start-engine.ps1 がインストール先に写す。核は上の製品のビルドの DLL）。NuGet はロックのとおり（CI=true で RestoreLockedMode）
+      # 確認用の送り手（examples/candidate-send。開発用）は、あとで artifact に入れる
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73
+        with:
+          global-json-file: windows/candidate-ui/global.json
+      - name: 候補窓の画面を発行する（自己完結）
+        shell: pwsh
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+          DOTNET_NOLOGO: "1"
+        run: |
+          $rel = Join-Path $env:CARGO_TARGET_DIR 'release'
+          $out = Join-Path $PWD 'dist\target\release\candidate'
+          Push-Location windows/candidate-ui
+          dotnet publish -c Release -o $out "-p:IkariCoreDll=$rel\ikari_candidate.dll"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+          if (-not (Test-Path (Join-Path $out 'ikari_candidate.dll'))) { throw "ikari_candidate.dll is not in $out" }
+          cargo build --release -p ikari-candidate --example candidate-send
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      # 設定画面（ADR 0071 §2）。自己完結で dist\settings に出す（VM の確認の項目 56〜59）
+      - name: 設定画面を発行する（自己完結）
+        shell: pwsh
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+          DOTNET_NOLOGO: "1"
+        run: |
+          # 核は上の製品のビルドの DLL（scan-product を通ったもの）
+          $rel = Join-Path $env:CARGO_TARGET_DIR 'release'
+          $out = Join-Path $PWD 'dist\settings'
+          Push-Location windows/settings-ui
+          dotnet publish -c Release -o $out "-p:IkariCoreDll=$rel\ikari_settings_core.dll"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+          if (-not (Test-Path (Join-Path $out 'ikari_settings_core.dll'))) { throw "ikari_settings_core.dll is not in dist\settings" }
       # 以降は開発用のビルド（実機の確認に持ち込む artifact。windows/dev のスクリプトが dev-knobs の口を使う）
       - name: release ビルド（開発用の口つき。LM なしのエンジンと TIP）
         run: cargo build --release -p ikari-engine-host -p ikari-tip --features ikari-engine-host/dev-knobs,ikari-tip/dev-knobs
@@ -221,6 +295,62 @@ jobs:
           cargo build --release -p ikari-eval --features lm-vulkan
           cargo build --release -p ikari-lm --bin ikari-lm-host --features vulkan,dev-knobs
           cargo build --release -p ikari-lm --example devices --features vulkan,dev-knobs
+      # NPU の測定ツール（ADR 0075 §4。製品には入らない）。会社 PC に zip で持ち込み、手で動かす。llama.cpp は上と同じ Vulkan の
+      # ビルド（OUT_DIR を共有する）。OpenVINO Runtime は Windows のアーカイブ（版と sha256 を固定。sha256 は配布元の .sha256 と
+      # 手元で取り直した値が同じ）から、使う DLL だけを exe の隣に置く（runtime-linking なのでビルドに SDK は要らない）。
+      # モデル（GGUF・IR）は入れない（zenz は cc-by-sa-4.0。再配布は別途確認。tools/npu-probe/USAGE.md）
+      - name: NPU の測定ツールを組み立てる
+        shell: pwsh
+        env:
+          CMAKE_GENERATOR: Ninja
+          IKARI_NPU_PROBE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          OPENVINO_NAME: openvino_toolkit_windows_2026.4.1.22982.07f9c262b05_x86_64
+          OPENVINO_URL: https://storage.openvinotoolkit.org/repositories/openvino/packages/2026.4.1/windows/openvino_toolkit_windows_2026.4.1.22982.07f9c262b05_x86_64.zip
+          OPENVINO_SHA256: 501edf3a46210ded7d78a6d7d630f5ee4def80598b8aa0ef358a6cd435264084
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cargo build --release -p ikari-npu-probe --features vulkan
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $rel = Join-Path $env:CARGO_TARGET_DIR 'release'
+          $out = Join-Path $PWD 'probe-dist\ikari-npu-probe'
+          New-Item -ItemType Directory -Force $out, "$out\backends", "$out\models", "$out\licenses\openvino" | Out-Null
+          Copy-Item "$rel\ikari-npu-probe.exe" $out
+          # llama.cpp（Vulkan）の DLL: ggml-vulkan を持つ OUT_DIR
+          $sysout = Get-ChildItem "$rel\build" -Directory -Filter 'llama-cpp-sys-2-*' |
+            ForEach-Object { Join-Path $_.FullName 'out' } |
+            Where-Object { Get-ChildItem (Join-Path $_ 'backends') -Filter 'ggml-vulkan*.dll' -ErrorAction SilentlyContinue } |
+            Select-Object -Last 1
+          if (-not $sysout) { throw "no ggml-vulkan DLL under $rel\build\llama-cpp-sys-2-*\out\backends" }
+          Copy-Item "$sysout\bin\*.dll" $out
+          Copy-Item "$sysout\backends\*.dll" "$out\backends"
+          $zip = Join-Path $env:RUNNER_TEMP 'openvino.zip'
+          Invoke-WebRequest -Uri $env:OPENVINO_URL -OutFile $zip
+          $actual = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
+          if ($actual -ne $env:OPENVINO_SHA256) { throw "OpenVINO sha256 mismatch: expected $env:OPENVINO_SHA256, got $actual" }
+          $ov = Join-Path $env:RUNNER_TEMP 'ov'
+          Expand-Archive $zip -DestinationPath $ov
+          $root = Join-Path $ov $env:OPENVINO_NAME
+          # 使わない読み込み口（ONNX、TensorFlow など。IR だけを読む）は入れない
+          Get-ChildItem "$root\runtime\bin\intel64\Release" -File |
+            Where-Object { $_.Name -notmatch '_frontend\.dll$' -or $_.Name -eq 'openvino_ir_frontend.dll' } |
+            Copy-Item -Destination $out
+          # tbbbind_2_5.dll は入れない: VM（N150）で、あると compile_model が時々（GPU は毎回）0xc0000005 で落ちた（無いと 8/8 通った）
+          foreach ($tbb in 'tbb12.dll', 'tbbmalloc.dll') { Copy-Item "$root\runtime\3rdparty\tbb\bin\$tbb" $out }
+          Copy-Item "$root\docs\licensing\*" "$out\licenses\openvino"
+          if (-not (Test-Path "$out\openvino_c.dll")) { throw "openvino_c.dll was not collected" }
+          # 利用状況を送る部品（テレメトリ）が入っていないこと（ADR 0075 §6）
+          $telemetry = Get-ChildItem $out -Recurse | Where-Object { $_.Name -match 'telemetry' }
+          if ($telemetry) { throw "telemetry component found: $($telemetry.Name -join ', ')" }
+          Copy-Item tools\npu-probe\USAGE.md "$out\README.txt"
+          Copy-Item LICENSE, NOTICE, THIRD_PARTY_NOTICES.md "$out\licenses"
+          Set-Content -Path "$out\COMMIT" -Value $env:IKARI_NPU_PROBE_COMMIT -Encoding ascii
+          Get-ChildItem $out -Recurse -File | ForEach-Object { "{0}`t{1}" -f $_.Length, $_.FullName.Substring($out.Length + 1) } | Tee-Object -FilePath "$out\MANIFEST.tsv"
+      # モデルなしで装置の一覧を出す（OpenVINO の DLL が読めること。ランナーに NPU は無い見込み）
+      - name: NPU の測定ツールの装置の一覧
+        shell: pwsh
+        run: |
+          probe-dist\ikari-npu-probe\ikari-npu-probe.exe --list
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       # 窓なしのエンジン（hide-console。#372）。コンソールつきの exe は、上書きされるので先に取っておき、あとで戻す。
       # 窓なしも同じ構成（LM は隣の子。ふだん使いの構成）。start-engine.ps1 は、-hidden があればそれを使う
       # （導入先に ikari-engine-host.exe の名前で写してから起動する。TIP はその名前のエンジンだけを相手にする。ADR 0063、#409）
@@ -248,6 +378,7 @@ jobs:
           mkdir -p "$out/backends" dist/windows dist/shell-core/resources dist/eval
           cp "$rel/ikari-engine-host.exe" "$rel/ikari-engine-host-nolm.exe" "$rel/ikari-engine-host-hidden.exe" "$rel/ikari_tip.dll" "$rel/ikari-eval.exe" "$rel/ikari-lm-host.exe" "$out/"
           cp "$rel/examples/devices.exe" "$out/ikari-lm-devices.exe"
+          cp "$rel/examples/candidate-send.exe" "$out/ikari-candidate-send.exe"
           # 使う OUT_DIR: feature の組み合わせで build のフォルダが複数ありうるので、backends に ggml-vulkan を含むもの
           sysout=""
           for o in "$rel"/build/llama-cpp-sys-2-*/out; do
@@ -294,6 +425,13 @@ jobs:
         with:
           name: ikari-windows-dev-${{ github.event.pull_request.head.sha || github.sha }}
           path: dist
+          if-no-files-found: error
+          retention-days: 14
+      # NPU の測定ツール（ADR 0075 §4）。展開すると ikari-npu-probe\ のフォルダができる（AppContainer の確認はこの名前のフォルダだけ）
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ikari-npu-probe-${{ github.event.pull_request.head.sha || github.sha }}
+          path: probe-dist
           if-no-files-found: error
           retention-days: 14
 

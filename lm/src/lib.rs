@@ -9,6 +9,7 @@
 //! - llama.cpp を使う実装（`LlamaScorer`）は feature `llama`（Metal は `metal`）の後ろに置く。
 //!   cmake と Xcode のコマンドラインツールが必要で、既定のビルドには入れない。
 
+pub mod cancel;
 mod config;
 mod error;
 pub mod host;
@@ -21,6 +22,7 @@ pub mod trace;
 #[cfg(feature = "llama")]
 mod llama;
 
+pub use cancel::CancelToken;
 pub use config::{ModelKind, ZenzConfig};
 pub use error::LmError;
 #[cfg(feature = "dev-knobs")]
