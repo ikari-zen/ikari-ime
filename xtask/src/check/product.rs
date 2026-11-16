@@ -80,7 +80,8 @@ pub fn dev_strings_gated(root: &Path) -> Result<(), Failure> {
         let is_source = file.ends_with(".rs")
             && SOURCE_ROOTS.iter().any(|r| file.starts_with(r))
             && !file.contains("/tests/")
-            && !file.ends_with("/tests.rs");
+            && !file.ends_with("/tests.rs")
+            && !file.ends_with("_tests.rs");
         if !is_source {
             continue;
         }
@@ -109,7 +110,8 @@ pub fn lm_spawn_single(root: &Path) -> Result<(), Failure> {
             && !file.starts_with("lm/")
             && file != LM_SPAWN_ENTRY
             && !file.contains("/tests/")
-            && !file.ends_with("/tests.rs");
+            && !file.ends_with("/tests.rs")
+            && !file.ends_with("_tests.rs");
         if !is_source {
             continue;
         }
@@ -168,7 +170,8 @@ pub fn net_call_single(root: &Path) -> Result<(), Failure> {
             && in_scope
             && file != NET_ENTRY
             && !file.contains("/tests/")
-            && !file.ends_with("/tests.rs");
+            && !file.ends_with("/tests.rs")
+            && !file.ends_with("_tests.rs");
         if !is_source {
             continue;
         }

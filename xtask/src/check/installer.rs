@@ -103,6 +103,7 @@ const UNINSTALL_ORDER: (&str, &[&str]) = (
         "IncludeInErrorReporting",
         "UnregisterTip",
         "StopEngines",
+        "DeleteCageProfile",
     ],
 );
 /// helper の終了コードの名前（lib.rs の `exit` の定数）と、ikari.iss の定数の名前

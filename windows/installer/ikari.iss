@@ -443,6 +443,14 @@ begin
   RunTrusted(AppHelper, 'wer-include' + ErrorReportingNames, Code);
 end;
 
+procedure DeleteCageProfile;
+var
+  Code: Integer;
+begin
+  { LM の子の檻（AppContainer）のプロファイルを消す（削除を動かした利用者の分だけ。ADR 0072 §12.5）。失敗しても削除は続ける }
+  RunTrusted(AppHelper, 'cage-profile-delete', Code);
+end;
+
 { 消せないもの（使用中）は、次の再起動で消す予約をする。管理者だけが書ける場所（検査済みのインストール先）にだけ使う }
 procedure ScheduleDeleteTree(Dir: String);
 var
@@ -564,6 +572,7 @@ begin
   IncludeInErrorReporting;
   UnregisterTip;
   StopEngines(AppHelper);
+  DeleteCageProfile;
   { ファイルは、このあと Inno が消す（使用中の TIP は uninsrestartdelete で再起動のときに）。
     利用者のデータ（%LOCALAPPDATA%\ikari-ime）には触れない（ADR 0067 §3.3、ADR 0063 Q3） }
 end;
