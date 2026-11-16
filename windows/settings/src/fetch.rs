@@ -25,10 +25,15 @@ pub enum FetchRequest {
         sha256: Option<String>,
         name: Option<String>,
     },
+    /// 版の確認（`ikari-data version-check`。ADR 0076 §6。結果は `Snapshot::latest`）
+    VersionCheck,
 }
 
-/// `ikari-data` の引数（`model fetch …`）。空の値は引数に出さない
+/// `ikari-data` の引数（`model fetch …`、`version-check`）。空の値は引数に出さない
 pub fn model_fetch_args(request: &FetchRequest) -> Vec<String> {
+    if *request == FetchRequest::VersionCheck {
+        return vec!["version-check".to_owned()];
+    }
     let mut args = vec!["model".to_owned(), "fetch".to_owned()];
     let mut push = |key: &str, value: &str| {
         args.push(format!("--{key}"));
@@ -51,6 +56,7 @@ pub fn model_fetch_args(request: &FetchRequest) -> Vec<String> {
                 push("name", name);
             }
         }
+        FetchRequest::VersionCheck => {}
     }
     args
 }
@@ -86,6 +92,10 @@ pub struct Snapshot {
     pub error: Option<FetchErrorCode>,
     /// `done` の束の名前
     pub bundle: Option<String>,
+    /// `done` の sha256（`ikari-data` が写しながら数えた値。sha256 なしで取ったときに確認の画面に出す。ADR 0076 §18.1）
+    pub sha256: Option<String>,
+    /// `latest` の版（版の確認。`数.数.数`）
+    pub latest: Option<String>,
 }
 
 impl Snapshot {
@@ -96,6 +106,8 @@ impl Snapshot {
             total: None,
             error: None,
             bundle: None,
+            sha256: None,
+            latest: None,
         }
     }
 }
@@ -211,16 +223,20 @@ fn apply(s: &mut Snapshot, report: Report) {
             s.received = received;
             s.total = total;
         }
-        Report::Done { name, .. } => {
+        Report::Done { name, sha256 } => {
             s.phase = Phase::Done;
             s.bundle = Some(name);
+            s.sha256 = Some(sha256);
         }
         Report::Error(code) => {
             s.phase = Phase::Failed;
             s.error = Some(code);
         }
-        // 版の確認の行は、この仕事では来ない
-        Report::Latest { .. } => {}
+        // 版の確認の終わり（比べるのは `ikari_resource::app_version::verdict`。文は `text`）
+        Report::Latest { version } => {
+            s.phase = Phase::Done;
+            s.latest = Some(version);
+        }
     }
 }
 
@@ -314,6 +330,26 @@ mod tests {
         assert_eq!(s.phase, Phase::Done);
         assert_eq!((s.received, s.total), (10, Some(10)));
         assert_eq!(s.bundle.as_deref(), Some("zenz-small"));
+        assert_eq!(s.sha256.as_deref(), Some(SHA));
+        assert_eq!(s.latest, None);
+    }
+
+    #[test]
+    fn version_check_args_and_latest_line() {
+        assert_eq!(
+            model_fetch_args(&FetchRequest::VersionCheck),
+            ["version-check"]
+        );
+        let state = Mutex::new(Snapshot::started());
+        read_reports(
+            Box::new(Cursor::new(b"latest 0.3.1\n".to_vec())),
+            Box::new(|| Some(0)),
+            &state,
+        );
+        let s = lock(&state).clone();
+        assert_eq!(s.phase, Phase::Done);
+        assert_eq!(s.latest.as_deref(), Some("0.3.1"));
+        assert_eq!(s.bundle, None);
     }
 
     #[test]

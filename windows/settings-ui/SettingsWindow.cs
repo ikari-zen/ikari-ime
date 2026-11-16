@@ -47,7 +47,9 @@ internal sealed class SettingsWindow
         root.Children.Add(_status);
         root.Children.Add(actions);
         root.Children.Add(_result);
+        // 第 4 弾の契約: レーン D-4 はモデルの欄（取得、ファイルからの取り込み、自由指定の確認の窓）を ModelPanel.cs に作り、ここに 1 行で足す
         root.Children.Add(_settings);
+        // 第 4 弾の契約: レーン D-2d は版の確認の欄を VersionPanel.cs に作り、ここに 1 行で足す
         // 画面の入力欄で ikari を使えるかを VM で確かめるための欄（ADR 0071 §6。保存しない）
         root.Children.Add(new TextBox { Header = "入力の確認用（保存しない）", Margin = new Thickness(0, SectionGapDip, 0, 0) });
         _window = new Window { Title = WindowTitle, Content = new ScrollViewer { Content = root } };
