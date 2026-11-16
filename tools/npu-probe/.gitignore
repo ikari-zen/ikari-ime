@@ -1,0 +1,9 @@
+# モデルの実物と IR は入れない（cc-by-sa-4.0。ADR 0075）
+*.gguf
+*.xml
+*.bin
+*.safetensors
+out/
+hf/
+ir/
+.venv/
