@@ -15,7 +15,7 @@
 //!   運ぶ必要が出たら、`Frame` の種類を足すのでなく、版を分けた別の枠にする（`SETTINGS_PIPE_PROTOCOL`）。
 //! - 学習の全文を運ばない（ADR 0068 §4。B-2）: `ExportData` と `ImportData` の中継は `NOT_ALLOWED` で断る
 //!   （`relay_policy::whole_data_rejection`）。書き出しと取り込みは、画面が選んだファイルのパスで engine-host が行う
-//!   （`transfer`。パスを運ぶ枠は W4-s3 の第 2 段）。これで、枠の上限（16 MiB）と取り込みの上限（64 MiB）のずれも無くなる。
+//!   （`transfer`。枠は `bridge.proto` の `ExportToFile` と `ImportFromFile`。失敗は `TRANSFER_FAILED` と理由の語）。これで、枠の上限（16 MiB）と取り込みの上限（64 MiB）のずれも無くなる。
 //! - 上限: パイプの枠は口ごとの上限（`Port::Settings`）。超える要求は、枠の本体を読まずに接続を切る
 //!   （枠の位置が分からなくなるため、返事を返せない）。返事が上限を超えるときは、接続を保ったまま `TOO_LARGE` の枠を返す。
 //! - TIP が設定の変更を知る方法（ファイルの変更を見るか、engine-host から知らせるか）は W4-s2 では決めない
@@ -31,8 +31,9 @@ use ikari_pipe::frame::KIND_SEQ_BYTES;
 use ikari_pipe::peer::{Endpoint, PeerRejection, SelfModule, verify_peer_path};
 use ikari_pipe::{FrameKind, Listener, MAX_FRAME_LEN, Port, Server};
 use ikari_shell_core::SettingsEntry;
+use ikari_shell_core::bridge::proto::frame::Body;
 use ikari_shell_core::bridge::proto::{BridgeErrorCode, Frame, UpdateSettings};
-use ikari_shell_core::bridge::protocol::{error_frame, snapshot_frame};
+use ikari_shell_core::bridge::protocol::{error_frame, snapshot_frame, transfer_failure};
 use ikari_shell_core::bridge::relay_policy::whole_data_rejection;
 use ikari_shell_core::bridge::server::{relay_reply, update_failure};
 use ikari_shell_core::bridge::{Handshake, RelayGate, Route, frame_codec, handshake, route};
@@ -42,6 +43,7 @@ use ikari_shell_core::settings::{
 use prost::Message;
 
 use crate::slot::EngineSlot;
+use crate::transfer;
 
 /// 枠の本体のプロトコル。`bridge.proto` の `Frame`（版は `BridgeHello.bridge_version`。接続の最初の `Hello` で照合し、
 /// 合わなければ `VERSION_MISMATCH` を返す。判断は shell-core の `handshake`）。
@@ -100,6 +102,30 @@ impl SettingsHost {
         }
         // 学習の全文（書き出しと取り込み）は、この口で運ばない（ADR 0068 §4。パスで行う。`transfer`）
         if let Some(reply) = whole_data_rejection(&frame) {
+            return Some(encode(reply));
+        }
+        let request_id = frame.request_id;
+        let transferred = match &frame.body {
+            Some(Body::ExportToFile(export)) => Some(transfer::export_to_path(
+                &self.engine,
+                &export.path,
+                export.replace,
+            )),
+            Some(Body::ImportFromFile(import)) => Some(transfer::import_from_path(
+                &self.engine,
+                &import.path,
+                import.dry_run,
+            )),
+            _ => None,
+        };
+        if let Some(result) = transferred {
+            let reply = match result {
+                Ok(envelope) => Frame {
+                    request_id,
+                    body: Some(Body::Engine(envelope)),
+                },
+                Err(e) => transfer_failure(request_id, e.as_str()),
+            };
             return Some(encode(reply));
         }
         let reply = match route(frame, &self.gate) {
@@ -229,7 +255,6 @@ pub fn serve_settings<L: Listener>(listener: L, host: SettingsHost) -> io::Resul
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ikari_shell_core::bridge::proto::frame::Body;
 
     mod envelope {
         use ikari_proto::v1::{Envelope, ExportReply, envelope::Body};
