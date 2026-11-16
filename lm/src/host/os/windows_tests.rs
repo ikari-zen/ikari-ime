@@ -229,7 +229,8 @@ fn ace_count(path: &Path) -> u16 {
         )
     };
     assert_eq!(rc, ERROR_SUCCESS);
-    // SAFETY: 成功した呼び出しが返した DACL（`sd` の中）を読み、`sd` を 1 回だけ解放する
+    assert!(!dacl.is_null(), "DACL がない");
+    // SAFETY: 成功した呼び出しが返した DACL（`sd` の中。null でないと確かめた）を読み、`sd` を 1 回だけ解放する
     unsafe {
         let count = (*dacl).AceCount;
         LocalFree(sd);

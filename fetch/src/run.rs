@@ -246,7 +246,13 @@ mod tests {
     #[test]
     fn version_check_is_not_implemented_yet() {
         let (code, out) = run_str("version-check");
-        assert_eq!((code, out.as_str()), (EXIT_ERROR, "error tool\n"));
+        // Windows のテストは中の整合性で動くので、実装の前に `refused` で終わる
+        let expected = if cfg!(windows) {
+            "error refused\n"
+        } else {
+            "error tool\n"
+        };
+        assert_eq!((code, out.as_str()), (EXIT_ERROR, expected));
     }
 
     #[cfg(not(windows))]
