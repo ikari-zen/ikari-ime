@@ -33,12 +33,8 @@ windows-sys = { workspace = true, features = [
 # コンソールの窓を出さない（`windows_subsystem = "windows"`）。標準エラーは見えなくなる（失敗は logs/start-failure.log）。
 # ログオン時の起動（W5）のビルドで付ける。既定はオフ（開発では端末で動かす）
 hide-console = []
-# LM（zenz。llama.cpp、CPU）を入れる。cmake と C++ のビルド環境が要る。入れても既定はオフ（設定の `engine.lm` で使う。
-# Windows の既定は LM なし。ADR 0040 §2.6）。ビルドは `windows/dev/build.ps1 -Lm`
-lm = ["ikari-engine/lm"]
-# LM を Vulkan（GPU）で動かす（ADR 0059 §2.2）。`lm` を含む。ビルドに Vulkan SDK が要る。バックエンドの DLL は
-# exe の隣の `backends\` に置く（`windows/dev/build.ps1 -LmVulkan` が写す）。GPU が使えない機械では自動で CPU に落ちる
-lm-vulkan = ["lm", "ikari-engine/lm-vulkan"]
+# 製品のエンジンに llama.cpp を入れない（feature `lm`、`lm-vulkan` を持たない。ADR 0072 §5）。LM は、exe の隣の
+# `ikari-lm-host.exe`（別プロセス）が担う。無ければ LM なしで動く。ビルドは `windows/dev/build.ps1 -Lm`（子だけを LM つきで作る）
 
 # 開発用の口（ADR 0067 §6、0073 §4。R5）。名前はこの 1 つに統一する。既定はオフ。製品のビルドは付けない。
 # この crate では、データの場所の引数（`--data-dir`。ADR 0068 §3）

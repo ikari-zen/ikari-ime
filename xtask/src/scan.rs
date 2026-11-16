@@ -1,6 +1,7 @@
 //! `cargo xtask scan-product <ファイル>...`: 配る物（製品のビルドの exe と DLL）の検査（ADR 0067 §4.4・§6）。
 //! ファイルのバイト列を読むだけで、道具は要らない（Windows の成果物ができたあとに、CI で流す）。
 //!   - 開発用の口の文字列（環境変数の名前、計測の印、デバッグ出力の語）が入っていないこと
+//!   - llama.cpp が入っていないこと（LM は別プロセスの `ikari-lm-host` だけが持つ。ADR 0072 §5）
 //!   - 動的な C ランタイムを取り込んでいないこと（`crt-static` が効いていること。取り込む DLL の名前は、
 //!     PE の import 表に ASCII で入っているので、名前の有無で見る）
 //!
@@ -23,6 +24,9 @@ pub const DEV_STRINGS: &[&str] = &[
     "ikari-tip: ",
     "--data-dir",
 ];
+
+/// エンジンに入れてはいけない llama.cpp の印（C の関数名。`ikari-lm-host` には入る。エンジンと TIP の検査にだけ使う）
+const LLAMA_MARKS: &[&str] = &["llama_model_load", "ggml_backend"];
 
 /// 取り込んではいけない DLL の名前の前置き（大文字小文字を区別しない。`.dll` で終わる名前のときだけ数える）。`crt-static` なら、どれも入らない
 const DYNAMIC_CRT: &[&str] = &[
@@ -65,6 +69,12 @@ fn check_bytes(file: &Path, bytes: &[u8]) -> Vec<String> {
             file.display()
         ));
     }
+    for word in find_llama(bytes) {
+        problems.push(format!(
+            "{}: llama.cpp の印 `{word}` が入っています（LM は別プロセスだけが持つ。ADR 0072 §5）",
+            file.display()
+        ));
+    }
     for name in find_dynamic_crt(bytes) {
         problems.push(format!(
             "{}: 動的な C ランタイム（`{name}`）を取り込んでいます（crt-static が効いていません）",
@@ -80,6 +90,15 @@ pub fn find_dev_strings(bytes: &[u8]) -> Vec<&'static str> {
         .iter()
         .copied()
         .filter(|word| contains(bytes, word.as_bytes()) || contains(bytes, &utf16le(word)))
+        .collect()
+}
+
+/// llama.cpp の印のうち、`bytes` に入っているもの
+pub fn find_llama(bytes: &[u8]) -> Vec<&'static str> {
+    LLAMA_MARKS
+        .iter()
+        .copied()
+        .filter(|word| contains(bytes, word.as_bytes()))
         .collect()
 }
 
@@ -167,6 +186,17 @@ mod tests {
         let mut bytes = b"xx IKARI_USER_DIR yy".to_vec();
         bytes.extend(utf16le("latency.on"));
         assert_eq!(find_dev_strings(&bytes), ["IKARI_USER_DIR", "latency.on"]);
+    }
+
+    #[test]
+    fn llama_marks_are_found() {
+        assert!(find_llama(b"MZ plain engine").is_empty());
+        assert_eq!(
+            find_llama(b"..llama_model_load_from_file..ggml_backend_load.."),
+            ["llama_model_load", "ggml_backend"]
+        );
+        let problems = check_bytes(Path::new("e.exe"), b"llama_model_load_from_file");
+        assert_eq!(problems.len(), 1);
     }
 
     #[test]

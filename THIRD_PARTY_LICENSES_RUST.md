@@ -1,6 +1,6 @@
 # Rust 依存クレートのライセンス
 
-ikari.app に入る Rust の成果物（`ikari-engine-ffi`、`ikari-shell-ffi`）が静的に含む依存クレート（62 個）のライセンスです。`cargo xtask licenses` で作ります（cargo-about。設定は `about.toml`）。手で書き換えないでください。
+ikari.app に入る Rust の成果物（`ikari-engine-ffi`、`ikari-shell-ffi`、LM の子 `ikari-lm-host`）が含む依存クレート（62 個）のライセンスです。`cargo xtask licenses` で作ります（cargo-about。設定は `about.toml`）。手で書き換えないでください。
 
 ビルドのときだけ使うもの、テストだけで使うもの、配らない道具（cli、dict-builder、評価、xtask）は含みません。同じ本文のライセンスはまとめてあります。
 

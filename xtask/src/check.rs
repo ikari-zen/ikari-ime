@@ -32,7 +32,7 @@ const EDGE_MODEL_FILE: &str = "kanakanji-edge-33m-Q8_0.gguf";
 /// fmt、clippy、cargo test、swift test（macOS のみ）、文書とスクリプトの検査。結果を記録する（コミット前に流す門）
 #[derive(Debug, clap::Args)]
 pub struct Args {
-    /// ikari-lm / ikari-engine-ffi / ikari-stack を feature つきで clippy と test（cmake が要る）
+    /// ikari-lm / ikari-engine / ikari-stack を feature つきで clippy と test（cmake が要る）
     #[arg(long)]
     lm: bool,
     /// 実データの #[ignore] テスト（辞書とモデルを使う。--lm を含む）
@@ -303,7 +303,7 @@ fn rust_lm(root: &Path) -> Result<(), Failure> {
     let clippy = [
         ("ikari-lm", "metal"),
         ("ikari-stack", "lm-metal"),
-        ("ikari-engine-ffi", "lm-metal"),
+        ("ikari-engine", "lm-metal"),
         ("ikari-eval", "lm-metal"),
     ];
     for (package, feature) in clippy {
