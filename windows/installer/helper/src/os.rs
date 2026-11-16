@@ -169,11 +169,13 @@ fn read_aces(acl: *mut ACL) -> io::Result<Vec<Ace>> {
     }
     let mut aces = Vec::with_capacity(info.AceCount as usize);
     for index in 0..info.AceCount {
-        let mut raw: *mut core::ffi::c_void = ptr::null_mut();
-        // SAFETY: index は AceCount より小さい。raw には ACL の中の ACE の先頭が書かれる
-        if unsafe { GetAce(acl, index, &mut raw) } == FALSE {
+        let mut slot = core::mem::MaybeUninit::<*mut core::ffi::c_void>::uninit();
+        // SAFETY: index は AceCount より小さい。成功したとき、slot には ACL の中の ACE の先頭が書かれる
+        if unsafe { GetAce(acl, index, slot.as_mut_ptr()) } == FALSE {
             return Err(io::Error::last_os_error());
         }
+        // SAFETY: GetAce が成功したので、slot は書かれた
+        let raw = unsafe { slot.assume_init() };
         // GetAce が成功すれば raw は書かれるが、使う前に空でないことを確かめる
         if raw.is_null() {
             return Err(io::Error::new(
