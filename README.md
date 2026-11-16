@@ -200,7 +200,7 @@ smoke は、インストールしたアプリに変換や学習の試験を流�
 1. 入力ソースから ikari を外す（システム設定 → キーボード → 入力ソース → 編集 → 「ikari」を選んで「−」）。メニューの名前は macOS の版で変わることがあります。
 2. ikari を使っていたアプリを閉じ、ログアウトしてログインし直す。
 3. アプリを消す: `rm -rf "$HOME/Library/Input Methods/ikari.app"`
-4. 学習とユーザー辞書を残すかを決める。`~/Library/Application Support/ikari-ime/` には、学習（`learning.tsv`）、ユーザー辞書（`user_dict.tsv`）、辞書とモデル（`dict/`、`models/`）、ログ（`logs/`）、バックアップが入っています。消すときは、先に設定アプリ「ikari 設定」の「学習とデータ」からエクスポートしてください。消すなら `rm -rf "$HOME/Library/Application Support/ikari-ime"` を使います（`IKARI_USER_DIR` で場所を変えていたら、その場所です）。
+4. 学習とユーザー辞書を残すかを決める。`~/Library/Application Support/ikari-ime/` には、学習（`learning.tsv`）、ユーザー辞書（`user_dict.tsv`）、辞書とモデル（`dict/`、`models/`）、ログ（`logs/`）、バックアップが入っています。消すときは、先に設定アプリ「ikari 設定」の「学習とデータ」からエクスポートしてください。消すなら `rm -rf "$HOME/Library/Application Support/ikari-ime"` を使います。
 5. （任意）エンジンのサンドボックス用のコンテナを消す: `~/Library/Containers/io.github.ikari-zen.inputmethod.ikari.engine`。Finder の「フォルダへ移動」から開いて消します（`IKARI_ID_PREFIX` を変えていたら、その頭に合わせます）。
 6. （任意）アクセシビリティで許可していたなら、一覧から ikari を消す。
 7. （任意）ビルドの生成物を消すなら、リポジトリで `make clean` を流す。`data/` は、要らなければ手で消します。

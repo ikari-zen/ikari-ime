@@ -15,6 +15,10 @@
   (VULKAN_SDK, glslc). The backend DLLs (ggml-vulkan.dll and the CPU variants) are copied next to the engine exe, in
   <release>\backends. Turn it off at run time with "engine.lm_gpu<TAB>off" in settings.tsv (ADR 0059).
 .NOTES
+  This is the development build: it always turns on the "dev-knobs" features (ikari-engine-host, ikari-tip, and the LM
+  child process). The scripts in this folder rely on them: IKARI_USER_DIR, IKARI_TIP_LATENCY / latency.on, the flat TIP
+  layout, "--data-dir" for the engine, and the TIP's debug output (OutputDebugString). The product build
+  (cargo build --release -p ikari-engine-host -p ikari-tip, with no features) has none of them.
   Needs Rust (stable-x86_64-pc-windows-msvc) and Visual Studio Build Tools (C++ workload). cmake is needed only with
   -Lm and -LmVulkan.
   -LmVulkan: if the build stops in rc.exe with RC2136, the build folder path is too long: set CARGO_TARGET_DIR to a short
@@ -30,7 +34,8 @@ if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
 
 if ($Lm -and $LmVulkan) { throw '-Lm and -LmVulkan cannot be combined (-LmVulkan already includes the LM).' }
 
-$features = @()
+# Development knobs (ADR 0067 section 6). Always on in this folder's scripts; never in the product build.
+$features = @('ikari-engine-host/dev-knobs', 'ikari-tip/dev-knobs')
 if ($HideConsole) { $features += 'ikari-engine-host/hide-console' }
 if ($Lm) {
     if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
@@ -86,7 +91,7 @@ if ($LmVulkan) {
 if ($Lm -or $LmVulkan) {
     # The LM child process. Same llama.cpp build as the engine (the feature set of llama-cpp-sys-2 is the same).
     $lmFeature = if ($LmVulkan) { 'vulkan' } else { 'llama' }
-    $hostArgs = @('build', '--release', '-p', 'ikari-lm', '--bin', 'ikari-lm-host', '--features', $lmFeature)
+    $hostArgs = @('build', '--release', '-p', 'ikari-lm', '--bin', 'ikari-lm-host', '--features', "$lmFeature,dev-knobs")
     Write-Step "cargo $($hostArgs -join ' ')   (in $RepoRoot)"
     Push-Location $RepoRoot
     try {

@@ -14,6 +14,7 @@ use crate::data::run::{
 
 mod docs;
 mod frameworks;
+mod product;
 mod record;
 mod supply;
 
@@ -125,6 +126,9 @@ fn steps(root: &Path, plan: &Plan) -> Result<(), Failure> {
     docs::adr_status(root)?;
     supply::net_crates(root)?;
     supply::actions_pinned(root)?;
+    product::crt_static(root)?;
+    product::dev_knobs_wiring(root)?;
+    product::dev_strings_gated(root)?;
     docs::shell_syntax(root)?;
     docs::powershell_syntax(root)?;
     for script in [
@@ -217,7 +221,38 @@ fn rust_base(root: &Path) -> Result<(), Failure> {
     ]))?;
     log("cargo test --workspace");
     exec(cargo(root).args(["test", "--workspace"]))?;
+    product_build(root)?;
     windows_check(root)
+}
+
+/// 製品のビルドで開発用の口に頼る crate（`dev-knobs` を付けない）。`--workspace` は feature が統合されて
+/// 開発用の口が有効になるので、`-p` で単独に調べる（ADR 0067 §6）
+const PRODUCT_CRATES: &[&str] = &["ikari-core", "ikari-lm", "ikari-pipe", "ikari-tip"];
+/// 製品のビルドを Windows 向けに型検査する crate
+const PRODUCT_WINDOWS_CRATES: &[&str] = &["ikari-pipe", "ikari-tip", "ikari-engine-host"];
+
+/// `dev-knobs` を付けない（製品の）ビルドで、テストと Windows 向けの clippy が通ること
+fn product_build(root: &Path) -> Result<(), Failure> {
+    log("製品のビルド（dev-knobs なし）のテスト");
+    let mut test = cargo(root);
+    test.arg("test");
+    for krate in PRODUCT_CRATES {
+        test.args(["-p", krate]);
+    }
+    exec(&mut test)?;
+    if cfg!(windows) || !target_installed(WINDOWS_TARGET) {
+        return Ok(());
+    }
+    log(&format!(
+        "製品のビルド（dev-knobs なし）の cargo clippy --target {WINDOWS_TARGET}"
+    ));
+    let mut clippy = cargo(root);
+    clippy.args(["clippy", "--target", WINDOWS_TARGET]);
+    for krate in PRODUCT_WINDOWS_CRATES {
+        clippy.args(["-p", krate]);
+    }
+    clippy.args(["--", "-D", "warnings"]);
+    exec(&mut clippy)
 }
 
 /// `rustup target add` したか（標準ライブラリの置き場所があるか）

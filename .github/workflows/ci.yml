@@ -185,8 +185,18 @@ jobs:
               "$($Matches[1])=$($Matches[2])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
             }
           }
-      - name: release ビルド（LM なしのエンジンと TIP）
-        run: cargo build --release -p ikari-engine-host -p ikari-tip
+      # 製品のビルド（開発用の口の feature なし）を先に作って検査する（ADR 0067 §4.4・§6）。開発用の文字列が入っていないこと、
+      # 動的な C ランタイム（vcruntime など）を取り込んでいないこと。同じ場所に、次の開発用のビルドが上書きする
+      - name: 製品のビルド（dev-knobs なし）の検査
+        run: |
+          cargo build --release -p ikari-engine-host -p ikari-tip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $rel = Join-Path $env:CARGO_TARGET_DIR 'release'
+          cargo xtask scan-product "$rel\ikari_tip.dll" "$rel\ikari-engine-host.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      # 以降は開発用のビルド（実機の確認に持ち込む artifact。windows/dev のスクリプトが dev-knobs の口を使う）
+      - name: release ビルド（開発用の口つき。LM なしのエンジンと TIP）
+        run: cargo build --release -p ikari-engine-host -p ikari-tip --features ikari-engine-host/dev-knobs,ikari-tip/dev-knobs
       # LM つきのエンジンで上書きされるので、LM なしの exe を先に別の名前で取っておく
       - name: LM なしのエンジンを取っておく
         shell: bash
@@ -202,9 +212,9 @@ jobs:
           CMAKE_GENERATOR: Ninja
         run: |
           ninja --version
-          cargo build --release -p ikari-engine-host -p ikari-eval --features ikari-engine-host/lm-vulkan,ikari-eval/lm-vulkan
-          cargo build --release -p ikari-lm --bin ikari-lm-host --features vulkan
-          cargo build --release -p ikari-lm --example devices --features vulkan
+          cargo build --release -p ikari-engine-host -p ikari-eval --features ikari-engine-host/lm-vulkan,ikari-engine-host/dev-knobs,ikari-eval/lm-vulkan
+          cargo build --release -p ikari-lm --bin ikari-lm-host --features vulkan,dev-knobs
+          cargo build --release -p ikari-lm --example devices --features vulkan,dev-knobs
       # 窓なしのエンジン（hide-console。#372）。コンソールつき（Vulkan の LM つき）の exe は、上書きされるので先に取っておき、あとで戻す。
       # 窓なしも Vulkan の LM つき（ふだん使いの構成）。start-engine.ps1 は、-hidden があればそれを使う
       # （導入先に ikari-engine-host.exe の名前で写してから起動する。TIP はその名前のエンジンだけを相手にする。ADR 0063、#409）
@@ -216,7 +226,7 @@ jobs:
           # bash のステップだと PATH で Git の usr\bin\link.exe が MSVC の link.exe より先に来て、リンクに失敗する。pwsh で流す
           $rel = Join-Path $env:CARGO_TARGET_DIR 'release'
           Copy-Item "$rel\ikari-engine-host.exe" "$rel\ikari-engine-host-console.exe"
-          cargo build --release -p ikari-engine-host --features lm-vulkan,hide-console
+          cargo build --release -p ikari-engine-host --features lm-vulkan,hide-console,dev-knobs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Copy-Item "$rel\ikari-engine-host.exe" "$rel\ikari-engine-host-hidden.exe"
           Copy-Item "$rel\ikari-engine-host-console.exe" "$rel\ikari-engine-host.exe" -Force
