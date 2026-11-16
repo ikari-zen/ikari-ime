@@ -217,13 +217,16 @@ fn a_single_crash_is_followed_by_a_restart_without_restarting_the_engine() {
 const SLOW_INFER_MS: u64 = 300;
 /// 古い先行計算を頼んでから、最後の読みの先行計算を頼むまで（ms）。古い推論が走り出すのに足りる長さ
 const SUPERSEDE_AFTER_MS: u64 = 30;
+/// 偽の子の採点 1 回を分ける区切り（decode に見立てる。ADR 0074 §4 の段階 1 は区切りの間で止める）
+const SLOW_INFER_STEPS: u64 = 4;
 
-/// #429: 走り出した古い先行計算の推論が、最後の読みの推論を待たせる。
-/// 中断がない今は「古い推論の残り + 自分の推論」（約 2 回分）かかる。中断を入れたら `#[ignore]` を外す
+/// #429: 最後の読みの先行計算が来たら、走っている古い先行計算の印が立ち（ADR 0074 §5）、子の推論は次の区切りで止まる。
+/// 最後の読みは「古い推論の区切り 1 つ分 + 自分の推論」で LM が付く
 #[test]
-#[ignore = "#429: 走り出した LM の推論を止める仕組みがまだない（中断の設計待ち）"]
 fn a_running_stale_inference_does_not_delay_the_newest_reading() {
-    let h = HostEngine::with_script(&format!("{SCRIPT}delay_ms={SLOW_INFER_MS}\n"));
+    let h = HostEngine::with_script(&format!(
+        "{SCRIPT}delay_ms={SLOW_INFER_MS}\ndelay_steps={SLOW_INFER_STEPS}\n"
+    ));
     // 子を起動して暖める（LM が効く）
     wait_until(|| h.top() == BOOSTED);
 
@@ -243,7 +246,9 @@ fn a_running_stale_inference_does_not_delay_the_newest_reading() {
         reply.lm_applied
     );
     assert!(reply.lm_applied);
-    // 自分の推論 1 回分 + 余裕。古い推論の残りを待てば、ほぼ 2 回分になる
-    let limit = ikari_testtime::ms(SLOW_INFER_MS + SLOW_INFER_MS / 2);
+    // 段階 1 の見込み: 自分の推論 1 回分 + 古い推論の区切り 1 つ分。余裕は推論の 1/4（プロセス間の往復を含む）。
+    // 止まらなければ、古い推論の残りを待って、ほぼ 2 回分になる
+    let limit =
+        ikari_testtime::ms(SLOW_INFER_MS + SLOW_INFER_MS / SLOW_INFER_STEPS + SLOW_INFER_MS / 4);
     assert!(elapsed < limit, "{elapsed:?} >= {limit:?}");
 }
