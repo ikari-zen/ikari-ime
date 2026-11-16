@@ -85,7 +85,8 @@ internal sealed class CandidateWindow
         double heightDip = CoreNative.PanelHeightDip(
             (uint)model.Candidates.Count, model.Annotation.Length > 0, model.DeveloperNote.Length > 0);
         _rows.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
-        int width = (int)Math.Ceiling(_rows.DesiredSize.Width * state.Scale);
+        // 窓は作業領域より広くしない（長い行は末尾が切れて見える。ADR 0068 §5）
+        int width = (int)Math.Min(Math.Ceiling(_rows.DesiredSize.Width * state.Scale), Math.Floor(state.WorkArea.Width));
         int height = (int)Math.Ceiling(heightDip * state.Scale);
         Rect anchor = state.Anchor;
         Rect work = state.WorkArea;
@@ -112,6 +113,7 @@ internal sealed class CandidateWindow
                 FontSize = SmallFontDip,
                 VerticalAlignment = VerticalAlignment.Center,
                 TextWrapping = TextWrapping.NoWrap,
+                TextTrimming = TextTrimming.CharacterEllipsis,
             },
         });
     }

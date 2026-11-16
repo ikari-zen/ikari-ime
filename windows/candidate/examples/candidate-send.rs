@@ -3,7 +3,8 @@
 //! （`docs/windows-real-device-check.md` の候補窓の項目）。
 //!
 //! 使い方（Windows。候補窓と同じユーザーとセッションで流す）:
-//!   candidate-send.exe <x> <y> [above|below] [scale] [seconds]
+//!   candidate-send.exe <x> <y> [above|below] [scale] [seconds] [long]
+//! `long` は、上限（行の数、1 行の長さ。`limits`）を超える候補を送る（切り詰めた見た目を見る）。
 //! x と y はアンカー（物理のピクセル、左上が原点）。作業領域は主画面の 1920x1040 とみなす（確認用の固定の値）。
 
 #[cfg(windows)]
@@ -40,6 +41,9 @@ mod windows_main {
     };
     const ANCHOR_HEIGHT: f64 = 20.0;
     const DEFAULT_SECONDS: u64 = 5;
+    /// `long` のときの行の数と 1 行の文字の数（上限より多い）
+    const LONG_ROWS: usize = 40;
+    const LONG_CHARS: usize = 1000;
 
     pub fn run() -> Result<(), String> {
         let args: Vec<String> = std::env::args().skip(1).collect();
@@ -74,11 +78,18 @@ mod windows_main {
                 pid: std::process::id(),
             }),
         )?;
+        let surfaces: Vec<String> = if args.get(5).map(String::as_str) == Some("long") {
+            (0..LONG_ROWS)
+                .map(|i| format!("{i}{}", "長".repeat(LONG_CHARS)))
+                .collect()
+        } else {
+            SAMPLE.iter().map(|s| (*s).to_owned()).collect()
+        };
         let model = CandidatePanelModel {
-            candidates: SAMPLE
-                .iter()
-                .map(|s| CandidateItem {
-                    surface: (*s).to_owned(),
+            candidates: surfaces
+                .into_iter()
+                .map(|surface| CandidateItem {
+                    surface,
                     ..Default::default()
                 })
                 .collect(),
