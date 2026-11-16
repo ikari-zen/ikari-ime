@@ -1,4 +1,4 @@
-//! 版の確認 `ikari-data version-check`（ADR 0076 §6、§18.2）。**契約（第 4 弾）。中身はレーン D-2d**。
+//! 版の確認 `ikari-data version-check`（ADR 0076 §6、§18.2）。
 //!
 //! 決まっていること:
 //! - 埋めた固定の URL（[`RELEASES_LATEST_URL`]）に、転送を追わずに 1 回だけ要求する（`NetLimits::VERSION_CHECK`。
@@ -111,7 +111,8 @@ fn check_in_child() -> Result<AppVersion, FetchError> {
     let exit = child.wait().map_err(|_| tool())?;
     match (failure, latest, exit) {
         (Some(code), _, _) => Err(FetchError(code)),
-        (None, Some(version), EXIT_OK) => Ok(version),
+        // 子の終了コードは u32（成功は 0）
+        (None, Some(version), 0) => Ok(version),
         (None, _, _) => Err(FetchError(FetchErrorCode::Internal)),
     }
 }
