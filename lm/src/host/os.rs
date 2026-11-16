@@ -15,6 +15,7 @@
 use std::ffi::OsString;
 use std::io;
 use std::path::Path;
+#[cfg(not(windows))]
 use std::process::{ChildStdin, ChildStdout};
 
 #[cfg(target_vendor = "apple")]
@@ -30,6 +31,21 @@ use apple as imp;
 use other_unix as imp;
 #[cfg(windows)]
 use windows as imp;
+
+/// 子の標準入力に書く口
+#[cfg(not(windows))]
+pub(super) type ToChild = ChildStdin;
+/// 子の標準出力を読む口
+#[cfg(not(windows))]
+pub(super) type FromChild = ChildStdout;
+/// 子の標準入力に書く口。Windows は `CreatePipe` の同期のハンドルのまま読み書きする型を使う
+/// （`ChildStdin` / `ChildStdout` は、重なった I/O で開いたハンドルを前提に読み書きするので、同期のハンドルでは、
+/// 子が終わっても読み取りが終わらない。実機で確かめた）
+#[cfg(windows)]
+pub(super) type ToChild = io::PipeWriter;
+/// 子の標準出力を読む口（Windows。上の `ToChild` の説明のとおり）
+#[cfg(windows)]
+pub(super) type FromChild = io::PipeReader;
 
 /// 起動した子。捨てると kill して wait する
 pub(super) struct ChildProc {
@@ -52,7 +68,7 @@ impl Drop for ChildProc {
 pub(super) fn spawn(
     program: &Path,
     args: &[OsString],
-) -> io::Result<(ChildProc, ChildStdin, ChildStdout)> {
+) -> io::Result<(ChildProc, ToChild, FromChild)> {
     let (inner, stdin, stdout) = imp::spawn(program, args)?;
     // ここから先は、失敗しても `proc` の Drop が子を回収する
     let proc = ChildProc { inner };

@@ -8,6 +8,7 @@
 //!   システムの設定、グローバルなアトム、サインアウトに触れられない。
 //! - [`low_integrity_enabled`] のとき、子を低い整合性で起動する（利用者のファイルに書けない）。
 //! - 窓を出さない（`CREATE_NO_WINDOW`）。
+//! - 親の端は `io::pipe` の型（同期のハンドル）のまま返す（`super::ToChild`）。
 //! - どれか 1 つでもかけられなければ、子を止めて失敗を返す（呼び出し側は、LM なしで動く）。
 
 use std::ffi::{OsStr, OsString};
@@ -16,7 +17,6 @@ use std::io;
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
 use std::path::Path;
-use std::process::{ChildStdin, ChildStdout};
 use std::ptr;
 
 use windows_sys::Win32::Foundation::{HANDLE, HANDLE_FLAG_INHERIT, SetHandleInformation};
@@ -109,7 +109,7 @@ impl Proc {
 pub(super) fn spawn(
     program: &Path,
     args: &[OsString],
-) -> io::Result<(Proc, ChildStdin, ChildStdout)> {
+) -> io::Result<(Proc, io::PipeWriter, io::PipeReader)> {
     let app = wide_nul(program.as_os_str())?;
     let args: Vec<Vec<u16>> = args.iter().map(|a| a.encode_wide().collect()).collect();
     let mut command_line = cmdline::command_line(&wide(program.as_os_str()), &args)?;
@@ -211,11 +211,9 @@ pub(super) fn spawn(
         proc.reap();
         return Err(e);
     }
-    Ok((
-        proc,
-        ChildStdin::from(OwnedHandle::from(parent_in)),
-        ChildStdout::from(OwnedHandle::from(parent_out)),
-    ))
+    // 親の端は `io::pipe` の型のまま返す（`ChildStdin` / `ChildStdout` に包むと、同期のハンドルでは
+    // 子が終わっても読み取りが終わらない。`super::ToChild` の説明）
+    Ok((proc, parent_in, parent_out))
 }
 
 fn raw(handle: &OwnedHandle) -> HANDLE {
