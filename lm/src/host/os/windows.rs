@@ -6,7 +6,7 @@
 //! - 子は止めた状態で作り、Job Object に入れてから動かす。Job: 親のハンドルが閉じたら子も終わる。プロセスは子の
 //!   1 つだけ（子は、さらにプロセスを作れない）。クリップボード、ほかのプロセスの窓、デスクトップ、画面と
 //!   システムの設定、グローバルなアトム、サインアウトに触れられない。
-//! - [`LOW_INTEGRITY`] のとき、子を低い整合性で起動する（利用者のファイルに書けない）。
+//! - [`low_integrity_enabled`] のとき、子を低い整合性で起動する（利用者のファイルに書けない）。
 //! - 窓を出さない（`CREATE_NO_WINDOW`）。
 //! - どれか 1 つでもかけられなければ、子を止めて失敗を返す（呼び出し側は、LM なしで動く）。
 
@@ -45,10 +45,17 @@ use windows_sys::Win32::System::Threading::{
 
 use super::cmdline;
 
-/// 段 1 の「低い整合性」（ADR 0072 §3・Q3）を使うか。実機で GPU が使えると確かめるまでは仮の決定で、
-/// 使えないと分かったら `false` にする（ほかの絞りは変わらない）。GPU で読めない子は、今までどおり
-/// 失敗に数えられ、CPU だけの子に切り替わる（`scorer`）
-pub(super) const LOW_INTEGRITY: bool = true;
+/// 段 1 の「低い整合性」（ADR 0072 §3・Q3）を使うか。実機で GPU が使えると確かめるまでは仮の決定。
+/// 製品のビルドは環境変数を読まず、常に使う。開発用のビルド（`dev-knobs`）だけ、環境変数
+/// （`placement::LOW_INTEGRITY_ENV`）が `0` なら使わない（ほかの絞りは変わらない）。GPU で読めない子は、
+/// 今までどおり失敗に数えられ、CPU だけの子に切り替わる（`scorer`）
+pub(super) fn low_integrity_enabled() -> bool {
+    #[cfg(feature = "dev-knobs")]
+    let value = std::env::var(crate::placement::LOW_INTEGRITY_ENV).ok();
+    #[cfg(not(feature = "dev-knobs"))]
+    let value: Option<String> = None;
+    crate::placement::low_integrity(value.as_deref())
+}
 
 /// Job の中のプロセスの上限（子そのもの 1 つ）
 const MAX_ACTIVE_PROCESSES: u32 = 1;
@@ -113,7 +120,7 @@ pub(super) fn spawn(
         .transpose()?;
 
     let job = Job::confined()?;
-    let token = if LOW_INTEGRITY {
+    let token = if low_integrity_enabled() {
         Some(low_integrity_token()?)
     } else {
         None

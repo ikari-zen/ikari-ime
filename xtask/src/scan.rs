@@ -18,6 +18,7 @@ pub const DEV_STRINGS: &[&str] = &[
     "IKARI_TIP_LATENCY",
     "IKARI_LM_GPU",
     "IKARI_LM_LOG",
+    "IKARI_LM_LOW_INTEGRITY",
     "latency.on",
     "tip-latency.log",
     "OutputDebugString",

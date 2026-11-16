@@ -129,6 +129,7 @@ fn steps(root: &Path, plan: &Plan) -> Result<(), Failure> {
     product::crt_static(root)?;
     product::dev_knobs_wiring(root)?;
     product::dev_strings_gated(root)?;
+    product::lm_spawn_single(root)?;
     docs::shell_syntax(root)?;
     docs::powershell_syntax(root)?;
     for script in [

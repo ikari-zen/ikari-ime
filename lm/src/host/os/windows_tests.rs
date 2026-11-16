@@ -85,7 +85,7 @@ fn the_child_runs_confined() {
         .map(OsString::from)
         .collect();
     let (proc, stdin, mut stdout) = spawn(&exe, &args).unwrap();
-    if imp::LOW_INTEGRITY {
+    if imp::low_integrity_enabled() {
         assert_eq!(integrity_rid(proc.inner.process_handle()), LOW_RID);
     }
     drop(stdin);

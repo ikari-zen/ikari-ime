@@ -94,6 +94,50 @@ pub fn dev_strings_gated(root: &Path) -> Result<(), Failure> {
     finish(problems)
 }
 
+/// LM の子の起動の入口（`host_loader(`）を呼んでよいソース。ここ（`ikari-stack`。エンジンと engine-host が通る）の
+/// 1 か所だけにして、引数・環境・権限の方針を 1 か所に保つ（ADR 0072）。`lm/` の中（定義、テスト）は対象外
+const LM_SPAWN_ENTRY: &str = "stack/src/lm.rs";
+const LM_SPAWN_CALL: &str = "host_loader(";
+
+/// LM の子の起動の入口が、`LM_SPAWN_ENTRY` の 1 か所だけであること
+pub fn lm_spawn_single(root: &Path) -> Result<(), Failure> {
+    log("LM の子の起動が 1 か所だけを通ること（ADR 0072）");
+    let mut problems = Vec::new();
+    for file in tracked(root, "")? {
+        let is_source = file.ends_with(".rs")
+            && SOURCE_ROOTS.iter().any(|r| file.starts_with(r))
+            && !file.starts_with("lm/")
+            && file != LM_SPAWN_ENTRY
+            && !file.contains("/tests/")
+            && !file.ends_with("/tests.rs");
+        if !is_source {
+            continue;
+        }
+        let text = read(root, &file)?;
+        if let Some(line_no) = spawn_calls_outside_tests(&text).first() {
+            problems.push(format!(
+                "{file}:{line_no}: `{LM_SPAWN_CALL}` を呼んでいます（LM の子の起動は {LM_SPAWN_ENTRY} だけを通す）"
+            ));
+        }
+    }
+    finish(problems)
+}
+
+/// テストの前（`#[cfg(test)]` より前）で、コメントでない行に `host_loader(` がある行番号
+fn spawn_calls_outside_tests(text: &str) -> Vec<usize> {
+    let mut found = Vec::new();
+    for (index, line) in text.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.starts_with(TEST_MODULE_MARK) {
+            break;
+        }
+        if !trimmed.starts_with("//") && trimmed.contains(LM_SPAWN_CALL) {
+            found.push(index + 1);
+        }
+    }
+    found
+}
+
 fn finish(problems: Vec<String>) -> Result<(), Failure> {
     if problems.is_empty() {
         Ok(())
@@ -270,6 +314,12 @@ mod tests {
         let found = ungated_words(text);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].0, 4);
+    }
+
+    #[test]
+    fn lm_spawn_calls_are_found_outside_tests_only() {
+        let text = "// host_loader( の説明\nfn f() { let _ = host_loader(spec); }\n#[cfg(test)]\nmod t { fn g() { host_loader(s); } }\n";
+        assert_eq!(spawn_calls_outside_tests(text), vec![2]);
     }
 
     #[test]
