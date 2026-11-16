@@ -79,6 +79,11 @@ if ($Lm -or $LmVulkan) {
     # The LM child process: the only place llama.cpp is linked.
     $lmFeature = if ($LmVulkan) { 'vulkan' } else { 'llama' }
     $hostArgs = @('build', '--release', '-p', 'ikari-lm', '--bin', 'ikari-lm-host', '--features', "$lmFeature,dev-knobs")
+    # The Rust code links the C runtime statically (crt-static, .cargo/config.toml). With "llama", llama.cpp is a static
+    # library inside the exe, so it must use the static C runtime too (/MT): llama-cpp-sys-2 builds it with /MD unless
+    # LLAMA_STATIC_CRT=1 (link error LNK2038). With "vulkan", llama.cpp is DLLs and keeps their own C runtime: leave it unset.
+    $savedStaticCrt = $env:LLAMA_STATIC_CRT
+    if ($Lm) { $env:LLAMA_STATIC_CRT = '1' } else { Remove-Item Env:LLAMA_STATIC_CRT -ErrorAction SilentlyContinue }
     Write-Step "cargo $($hostArgs -join ' ')   (in $RepoRoot)"
     Push-Location $RepoRoot
     try {
@@ -87,6 +92,7 @@ if ($Lm -or $LmVulkan) {
     }
     finally {
         Pop-Location
+        $env:LLAMA_STATIC_CRT = $savedStaticCrt
     }
     $lmHostExe = Join-Path $ReleaseDir 'ikari-lm-host.exe'
     if (-not (Test-Path -LiteralPath $lmHostExe)) { throw "build finished but $lmHostExe does not exist" }
