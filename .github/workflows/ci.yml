@@ -1,11 +1,12 @@
 # PR と main への push ごとに scripts/check.sh を 2 つの job に分けて流す（#290、#295）。
 #   rust  ubuntu。文書の検査、ライセンス、fmt、clippy、cargo test（--rust-only）
+#   deny    ubuntu。cargo-deny（脆弱性、取得元、ライセンス、通信の crate の禁止。必須ではない。ADR 0069 §4.2）
 #   windows windows-latest。cargo test --workspace（LM なし。必須ではない。#316）
 #   windows-artifact windows-latest。実機（VM）に持ち込む release ビルド（LM は Vulkan。ADR 0059）を artifact に保存する（必須ではない）
 #   check macOS。XCFramework のビルドと swift test（--swift-only）。Swift は Linux では作れない
 # ブランチ保護の「必要なチェック」に check を入れてある（job の名前を変えない）。rust は必須ではないが、check と同じく通らないものはマージしない。
 # 公開リポジトリでは GitHub ホストのランナーが無料。macOS は混むので、macOS で流すものを Swift だけに絞る。
-# 依存の脆弱性（cargo audit）は audit.yml が週 1 回流すので、ここでは入れない（無関係な既存の指摘で PR が止まるのを避ける）。
+# 依存の脆弱性（cargo audit）は audit.yml が週 1 回流すので、check.sh には入れない（無関係な既存の指摘で PR が止まるのを避ける）。deny job は必須にしない。
 name: CI
 on:
   pull_request:
@@ -65,6 +66,27 @@ jobs:
         env:
           IKARI_TEST_TIME_SCALE: "5"
         run: scripts/check.sh --rust-only
+
+  # 依存の検査（cargo-deny。deny.toml。ADR 0069 §4.2）: 既知の脆弱性、取得元、ライセンス、禁止する crate（通信の手段。ADR 0066 §6.2）。
+  # 必須のチェックではない（ルールセットに入れない。RustSec のデータベースを取るので、日によって結果が変わる）。
+  # 通信の crate と Action の固定の検査は、ネットワークの要らない形で scripts/check.sh（rust の job）が流す。
+  deny:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        id: deny-cache
+        with:
+          path: ~/.cargo/bin/cargo-deny
+          key: cargo-deny-0.20.2-${{ runner.os }}
+      - name: cargo-deny を入れる（版を固定）
+        if: steps.deny-cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-deny --version 0.20.2 --locked
+      - name: cargo-deny の版を表示する
+        run: cargo deny --version
+      - name: cargo deny check
+        run: cargo deny --locked check
 
   # Windows（x86_64-pc-windows-msvc）で cargo test --workspace（LM なし）を流す（ADR 0040 W1-d、#316）。
   # 必須のチェックではない（ルールセットに入れない。動きが安定してから、必須にするかをユーザーに聞く）。
