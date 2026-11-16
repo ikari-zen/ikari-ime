@@ -1,13 +1,13 @@
-//! LM の子の AppContainer（檻の段 2。ADR 0072 §3、§11 の実測）。プロファイルと、読み取りの許可。
+//! LM の子の AppContainer（檻の段 2。ADR 0072 §3、§12 の実測）。プロファイルと、読み取りの許可。
 //!
 //! - プロファイルは利用者ごとに 1 つ（名前は [`PROFILE_NAME`]）。無ければ作り、あれば SID を名前から求める。
-//!   プロファイルが無いと、AppContainer の子は起動できない（VM で `ERROR_FILE_NOT_FOUND`。§11）。
+//!   プロファイルが無いと、AppContainer の子は起動できない（VM で `ERROR_FILE_NOT_FOUND`。ADR 0072 §12）。
 //!   消すのはアンインストールのとき（[`delete_profile`]。消すのは、呼んだ利用者のものだけ）。
 //! - 能力（capability）は 1 つも付けない。ネットワーク、ほかのプロセスの口、利用者のファイルに届かない。
 //! - 読み取りを許すのは、渡されたファイル 1 つ（継承しない ACE。`FILE_GENERIC_READ`）。何度呼んでも ACE は増えない
 //!   （`GRANT_ACCESS` は同じ相手の ACE にまとめる）。
 //! - 実行ファイルのフォルダは、ここでは許さない。製品のインストール先（Program Files の下）は、すべてのアプリの
-//!   パッケージ（`ALL APPLICATION PACKAGES`）に読み取りと実行が開いている前提（ADR 0067。§11 の実測）。
+//!   パッケージ（`ALL APPLICATION PACKAGES`）に読み取りと実行が開いている前提（ADR 0067。§12 の実測）。
 
 use std::ffi::OsStr;
 use std::io;
