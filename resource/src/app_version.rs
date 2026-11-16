@@ -45,6 +45,13 @@ impl AppVersion {
     }
 }
 
+impl std::fmt::Display for AppVersion {
+    /// `数.数.数`（`parse` が読み戻せる形）
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
+    }
+}
+
 fn parse_part(part: &str) -> Option<u32> {
     if part.is_empty()
         || part.len() > MAX_VERSION_PART_DIGITS
@@ -115,6 +122,13 @@ mod tests {
         ] {
             assert_eq!(AppVersion::parse_tag(bad), None, "{bad:?}");
         }
+    }
+
+    #[test]
+    fn display_round_trips_through_parse() {
+        let version = v(0, 3, 1);
+        assert_eq!(version.to_string(), "0.3.1");
+        assert_eq!(AppVersion::parse(&version.to_string()), Some(version));
     }
 
     #[test]
