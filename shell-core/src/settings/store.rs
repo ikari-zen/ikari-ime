@@ -173,7 +173,8 @@ impl SettingsStore {
 
 fn read_text(path: &Path) -> Option<String> {
     // BOM つき（Windows のメモ帳）でも、最初のキーを読めるようにする（ADR 0040 §2.9）
-    ikari_textfile::read_to_string(path).ok()
+    // 大きすぎる・通常のファイルでないものは読まない（ADR 0073 §5。既定値で続ける）
+    ikari_textfile::read_to_string_limited(path, ikari_textfile::MAX_SETTINGS_FILE_BYTES).ok()
 }
 
 fn parse_file(path: &Path) -> super::SettingsValidation {

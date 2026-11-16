@@ -1,9 +1,11 @@
 //! 診断ログのエンジン側（ADR 0034 §4）。殻の `DiagEvent` を許可リストで確かめて書き、
 //! エンジン自身の事象（`lm_load` `lm_unload` `stat`）と、`begin_session` の `app=` を作る。
 //!
-//! 書くのは固定の語と数だけ（NFR-19）。例外は `app=` の Bundle ID（ADR 0034 §7、§9-1。ユーザー決定
-//! 2026-10-25。2026-10-30 に `convert` の行へ広げた）で、`begin_session` と `convert` の行にだけ、
-//! 文字の種類と長さを確かめて書く。secure は何も書かない（NFR-18）。
+//! 書くのは固定の語と数だけ（NFR-19）。例外は `app=` で（ADR 0034 §7、§9-1。ユーザー決定
+//! 2026-10-25。2026-10-30 に `convert` の行へ広げた）、`begin_session` と `convert` の行にだけ書く。
+//! macOS の Bundle ID は文字の種類と長さを確かめて書き、Windows の実行ファイルの名前は、ikari が知っている
+//! 名前の表にあるものだけを書く（ほかは `other`。ADR 0073 §4）。secure は何も書かない（NFR-18）。
+//! ログに出してよいのは、固定の語、数、許可リストで確かめた語だけ。申告された文字列をそのまま書かない。
 //! ディスクには触らない（`EngineLog::record_note` はキューに入れるだけ。ADR 0034 §3.1）。
 
 use super::*;
@@ -88,9 +90,67 @@ impl DiagState {
     }
 }
 
-/// `begin_session` と `convert` の行の `app=`。`[A-Za-z0-9.-]` だけ 128 バイトまで。外れたら `invalid`、空なら `none`。
-/// 戻りに入れてよいのは、確かめ済みの文字列だけ
+/// 実行ファイルの名前の印（Windows。`app=` に来る名前はこの形。macOS の Bundle ID には付かない）
+const EXE_SUFFIX: &str = ".exe";
+/// 実行ファイルの名前が表にないときの語（利用者が付けた名前に個人の語が入りうるため、書かない。ADR 0073 §4）
+const APP_OTHER: &str = "other";
+/// ログに書いてよい実行ファイルの名前の表（Windows。小文字で書く。ADR 0073 §4。Q1 の決定）。
+/// ikari が知っている、一般に配られているアプリだけ。足すときは、作り手が決めた固定の名前に限る
+const KNOWN_EXE_NAMES: &[&str] = &[
+    "brave.exe",
+    "chrome.exe",
+    "cmd.exe",
+    "code.exe",
+    "conhost.exe",
+    "devenv.exe",
+    "discord.exe",
+    "excel.exe",
+    "explorer.exe",
+    "firefox.exe",
+    "line.exe",
+    "msedge.exe",
+    "mspaint.exe",
+    "mstsc.exe",
+    "notepad.exe",
+    "notepad++.exe",
+    "obsidian.exe",
+    "onenote.exe",
+    "opera.exe",
+    "outlook.exe",
+    "powerpnt.exe",
+    "powershell.exe",
+    "pwsh.exe",
+    "slack.exe",
+    "teams.exe",
+    "thunderbird.exe",
+    "vivaldi.exe",
+    "windowsterminal.exe",
+    "winword.exe",
+    "wordpad.exe",
+    "wt.exe",
+    "zoom.exe",
+];
+
+/// 実行ファイルの名前（`.exe` で終わる。大文字小文字は問わない）か。
+fn is_exe_name(name: &str) -> bool {
+    name.len() >= EXE_SUFFIX.len()
+        && name.is_char_boundary(name.len() - EXE_SUFFIX.len())
+        && name[name.len() - EXE_SUFFIX.len()..].eq_ignore_ascii_case(EXE_SUFFIX)
+}
+
+/// `begin_session` と `convert` の行の `app=`。
+/// - 実行ファイルの名前（Windows）: `KNOWN_EXE_NAMES` にあるものだけ（表の綴りで）書く。ほかは `other`。
+/// - それ以外（macOS の Bundle ID）: `[A-Za-z0-9.-]` だけ 128 バイトまで。外れたら `invalid`、空なら `none`。
+///
+/// 戻りに入れてよいのは、確かめ済みの文字列か、表の語だけ
 fn app_word(bundle_id: &str) -> &str {
+    if is_exe_name(bundle_id) {
+        return KNOWN_EXE_NAMES
+            .iter()
+            .find(|known| known.eq_ignore_ascii_case(bundle_id))
+            .copied()
+            .unwrap_or(APP_OTHER);
+    }
     let valid = bundle_id.len() <= MAX_BUNDLE_ID_BYTES
         && bundle_id
             .bytes()
@@ -409,6 +469,35 @@ mod tests {
             "a".repeat(MAX_BUNDLE_ID_BYTES)
         );
         assert_eq!(app_word(&"a".repeat(MAX_BUNDLE_ID_BYTES + 1)), "invalid");
+    }
+
+    #[test]
+    fn app_word_writes_only_known_exe_names() {
+        // 知っている名前は、表の綴りで書く（大文字小文字は問わない）
+        assert_eq!(app_word("notepad.exe"), "notepad.exe");
+        assert_eq!(app_word("Notepad.EXE"), "notepad.exe");
+        assert_eq!(app_word("Code.exe"), "code.exe");
+        assert_eq!(app_word("notepad++.exe"), "notepad++.exe");
+        // 知らない名前、細工した名前は other（利用者の語を書かない）
+        assert_eq!(app_word("taro-diary.exe"), "other");
+        assert_eq!(app_word("my app.exe"), "other");
+        assert_eq!(app_word("日記.exe"), "other");
+        assert_eq!(app_word(&format!("{}.exe", "a".repeat(500))), "other");
+        assert_eq!(app_word(".exe"), "other");
+        // 拡張子のない名前は Bundle ID の規則のまま
+        assert_eq!(app_word("notepad"), "notepad");
+    }
+
+    #[test]
+    fn known_exe_names_are_lowercase_and_unique() {
+        for name in KNOWN_EXE_NAMES {
+            assert_eq!(*name, name.to_ascii_lowercase());
+            assert!(is_exe_name(name), "{name}");
+        }
+        let mut sorted = KNOWN_EXE_NAMES.to_vec();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), KNOWN_EXE_NAMES.len(), "重複なし");
     }
 
     #[test]

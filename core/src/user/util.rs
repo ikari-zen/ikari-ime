@@ -14,11 +14,14 @@ use super::UserDataError;
 const SECONDS_PER_DAY: u64 = 86_400;
 /// 書き込み途中のファイルの拡張子（rename で置き換える）
 pub const TMP_SUFFIX: &str = "tmp";
-/// ユーザーデータのフォルダの権限（本人だけ。Unix のみ。Windows ではユーザーのプロファイルの ACL に任せる）
+/// ユーザーデータのフォルダの権限（本人だけ。Unix のみ。Windows は `acl.rs` の ACL）
 pub const PRIVATE_DIR_MODE: u32 = 0o700;
 /// ユーザーデータのファイルの権限（本人だけ）
 pub const PRIVATE_FILE_MODE: u32 = 0o600;
 pub const FIELD_SEPARATOR: char = '\t';
+/// 学習、ユーザー辞書、プロファイルなどの TSV を読む量の上限（バイト。ADR 0073 §5）。
+/// 仮置き（計測なし）。学習の行数の上限（`MAX_LEARNING_ROWS` = 20 万行）に、余裕をもって収まる大きさ
+pub const MAX_USER_FILE_BYTES: u64 = 64 * 1024 * 1024;
 
 /// FNV-1a 64。ソルト付きの特徴量、取り込み元のハッシュ、評価用の選別に使う（暗号用ではない）。
 pub fn fnv1a64(bytes: &[u8]) -> u64 {
@@ -84,8 +87,8 @@ pub fn prepare_tmp(path: &Path, contents: &str) -> Result<PathBuf, UserDataError
     Ok(tmp)
 }
 
-/// 本人だけが入れるフォルダ（0700）を作る（途中のフォルダも）。既にあれば権限を 0700 に直す。
-/// Windows では権限を設定しない（通常のフォルダ作成）。
+/// 本人だけが入れるフォルダを作る（途中のフォルダも）。既にあれば権限を直す。
+/// Unix は 0700。Windows は、継承を受けない ACL（本人、SYSTEM、管理者。ADR 0073 §3。`acl.rs`）。
 pub fn create_private_dir_all(path: &Path) -> std::io::Result<()> {
     let mut builder = fs::DirBuilder::new();
     builder.recursive(true);
@@ -94,6 +97,8 @@ pub fn create_private_dir_all(path: &Path) -> std::io::Result<()> {
     builder.create(path)?;
     #[cfg(unix)]
     fs::set_permissions(path, fs::Permissions::from_mode(PRIVATE_DIR_MODE))?;
+    #[cfg(windows)]
+    super::acl::secure_dir(path)?;
     Ok(())
 }
 
@@ -112,8 +117,14 @@ pub fn create_private_new(path: &Path) -> std::io::Result<fs::File> {
 }
 
 /// フォルダの中の通常ファイルの権限を 0600 に直す（best effort。起動時に既存ファイルを閉じる）。
-/// Windows では何もしない。
-#[cfg(not(unix))]
+/// Windows では、フォルダの ACL を付け直す（中のファイルは継承で追従する）。
+#[cfg(windows)]
+pub fn tighten_files(dir: &Path) {
+    let _ = super::acl::secure_dir(dir);
+}
+
+/// 何もしない（Unix でも Windows でもない環境）。
+#[cfg(not(any(unix, windows)))]
 pub fn tighten_files(_dir: &Path) {}
 
 /// フォルダの中の通常ファイルの権限を 0600 に直す（best effort。起動時に既存ファイルを閉じる）。
@@ -132,7 +143,7 @@ pub fn tighten_files(dir: &Path) {
 
 /// ファイルを読む（先頭の BOM は外す。ADR 0040 §2.9）。なければ None。
 pub fn read_optional(path: &Path) -> Result<Option<String>, UserDataError> {
-    match ikari_textfile::read_to_string(path) {
+    match ikari_textfile::read_to_string_limited(path, MAX_USER_FILE_BYTES) {
         Ok(s) => Ok(Some(s)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e.into()),
