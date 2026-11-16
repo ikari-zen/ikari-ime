@@ -1,0 +1,81 @@
+# cargo-deny の設定（ADR 0069 §4.2、ADR 0066 §6.2 の層 1）。`cargo deny check` で流す（CI の deny job）。
+# 見るもの: 既知の脆弱性、取得元（crates.io だけ）、ライセンス、禁止する crate（通信の手段）。
+# 道具の版は .github/workflows/ci.yml で固定している。週 1 回の cargo audit（audit.yml）と Dependabot は、そのまま残す。
+
+[graph]
+# 配る環境と、開発の環境。ほかの OS 向けの依存は見ない
+targets = [
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+
+[advisories]
+version = 2
+# 取り下げられた版（yanked）は使わない
+yanked = "deny"
+# 保守されなくなった crate の知らせは、自分たちの crate が直接使っているものだけ止める（推移的なものは audit.yml の通知で見る）
+unmaintained = "workspace"
+# 無視する指摘はここに書く。理由と見直す日を必ず添える（今は無い）
+ignore = []
+
+[licenses]
+version = 2
+# 配れる条件のもの。cargo-about の accepted（about.toml）より広いのは、OR の選択肢や、ビルド用の依存に出るもの。
+# 足すときは、内容を読んで、配れる条件かを確かめてから
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "Unicode-3.0",
+    "Zlib",
+    "Unlicense",
+    "0BSD",
+    "bzip2-1.0.6",
+]
+confidence-threshold = 0.8
+
+[bans]
+# 同じ crate の複数の版は、今は止めない（依存の整理は別の仕事）。ワイルドカードの版指定は、workspace の path 依存が当たるので止めない
+multiple-versions = "allow"
+wildcards = "allow"
+# 製品に入れない crate: HTTP・TLS・ソケット・非同期の実行環境（ADR 0066 §6.2 の L1。「通信しない」）。
+# 一覧は xtask/src/check/supply.rs の NET_CRATES と同じにする（そちらは cargo-deny が無くても check.sh で流れる）。
+# 取得する部品（ikari-data。ADR 0071）を足すときは、別の実行ファイルにして、wrappers でその crate だけに許す。
+deny = [
+    { crate = "reqwest" },
+    { crate = "ureq" },
+    { crate = "hyper" },
+    { crate = "hyper-util" },
+    { crate = "h2" },
+    { crate = "isahc" },
+    { crate = "attohttpc" },
+    { crate = "surf" },
+    { crate = "curl" },
+    { crate = "curl-sys" },
+    { crate = "tiny_http" },
+    { crate = "rustls" },
+    { crate = "native-tls" },
+    { crate = "openssl" },
+    { crate = "openssl-sys" },
+    { crate = "schannel" },
+    { crate = "security-framework" },
+    { crate = "tokio" },
+    { crate = "mio" },
+    { crate = "socket2" },
+    { crate = "async-std" },
+    { crate = "smol" },
+    { crate = "tungstenite" },
+    { crate = "tokio-tungstenite" },
+    { crate = "quinn" },
+    { crate = "hickory-resolver" },
+    { crate = "trust-dns-resolver" },
+    { crate = "axum" },
+    { crate = "warp" },
+    { crate = "actix-web" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

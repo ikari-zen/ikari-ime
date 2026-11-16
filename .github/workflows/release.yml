@@ -1,0 +1,197 @@
+# リリースの workflow（ADR 0069 §3・§4.1）。タグ（v*）を打つと動き、成果物を GitHub のランナーで作り、
+# 3 つの証拠のうち 2 つ（SHA256SUMS、GitHub の成果物の証明）を付けて、**下書き（draft）の Release** を作るところまで行う。
+#
+# この workflow は公開しない。タグを打つことと、下書きの Release を公開することは、ユーザーだけが行う（AI エージェントは行わない。
+# docs/publish-checklist.md §2）。3 つ目の証拠（作者の鍵による SHA256SUMS の署名。minisign）は、鍵を CI に置かないので、
+# ユーザーが手元で署名して、下書きにファイルを足してから公開する（手順は下書きの説明に出る）。
+#
+# 規則（ADR 0069 §4.1）:
+#   - job ごとに権限を分ける。ビルドは contents: read だけ。証明の job だけ id-token と attestations の write。
+#     下書きを作る job だけ contents: write。
+#   - Action は、コミットの SHA で固定する（scripts/check.sh の supply の検査が見る）。公開に関わる job は GitHub 自身の Action か gh だけ。
+#   - ビルドの job に secrets を渡さない。この workflow は secrets を 1 つも使わない（GITHUB_TOKEN だけ）。
+#   - リリースのビルドは、キャッシュを読まない（rust-cache などを使わない）。
+#   - cargo build --locked。ツールチェーンは rust-toolchain.toml の版。ビルド機のパスは --remap-path-prefix で成果物に残さない。
+#
+# 未完了（この workflow の中身が、まだ仮の部分）:
+#   - Windows の成果物は、インストーラ（ADR 0067。レーン C-2）ができるまで、exe と DLL を zip にしただけ。LM つき（Vulkan）の
+#     ビルドの組み込みも、インストーラの形が決まってから足す（ci.yml の windows-artifact にある手順が元）。
+#   - 開発用の口が入っていないことの検査、取り込む DLL の検査（ADR 0067 §4.4・§6）は、段 A（A-4）の検査ができたら、build-windows に足す。
+#   - macOS の置き場所と配布の形（zip か dmg か pkg か）は #241 の実機の確認で決まる。今は zip。
+name: Release
+on:
+  push:
+    tags: ["v*"]
+permissions: {}
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  CARGO_INCREMENTAL: "0"
+jobs:
+  # 形の正しいタグで、そのコミットが main に入っているものだけ、先へ進める
+  verify-tag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      # actions/checkout v7（コミットの SHA で固定）。履歴が要る（main に入っているかを調べる）
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: タグの形と、main に入っていることを確かめる
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "tag '$TAG' is not vMAJOR.MINOR.PATCH[-pre]" >&2
+            exit 1
+          fi
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "tag commit $GITHUB_SHA is not on main" >&2
+            exit 1
+          fi
+
+  build-windows:
+    needs: verify-tag
+    runs-on: windows-latest
+    timeout-minutes: 75
+    permissions:
+      contents: read
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      # rust-toolchain.toml のツールチェーンが入る（最初の rustc の実行で）
+      - name: ツールの版を表示する
+        shell: pwsh
+        run: |
+          rustc --version
+          cargo --version
+      - name: ビルド機のパスを成果物に残さない設定
+        shell: pwsh
+        run: |
+          "RUSTFLAGS=--remap-path-prefix=$($env:GITHUB_WORKSPACE)=/src --remap-path-prefix=$($env:USERPROFILE)\.cargo=/cargo" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      # 仮: LM なし。LM つき（Vulkan）とインストーラは、形が決まってから足す（上の「未完了」）
+      - name: release ビルド（--locked）
+        shell: pwsh
+        run: cargo build --release --locked -p ikari-engine-host -p ikari-candidate -p ikari-tip
+      - name: 成果物を zip にする
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = "stage\ikari-$env:TAG-windows-x64"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item target\release\ikari-engine-host.exe, target\release\ikari_candidate.dll, target\release\ikari_tip.dll $stage
+          New-Item -ItemType Directory -Force out | Out-Null
+          Compress-Archive -Path $stage -DestinationPath "out\ikari-$env:TAG-windows-x64.zip"
+      # actions/upload-artifact（コミットの SHA で固定）
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: release-windows
+          path: out
+          if-no-files-found: error
+          retention-days: 7
+
+  build-macos:
+    needs: verify-tag
+    runs-on: macos-latest
+    timeout-minutes: 75
+    permissions:
+      contents: read
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: ツールの版を表示する
+        run: |
+          rustc --version
+          cargo --version
+          swift --version
+          xcodebuild -version
+          cmake --version
+      - name: ビルド機のパスを成果物に残さない設定
+        run: echo "RUSTFLAGS=--remap-path-prefix=${GITHUB_WORKSPACE}=/src --remap-path-prefix=${HOME}/.cargo=/cargo" >> "$GITHUB_ENV"
+      # ad-hoc 署名のアプリを作る（署名の証明書は使わない）。build.sh が、エンジンと LM の子に Sandbox の権限があり、
+      # ネットワークの権限が無いことを検査する（ADR 0069 §6 の 5）。Smoke を外すのは #40（未実装）
+      - name: ikari.app をビルドする（ad-hoc）
+        run: macos/scripts/build.sh --signing adhoc --release
+      - name: zip にする
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          ditto -c -k --keepParent target/macos/release-adhoc/ikari.app "out/ikari-${TAG}-macos-arm64-adhoc.zip"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: release-macos
+          path: out
+          if-no-files-found: error
+          retention-days: 7
+
+  # SHA256SUMS を作り、成果物の証明（attestation）を付ける。権限が要るのはこの job だけ（id-token、attestations）
+  provenance:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      # actions/download-artifact v8.0.2（コミットの SHA で固定）
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+      - name: SHA256SUMS を作る
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          sha256sum -- * > SHA256SUMS.new
+          mv SHA256SUMS.new SHA256SUMS
+          cat SHA256SUMS
+      # actions/attest-build-provenance v4.2.2（コミットの SHA で固定）。SHA256SUMS に書かれた全ファイルが対象になる
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
+        with:
+          subject-checksums: dist/SHA256SUMS
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: release-all
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
+
+  # 下書きの Release を作る。公開はしない（ユーザーが、中身を見て、鍵の署名を足してから公開する）
+  draft-release:
+    needs: provenance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: release-all
+          path: dist
+      - name: 下書きの Release を作る（--draft。公開しない）
+        run: |
+          set -euo pipefail
+          notes="これは下書きです。公開の前に、作者が次を行います。
+          1. dist の中身と SHA256SUMS を確かめる。
+          2. 手元で SHA256SUMS に作者の鍵で署名し（minisign）、SHA256SUMS.minisig をこの下書きに足す（ADR 0069 §3・§5）。
+          3. 確かめ方（gh attestation verify、sha256）を README のとおりに試す。
+          4. 公開する（公開した Release は変えられない設定にしてある）。"
+          gh release create "$TAG" dist/* --draft --verify-tag --title "$TAG" --notes "$notes"
