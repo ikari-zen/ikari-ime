@@ -23,6 +23,11 @@ import Testing
         )
     }
 
+    @Test func distributionShellRequirementExcludesSmoke() {
+        #expect(SigningRequirements.shell(mode: .adhoc, includeSmoke: false) == "identifier \"io.github.ikari-zen.inputmethod.ikari\"")
+        #expect(!SigningRequirements.shell(mode: .team, includeSmoke: false).contains("smoke"))
+    }
+
     @Test func settingsAppRequirementPinsTheIdentifierAndTheTeam() {
         #expect(
             SigningRequirements.settingsApp(mode: .team)
