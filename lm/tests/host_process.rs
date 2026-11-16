@@ -91,6 +91,17 @@ impl Harness {
     fn with(script: &str, use_gpu: bool, base: ZenzConfig) -> Harness {
         warm_up_exe();
         let dir = tempfile::tempdir().unwrap();
+        // 子は低い整合性で動く（ADR 0072）。旗のファイル（`.starts`）を書けるよう、このフォルダだけ低いラベルにする
+        #[cfg(windows)]
+        {
+            let ok = std::process::Command::new("icacls")
+                .arg(dir.path())
+                .args(["/setintegritylevel", "(OI)(CI)L"])
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+            assert!(ok, "icacls /setintegritylevel failed");
+        }
         let path = dir.path().join("script.txt");
         std::fs::write(&path, script).unwrap();
         let (loader, health) = host_loader(HostSpec {
