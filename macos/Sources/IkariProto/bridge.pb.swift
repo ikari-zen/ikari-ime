@@ -9,9 +9,10 @@
 //   https://github.com/apple/swift-protobuf/
 
 /// 設定アプリ（IkariSettings.app）と殻の間のメッセージ（ADR 0005 §6.3。契約）。
-/// Swift だけが使う（Rust は生成しない。proto/build.rs の対象外）。
+/// Swift（macos/scripts/gen-proto.sh）と Rust（proto/build.rs。shell-core の bridge、Windows の engine-host と設定画面の核）が使う。
 /// 変更したら macos/scripts/gen-proto.sh を流して bridge.pb.swift の差分をコミットする。
-/// 輸送: Unix ドメインソケット。枠は 4 バイト（ビッグエンディアン）の長さ + この Frame（docs/phase2-contract.md §5）。
+/// 輸送: macOS は Unix ドメインソケット。枠は 4 バイト（ビッグエンディアン）の長さ + この Frame（docs/phase2-contract.md §5）。
+/// Windows は engine-host の設定の口（名前付きパイプ。枠は ikari_pipe::Frame。windows/engine-host/src/settings_pipe.rs）。
 
 import SwiftProtobuf
 
@@ -25,6 +26,7 @@ fileprivate nonisolated struct _GeneratedWithProtocGenSwiftVersion: SwiftProtobu
   typealias Version = _2
 }
 
+/// reason は TRANSFER_FAILED の理由の固定の語（パスは入れない）
 public nonisolated enum Ikari_Bridge_V1_BridgeErrorCode: SwiftProtobuf.Enum, Swift.CaseIterable {
   public typealias RawValue = Int
   case bridgeErrorUnspecified // = 0
@@ -34,6 +36,7 @@ public nonisolated enum Ikari_Bridge_V1_BridgeErrorCode: SwiftProtobuf.Enum, Swi
   case engineUnavailable // = 4
   case tooLarge // = 5
   case writeFailed // = 6
+  case transferFailed // = 7
   case UNRECOGNIZED(Int)
 
   public init() {
@@ -49,6 +52,7 @@ public nonisolated enum Ikari_Bridge_V1_BridgeErrorCode: SwiftProtobuf.Enum, Swi
     case 4: self = .engineUnavailable
     case 5: self = .tooLarge
     case 6: self = .writeFailed
+    case 7: self = .transferFailed
     default: self = .UNRECOGNIZED(rawValue)
     }
   }
@@ -62,6 +66,7 @@ public nonisolated enum Ikari_Bridge_V1_BridgeErrorCode: SwiftProtobuf.Enum, Swi
     case .engineUnavailable: return 4
     case .tooLarge: return 5
     case .writeFailed: return 6
+    case .transferFailed: return 7
     case .UNRECOGNIZED(let i): return i
     }
   }
@@ -75,6 +80,7 @@ public nonisolated enum Ikari_Bridge_V1_BridgeErrorCode: SwiftProtobuf.Enum, Swi
     .engineUnavailable,
     .tooLarge,
     .writeFailed,
+    .transferFailed,
   ]
 
 }
@@ -130,6 +136,25 @@ public nonisolated struct Ikari_Bridge_V1_Frame: Sendable {
     set {body = .updateSettings(newValue)}
   }
 
+  /// 書き出しと取り込みをファイルのパスで行う（Windows だけ。ADR 0068 §4。学習の全文を口に流さない）。
+  /// 返事は engine に入れた ExportReply（content は空）と ImportReply。失敗は BridgeError（TRANSFER_FAILED と reason）。
+  /// macOS の殻は受けない（NOT_ALLOWED。#274 の設計のまま engine の ExportData・ImportData を中継する）
+  public var exportToFile: Ikari_Bridge_V1_ExportToFile {
+    get {
+      if case .exportToFile(let v)? = body {return v}
+      return Ikari_Bridge_V1_ExportToFile()
+    }
+    set {body = .exportToFile(newValue)}
+  }
+
+  public var importFromFile: Ikari_Bridge_V1_ImportFromFile {
+    get {
+      if case .importFromFile(let v)? = body {return v}
+      return Ikari_Bridge_V1_ImportFromFile()
+    }
+    set {body = .importFromFile(newValue)}
+  }
+
   /// 管理の要求と返事。殻はそのままエンジンへ流し、返事もそのまま返す
   public var engine: Ikari_Engine_V1_Envelope {
     get {
@@ -165,6 +190,11 @@ public nonisolated struct Ikari_Bridge_V1_Frame: Sendable {
     case settings(Ikari_Bridge_V1_SettingsSnapshot)
     /// 返事は SettingsSnapshot（反映後）
     case updateSettings(Ikari_Bridge_V1_UpdateSettings)
+    /// 書き出しと取り込みをファイルのパスで行う（Windows だけ。ADR 0068 §4。学習の全文を口に流さない）。
+    /// 返事は engine に入れた ExportReply（content は空）と ImportReply。失敗は BridgeError（TRANSFER_FAILED と reason）。
+    /// macOS の殻は受けない（NOT_ALLOWED。#274 の設計のまま engine の ExportData・ImportData を中継する）
+    case exportToFile(Ikari_Bridge_V1_ExportToFile)
+    case importFromFile(Ikari_Bridge_V1_ImportFromFile)
     /// 管理の要求と返事。殻はそのままエンジンへ流し、返事もそのまま返す
     case engine(Ikari_Engine_V1_Envelope)
     /// 殻 → 設定アプリ
@@ -208,6 +238,34 @@ public nonisolated struct Ikari_Bridge_V1_GetSettings: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Ikari_Bridge_V1_ExportToFile: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var path: String = String()
+
+  public var replace: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Ikari_Bridge_V1_ImportFromFile: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var path: String = String()
+
+  public var dryRun: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -319,6 +377,8 @@ public nonisolated struct Ikari_Bridge_V1_BridgeError: Sendable {
 
   public var key: String = String()
 
+  public var reason: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -329,12 +389,12 @@ public nonisolated struct Ikari_Bridge_V1_BridgeError: Sendable {
 fileprivate nonisolated let _protobuf_package = "ikari.bridge.v1"
 
 nonisolated extension Ikari_Bridge_V1_BridgeErrorCode: SwiftProtobuf._ProtoNameProviding {
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0BRIDGE_ERROR_UNSPECIFIED\0\u{1}VERSION_MISMATCH\0\u{1}INVALID_SETTING\0\u{1}NOT_ALLOWED\0\u{1}ENGINE_UNAVAILABLE\0\u{1}TOO_LARGE\0\u{1}WRITE_FAILED\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0BRIDGE_ERROR_UNSPECIFIED\0\u{1}VERSION_MISMATCH\0\u{1}INVALID_SETTING\0\u{1}NOT_ALLOWED\0\u{1}ENGINE_UNAVAILABLE\0\u{1}TOO_LARGE\0\u{1}WRITE_FAILED\0\u{1}TRANSFER_FAILED\0")
 }
 
 nonisolated extension Ikari_Bridge_V1_Frame: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Frame"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}request_id\0\u{2}\u{9}hello\0\u{3}hello_reply\0\u{3}get_settings\0\u{1}settings\0\u{3}update_settings\0\u{2}\u{6}engine\0\u{2}\u{a}event\0\u{1}error\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}request_id\0\u{2}\u{9}hello\0\u{3}hello_reply\0\u{3}get_settings\0\u{1}settings\0\u{3}update_settings\0\u{3}export_to_file\0\u{3}import_from_file\0\u{2}\u{4}engine\0\u{2}\u{a}event\0\u{1}error\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -406,6 +466,32 @@ nonisolated extension Ikari_Bridge_V1_Frame: SwiftProtobuf.Message, SwiftProtobu
         if let v = v {
           if hadOneofValue {try decoder.handleConflictingOneOf()}
           self.body = .updateSettings(v)
+        }
+      }()
+      case 15: try {
+        var v: Ikari_Bridge_V1_ExportToFile?
+        var hadOneofValue = false
+        if let current = self.body {
+          hadOneofValue = true
+          if case .exportToFile(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.body = .exportToFile(v)
+        }
+      }()
+      case 16: try {
+        var v: Ikari_Bridge_V1_ImportFromFile?
+        var hadOneofValue = false
+        if let current = self.body {
+          hadOneofValue = true
+          if case .importFromFile(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.body = .importFromFile(v)
         }
       }()
       case 20: try {
@@ -480,6 +566,14 @@ nonisolated extension Ikari_Bridge_V1_Frame: SwiftProtobuf.Message, SwiftProtobu
     case .updateSettings?: try {
       guard case .updateSettings(let v)? = self.body else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 14)
+    }()
+    case .exportToFile?: try {
+      guard case .exportToFile(let v)? = self.body else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 15)
+    }()
+    case .importFromFile?: try {
+      guard case .importFromFile(let v)? = self.body else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 16)
     }()
     case .engine?: try {
       guard case .engine(let v)? = self.body else { preconditionFailure() }
@@ -590,6 +684,76 @@ nonisolated extension Ikari_Bridge_V1_GetSettings: SwiftProtobuf.Message, SwiftP
   }
 
   public static func ==(lhs: Ikari_Bridge_V1_GetSettings, rhs: Ikari_Bridge_V1_GetSettings) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Ikari_Bridge_V1_ExportToFile: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ExportToFile"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}path\0\u{1}replace\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.path) }()
+      case 2: try { try decoder.decodeSingularBoolField(value: &self.replace) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.path.isEmpty {
+      try visitor.visitSingularStringField(value: self.path, fieldNumber: 1)
+    }
+    if self.replace != false {
+      try visitor.visitSingularBoolField(value: self.replace, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Ikari_Bridge_V1_ExportToFile, rhs: Ikari_Bridge_V1_ExportToFile) -> Bool {
+    if lhs.path != rhs.path {return false}
+    if lhs.replace != rhs.replace {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Ikari_Bridge_V1_ImportFromFile: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ImportFromFile"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}path\0\u{3}dry_run\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.path) }()
+      case 2: try { try decoder.decodeSingularBoolField(value: &self.dryRun) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.path.isEmpty {
+      try visitor.visitSingularStringField(value: self.path, fieldNumber: 1)
+    }
+    if self.dryRun != false {
+      try visitor.visitSingularBoolField(value: self.dryRun, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Ikari_Bridge_V1_ImportFromFile, rhs: Ikari_Bridge_V1_ImportFromFile) -> Bool {
+    if lhs.path != rhs.path {return false}
+    if lhs.dryRun != rhs.dryRun {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -813,7 +977,7 @@ nonisolated extension Ikari_Bridge_V1_OpenTab: SwiftProtobuf.Message, SwiftProto
 
 nonisolated extension Ikari_Bridge_V1_BridgeError: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".BridgeError"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}code\0\u{1}key\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}code\0\u{1}key\0\u{1}reason\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -823,6 +987,7 @@ nonisolated extension Ikari_Bridge_V1_BridgeError: SwiftProtobuf.Message, SwiftP
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularEnumField(value: &self.code) }()
       case 2: try { try decoder.decodeSingularStringField(value: &self.key) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.reason) }()
       default: break
       }
     }
@@ -835,12 +1000,16 @@ nonisolated extension Ikari_Bridge_V1_BridgeError: SwiftProtobuf.Message, SwiftP
     if !self.key.isEmpty {
       try visitor.visitSingularStringField(value: self.key, fieldNumber: 2)
     }
+    if !self.reason.isEmpty {
+      try visitor.visitSingularStringField(value: self.reason, fieldNumber: 3)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Ikari_Bridge_V1_BridgeError, rhs: Ikari_Bridge_V1_BridgeError) -> Bool {
     if lhs.code != rhs.code {return false}
     if lhs.key != rhs.key {return false}
+    if lhs.reason != rhs.reason {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

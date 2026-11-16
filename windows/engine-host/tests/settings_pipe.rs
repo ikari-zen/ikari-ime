@@ -275,6 +275,73 @@ fn admin_requests_reach_the_engine_and_typing_requests_are_refused() {
     );
 }
 
+/// 学習の全文（書き出しと取り込み）は、この口で運ばない（ADR 0068 §4）。接続はそのまま使える
+#[test]
+fn export_and_import_are_not_relayed_and_the_connection_stays() {
+    let fixture = Fixture::new();
+    let client = fixture.ready_client();
+    let bodies = [
+        envelope::Body::ExportData(pb::ExportData {}),
+        envelope::Body::ImportData(pb::ImportData {
+            content: b"x".to_vec(),
+            dry_run: true,
+        }),
+    ];
+    for (id, body) in (4..).zip(bodies) {
+        let reply = call(&client, engine_frame(id, body));
+        assert_eq!(reply.request_id, id);
+        assert_eq!(
+            error_code(&reply),
+            Some((BridgeErrorCode::NotAllowed as i32, ""))
+        );
+    }
+    assert!(matches!(
+        call(&client, get_settings(9)).body,
+        Some(Body::Settings(_))
+    ));
+}
+
+/// パスでの書き出し・取り込み（ADR 0068 §4）。パスの形が使えなければ、エンジンに頼まずに理由の語だけを返す
+/// （Mac のパスは Windows の形でないので、ここでは断られる側だけを見る。読み書きは `transfer` の単体のテスト）
+#[test]
+fn transfers_by_path_refuse_bad_paths_with_a_reason_word() {
+    use ikari_shell_core::bridge::proto::{ExportToFile, ImportFromFile};
+    let fixture = Fixture::new();
+    let client = fixture.ready_client();
+    let cases = [
+        (
+            Body::ExportToFile(ExportToFile {
+                path: r"\\server\share\x.tsv".to_owned(),
+                replace: false,
+            }),
+            "network-or-device",
+        ),
+        (
+            Body::ImportFromFile(ImportFromFile {
+                path: "relative.tsv".to_owned(),
+                dry_run: true,
+            }),
+            "not-absolute",
+        ),
+    ];
+    for (id, (body, reason)) in (20..).zip(cases) {
+        let reply = call(
+            &client,
+            Frame {
+                request_id: id,
+                body: Some(body),
+            },
+        );
+        assert_eq!(reply.request_id, id);
+        let Some(Body::Error(e)) = reply.body else {
+            panic!("expected an error: {reply:?}");
+        };
+        assert_eq!(e.code, BridgeErrorCode::TransferFailed as i32);
+        assert_eq!(e.reason, reason);
+        assert!(e.key.is_empty());
+    }
+}
+
 #[test]
 fn a_request_over_the_pipe_limit_closes_the_connection_without_a_reply() {
     let fixture = Fixture::new();

@@ -81,6 +81,24 @@ pub fn rejection(frame: &Frame) -> Option<Frame> {
     }
 }
 
+/// 学習の全文を運ぶ要求か（書き出しと取り込み）。**Windows の設定の口では中継しない**（ADR 0068 §4。全文を口に流さず、
+/// ファイルのパスだけを送って engine-host が読み書きする。`transfer_path`）。macOS は #274 の設計のまま中継する。
+pub fn carries_whole_data(body: Option<&EnvelopeBody>) -> bool {
+    matches!(
+        body,
+        Some(EnvelopeBody::ExportData(_) | EnvelopeBody::ImportData(_))
+    )
+}
+
+/// Windows の設定の口で、全文を運ぶ中継（`carries_whole_data`）なら `NOT_ALLOWED` の枠を返す。そうでなければ `None`
+pub fn whole_data_rejection(frame: &Frame) -> Option<Frame> {
+    let Some(Body::Engine(envelope)) = &frame.body else {
+        return None;
+    };
+    carries_whole_data(envelope.body.as_ref())
+        .then(|| error_frame(frame.request_id, BridgeErrorCode::NotAllowed, ""))
+}
+
 /// 中継の待ちの上限。インポートとエクスポートは 30 秒、ほかは 3 秒（ADR 0005 §8.3）
 pub fn timeout(body: Option<&EnvelopeBody>) -> Duration {
     match body {
@@ -156,7 +174,7 @@ mod tests {
                 panic!("expected a BridgeError for {frame:?}");
             };
             assert_eq!(rejection.request_id, 12);
-            let Some(Body::Error(BridgeError { code, key })) = rejection.body else {
+            let Some(Body::Error(BridgeError { code, key, .. })) = rejection.body else {
                 panic!("expected a BridgeError for {frame:?}");
             };
             assert_eq!(code, BridgeErrorCode::NotAllowed as i32);
@@ -200,6 +218,37 @@ mod tests {
             body: Some(Body::GetSettings(GetSettings {})),
         };
         assert_eq!(rejection(&frame), None);
+    }
+
+    #[test]
+    fn only_export_and_import_carry_the_whole_data() {
+        for body in [
+            EnvelopeBody::ExportData(Default::default()),
+            EnvelopeBody::ImportData(Default::default()),
+        ] {
+            let Some(reply) = whole_data_rejection(&engine_frame(6, Some(body))) else {
+                panic!("expected NOT_ALLOWED");
+            };
+            assert_eq!(reply.request_id, 6);
+            let Some(Body::Error(BridgeError { code, key, .. })) = reply.body else {
+                panic!("expected a BridgeError");
+            };
+            assert_eq!(code, BridgeErrorCode::NotAllowed as i32);
+            assert!(key.is_empty());
+        }
+        for body in [
+            EnvelopeBody::LearningStatus(Default::default()),
+            EnvelopeBody::ResetLearning(Default::default()),
+            EnvelopeBody::ExportReply(Default::default()),
+        ] {
+            assert_eq!(whole_data_rejection(&engine_frame(6, Some(body))), None);
+        }
+        assert_eq!(whole_data_rejection(&engine_frame(6, None)), None);
+        let settings = Frame {
+            request_id: 1,
+            body: Some(Body::GetSettings(GetSettings {})),
+        };
+        assert_eq!(whole_data_rejection(&settings), None);
     }
 
     #[test]
