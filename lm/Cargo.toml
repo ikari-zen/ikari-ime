@@ -14,6 +14,10 @@ metal = ["llama", "llama-cpp-2/metal"]
 # ビルドに Vulkan SDK（`VULKAN_SDK`）が要る。`metal` とは同時に付けない。`llama` だけのビルドは SDK が要らない
 vulkan = ["llama", "llama-cpp-2/vulkan", "llama-cpp-2/dynamic-backends"]
 
+# 開発用の口（ADR 0067 §6、0073 §4。R5）。名前はこの 1 つに統一する。既定はオフ。製品のビルドは付けない。
+# この crate では、GPU の切り替え（`IKARI_LM_GPU`）とログの環境変数
+dev-knobs = []
+
 # 登録された LM のデバイスを 1 行で出す（モデルは要らない。CI と実機の確認用。ADR 0059 §2.6）。
 # exe の隣の `backends` を読むので、エンジンの exe と同じフォルダに置いて動かす
 [[example]]

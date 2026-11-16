@@ -37,6 +37,10 @@ lm = ["ikari-engine/lm"]
 # exe の隣の `backends\` に置く（`windows/dev/build.ps1 -LmVulkan` が写す）。GPU が使えない機械では自動で CPU に落ちる
 lm-vulkan = ["lm", "ikari-engine/lm-vulkan"]
 
+# 開発用の口（ADR 0067 §6、0073 §4。R5）。名前はこの 1 つに統一する。既定はオフ。製品のビルドは付けない。
+# この crate では、データの場所の引数（`--data-dir`。ADR 0068 §3）
+dev-knobs = ["ikari-pipe/dev-knobs", "ikari-core/dev-knobs", "ikari-engine/dev-knobs"]
+
 [dev-dependencies]
 ikari-testtime.workspace = true
 ikari-dict-builder.workspace = true

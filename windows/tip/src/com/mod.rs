@@ -16,6 +16,7 @@
 //! - `timer`: `TsfOp::ScheduleTimer` の実行（スレッドのタイマー）
 //! - `host`: `Shell` を作る（設定と資源の場所、トランスポート）
 //! - `connector`: 名前付きパイプへの接続（`transport::Connector` の実装）
+//! - `process_facts`: 自分のプロセスのトークンから、種類の判定に使う事実を取る（判定は `process_kind`）
 //! - `guard`: COM の入口を `catch_unwind` で包む（panic はその回を素通しにする。ADR 0041 §4.2）
 //! - `log`: `OutputDebugStringW`。**入力された文字列を出さない**（固定の文と HRESULT だけを受ける型にしている）
 //! - `guids`: この TIP の GUID
@@ -41,6 +42,7 @@ mod icon;
 mod indicator;
 mod keyboard;
 mod log;
+mod process_facts;
 mod register;
 mod service;
 mod timer;
