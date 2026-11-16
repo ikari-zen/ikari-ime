@@ -15,7 +15,7 @@ pub fn verify_engine_path(tip_dll: &str, peer_exe: &str) -> Result<(), PeerRejec
 }
 
 /// つないだ相手（実行ファイルのパス `peer_exe`）が、TIP の DLL（`tip_dll`）から決まる候補窓かを判定する（S4。
-/// ADR 0068 §5）。送り口（`candidate_send`）への組み込みは、候補窓のレーンが行う。
+/// ADR 0068 §5）。Windows の候補窓への接続（`com::connector::CandidatePipeConnector`）が、送る前に使う。
 pub fn verify_candidate_path(tip_dll: &str, peer_exe: &str) -> Result<(), PeerRejection> {
     verify_peer_path(SelfModule::Tip, tip_dll, Endpoint::Candidate, peer_exe)
 }
