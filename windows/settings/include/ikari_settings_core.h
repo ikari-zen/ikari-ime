@@ -61,6 +61,12 @@ int32_t ikari_settings_core_export(const IkariSettingsSession *session, const ui
                                    IkariSettingsBuf *msg);
 int32_t ikari_settings_core_import(const IkariSettingsSession *session, const uint8_t *path, size_t path_len, bool dry_run,
                                    IkariSettingsBuf *msg);
+/* 自由指定のモデルをファイルから取り込む（ADR 0076 §7。パスだけを送る）。sha256 と name は空でよい。（契約。D-4） */
+int32_t ikari_settings_core_import_model(const IkariSettingsSession *session, const uint8_t *path, size_t path_len,
+                                         const uint8_t *format, size_t format_len, const uint8_t *sha256,
+                                         size_t sha256_len, const uint8_t *name, size_t name_len, IkariSettingsBuf *msg);
+/* 自由指定のモデルのボタンを出してよいか（1 / 0）。判断は核（段 2 のある OS だけ）。session は NULL でよい。（契約。D-4） */
+int32_t ikari_settings_core_custom_model_offered(const IkariSettingsSession *session);
 /* 書き出しの既定の名前（ikari-export-YYYYMMDD.tsv）。 */
 int32_t ikari_settings_core_export_file_name(uint32_t year, uint32_t month, uint32_t day, IkariSettingsBuf *out);
 
@@ -90,6 +96,10 @@ int32_t ikari_settings_fetch_start(int32_t kind, const uint8_t *a, size_t a_len,
 int32_t ikari_settings_fetch_poll(const IkariSettingsFetch *fetch, IkariSettingsFetchStatus *status, IkariSettingsBuf *text);
 int32_t ikari_settings_fetch_cancel(const IkariSettingsFetch *fetch);
 void ikari_settings_fetch_free(IkariSettingsFetch *fetch);
+/* 終わった取得の sha256（64 桁の 16 進）。終わっていなければ ERR_FAILED。sha256 なしで取ったときの確認に出す。（契約。D-4） */
+int32_t ikari_settings_fetch_sha256(const IkariSettingsFetch *fetch, IkariSettingsBuf *out);
+/* 版の確認を始める（ikari-data version-check。ADR 0076 §6）。様子は fetch_poll、解放は fetch_free。（契約。D-2d） */
+int32_t ikari_settings_version_check_start(IkariSettingsFetch **out, IkariSettingsBuf *msg);
 
 #ifdef __cplusplus
 }

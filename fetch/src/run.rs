@@ -38,10 +38,9 @@ fn run_parent(command: Command, out: &mut dyn Write) -> i32 {
         job::emit(out, &Report::Error(FetchErrorCode::Refused));
         return EXIT_ERROR;
     }
-    // 版の確認は次の段（D-2d。ADR 0076 §6、§13）。ここでは動かない
+    // 版の確認（ADR 0076 §6。`version`。中身は D-2d）。作業の場所も錠も使わない
     if command == Command::VersionCheck {
-        job::emit(out, &Report::Error(FetchErrorCode::Tool));
-        return EXIT_ERROR;
+        return crate::version::run_version_check(out);
     }
     let Some(dirs) = Dirs::resolve() else {
         job::emit(out, &Report::Error(FetchErrorCode::Internal));

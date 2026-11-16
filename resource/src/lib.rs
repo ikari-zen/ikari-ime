@@ -10,7 +10,9 @@
 //! - `sha256`: ストリームでの sha256
 //! - `stage`: 取得・取り込みしたモデルの束を inbox に作る（ADR 0076）
 //! - `fetch_report`: `ikari-data` の標準出力の行（ADR 0076 §8）
+//! - `app_version`: アプリの版の確認の形と比べ方（ADR 0076 §6、§18.2）
 
+pub mod app_version;
 pub mod error;
 pub mod fetch_report;
 pub mod journal;

@@ -16,8 +16,8 @@ use ikari_pipe::{Client, ClientError};
 use ikari_proto::v1::{ErrorCode, ExportReply, ImportReply, envelope};
 use ikari_shell_core::bridge::proto::frame::Body;
 use ikari_shell_core::bridge::proto::{
-    BridgeErrorCode, ExportToFile, Frame, GetSettings, ImportFromFile, SettingsSnapshot,
-    UpdateSettings,
+    BridgeErrorCode, ExportToFile, Frame, GetSettings, ImportFromFile, ImportModelReply,
+    SettingsSnapshot, UpdateSettings,
 };
 use ikari_shell_core::bridge::protocol::hello;
 use ikari_shell_core::bridge::{LinkStatus, check_transfer_path, frame_codec};
@@ -157,6 +157,26 @@ impl SettingsLink {
         }
     }
 }
+
+impl SettingsLink {
+    /// 自由指定のモデルを `path` から取り込む（`ImportModelFile`。ADR 0076 §7。パスだけを流す）。
+    /// `sha256` が None なら照らさない（警告のあとに呼ぶ）。
+    ///
+    /// 契約のスタブ（第 4 弾。中身はレーン D-4）: 今は送らずに断る
+    pub fn import_model_file(
+        &self,
+        path: &str,
+        format: &str,
+        sha256: Option<&str>,
+        name: Option<&str>,
+    ) -> Result<ImportModelReply, LinkError> {
+        let _ = (path, format, sha256, name);
+        Err(LinkError::Refused(IMPORT_MODEL_NOT_READY))
+    }
+}
+
+/// `import_model_file` のスタブが返す理由の語（D-4 で消す）
+pub const IMPORT_MODEL_NOT_READY: &str = "not-implemented";
 
 fn snapshot_of(reply: Frame) -> Result<Vec<(String, String)>, LinkError> {
     match reply.body {
