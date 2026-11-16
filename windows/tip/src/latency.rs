@@ -14,9 +14,13 @@
 //!
 //! 判断は持たない（測って、まとめて、渡すだけ）。
 
+#[cfg(any(test, feature = "dev-knobs"))]
 use std::fs::{self, OpenOptions};
+#[cfg(any(test, feature = "dev-knobs"))]
 use std::io::Write;
-use std::path::{Path, PathBuf};
+#[cfg(any(test, feature = "dev-knobs"))]
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -25,18 +29,24 @@ pub const WINDOW: usize = 1000;
 /// 要求・キーの種類で、これだけ溜まったら書き出す対象にする
 pub const FLUSH_EVERY: u32 = 200;
 /// 測定をオンにする環境変数の名前（値が `1` のとき）
+#[cfg(any(test, feature = "dev-knobs"))]
 pub const ENABLE_ENV: &str = "IKARI_TIP_LATENCY";
 /// 測定をオンにするファイルの名前（ユーザーのデータの場所の直下。存在すればオン）
+#[cfg(any(test, feature = "dev-knobs"))]
 pub const ENABLE_MARKER_FILE: &str = "latency.on";
 /// ログのファイルの名前（ユーザーのデータの場所の `logs` の下）
+#[cfg(any(test, feature = "dev-knobs"))]
 pub const LOG_FILE_NAME: &str = "tip-latency.log";
 
 /// ログのファイルがこれを超えたら、作り直す（測定のログがディスクを埋めない）
+#[cfg(any(test, feature = "dev-knobs"))]
 pub const MAX_LOG_BYTES: u64 = 1024 * 1024;
 /// ログを置くディレクトリの名前（ユーザーのデータの場所の下。`engine.log` と同じ）
+#[cfg(any(test, feature = "dev-knobs"))]
 pub const LOG_DIR_NAME: &str = "logs";
 
 /// 環境変数の値と印のファイルの有無から、測定をオンにするか決める。
+#[cfg(any(test, feature = "dev-knobs"))]
 pub fn enabled(env_value: Option<&str>, marker_exists: bool) -> bool {
     env_value == Some("1") || marker_exists
 }
@@ -283,22 +293,26 @@ impl Ticks for SystemTicks {
 }
 
 /// ファイルへの追記。書けなければ捨てる（測定のために本体の処理を止めない）。
+#[cfg(any(test, feature = "dev-knobs"))]
 pub struct FileSink {
     path: PathBuf,
 }
 
+#[cfg(any(test, feature = "dev-knobs"))]
 impl FileSink {
     pub fn new(path: PathBuf) -> Self {
         Self { path }
     }
 }
 
+#[cfg(any(test, feature = "dev-knobs"))]
 impl LineSink for FileSink {
     fn write_lines(&self, lines: &[String]) {
         let _ = self.append(lines);
     }
 }
 
+#[cfg(any(test, feature = "dev-knobs"))]
 impl FileSink {
     fn append(&self, lines: &[String]) -> std::io::Result<()> {
         if let Some(dir) = self.path.parent() {
@@ -319,6 +333,7 @@ impl FileSink {
     }
 }
 
+#[cfg(any(test, feature = "dev-knobs"))]
 impl Meter {
     /// 環境変数と印のファイル（`<dir>/latency.on`）で、オンかを決めて作る。オフなら何も測らない。
     ///
@@ -346,12 +361,21 @@ impl Meter {
 pub fn global(user_dir: impl FnOnce() -> Option<PathBuf>) -> &'static Arc<Meter> {
     static METER: OnceLock<Arc<Meter>> = OnceLock::new();
     METER.get_or_init(|| {
-        let env_value = std::env::var(ENABLE_ENV).ok();
-        Arc::new(Meter::from_settings(
-            user_dir().as_deref(),
-            env_value.as_deref(),
-            std::process::id(),
-        ))
+        // 測定は開発用の口（feature `dev-knobs`）のビルドだけ。製品のビルドは、環境変数も印のファイルも見ない
+        #[cfg(feature = "dev-knobs")]
+        {
+            let env_value = std::env::var(ENABLE_ENV).ok();
+            Arc::new(Meter::from_settings(
+                user_dir().as_deref(),
+                env_value.as_deref(),
+                std::process::id(),
+            ))
+        }
+        #[cfg(not(feature = "dev-knobs"))]
+        {
+            let _ = user_dir;
+            Arc::new(Meter::disabled())
+        }
     })
 }
 

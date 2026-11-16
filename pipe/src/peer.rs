@@ -82,7 +82,11 @@ pub enum TipLayout {
 }
 
 /// TIP に許す配置。**照合の規則はここ 1 か所**（平らな配置をやめるときは、ここから外す。ADR 0067 §6）。
+#[cfg(feature = "dev-knobs")]
 pub const TIP_LAYOUTS: &[TipLayout] = &[TipLayout::Versioned, TipLayout::Flat];
+/// 製品のビルドは版つきの配置だけ（平らな配置は feature `dev-knobs` のとき）
+#[cfg(not(feature = "dev-knobs"))]
+pub const TIP_LAYOUTS: &[TipLayout] = &[TipLayout::Versioned];
 
 /// 相手を拒んだ理由（診断のログに出す。パスや利用者名は含めない）
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -264,7 +268,17 @@ mod tests {
         let cases: &[(&str, &str, &str, Result<(), PeerRejection>)] = &[
             // 一致
             ("versioned", VERSIONED_DLL, VERSIONED_ENGINE, OK),
-            ("flat", FLAT_DLL, FLAT_ENGINE, OK),
+            // 平らな配置は feature `dev-knobs` のビルドだけ許す
+            (
+                "flat",
+                FLAT_DLL,
+                FLAT_ENGINE,
+                if cfg!(feature = "dev-knobs") {
+                    OK
+                } else {
+                    BAD_SELF
+                },
+            ),
             (
                 "versioned under the dev tip folder",
                 r"C:\Users\example\AppData\Local\ikari-ime-dev\tip\20261115-1200\ikari_tip.dll",
