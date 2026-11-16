@@ -229,7 +229,12 @@ fn rust_base(root: &Path) -> Result<(), Failure> {
 /// 開発用の口が有効になるので、`-p` で単独に調べる（ADR 0067 §6）
 const PRODUCT_CRATES: &[&str] = &["ikari-core", "ikari-lm", "ikari-pipe", "ikari-tip"];
 /// 製品のビルドを Windows 向けに型検査する crate
-const PRODUCT_WINDOWS_CRATES: &[&str] = &["ikari-pipe", "ikari-tip", "ikari-engine-host"];
+const PRODUCT_WINDOWS_CRATES: &[&str] = &[
+    "ikari-pipe",
+    "ikari-tip",
+    "ikari-engine-host",
+    "ikari-setup-helper",
+];
 
 /// `dev-knobs` を付けない（製品の）ビルドで、テストと Windows 向けの clippy が通ること
 fn product_build(root: &Path) -> Result<(), Failure> {
