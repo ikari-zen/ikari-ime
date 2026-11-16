@@ -39,7 +39,9 @@ pub fn link_error(e: &LinkError) -> String {
         LinkError::Status(status) => status.text().to_owned(),
         LinkError::Refused(reason) => transfer_reason(reason).to_owned(),
         LinkError::Bridge { code, key, reason } => {
-            match BridgeErrorCode::try_from(*code).unwrap_or(BridgeErrorCode::BridgeErrorUnspecified) {
+            match BridgeErrorCode::try_from(*code)
+                .unwrap_or(BridgeErrorCode::BridgeErrorUnspecified)
+            {
                 BridgeErrorCode::InvalidSetting if !key.is_empty() => {
                     format!("設定「{key}」の値が正しくありません")
                 }
@@ -50,7 +52,9 @@ pub fn link_error(e: &LinkError) -> String {
                 BridgeErrorCode::WriteFailed => "設定ファイルを書き込めませんでした".to_owned(),
                 BridgeErrorCode::TransferFailed => transfer_reason(reason).to_owned(),
                 BridgeErrorCode::VersionMismatch => "エンジンと設定画面の版が合いません".to_owned(),
-                BridgeErrorCode::BridgeErrorUnspecified => "予期しないエラーが起きました".to_owned(),
+                BridgeErrorCode::BridgeErrorUnspecified => {
+                    "予期しないエラーが起きました".to_owned()
+                }
             }
         }
         LinkError::Engine(code) if *code == ErrorCode::EngineNotReady as i32 => {
