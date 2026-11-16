@@ -271,6 +271,23 @@ SOFTWARE.
 - **用途**: 殻とエンジンの間のメッセージ（protobuf）の符号化
 - **リポジトリ**: https://github.com/apple/swift-protobuf
 
+## .NET の依存パッケージ（Windows の候補窓 `ikari-candidate.exe`）
+
+候補窓の画面（`windows/candidate-ui`。ADR 0062）は、パッケージなし・自己完結で発行するので、.NET の実行時と Windows App SDK の実行時のファイルを exe と一緒に配ります。版は `windows/candidate-ui/IkariCandidate.csproj` と `windows/candidate-ui/packages.lock.json`（間接の依存を含む）で固定しています。ライセンスは各パッケージの nuspec の記載（2026-11-16 に確かめた）です。
+
+| パッケージ | 版 | ライセンス | 著作権 | 配るか |
+| --- | --- | --- | --- | --- |
+| Microsoft.WindowsAppSDK（と、その下の Microsoft.WindowsAppSDK.*） | 2.6.5 | Microsoft Software License Terms（Microsoft Windows App SDK。パッケージの `license.txt`） | Microsoft Corporation | 配る（自己完結） |
+| Microsoft.Web.WebView2（Windows App SDK の間接の依存） | 1.0.3719.77 | Microsoft のライセンス（パッケージの `LICENSE.txt`） | Microsoft Corporation | 配る物に入るかは、発行の結果で確かめる（候補窓は WebView2 を使わない） |
+| .NET の実行時（Microsoft.NETCore.App、Microsoft.WindowsDesktop.App の runtime pack） | SDK の版に従う（`windows/candidate-ui/global.json`） | MIT | .NET Foundation and Contributors | 配る（自己完結） |
+| System.Numerics.Tensors（間接の依存） | 9.0.0 | MIT | .NET Foundation and Contributors | 配る物に入るかは、発行の結果で確かめる |
+| Google.Protobuf | 3.36.2 | BSD-3-Clause | Copyright 2015, Google Inc. | 配る |
+| Grpc.Tools | 2.85.0 | Apache-2.0 | Copyright 2018 The gRPC Authors | 配らない（ビルドのときに `.proto` から C# の型を作るだけ） |
+| Microsoft.Windows.SDK.BuildTools（間接の依存） | 10.0.26100.4654 | Windows SDK のライセンス | Microsoft Corporation | 配らない（ビルドの道具） |
+
+- Microsoft のライセンスの条文は、配るときに exe と一緒に置きます（配布の形を決める W5 / #99 で、置き場所と、再配布の条件を確かめる）。
+- 依存の更新は Dependabot（`.github/dependabot.yml` の `nuget`）が知らせます。版を上げたら、Windows で `dotnet restore` を流してロックのファイルを更新し、この表を直します。
+
 ## ライセンス表示義務
 
 ikari-ime のコードは Apache License 2.0 です（[LICENSE](LICENSE)、[NOTICE](NOTICE)）。辞書、モデル、地名のデータはこのリポジトリに含めません。各自が取得し、取得元の条件に従います。

@@ -15,13 +15,20 @@
 //! ADR 0063 Q2）。開発用の導入のように利用者が書ける場所では、同じ利用者が書ける場所を信頼するだけになる。
 //!
 //! エンジンの起動（常駐の `engine-host` がないとき）は W5（S3）。
+//!
+//! # 候補窓（S4。ADR 0068 §5）
+//! 候補窓のパイプ（`pipe::candidate_pipe_name`）にも同じ確認をする。相手がインストール先の `ikari-candidate.exe`
+//! でなければ閉じて `None`（窓なしで入力を続ける。ADR 0062 §5.4）。候補と注釈の文字を偽の窓に渡さない。
 
 use std::ffi::{OsStr, OsString};
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::os::windows::io::{FromRawHandle, OwnedHandle};
 use std::path::Path;
 
-use ikari_pipe::os::windows::{NamedPipeDuplex, connect_duplex, current_pipe_name};
+use ikari_pipe::Client;
+use ikari_pipe::os::windows::{
+    NamedPipeDuplex, connect_duplex, current_pipe_name, current_session_id, current_user_sid,
+};
 use windows::Win32::Foundation::{ERROR_INSUFFICIENT_BUFFER, HANDLE};
 use windows::Win32::Storage::FileSystem::GetLongPathNameW;
 use windows::Win32::System::Threading::{
@@ -31,8 +38,12 @@ use windows_core::{PCWSTR, PWSTR};
 
 use super::host::{INITIAL_PATH_LEN, MAX_LONG_PATH, module_file};
 use super::{dll, log};
-use crate::peer::{PeerRejection, verify_engine_path};
+use crate::candidate_send::CandidateConnector;
+use crate::peer::{PeerRejection, verify_candidate_path, verify_engine_path};
 use crate::transport::Connector;
+
+/// 相手の実行ファイルのパスを照らす規則（`peer::verify_*_path`。TIP の DLL のパス、相手の exe のパス）
+type PathRule = fn(&str, &str) -> Result<(), PeerRejection>;
 
 pub struct PipeConnector;
 
@@ -46,10 +57,36 @@ impl Connector for PipeConnector {
     }
 }
 
+/// 候補窓への接続（`candidate_send::CandidateConnector` の Windows の実装）。送る前に相手を照らす（S4）。
+/// テキストサービスの `CandidateView` が持ち、編集セッション（`edit::Exec`）が使う。
+pub struct CandidatePipeConnector;
+
+impl CandidateConnector for CandidatePipeConnector {
+    type Post = Client;
+
+    fn open(&self) -> Option<Client> {
+        let name =
+            ikari_pipe::candidate_pipe_name(&current_user_sid().ok()?, current_session_id().ok()?)
+                .ok()?;
+        let tip_dll = dll::module().and_then(|module| module_file(Some(module)));
+        let (duplex, pid) = open_checked(&name, tip_dll.as_deref(), verify_candidate_path)?;
+        Some(Client::new(duplex, pid))
+    }
+}
+
 /// `name` につなぎ、相手が `tip_dll` から決まるエンジンなら流れを返す。違えば閉じて `None`。
 fn open_verified(name: &str, tip_dll: Option<&Path>) -> Option<(NamedPipeDuplex, Option<u32>)> {
+    open_checked(name, tip_dll, verify_engine_path)
+}
+
+/// `name` につなぎ、相手が `rule` に合えば流れを返す。違えば何も送らずに閉じて `None`。
+fn open_checked(
+    name: &str,
+    tip_dll: Option<&Path>,
+    rule: PathRule,
+) -> Option<(NamedPipeDuplex, Option<u32>)> {
     let (duplex, pid) = connect_duplex(name).ok()?;
-    match verify_peer(tip_dll, pid) {
+    match verify_peer(tip_dll, pid, rule) {
         Ok(()) => Some((duplex, pid)),
         Err(reason) => {
             // 何も送らずに閉じる（ハンドルを閉じれば、相手には切断に見える）
@@ -60,7 +97,11 @@ fn open_verified(name: &str, tip_dll: Option<&Path>) -> Option<(NamedPipeDuplex,
     }
 }
 
-fn verify_peer(tip_dll: Option<&Path>, pid: Option<u32>) -> Result<(), PeerRejection> {
+fn verify_peer(
+    tip_dll: Option<&Path>,
+    pid: Option<u32>,
+    rule: PathRule,
+) -> Result<(), PeerRejection> {
     let tip_dll = tip_dll.ok_or(PeerRejection::NoSelfPath)?;
     let pid = pid.ok_or(PeerRejection::NoPeerPid)?;
     let peer_exe = process_image_path(pid).ok_or(PeerRejection::NoPeerPath)?;
@@ -68,7 +109,7 @@ fn verify_peer(tip_dll: Option<&Path>, pid: Option<u32>) -> Result<(), PeerRejec
     let peer_exe = long_path(&peer_exe);
     let tip_dll = tip_dll.to_str().ok_or(PeerRejection::SelfPathInvalid)?;
     let peer_exe = peer_exe.to_str().ok_or(PeerRejection::PeerPathInvalid)?;
-    verify_engine_path(tip_dll, peer_exe)
+    rule(tip_dll, peer_exe)
 }
 
 /// プロセス `pid` の実行ファイルのフルパス（Win32 の形。OS が起動のときに記録したもの）。取れなければ `None`。
@@ -189,8 +230,13 @@ mod tests {
 
     /// このテストの exe を `dir\ikari-engine-host.exe` に写して、偽のエンジンとして起動する。受け口ができるまで待つ。
     fn spawn_fake_engine(dir: &Path, name: &str) -> Child {
+        spawn_fake_peer(dir, crate::peer::ENGINE_EXE_NAME, name)
+    }
+
+    /// このテストの exe を `dir\exe_name` に写して、偽の相手（受け口）として起動する。受け口ができるまで待つ。
+    fn spawn_fake_peer(dir: &Path, exe_name: &str, name: &str) -> Child {
         std::fs::create_dir_all(dir).expect("create the folder");
-        let exe = dir.join(crate::peer::ENGINE_EXE_NAME);
+        let exe = dir.join(exe_name);
         std::fs::copy(std::env::current_exe().expect("current exe"), &exe).expect("copy the exe");
         let mut child = Command::new(&exe)
             .args([
@@ -302,6 +348,51 @@ mod tests {
         let child = spawn_fake_engine(&root, &name);
         let tip_dll = root.join("ikari_tip.dll");
         assert!(open_verified(&name, Some(&tip_dll)).is_some());
+        finish(child);
+    }
+
+    // 候補窓（S4）: インストール先の candidate\ikari-candidate.exe だけを相手にする
+    #[test]
+    fn accepts_the_candidate_window_at_the_install_folder() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let root = long_dir(temp.path());
+        let name = unique_name();
+        let child = spawn_fake_peer(
+            &root.join(ikari_pipe::peer::CANDIDATE_DIR_NAME),
+            crate::peer::CANDIDATE_EXE_NAME,
+            &name,
+        );
+        let tip_dll = root.join("tip").join("1").join("ikari_tip.dll");
+        let (duplex, pid) = open_checked(&name, Some(&tip_dll), verify_candidate_path)
+            .expect("the candidate window is accepted");
+        assert_eq!(pid, Some(child.id()));
+        drop(duplex);
+        finish(child);
+    }
+
+    #[test]
+    fn rejects_the_engine_as_the_candidate_window() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let root = long_dir(temp.path());
+        let name = unique_name();
+        let child = spawn_fake_engine(&root, &name);
+        let tip_dll = root.join("tip").join("1").join("ikari_tip.dll");
+        assert!(open_checked(&name, Some(&tip_dll), verify_candidate_path).is_none());
+        finish(child);
+    }
+
+    #[test]
+    fn rejects_a_candidate_named_exe_in_another_folder() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let root = long_dir(temp.path());
+        let name = unique_name();
+        let child = spawn_fake_peer(
+            &root.join("elsewhere"),
+            crate::peer::CANDIDATE_EXE_NAME,
+            &name,
+        );
+        let tip_dll = root.join("tip").join("1").join("ikari_tip.dll");
+        assert!(open_checked(&name, Some(&tip_dll), verify_candidate_path).is_none());
         finish(child);
     }
 }

@@ -25,6 +25,8 @@ windows-sys = { workspace = true, features = [
     "Win32_Security",
     "Win32_Security_Authorization",
     "Win32_System_Threading",
+    # 候補窓の子を入れる Job Object（閉じたら終了。ADR 0062 §5.4 の決定 4。`src/candidate_window/os.rs`）
+    "Win32_System_JobObjects",
     "Win32_System_LibraryLoader",
     "Win32_UI_WindowsAndMessaging",
 ] }

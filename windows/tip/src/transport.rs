@@ -37,7 +37,7 @@ pub const BACKOFF_MAX: Duration = Duration::from_secs(1);
 const BACKOFF_FACTOR: u32 = 2;
 
 /// つながらなかったあとの試行の間隔（指数的に伸ばし、上限で止める。つながったら戻す）。
-struct Backoff {
+pub(crate) struct Backoff {
     initial: Duration,
     max: Duration,
     /// 次に試してよい時刻（`None` は、いつでも）
@@ -47,7 +47,7 @@ struct Backoff {
 }
 
 impl Backoff {
-    fn new(initial: Duration, max: Duration) -> Self {
+    pub(crate) fn new(initial: Duration, max: Duration) -> Self {
         Self {
             initial,
             max,
@@ -57,16 +57,16 @@ impl Backoff {
     }
 
     /// 試してよいか
-    fn ready(&self, now: Instant) -> bool {
+    pub(crate) fn ready(&self, now: Instant) -> bool {
         self.not_before.is_none_or(|at| now >= at)
     }
 
-    fn failed(&mut self, now: Instant) {
+    pub(crate) fn failed(&mut self, now: Instant) {
         self.not_before = Some(now + self.next_delay);
         self.next_delay = self.next_delay.saturating_mul(BACKOFF_FACTOR).min(self.max);
     }
 
-    fn succeeded(&mut self) {
+    pub(crate) fn succeeded(&mut self) {
         self.not_before = None;
         self.next_delay = self.initial;
     }

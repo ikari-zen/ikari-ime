@@ -137,7 +137,7 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 | エンジンの標準エラー | `start-engine.ps1` が開いたコンソール（`-Foreground` ならこのコンソール） |
 | エンジンの起動の失敗 | `<データ>\logs\start-failure.log`（最後の 1 回分。理由の語だけ。入力の内容は持たない） |
 | エンジンのログ | `<データ>\logs\engine.log`（時刻、要求の種類、所要時間。4MB で回る） |
-| TIP のログ | DebugView（`OutputDebugString`。固定の文と HRESULT だけで、入力した文字は出ない。例: `show candidates (position found)`、`cannot create the shell`） |
+| TIP のログ | DebugView（`OutputDebugString`。固定の文と HRESULT だけで、入力した文字は出ない。例: `show candidates sent=1 seq=2 side=below source=client …`、`cannot create the shell`） |
 | 登録 | `regsvr32` の終了コード（3 = DLL を読めない、4 = `DllRegisterServer` がない、5 = 登録が失敗）。`status.ps1` の「TIP registration」 |
 | 全体の状態 | `.\status.ps1` |
 | アプリが固まった | タスクマネージャーでそのアプリを終了する。Windows 全体が固まったら、VM のスナップショットに戻す |
@@ -309,7 +309,7 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 #### 項目 17: 周辺テキストと位置が取れるか（S2）
 
 - やること: Notepad、Chrome、Edge、VS Code で、文の途中にカーソルを置き、変換を始める（Space）。DebugView を見る。
-- 期待する結果: アプリごとに、周辺テキスト（`ITfRangeACP` が取れるか）と、候補窓の位置（`ITfContextView::GetTextExt`）が取れるか。位置が取れたとき、DebugView に `show candidates (position found)` が出る。取れるアプリと取れないアプリの一覧が、S2 の答え。
+- 期待する結果: アプリごとに、周辺テキスト（`ITfRangeACP` が取れるか）と、候補窓の位置（`ITfContextView::GetTextExt`）が取れるか。位置が取れたとき、DebugView の `show candidates` の行に `source=client` が出る（第 2 段から。前は `(position found)`）。取れるアプリと取れないアプリの一覧が、S2 の答え。
 - うまくいかないとき: 取れないアプリを、アプリの名前と版で記録する。ブラウザ（Chrome、Edge）は、TSF の対応が欄ごとに違うことがある。ページごとに（検索欄、本文の入力欄、`contenteditable`）記録する。
 
 #### 項目 18: キー 1 回と Space の往復の時間（S1）
@@ -594,6 +594,63 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 - 期待する結果（**見込み**）: Inno 自身の部品（`setup.tmp` など）は、昇格した利用者の TEMP の、名前を推測できないフォルダに置かれる。ikari のファイル（helper、DLL、exe）は、TEMP には書かれない（`C:\Program Files\ikari-ime.setup` と、インストール先だけ）。
 - うまくいかないとき: Process Monitor の記録（パスと操作の列だけ）を残す。結果でインストーラの道具を本決定にする（ADR 0067 Q3。仮）。
 
+### 5.10 候補窓の本体（W3。ADR 0062、ADR 0068 §5）
+
+第 1 段で入ったのは、候補窓の exe（`dist\target\release\candidate\ikari-candidate.exe`。WinUI 3、自己完結。第 2 段で `dist\candidate` から移した）と、確認用の送り手（`dist\target\release\ikari-candidate-send.exe`）です。項目 59〜61 は、窓を手で起動し、送り手で出して確かめます（engine-host を止めておく。動いていると、engine-host が起動した窓が先にパイプを取る）。第 2 段（項目 62〜66）で、TIP が窓に送り、engine-host が窓を起動して見張るようになりました。**第 2 段の Rust の COM の層、engine-host の起動の層、C# と CI の変更は、Windows で 1 度もビルド・実行していません**（Mac の `cargo clippy --target x86_64-pc-windows-msvc` まで）。どちらもセッション 1 で流します（`run-in-session.ps1`。SSH のセッション 0 では窓が出ない。§1.6）。
+
+#### 項目 59: 候補窓の起動、二重起動、高い権限
+
+- 前提: CI の `windows-artifact` を持ち込んである。
+- やること: (a) `dist\target\release\candidate\ikari-candidate.exe` を起動し、プロセスが残ること、窓が見えないこと、タスクバーに出ないことを見る。(b) もう 1 つ起動し、すぐ終わること（`$LASTEXITCODE`）。(c) 1 つ目を止め、管理者の PowerShell から起動し、すぐ終わること。(d) 1 つ目の常駐のメモリ（`Get-Process ikari-candidate | Select-Object Id, WorkingSet64, PrivateMemorySize64`）を、起動の直後と 10 分後に記録する。(e) 起動から常駐までの時間（冷えたとき、2 回目）を記録する。
+- 期待する結果（**見込み**）: (a) 残る。見えない。(b) 終了コード `2`（同じセッションの候補窓がもう動いている）。(c) 終了コード `2`（高い権限では受け付けを始めない）。(d)(e) 値を記録するだけ（期待値は置かない。ユーザーが見て決める）。
+- うまくいかないとき: 終了コード、イベントビューアの「Application」のエラー（.NET Runtime、Application Error）を残す。起動してすぐ落ちるなら `dist\target\release\candidate` に `ikari_candidate.dll` があるかを見る。
+
+#### 項目 60: 送り手で窓が出て、フォーカスを奪わず、決めた位置に出る
+
+- 前提: 項目 59 の (a) の候補窓が動いている。メモ帳を前面にしてある。
+- やること: (a) `ikari-candidate-send.exe 300 300` を流し、5 秒の間に窓が出て、そのあと消えることを見る（VM のコンソールの画面。Q3）。`uia-probe.ps1` か Spy++ で、前面の窓とフォーカスがメモ帳のままか、窓の矩形、拡張スタイル（`WS_EX_NOACTIVATE`、`WS_EX_TOOLWINDOW`）、最前面かを記録する。(b) 窓が出ている間に、メモ帳に打鍵が続けて入ること。Alt+Tab とタスクバーに窓が出ないこと。(c) `ikari-candidate-send.exe 300 300 above` で、窓の下端がアンカー（y=300）の上に来て、1 位が下（アンカーに近い側）に並ぶこと。(d) `ikari-candidate-send.exe 1900 1030` で、窓が作業領域（1920x1040 とみなす）の右と下にはみ出さないこと。(e) 表示の拡大を 150%・200% にして、`ikari-candidate-send.exe 300 300 below 1.5`（200% なら 2）で、窓の左上がアンカーの左下とほぼ一致し、行の高さが倍率に合うこと。(f) 送り手の 5 秒の間に、送り手を Ctrl+C で止め、窓が消えること（持ち主の接続が切れたら隠す）。(g) ライトとダークのテーマで、文字と選択の行が読めるか（見た目の仕上げは次の段なので、記録だけ）。
+- 期待する結果（**見込み**）: (a) 出て消える。前面とフォーカスはメモ帳のまま。両方のスタイルが付き、最前面。(b) そのとおり。(c) 上に出て、並びは逆。(d) はみ出さない。(e) ほぼ一致（差をピクセルで記録する。許す差はユーザーが決める）。(f) 消える。(g) 記録のみ。スパイク（#368）の 150% の最初の 3 回の `topmost=False` が、ここでも出るかを記録する。
+- うまくいかないとき: 送り手の出力（`connect:` で失敗するなら、候補窓が別のユーザーかセッションで動いている）、窓の矩形、拡張スタイル、DPI、前面の窓を残す。
+
+#### 項目 61: 受けたものの上限（切り詰め）の見た目
+
+- 前提: 項目 60 と同じ。
+- やること: `ikari-candidate-send.exe 300 100 below 1 10 long`（上限より多い行と長い文字を送る）で、窓の見た目を見る。
+- 期待する結果（**見込み**）: 行は 16 に、1 行は 256 文字に切り詰められて出る。窓の幅は作業領域の幅まで（長い行は窓の右端で切れて見える）で、作業領域の中に収まる。候補窓は落ちない（ADR 0068 §10 の推測の確認）。
+- うまくいかないとき: 窓の矩形と、落ちたならイベントビューアのエラーを残す。上限の値は仮置きなので、見た目の印象（長すぎる・短すぎる）も備考に書く。
+
+#### 項目 62: ビルドと CI（第 2 段。Windows で未ビルド）
+
+- やること: (a) CI の Windows のジョブが通ること（候補窓のビルド、製品のビルドの検査、artifact）。artifact に `target\release\candidate\ikari-candidate.exe` があること。(b) NuGet のロック（`windows/candidate-ui/packages.lock.json`。Mac の .NET SDK 11 で作った）が、CI（.NET SDK 10。`CI=true` のとき、ロックのとおりでなければ失敗する）で通ること。(c) VM で `windows\dev\build.ps1`（.NET SDK があるとき候補窓も発行する）が通り、`target\release\candidate-publish\ikari-candidate.exe` ができること。
+- 期待する結果（**見込み**）: (a)(b)(c) 通る。(b) が落ちたら、Windows で `dotnet restore windows\candidate-ui` を流してロックを作り直し、差分をコミットする（SDK の版で間接の依存が変わる可能性。推測）。
+- うまくいかないとき: CI のログの最初の誤り。`DEPENDENTS.txt` に、TIP の DLL の新しい依存（`api-ms-win-shcore-scaling-l1-1-1.dll`。画面の倍率）が出ているかも記録する。
+
+#### 項目 63: engine-host が候補窓を起動し、落ちたら起動し直し、終わると窓も終わる（ADR 0062 §5.4）
+
+- 前提: artifact を持ち込み、`start-engine.ps1` で起動した（インストール先 `%LOCALAPPDATA%\ikari-ime-dev\install\candidate\` に窓が写る）。セッション 1 で `candidate-probe.ps1` を流す（`run-in-session.ps1`）。
+- やること: (a) 起動の直後に `candidate-probe.ps1`。ikari-candidate のプロセスが 1 つ、親が engine-host、パスがインストール先の写しであること。パイプ（`ikari-ime-candidate-v1-…`）があること。(b) `Stop-Process -Name ikari-candidate -Force` で窓を落とし、約 1 秒後に新しいプロセスがあること。続けて 3 回落とすと、5 分の間は起動し直さないこと（engine-host の出力に `candidate window restarts in 300 s`）。(c) `start-engine.ps1 stop` で engine-host を止めると、候補窓も終わること。`-Foreground` で起動して Ctrl+C で止めたときも同じ。(d) 候補窓のフォルダを消して engine-host を起動すると、`no candidate window next to the engine` を出し、入力は続くこと。(e) SSH（ほかの Job の中）から起動したときと、ログオンで起動したとき（W5 の後）の両方で (a) が成り立つか（入れ子の Job。ADR 0072 §10）。(f) engine-host の起動の時間が、窓なしと比べて延びないこと。
+- 期待する結果（**見込み**）: そのとおり。窓の Job の UI の制限（クリップボード、画面とシステムの設定の書き換え、サインアウト）のもとでも窓が描けること（項目 64 で見る）。
+- うまくいかないとき: engine-host の標準エラーの行（`candidate window …`）、`candidate-probe.ps1` の出力、イベントビューアのエラー。Job に入れられないなら、engine-host がどの Job の中にいるか（Process Explorer の Job のタブ）。
+
+#### 項目 64: TIP が窓に送り、先頭の 1 文字の下に出て、閉じるまで動かない（ADR 0062 §6、§7.4）
+
+- 前提: 項目 63 の (a)。TIP を登録してある（`register.ps1`）。メモ帳で日本語を打つ。`dbgcap.ps1` で TIP のログ（`show candidates sent=… seq=… side=… source=… clipped=… anchor=x,y,w,h scale=…`）を取る。
+- やること: (a) 「かんじ」と打って Space。窓が合成の**先頭の文字**の左下に出ること。`candidate-probe.ps1 -Repeat 10` で、窓の矩形、前面の窓がメモ帳のままか、最前面か。ログの `anchor` と窓の左上の差（ピクセル）。(b) ↓ で選択を動かし、ページを送っても、窓の横の位置が変わらないこと。(c) 長い読みで合成を折り返したとき、窓が 1 行目の先頭の下に出ること。(d) 画面の下端の近くで変換すると、窓が上に出て、1 位がアンカーに近い側（下）に並び、↑/↓ の向きが macOS と同じこと（`panel_shown` が効いている）。(e) 表示の拡大 150%・200% と、DPI に対応しないアプリで、(a) の差とログの `scale`。(f) 2 枚の画面で、右の画面で変換したとき、窓がその画面の作業領域に収まること。(g) Enter、Esc、ほかのアプリのクリック（フォーカスが外れる）で窓が消えること。(h) 窓の出ている間に入力方式を切り替える（TIP の `Deactivate`）と窓が消えること。(i) 位置が取れないアプリ（ログの `source=last-known` か `mouse-screen`）で、どこに出るか。
+- 期待する結果（**見込み**）: (a) 左上がほぼ一致（許す差はユーザーが実測を見て決める）。フォーカスはメモ帳のまま。(b) 動かない。(c) 1 行目の先頭の下。(d) 上。向きは macOS と同じ。(e) ほぼ一致（DPI に対応しないアプリは `LogicalToPhysicalPointForPerMonitorDPI` で物理の座標に直る、が推測）。(f) 収まる。(g)(h) 消える。(i) 同じアプリの前の位置、なければマウスのある画面の横の中央、上から 3/4。
+- うまくいかないとき: DebugView の行、`candidate-probe.ps1` の出力、アプリの DPI の扱い（タスクマネージャーの「DPI 認識」の列）、`clipped=1` のときの位置。
+
+#### 項目 65: 窓が無い・落ちた・偽物のときに入力が止まらない（ADR 0062 §5.4 の決定 2、3）
+
+- やること: (a) 変換中に `Stop-Process -Name ikari-candidate -Force`。そのまま ↓ と Space で選択を動かし、確定できること。約 1 秒後に窓が戻り、次の ↓ で、同じ位置に窓が出ること。(b) 窓が無い間は、ログが `sent=0 side=none` で、↑/↓ の向きが下に出たときと同じであること。(c) 候補窓のフォルダを消して engine-host を起動し直し、変換と確定ができること。(d) 候補窓を固める（Process Explorer の Suspend）と、打鍵が止まる時間が 1 回あたり書きの締め切り（200ms）程度で、続けて止まらないこと。(e) インストール先でない場所の `ikari-candidate.exe` を先に起動してパイプを取らせると、TIP が送らないこと（`engine peer rejected reason=…`）。
+- 期待する結果（**見込み**）: そのとおり。キーは素通しにも失われもしない。
+- うまくいかないとき: DebugView の行と、打鍵が止まった時間（`latency.ps1`）。
+
+#### 項目 66: 片道の遅れ（ADR 0062 §10 の S-2 の代わり。N150 の VM は参考値）
+
+- やること: 項目 64 の (b) を 1 分続け、TIP の往復時間（`latency.ps1`）を、窓のない状態（項目 65 の (c)）と比べて記録する。
+- 期待する結果: 値を記録するだけ（期待値は置かない。窓に使える時間（ADR 0062 Q4）は、この値を見てユーザーが決める）。候補窓の側の「受けてから描くまで」は、窓の診断のログがまだ無いので測れない（次の段）。
+- うまくいかないとき: 記録のみ。
+
 ## 6. 結果の記録の書き方
 
 次の表を、コピーして使います（この文書に書き込まず、issue のコメントか、別のメモに書いてください。この文書は手順書として保ちます）。1 項目 1 行。「結果」は、○（期待どおり）、△（一部、または条件つき）、×（期待と違う）、－（できなかった。理由を備考に）のどれか。「見たこと」は、事実だけを書き、推測は備考に、「推測」と付けて書きます。
@@ -609,7 +666,7 @@ ikari のコミット（git rev-parse --short HEAD）:
 | --- | --- | --- | --- | --- |
 | 1 |  |  |  |  |
 | 2 |  |  |  |  |
-（項目 55 まで）
+（項目 66 まで。56〜58 は欠番。設定画面の項目の予約）
 
 スクリプトで直したところ（ファイル、直した内容、理由）:
 -

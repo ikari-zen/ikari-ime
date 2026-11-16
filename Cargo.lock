@@ -458,6 +458,7 @@ dependencies = [
  "ikari-pipe",
  "ikari-proto",
  "ikari-shell-core",
+ "prost",
 ]
 
 [[package]]
@@ -693,6 +694,7 @@ dependencies = [
  "ikari-pipe",
  "ikari-shell-core",
  "ikari-testtime",
+ "prost",
  "tempfile",
  "windows",
  "windows-core",

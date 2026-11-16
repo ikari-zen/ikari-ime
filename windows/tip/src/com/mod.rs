@@ -15,7 +15,8 @@
 //! - `keyboard`: キーの押下 → `keys::RawKey`（`ToUnicodeEx` で配列によらない文字を取る）
 //! - `timer`: `TsfOp::ScheduleTimer` の実行（スレッドのタイマー）
 //! - `host`: `Shell` を作る（設定と資源の場所、トランスポート）
-//! - `connector`: 名前付きパイプへの接続（`transport::Connector` の実装）
+//! - `connector`: 名前付きパイプへの接続（`transport::Connector` と、候補窓の `CandidateConnector` の実装）
+//! - `screen`: 候補窓の位置の材料（先頭の 1 文字の矩形、物理の座標への変換、画面の作業領域と倍率）
 //! - `process_facts`: 自分のプロセスのトークンから、種類の判定に使う事実を取る（判定は `process_kind`）
 //! - `guard`: COM の入口を `catch_unwind` で包む（panic はその回を素通しにする。ADR 0041 §4.2）
 //! - `log`: `OutputDebugStringW`。**入力された文字列を出さない**（固定の文と HRESULT だけを受ける型にしている）
@@ -44,5 +45,6 @@ mod keyboard;
 mod log;
 mod process_facts;
 mod register;
+mod screen;
 mod service;
 mod timer;

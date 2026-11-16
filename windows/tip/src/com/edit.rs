@@ -4,14 +4,19 @@
 //! キーの処理は同期のセッション（`TF_ES_SYNC`。キーイベントの通知の中でだけ取れる）で、`Shell::dispatch` と
 //! `TsfOp` の実行をまとめて 1 回のセッションで行う。
 //!
-//! 判断は持たない。`TsfOp` の意味（`tsf_op` の doc）を TSF の呼び出しに写すだけ。
+//! 判断は持たない。`TsfOp` の意味（`tsf_op` の doc）を TSF の呼び出しに写すだけ。候補窓は `candidate_view`（判断）に
+//! 渡し、位置の材料は `screen` が OS から取る。
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::mem::ManuallyDrop;
+use std::time::Instant;
 
 use ikari_shell_core::english::InputMode;
-use ikari_shell_core::{SelectedText, SurroundingText, TextAccess, TimerId, Utf16Len, Utf16Range};
-use windows::Win32::Foundation::{E_UNEXPECTED, RECT};
+use ikari_shell_core::panel::{AnchorSource, PanelSide};
+use ikari_shell_core::{
+    CandidatePanelModel, SelectedText, SurroundingText, TextAccess, TimerId, Utf16Len, Utf16Range,
+};
+use windows::Win32::Foundation::E_UNEXPECTED;
 use windows::Win32::UI::TextServices::{
     ITfComposition, ITfCompositionSink, ITfContext, ITfContextComposition, ITfEditSession,
     ITfEditSession_Impl, ITfInsertAtSelection, ITfRange, ITfRangeACP, TF_AE_NONE, TF_ANCHOR_END,
@@ -20,9 +25,12 @@ use windows::Win32::UI::TextServices::{
 };
 use windows_core::{BOOL, HRESULT, Interface, implement};
 
+use super::connector::CandidatePipeConnector;
 use super::dll::DllRef;
 use super::guard::guard;
 use super::log;
+use super::screen::{self, Win32Desktop};
+use crate::candidate_view::{CandidateView, PanelReport};
 use crate::tsf_op::TsfOp;
 
 /// 周辺テキストの左と右に読む長さ（UTF-16）。macOS の `ClientAccess.leftContextLimit`・`rightContextLimit` と同じ値
@@ -36,6 +44,24 @@ const STRAY_PROBE_LEN: i32 = 1;
 const GET_TEXT_PLAIN: u32 = 0;
 /// `ITfRange::SetText` の旗（なし）
 const SET_TEXT_PLAIN: u32 = 0;
+
+// ---------------------------------------------------------------- 診断の語
+
+fn side_name(side: PanelSide) -> &'static str {
+    match side {
+        PanelSide::Below => "below",
+        PanelSide::Above => "above",
+    }
+}
+
+fn source_name(source: AnchorSource) -> &'static str {
+    match source {
+        AnchorSource::Client => "client",
+        AnchorSource::Accessibility => "accessibility",
+        AnchorSource::LastKnown => "last-known",
+        AnchorSource::MouseScreen => "mouse-screen",
+    }
+}
 
 // ---------------------------------------------------------------- 編集セッションの口
 
@@ -289,6 +315,11 @@ pub struct Doc<'a> {
 
 /// `TsfOp` の列を順に実行する。
 pub struct Exec<'a> {
+    /// 候補窓の表示の状態（テキストサービスが持つ）
+    pub candidates: &'a mut CandidateView<CandidatePipeConnector>,
+    /// 候補窓を出した・動かしたときの上下と出どころ（実行のあとで `ShellEvent::PanelShown` として返す。
+    /// `HideCandidates` で消す）。作るときは `None`
+    pub panel_report: Option<PanelReport>,
     /// 文書に触れられないとき（文書のない通知、タイマーで文書がないとき）は `None`。文書の操作は飛ばす
     pub doc: Option<Doc<'a>>,
     /// この TIP の合成（なければ `None`）。実行に合わせて更新する
@@ -329,17 +360,14 @@ impl Exec<'_> {
             TsfOp::CommitComposition { text } => self.commit(text),
             TsfOp::EndComposition => self.end_composition(),
             TsfOp::ResolveStrayComposition => return self.resolve_stray(),
-            TsfOp::ShowCandidates(_) => {
-                // TODO(W3): 候補窓（方式は ADR 0040 §2.4）。ここでは位置が取れるかだけを見る
-                let found = self.candidate_rect().is_some();
-                log::event(if found {
-                    "show candidates (position found)"
-                } else {
-                    "show candidates (no position)"
-                });
+            TsfOp::ShowCandidates(model) => self.show_candidates(model),
+            TsfOp::MoveCandidates(model) => self.move_candidates(model),
+            TsfOp::HideCandidates => {
+                self.candidates.hide(Instant::now());
+                // 閉じたときの上下は `shell-core` が自分で戻す（macOS の `ShellDriver.perform` と同じ）
+                self.panel_report = None;
+                log::event("hide candidates");
             }
-            TsfOp::MoveCandidates(_) => log::event("move candidates"),
-            TsfOp::HideCandidates => log::event("hide candidates"),
             TsfOp::DeleteText { range } => {
                 // 合成があるときは出ない約束（`tsf_op`）。あっても消さない
                 if self.composition.is_none() {
@@ -491,20 +519,56 @@ impl Exec<'_> {
         }
     }
 
-    /// 候補窓を置く位置（合成、なければキャレットの画面上の矩形）。W3 が使う
-    fn candidate_rect(&self) -> Option<RECT> {
-        let doc = self.doc.as_ref()?;
-        let range = match self.composition.as_ref() {
-            // SAFETY: 合成は生きている
-            Some(composition) => unsafe { composition.GetRange() }.ok()?,
-            None => default_selection(doc.ec, doc.context)?,
+    /// 候補窓を出す（アンカーは `candidate_view` が `Hide` まで固定する。取り直すときだけ `screen` で取る）。
+    /// 送れたら、`Shell::panel_shown` に渡す内容を `panel_report` に置く
+    fn show_candidates(&mut self, model: &CandidatePanelModel) {
+        let clipped = Cell::new(None);
+        let (doc, composition) = (&self.doc, self.composition.as_ref());
+        let probe = || {
+            let doc = doc.as_ref()?;
+            let anchor = screen::client_anchor(doc.ec, doc.context, composition)?;
+            clipped.set(Some(anchor.clipped));
+            Some(anchor.rect)
         };
-        // SAFETY: 文書は生きている
-        let view = unsafe { doc.context.GetActiveView() }.ok()?;
-        let mut rect = RECT::default();
-        let mut clipped = BOOL::default();
-        // SAFETY: `rect` と `clipped` は書ける場所。`ec` はこのセッションのもの
-        unsafe { view.GetTextExt(doc.ec, &range, &mut rect, &mut clipped) }.ok()?;
-        Some(rect)
+        let report = self
+            .candidates
+            .show(model, probe, &Win32Desktop, Instant::now());
+        if report.is_some() {
+            self.panel_report = report;
+        }
+        self.log_candidates("show", report, clipped.get());
+    }
+
+    /// 選択を動かす（同じ表示のバッチで先に決めた出どころは残す。macOS の `ShellDriver.perform` と同じ）
+    fn move_candidates(&mut self, model: &CandidatePanelModel) {
+        let report = self.candidates.update(model, Instant::now());
+        if let Some((side, _)) = report {
+            let source = self.panel_report.and_then(|(_, source)| source);
+            self.panel_report = Some((side, source));
+        }
+        self.log_candidates("move", report, None);
+    }
+
+    fn log_candidates(&self, op: &'static str, report: Option<PanelReport>, clipped: Option<bool>) {
+        let geometry = self.candidates.geometry();
+        log::candidates(&log::CandidateDiag {
+            op,
+            sent: report.is_some(),
+            seq: self.candidates.last_seq(),
+            side: report.map(|(side, _)| side_name(side)),
+            source: report.and_then(|(_, source)| source).map(source_name),
+            anchor: geometry.map(|g| {
+                (
+                    [
+                        g.anchor.origin.x,
+                        g.anchor.origin.y,
+                        g.anchor.size.width,
+                        g.anchor.size.height,
+                    ],
+                    g.scale,
+                )
+            }),
+            clipped,
+        });
     }
 }
