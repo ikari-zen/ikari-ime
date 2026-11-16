@@ -80,10 +80,11 @@ if ($Lm -or $LmVulkan) {
     $lmFeature = if ($LmVulkan) { 'vulkan' } else { 'llama' }
     $hostArgs = @('build', '--release', '-p', 'ikari-lm', '--bin', 'ikari-lm-host', '--features', "$lmFeature,dev-knobs")
     # The Rust code links the C runtime statically (crt-static, .cargo/config.toml). With "llama", llama.cpp is a static
-    # library inside the exe, so it must use the static C runtime too (/MT): llama-cpp-sys-2 builds it with /MD unless
-    # LLAMA_STATIC_CRT=1 (link error LNK2038). With "vulkan", llama.cpp is DLLs and keeps their own C runtime: leave it unset.
-    $savedStaticCrt = $env:LLAMA_STATIC_CRT
-    if ($Lm) { $env:LLAMA_STATIC_CRT = '1' } else { Remove-Item Env:LLAMA_STATIC_CRT -ErrorAction SilentlyContinue }
+    # library inside the exe and is built with the dynamic C runtime (/MD), so the two do not link (LNK2038). The LM child
+    # is a separate process, never loaded into other apps (ADR 0067 section 4.4): build it with the dynamic C runtime.
+    # Setting RUSTFLAGS makes cargo ignore the rustflags in .cargo/config.toml. With "vulkan", llama.cpp is DLLs: no change.
+    $savedRustFlags = $env:RUSTFLAGS
+    if ($Lm) { $env:RUSTFLAGS = '-C target-feature=-crt-static' }
     Write-Step "cargo $($hostArgs -join ' ')   (in $RepoRoot)"
     Push-Location $RepoRoot
     try {
@@ -92,7 +93,7 @@ if ($Lm -or $LmVulkan) {
     }
     finally {
         Pop-Location
-        $env:LLAMA_STATIC_CRT = $savedStaticCrt
+        $env:RUSTFLAGS = $savedRustFlags
     }
     $lmHostExe = Join-Path $ReleaseDir 'ikari-lm-host.exe'
     if (-not (Test-Path -LiteralPath $lmHostExe)) { throw "build finished but $lmHostExe does not exist" }
