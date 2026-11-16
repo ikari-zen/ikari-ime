@@ -90,8 +90,17 @@ impl From<io::Error> for FrameError {
 
 /// 枠を 1 回の `write_all` で書き、flush する。
 pub fn write_frame<W: Write>(w: &mut W, frame: &Frame) -> Result<(), FrameError> {
+    write_frame_limited(w, frame, MAX_FRAME_LEN)
+}
+
+/// `write_frame` の、`len` の上限を指定する版（口ごとの上限。`limits`）。
+pub fn write_frame_limited<W: Write>(
+    w: &mut W,
+    frame: &Frame,
+    max_len: u32,
+) -> Result<(), FrameError> {
     let len = KIND_SEQ_BYTES as u64 + frame.body.len() as u64;
-    if len > u64::from(MAX_FRAME_LEN) {
+    if len > u64::from(max_len) {
         return Err(FrameError::TooLarge(len));
     }
     // 上の検査で u32 に収まる
@@ -108,6 +117,11 @@ pub fn write_frame<W: Write>(w: &mut W, frame: &Frame) -> Result<(), FrameError>
 
 /// 枠を 1 つ読む。枠の境目での EOF（相手が閉じた）は `Ok(None)`。枠の途中の EOF は `Io(UnexpectedEof)`。
 pub fn read_frame<R: Read>(r: &mut R) -> Result<Option<Frame>, FrameError> {
+    read_frame_limited(r, MAX_FRAME_LEN)
+}
+
+/// `read_frame` の、`len` の上限を指定する版（口ごとの上限。`limits`）。
+pub fn read_frame_limited<R: Read>(r: &mut R, max_len: u32) -> Result<Option<Frame>, FrameError> {
     let mut len_buf = [0u8; LEN_PREFIX_BYTES];
     let mut got = 0;
     while got < LEN_PREFIX_BYTES {
@@ -120,7 +134,7 @@ pub fn read_frame<R: Read>(r: &mut R) -> Result<Option<Frame>, FrameError> {
         }
     }
     let len = u32::from_le_bytes(len_buf);
-    if len > MAX_FRAME_LEN {
+    if len > max_len {
         return Err(FrameError::TooLarge(u64::from(len)));
     }
     if (len as usize) < KIND_SEQ_BYTES {
@@ -146,6 +160,29 @@ pub fn read_frame<R: Read>(r: &mut R) -> Result<Option<Frame>, FrameError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn limited_read_and_write_use_the_given_max() {
+        let f = Frame {
+            kind: FrameKind::Post,
+            seq: 1,
+            body: vec![0; 100],
+        };
+        let mut bytes = Vec::new();
+        write_frame_limited(&mut bytes, &f, 109).unwrap();
+        assert!(matches!(
+            write_frame_limited(&mut Vec::new(), &f, 108),
+            Err(FrameError::TooLarge(109))
+        ));
+        assert_eq!(
+            read_frame_limited(&mut bytes.as_slice(), 109).unwrap(),
+            Some(f)
+        );
+        assert!(matches!(
+            read_frame_limited(&mut bytes.as_slice(), 108),
+            Err(FrameError::TooLarge(109))
+        ));
+    }
 
     fn encode(frame: &Frame) -> Vec<u8> {
         let mut v = Vec::new();
