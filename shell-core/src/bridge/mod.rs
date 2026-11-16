@@ -6,6 +6,7 @@
 //! 中継の同時数、枠ごとの振り分けを持つ。
 
 pub mod frame_codec;
+pub mod link_status;
 pub mod proto;
 pub mod protocol;
 pub mod relay_gate;
@@ -14,6 +15,7 @@ pub mod server;
 pub mod transfer_path;
 
 pub use frame_codec::{FrameDecoder, FrameError};
+pub use link_status::LinkStatus;
 pub use proto::{BridgeErrorCode, Frame};
 pub use protocol::{BRIDGE_VERSION, Handshake, MAX_FRAME_BYTES, SOCKET_RELATIVE_PATH, handshake};
 pub use relay_gate::{RelayGate, RelayPermit};
