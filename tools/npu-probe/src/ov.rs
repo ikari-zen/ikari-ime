@@ -256,10 +256,17 @@ pub fn open(
     let full_name = core
         .get_property(&dev, &PropertyKey::DeviceFullName)
         .unwrap_or_default();
+    // `ov_core_set_property` は C の可変長引数の関数で、`openvino` crate は可変長でない形で呼ぶ。Windows（x64）は
+    // 呼び方が同じなので効くが、arm64 の macOS では属性の名前が空で届く（Mac で確かめた）。キャッシュは Windows だけ
+    let mut note = None;
     if let Some(cache) = &job.cache {
-        let s = cache.to_str().ok_or("キャッシュの場所が UTF-8 でない")?;
-        core.set_property(&dev, &RwPropertyKey::CacheDir, s)
-            .map_err(ov_err("CACHE_DIR"))?;
+        if cfg!(windows) {
+            let s = cache.to_str().ok_or("キャッシュの場所が UTF-8 でない")?;
+            core.set_property(&dev, &RwPropertyKey::CacheDir, s)
+                .map_err(ov_err("CACHE_DIR"))?;
+        } else {
+            note = Some("キャッシュ（CACHE_DIR）は Windows だけ".to_owned());
+        }
     }
 
     let mut buckets = Vec::new();
@@ -289,7 +296,7 @@ pub fn open(
         compile_ms,
         too_long,
         tokens: None,
-        note: None,
+        note,
         not_ok: None,
     })
 }

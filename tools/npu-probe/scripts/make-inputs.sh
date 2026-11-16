@@ -35,4 +35,4 @@ while IFS= read -r id; do
 done < <("$target/ikari-npu-probe" make-inputs --print-ids)
 
 "$target/ikari-npu-probe" make-inputs --records "$records" --set "$set_file" --out "$out"
-echo "書いた: $out（$(wc -l < "$out") 件）" >&2
+echo "書いた: ${out}（$(wc -l < "$out") 件）" >&2

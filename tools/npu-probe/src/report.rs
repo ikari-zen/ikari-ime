@@ -272,6 +272,8 @@ pub struct Verdict {
     pub top1: (char, String),
     /// 載らなかった
     pub failed: Option<String>,
+    /// 測れなかった（モデルが無い、など。採否を決められない）
+    pub not_measured: Option<String>,
 }
 
 impl Verdict {
@@ -279,6 +281,9 @@ impl Verdict {
     pub fn overall(&self) -> char {
         if self.failed.is_some() {
             return '×';
+        }
+        if self.not_measured.is_some() {
+            return '?';
         }
         let marks = [self.speed.0, self.cached_first.0, self.top1.0];
         if marks.contains(&'×') {
@@ -299,13 +304,18 @@ pub fn verdict(run: &Run, device: Device) -> Verdict {
         cached_first: ('?', "測れない".into()),
         top1: ('?', "測れない".into()),
         failed: None,
+        not_measured: None,
     };
     let Some(d) = run.get(device) else {
-        v.failed = Some("測っていない".into());
+        v.not_measured = Some("測っていない".into());
         return v;
     };
     let Some(best) = d.best() else {
-        v.failed = d.failure();
+        if d.skipped.is_some() {
+            v.not_measured = d.failure();
+        } else {
+            v.failed = d.failure();
+        }
         return v;
     };
     v.batch = best.batch;
@@ -359,6 +369,9 @@ fn verdict_line(v: &Verdict) -> String {
     };
     if let Some(f) = &v.failed {
         return format!("{head} 載らなかった（{}） → {tail}", truncate(f, 24));
+    }
+    if let Some(f) = &v.not_measured {
+        return format!("{head} 測れない（{}） → {tail}", truncate(f, 24));
     }
     format!(
         "{head} 速さ{}({}) 初回{}({}) 一致{}({}) → {tail}",
@@ -778,6 +791,21 @@ mod tests {
             assert!(text.contains(section), "{section}");
         }
         assert!(text.lines().count() < 120);
+    }
+
+    #[test]
+    fn skipped_npu_is_undecided() {
+        let mut run = sample_run();
+        let d = run
+            .devices
+            .iter_mut()
+            .find(|d| d.device == Device::Ov(OvTarget::Npu, Precision::Int8))
+            .unwrap();
+        d.full.clear();
+        d.skipped = Some("IR が無い".into());
+        let v = verdict(&run, Device::Ov(OvTarget::Npu, Precision::Int8));
+        assert_eq!(v.overall(), '?');
+        assert!(verdict_line(&v).contains("測れない（IR が無い）"));
     }
 
     #[test]
