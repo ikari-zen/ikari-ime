@@ -15,10 +15,10 @@
   `<インストール先>\ikari-engine-host.exe`、その隣に `llama*.dll`・`ggml*.dll`・`backends\`、`<インストール先>\tip\<版>\ikari_tip.dll` と `resources\`。
 - TIP は、エンジンの場所を自分の DLL の場所から決め、つないだ相手の実行ファイルのパスと照らす（`windows/tip/src/peer.rs`。S1）。LM の子は、エンジンの実行ファイルの隣の絶対パスから起動する（`lm/src/host/`）。どちらも R2 の形。
 - 登録（`windows/tip/src/com/register.rs`）は HKLM（`HKCR\CLSID`、TSF のプロファイルとカテゴリ）。カテゴリに `GUID_TFCAT_TIPCAP_IMMERSIVESUPPORT` があるので、**ストアのアプリ（AppContainer）にも読み込まれる**。
-- TIP に、自分が入ったプロセスの権限を見るコードは見当たらない。どのプロセスでも、設定ファイルを読み、エンジンにつなぎにいく。
+- 高い権限のアプリの中の TIP は「素通し」にする、という決定がある（2026-11-15）。その実装の状態は、ここには書かない（番号つきの issue で追う）。
 - エンジンの自動起動は未実装（`windows/tip/src/transport.rs` の `TODO(W5)`。開発では `start-engine.ps1`）。ADR 0040 §2.2 の方針は「HKCU の Run を基本、TIP がつながらなければデスクトップアプリからに限って起動」。
 - パイプの DACL は、自分のユーザーと SYSTEM だけ。AppContainer は許していない（`pipe/src/os/mod.rs`）。
-- ビルドに、C の実行時ライブラリを静的に入れる設定（`crt-static`）は無い（`.cargo/config.toml`、CI、`windows/dev/build.ps1` を確認）。
+- TIP の DLL が、OS の標準でない DLL に依存しているかどうかは、確かめていない（§4.4 で検査にする）。
 - 子の起動（`lm/src/host/os.rs`）は Rust の標準の `Command`。継承できるハンドルを限定していない（S5）。
 
 ## 2. 問題
