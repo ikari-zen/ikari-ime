@@ -14,6 +14,9 @@
 #![deny(unsafe_code)]
 
 pub mod edit;
+pub mod fetch;
+#[allow(unsafe_code)]
+pub mod fetch_os;
 pub mod link;
 pub mod peer;
 pub mod text;
@@ -24,3 +27,6 @@ pub mod abi;
 
 #[allow(unsafe_code)]
 pub mod session_abi;
+
+#[allow(unsafe_code)]
+pub mod fetch_abi;

@@ -765,9 +765,11 @@ dependencies = [
  "ikari-engine-host",
  "ikari-pipe",
  "ikari-proto",
+ "ikari-resource",
  "ikari-shell-core",
  "prost",
  "tempfile",
+ "windows-sys",
 ]
 
 [[package]]

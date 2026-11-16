@@ -4,10 +4,7 @@
 #![cfg_attr(not(windows), allow(dead_code))]
 
 use std::ffi::OsString;
-use std::io::{self, BufRead, Read};
 use std::path::Path;
-
-use ikari_resource::fetch_report::MAX_LINE_BYTES;
 
 use crate::args::TransferArgs;
 
@@ -59,46 +56,6 @@ pub fn transfer_args(args: &TransferArgs) -> Vec<String> {
         v.push(expect.to_string());
     }
     v
-}
-
-/// 子の出力から読んだ 1 行
-#[derive(Debug, PartialEq, Eq)]
-pub enum Line {
-    /// 改行を除いた 1 行
-    Text(String),
-    /// 長すぎる行（`MAX_LINE_BYTES` 超）か、UTF-8 でない行。読み飛ばした
-    Dropped,
-    Eof,
-}
-
-/// 子（低い整合性。信じない）の出力を 1 行読む。1 行の長さを `MAX_LINE_BYTES` で打ち切り、メモリを使い切らせない
-pub fn read_line_capped(reader: &mut impl BufRead) -> io::Result<Line> {
-    // 改行と、上限を超えたことが分かる 1 バイトの分
-    let window = MAX_LINE_BYTES as u64 + 2;
-    let mut buf = Vec::new();
-    let n = reader.by_ref().take(window).read_until(b'\n', &mut buf)?;
-    if n == 0 {
-        return Ok(Line::Eof);
-    }
-    if buf.last() != Some(&b'\n') && n as u64 == window {
-        // 長すぎる。次の改行（か終わり）まで読み捨てる
-        let mut sink = Vec::new();
-        loop {
-            sink.clear();
-            let m = reader.by_ref().take(window).read_until(b'\n', &mut sink)?;
-            if m == 0 || sink.last() == Some(&b'\n') {
-                break;
-            }
-        }
-        return Ok(Line::Dropped);
-    }
-    if buf.last() == Some(&b'\n') {
-        buf.pop();
-    }
-    match String::from_utf8(buf) {
-        Ok(text) if text.len() <= MAX_LINE_BYTES => Ok(Line::Text(text)),
-        _ => Ok(Line::Dropped),
-    }
 }
 
 const QUOTE: u16 = b'"' as u16;
@@ -191,47 +148,6 @@ mod tests {
                 "TEMP"
             ]
         );
-    }
-
-    fn read_all(input: &[u8]) -> Vec<Line> {
-        let mut reader = io::BufReader::new(input);
-        let mut lines = Vec::new();
-        loop {
-            match read_line_capped(&mut reader).unwrap() {
-                Line::Eof => return lines,
-                line => lines.push(line),
-            }
-        }
-    }
-
-    #[test]
-    fn reads_lines_and_drops_overlong_or_invalid_ones() {
-        let long = "x".repeat(MAX_LINE_BYTES + 1);
-        let ok_max = "y".repeat(MAX_LINE_BYTES);
-        let mut input = Vec::new();
-        input.extend_from_slice(b"progress 1 2\n");
-        input.extend_from_slice(long.as_bytes());
-        input.extend_from_slice(b"\n");
-        input.extend_from_slice(ok_max.as_bytes());
-        input.extend_from_slice(b"\n\xff\xfe\n");
-        input.extend_from_slice(b"last without newline");
-        assert_eq!(
-            read_all(&input),
-            [
-                Line::Text("progress 1 2".into()),
-                Line::Dropped,
-                Line::Text(ok_max),
-                Line::Dropped,
-                Line::Text("last without newline".into()),
-            ]
-        );
-    }
-
-    #[test]
-    fn an_endless_line_does_not_grow_memory() {
-        // 改行のない 1MiB でも、読み終えて 1 つの Dropped になる
-        let input = vec![b'a'; 1 << 20];
-        assert_eq!(read_all(&input), [Line::Dropped]);
     }
 
     #[test]

@@ -159,9 +159,9 @@ impl Fetcher for ProductFetcher {
     ) -> Result<(), FetchError> {
         use std::io::BufReader;
 
-        use ikari_resource::fetch_report::ReportReader;
+        use ikari_resource::fetch_report::{Line, ReportReader, read_line_capped};
 
-        use crate::child::{Line, read_line_capped, transfer_args};
+        use crate::child::transfer_args;
         use crate::spawn_windows::spawn_low;
 
         let tool = || FetchError(FetchErrorCode::Tool);
