@@ -105,7 +105,7 @@ ikari-engine-host.exe（windows/engine-host。ユーザーのセッションで�
 設定画面（方式は ADR 0040 §2.5 のスパイクで決める）
 ```
 
-- データの置き場所: `%LOCALAPPDATA%\ikari-ime`（`IKARI_USER_DIR` があればそちら。`core/src/user/dir.rs`。2026-11-12 決定）。ログ、ロック、辞書・モデル、学習、設定は同じ下に置き、同期しない。
+- データの置き場所: `%LOCALAPPDATA%\ikari-ime`（開発用の口: `dev-knobs` のビルドと CLI・評価だけ、`IKARI_USER_DIR` があればそちら。製品のビルドでは読まない。`core/src/user/dir.rs`。2026-11-12 決定、ADR 0066 Q2・0067）。ログ、ロック、辞書・モデル、学習、設定は同じ下に置き、同期しない。
 - 依存の向きは `windows/tip → pipe`、`windows/tip → shell-core`、`windows/engine-host → pipe`、`windows/engine-host → engine`、`windows/engine-host → shell-core`（設定のパイプ）、`windows/engine-host → core`（データの置き場所）の一方向。
 - 検証: Mac で `cargo check --workspace --tests --target x86_64-pc-windows-msvc`（`scripts/check.sh` に入っている。LM なし。外す crate は今ない）。CI の job `windows`（`windows-latest`。`cargo test --workspace`、LM なし。必須ではない）。キー入力と画面は実機（VM）。
 
@@ -127,7 +127,7 @@ ikari-engine-host.exe（windows/engine-host。ユーザーのセッションで�
 | `data/raw/`（gitignore） | SudachiDict、chiVe、zenz のモデル、AJIMEE、kanakanji-edge、emoji-data（`emoji-data/emoji.json`。コミット固定、[0027 §5](adr/0027-emoji-input.md)）、ABR の町字マスター（`abr/mt_town_all.csv`。任意。[0030](adr/0030-abr-town-vocabulary.md)） | `scripts/fetch-data.sh` |
 | `data/build/dict/`（gitignore） | `grammar.bin`、`system.dict`、`vectors.bin`、`BUILD_INFO`、`emoji.tsv`（emoji.json があれば。1,975 名・1,914 絵文字。辞書の入力・BUILD_INFO には含めない）。旧版は `data/build/dict.prev/`。ABR があれば、地名の語彙の中間ファイル `data/build/town_lex.csv` も作る（[0030](adr/0030-abr-town-vocabulary.md)） | `scripts/build-dict.sh` |
 | `~/Library/Application Support/ikari-ime/dict/`、`models/` | エンジンが読む辞書とモデル（上の 2 つのコピー） | `scripts/install-data.sh` |
-| 同 `learning.tsv`、`profile.tsv`、`user_dict.tsv`、`ingest_*.tsv` | ユーザーデータ（学習、属性プロファイル、ユーザー辞書、取り込み）。`IKARI_USER_DIR` で場所を変えられる | エンジンと `ikari` CLI（[0002 §14](adr/0002-phase1-architecture.md)） |
+| 同 `learning.tsv`、`profile.tsv`、`user_dict.tsv`、`ingest_*.tsv` | ユーザーデータ（学習、属性プロファイル、ユーザー辞書、取り込み）。開発用の口（`dev-knobs` のビルドと CLI・評価だけ）では `IKARI_USER_DIR` で場所を変えられる。製品のビルドは読まない（`--data-dir` も受けない。ADR 0067 §4.3、0068） | エンジンと `ikari` CLI（[0002 §14](adr/0002-phase1-architecture.md)） |
 | `core/assets/packs/it.tsv` | IT の語彙集（読みのカタカナが1位、英字が2位）。`ikari-core` にコンパイルして埋め込む（配置は要らない）。`DictionarySet` の slot は システム辞書、語彙集、ユーザー辞書 の順。`settings.tsv` の `dict.pack_it`（既定 `on`）で切れる（[0012 §4](adr/0012-new-word-dictionary.md)） | 人（Claude の下書きをユーザーが確認） |
 | `target/macos/<release\|debug>-<team\|adhoc>/ikari.app` | ビルドしたバンドル | `macos/scripts/build.sh` |
 | `testdata/sudachi-mini/` | テスト用の小さな辞書の fixture（リポジトリに入れてある） | — |
