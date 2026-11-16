@@ -135,6 +135,22 @@ jobs:
           if (-not $exe) { throw "ikari-candidate.exe was not built" }
           if (-not (Test-Path (Join-Path $exe.DirectoryName 'ikari_candidate.dll'))) { throw "ikari_candidate.dll is not next to ikari-candidate.exe" }
           Pop-Location
+      # 設定画面（WinUI 3、C#。ADR 0071 §2）。候補窓と同じ .NET SDK（setup-dotnet は上のもの）
+      - name: 設定画面（核の DLL と画面）をビルドする
+        shell: pwsh
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+          DOTNET_NOLOGO: "1"
+        run: |
+          cargo build --release -p ikari-settings-core
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Push-Location windows/settings-ui
+          dotnet build -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $exe = Get-ChildItem -Recurse bin -Filter ikari-settings.exe | Select-Object -First 1
+          if (-not $exe) { throw "ikari-settings.exe was not built" }
+          if (-not (Test-Path (Join-Path $exe.DirectoryName 'ikari_settings_core.dll'))) { throw "ikari_settings_core.dll is not next to ikari-settings.exe" }
+          Pop-Location
 
   # 実機（VM）で試すための release ビルド（エンジンの exe と TIP の DLL）と、`windows/dev` のスクリプトを、1 つの artifact に入れる。
   # VM で Rust を入れてビルドしなくて済む（遅い機械での手間を避ける）。配置はリポジトリと同じ（`windows/dev/common.ps1` が
@@ -234,6 +250,22 @@ jobs:
           if (-not (Test-Path (Join-Path $out 'ikari_candidate.dll'))) { throw "ikari_candidate.dll is not in dist\candidate" }
           cargo build --release -p ikari-candidate --example candidate-send
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      # 設定画面（ADR 0071 §2）。自己完結で dist\settings に出す（VM の確認の項目 56〜）
+      - name: 設定画面を発行する（自己完結）
+        shell: pwsh
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+          DOTNET_NOLOGO: "1"
+        run: |
+          cargo build --release -p ikari-settings-core
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $rel = Join-Path $env:CARGO_TARGET_DIR 'release'
+          $out = Join-Path $PWD 'dist\settings'
+          Push-Location windows/settings-ui
+          dotnet publish -c Release -o $out "-p:IkariCoreDll=$rel\ikari_settings_core.dll"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+          if (-not (Test-Path (Join-Path $out 'ikari_settings_core.dll'))) { throw "ikari_settings_core.dll is not in dist\settings" }
       # 以降は開発用のビルド（実機の確認に持ち込む artifact。windows/dev のスクリプトが dev-knobs の口を使う）
       - name: release ビルド（開発用の口つき。LM なしのエンジンと TIP）
         run: cargo build --release -p ikari-engine-host -p ikari-tip --features ikari-engine-host/dev-knobs,ikari-tip/dev-knobs
