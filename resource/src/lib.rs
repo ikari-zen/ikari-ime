@@ -8,12 +8,16 @@
 //! - `models`: アプリに埋めた既知のモデルの表
 //! - `journal`: 入れ替えの手順の記録（`inbox/.journal.json`）
 //! - `sha256`: ストリームでの sha256
+//! - `stage`: 取得・取り込みしたモデルの束を inbox に作る（ADR 0076）
+//! - `fetch_report`: `ikari-data` の標準出力の行（ADR 0076 §8）
 
 pub mod error;
+pub mod fetch_report;
 pub mod journal;
 pub mod manifest;
 pub mod models;
 pub mod sha256;
+pub mod stage;
 pub mod verify;
 
 pub use error::ResourceError;
@@ -23,9 +27,14 @@ pub use manifest::{
     Manifest, Origin,
 };
 pub use models::{
-    KNOWN_MODELS, KnownModel, ZENZ_SMALL_FILE_NAME, ZENZ_SMALL_SHA256, ZENZ_SMALL_SIZE,
+    KNOWN_MODELS, KnownModel, MODEL_PRESETS, ModelPreset, ZENZ_SMALL_FILE_NAME, ZENZ_SMALL_SHA256,
+    ZENZ_SMALL_SIZE, ZENZ_SMALL_URL, preset_by_id,
 };
 pub use sha256::{sha256_file, sha256_reader};
+pub use stage::{
+    Expected, MODEL_COMPONENT, PARTIAL_SUFFIX, Source, StageError, StagePlan, StagedBundle,
+    stage_model_bundle,
+};
 pub use verify::{
     SupportedFormats, TABLE_FORMAT_VERSION, VerifiedBundle, VerifyOptions, verify_bundle,
     verify_model_file,
