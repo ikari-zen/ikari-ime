@@ -8,8 +8,11 @@ Windows の設定画面（[`windows/settings-ui`](../settings-ui/README.md)。Wi
 | モジュール | 役目 |
 | --- | --- |
 | `peer` | 設定の口の相手（engine-host）の照合の入口（規則は `pipe::peer`） |
-| `abi` | C の ABI（ヘッダは `include/ikari_settings_core.h`。同じに保つ） |
+| `link` | 設定の口とのつながり（照合のあと `Hello`、読み書き、パスでの書き出し・取り込み） |
+| `view` | 画面の行（部品、範囲、選択肢、今の値） |
+| `edit` | 画面の操作 → `UpdateSettings`（`SettingsValues::plan` を通す） |
+| `text` | 結果の欄の文（状態の欄の文は `shell-core` の `bridge::LinkStatus`） |
+| `abi`、`session_abi` | C の ABI（ヘッダは `include/ikari_settings_core.h`。同じに保つ） |
 
 - 通信の手段を持たない（NFR-17）。
-- 第 1 段の ABI: 版、高い権限の確認、設定の一覧（`shell-core` の `specs_tsv`）、バイト列の返却。
-- 設定の口につなぐ（`Hello`、`GetSettings`、`UpdateSettings`）のは第 2 段。
+- テストは Mac で回る（設定の口の相手は、メモリ上の engine-host の `SettingsHost`）。OS から値を取る `connect_installed` だけが `cfg(windows)`。

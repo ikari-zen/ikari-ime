@@ -225,10 +225,10 @@ jobs:
       # 動的な C ランタイム（vcruntime など）を取り込んでいないこと。同じ場所に、次の開発用のビルドが上書きする
       - name: 製品のビルド（dev-knobs なし）の検査
         run: |
-          cargo build --release -p ikari-engine-host -p ikari-tip -p ikari-candidate
+          cargo build --release -p ikari-engine-host -p ikari-tip -p ikari-candidate -p ikari-settings-core
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $rel = Join-Path $env:CARGO_TARGET_DIR 'release'
-          cargo xtask scan-product "$rel\ikari_tip.dll" "$rel\ikari-engine-host.exe" "$rel\ikari_candidate.dll"
+          cargo xtask scan-product "$rel\ikari_tip.dll" "$rel\ikari-engine-host.exe" "$rel\ikari_candidate.dll" "$rel\ikari_settings_core.dll"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       # 候補窓（ADR 0062）。画面は自己完結で dist\candidate に出す（核は上の製品のビルドの DLL）。
       # 確認用の送り手（examples/candidate-send。開発用）は、あとで artifact に入れる
@@ -250,15 +250,14 @@ jobs:
           if (-not (Test-Path (Join-Path $out 'ikari_candidate.dll'))) { throw "ikari_candidate.dll is not in dist\candidate" }
           cargo build --release -p ikari-candidate --example candidate-send
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      # 設定画面（ADR 0071 §2）。自己完結で dist\settings に出す（VM の確認の項目 56〜）
+      # 設定画面（ADR 0071 §2）。自己完結で dist\settings に出す（VM の確認の項目 56〜59）
       - name: 設定画面を発行する（自己完結）
         shell: pwsh
         env:
           DOTNET_CLI_TELEMETRY_OPTOUT: "1"
           DOTNET_NOLOGO: "1"
         run: |
-          cargo build --release -p ikari-settings-core
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # 核は上の製品のビルドの DLL（scan-product を通ったもの）
           $rel = Join-Path $env:CARGO_TARGET_DIR 'release'
           $out = Join-Path $PWD 'dist\settings'
           Push-Location windows/settings-ui

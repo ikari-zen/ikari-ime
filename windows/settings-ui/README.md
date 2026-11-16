@@ -2,7 +2,7 @@
 
 `ikari-settings.exe` の画面（[ADR 0071](../../docs/adr/0071-settings-ui-and-fetcher.md) §2。WinUI 3、パッケージなし・自己完結。
 候補窓（[`windows/candidate-ui`](../candidate-ui/README.md)）と同じ一式）。WebView2 は採らない。WinUI 3 にすることは、VM の
-確認（ADR 0071 §6、`docs/windows-real-device-check.md` の項目 56〜）が済むまで仮。
+確認（ADR 0071 §6、`docs/windows-real-device-check.md` の項目 56〜59）が済むまで仮。
 
 判断の置き場所: Rust（核 [`windows/settings`](../settings/README.md) の `ikari_settings_core.dll` と、その下の `shell-core` の
 `settings`）。ここは、核が渡す設定の一覧を描くことと、OS の入口（窓、ファイルを選ぶ窓）だけ（UI であるため）。何を出すか、
@@ -29,13 +29,15 @@
 | 一覧を画面ごと・節ごとに並べて出す骨組み（読むだけ。書き換えない） | `windows/settings-ui/` | Windows の CI、VM |
 | CI の Windows のジョブで、核と画面をビルドし、artifact に `dist\settings` を入れる | `.github/workflows/ci.yml` | CI |
 
-### 第 2 段（次）
+### 第 2 段（済み）
 
-- 核が設定の口につなぐ（相手の照合のあと `Hello`、`GetSettings`、`UpdateSettings`）。画面は値を出し、部品（スイッチ、数、選択肢）で書き換える。
-  書く値は `SettingsIntent` → `SettingsValues::plan`（Rust）。
-- 書き出しと取り込みをパスで運ぶ枠（`bridge.proto` に足す。契約なので、リードが決める）と、ファイルを選ぶ窓（OS の入口）。
-  上書きの確認は画面で済ませてから送る。
-- 状態の欄（「エンジンにつながりません。理由: …」。文は `shell-core`。ADR 0068 §7、Q3）。
+- 核が設定の口につなぐ（相手の照合のあと `Hello`、`GetSettings`、`UpdateSettings`。`windows/settings/src/link.rs`）。画面は核が渡す行
+  （部品、範囲、選択肢、今の値。`view.rs`）を描き、部品（スイッチ、数、選択肢）で書き換える。書く値は `SettingsIntent` →
+  `SettingsValues::plan`（`edit.rs`）。Bundle ID の並びとキー割り当ては、まだ読むだけ。
+- 書き出しと取り込みは `bridge.proto` の `ExportToFile`・`ImportFromFile`（パスだけ）。ファイルを選ぶ窓は OS のもの。上書きの確認は
+  保存の窓が済ませる。取り込みは先に確かめて件数を見せ、確認のあとに取り込む。
+- 状態の欄（文は `shell-core` の `bridge::LinkStatus`。ADR 0068 §7、Q3）と結果の欄（文は核の `text.rs`）。
+- CI の製品の検査（`scan-product`）に核の DLL を足した。
 
 ### 第 3 段以降
 
@@ -47,9 +49,10 @@
 | ファイル | 役目 |
 | --- | --- |
 | `CoreNative.cs` | 核の C の ABI（`windows/settings/include/ikari_settings_core.h` と同じに保つ） |
-| `SpecList.cs` | 核が返した一覧の行（タブ区切り）を、描くための形に分ける（中身は解釈しない） |
-| `SettingsWindow.cs` | 窓と、画面ごと・節ごとの一覧 |
-| `App.xaml(.cs)` | 起動。核の ABI の版が合わなければ何もせずに終わる |
+| `CoreSession.cs` | 核のつながりを持ち、核の呼び出しを UI のスレッドの外で行う |
+| `ViewRow.cs` | 核が返した画面の行（タブ区切り）を、描くための形に分ける（中身は解釈しない） |
+| `SettingsWindow.cs` | 窓、状態と結果の欄、書き出しと取り込み（ファイルを選ぶ窓）、画面ごと・節ごとの部品 |
+| `App.xaml(.cs)` | 起動。核の ABI の版が合わない、高い権限なら何もせずに終わる |
 
 ## ビルド（Windows だけ）
 
@@ -67,5 +70,5 @@ dotnet publish windows\settings-ui -c Release -o <出力先>   # 自己完結で
 
 | 値 | 意味 |
 | --- | --- |
-| 2 | 核を使えない（ABI の版の違い、高い権限） |
+| 2 | 核を使えない（ABI の版の違い、高い権限）。エンジンにつながらないときは終わらず、状態の欄に理由を出す |
 | 3 | 扱えない例外 |
