@@ -95,7 +95,7 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 
 ### 1.6 VM への接続と、画面なしの確認（2026-11-14 に使った方法）
 
-- **接続**: Mac から `ssh win11`。SSH の既定のシェルは PowerShell です。呼び出しごとに `Set-ExecutionPolicy -Scope Process Bypass` が要ります。
+- **接続**: Mac から `ssh win11`。SSH の既定のシェルは PowerShell です（`&` で並べられません。並べるなら `cmd /c` を使うか、`.ps1` を `scp` して `-File` で実行します。複雑な引数は `.ps1` にします。窓を出さずに起動するのは `Start-Process -NoNewWindow` です。`-NoWindow` はありません）。呼び出しごとに `Set-ExecutionPolicy -Scope Process Bypass` が要ります。
 - **文字コード**: SSH の出力は cp932 になることがあります。結果はファイルに書いて `scp` で Mac に取り、UTF-8 として読みます。
 - **セッション**: SSH はセッション 0 で、ウィンドウを出せません。TIP とエンジンのパイプ名には `-s<セッション番号>` が入るため、TIP と同じデスクトップ（セッション 1）で動かす必要があります。SSH から起動したプロセスは、切断で一緒に終わりました。
 - **セッション 1 での実行**: `windows\dev\run-in-session.ps1` が、スケジュールタスク（`/IT /RU`）でセッション 1 に指定の `.ps1` を流し、`-OutFile` ができるまで待って表示します。タスクの名前はそのたびに変わります（同じ名前だと、動いているタスクを潰すため）。
@@ -495,7 +495,7 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 
 #### 項目 41: データのフォルダのアクセス権（ACL）
 
-- 前提: エンジンを一度起動して、`%LOCALAPPDATA%\ikari-ime` ができている。
+- 前提: エンジンを一度起動して、`%LOCALAPPDATA%\ikari-ime` ができている。別の `--data-dir` で試すとき、動いている dev エンジンとパイプ名（SID とセッション ID だけで決まる）が衝突し、`os error 5`・終了コード `2` になる。先に dev エンジンのタスクを止める（`schtasks /End /TN ikari-engine-dev` と、残るプロセスの終了）。終わったら `schtasks /Run /TN ikari-engine-dev` で戻す。
 - やること: (a) `icacls %LOCALAPPDATA%\ikari-ime` を見る。(b) 中のファイル（`settings.tsv`、`learning.tsv`、`logs\` など）を `icacls` で見る。(c) 既存のデータがあるフォルダ（前の版で作ったもの）で、エンジンを起動し、変換して、学習が書かれることを見る。(d) 起動のたびに付け直す処理の時間（起動から最初の変換までの時間が、前と変わらないか）を見る。
 - 期待する結果（**見込み**）: (a) 継承なし。本人、SYSTEM、Administrators だけが入っている。(b) フォルダからの継承で同じ。新しくできたファイルも追従する。(c) 読み書きできる。(d) 付け直しで目に見える遅れはない。
 - うまくいかないとき: `icacls` の出力を全部残す。エンジンのログの先頭 30 行も。
@@ -509,7 +509,7 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 
 #### 項目 43: engine-host が、高い権限での起動と、高い権限の相手を断る
 
-- 前提: 管理者の PowerShell と、通常の PowerShell が使える。製品のビルドと、`dev-knobs` のビルドの両方がある。
+- 前提: 管理者の PowerShell と、通常の PowerShell が使える。製品のビルドと、`dev-knobs` のビルドの両方がある。(b) と (e) で別の data-dir を使うときは、別の `--data-dir` で試すとき、動いている dev エンジンとパイプ名（SID とセッション ID だけで決まる）が衝突し、`os error 5`・終了コード `2` になる。先に dev エンジンのタスクを止める（`schtasks /End /TN ikari-engine-dev` と、残るプロセスの終了）。終わったら `schtasks /Run /TN ikari-engine-dev` で戻す。
 - やること: (a) 管理者として `ikari-engine-host.exe` を起動し、`$LASTEXITCODE` を見る。何も起動していないこと（パイプ、ロック、ログ）も見る。(b) 通常の権限で起動し、従来どおり動くこと。もう一度起動して、二重起動が `0` で静かに終わること（項目 4）。(c) 管理者のアプリ（管理者の PowerShell から、パイプを開くテスト用の呼び出し）からのパイプ接続が断られ、エンジンが落ちず、次の接続を受けること。(d) 昇格したアプリのあとで、通常のアプリで普通に変換できること。(e) 製品のビルドに `--data-dir X` を渡すと、終了コードが `64` になること。`dev-knobs` のビルドは受けること。
 - 期待する結果（**見込み**）: (a) 終了コード `77`。何も作られない。(b) 従来どおり。二重起動は `0`。(c)(d) そのとおり。(e) 製品は `64`、開発用は受ける。
 - うまくいかないとき: 終了コード、標準エラー、ログを残す。
@@ -530,7 +530,9 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 
 #### 項目 46: 辞書の検証による起動時間
 
-- やること: 辞書を開くときの検証が入った状態で、エンジンの起動から辞書が開くまでの時間（ログの該当行）を、前の版（検証が入る前の artifact があれば）と並べる。3 回以上測り、単位を書く。
+- 前提: 別の `--data-dir` で試すとき、動いている dev エンジンとパイプ名（SID とセッション ID だけで決まる）が衝突し、`os error 5`・終了コード `2` になる。先に dev エンジンのタスクを止める（`schtasks /End /TN ikari-engine-dev` と、残るプロセスの終了）。終わったら `schtasks /Run /TN ikari-engine-dev` で戻す。
+- やること: 辞書を開く時間はログから読めないので、エンジンの起動から pipe ができるまでの時間で測る。検証が入った状態を、前の版（検証が入る前の artifact があれば）と並べる。3 回以上測り、単位を書く。
+- 注: 辞書を開く時間を直接ログに出す改善は、別の issue 候補（未実装）。
 - 期待する結果（**見込み**）: 悪化は数十 ms の増まで。
 - うまくいかないとき: 辞書のサイズ、ディスクの種類、測った値を全部残す。
 

@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
   Runs a .ps1 in the interactive desktop session (session 1) via a scheduled task, waits, and shows its output file.
+  -OutFile is read as soon as it exists: the target script must write OutFile.tmp, then Move-Item it to OutFile when done.
   Needed because plain SSH runs in session 0: no windows, and the ikari pipes carry the session id.
 .EXAMPLE
   .\run-in-session.ps1 -Script C:\ikari-dev\windows\dev\uia-probe.ps1 -OutFile C:\ikari-dev\uia-probe.txt
