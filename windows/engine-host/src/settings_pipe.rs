@@ -28,6 +28,7 @@ use std::io;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use ikari_pipe::frame::KIND_SEQ_BYTES;
+use ikari_pipe::peer::{Endpoint, PeerRejection, SelfModule, verify_peer_path};
 use ikari_pipe::{FrameKind, Listener, MAX_FRAME_LEN, Port, Server};
 use ikari_shell_core::SettingsEntry;
 use ikari_shell_core::bridge::proto::{BridgeErrorCode, Frame, UpdateSettings};
@@ -188,14 +189,37 @@ fn encode(frame: Frame) -> Vec<u8> {
     error_frame(request_id, BridgeErrorCode::TooLarge, "").encode_to_vec()
 }
 
+/// 設定の口につないできた相手（実行ファイルのパス `peer_exe`）が、この engine-host（パス `own_exe`）から決まる
+/// インストール先の設定画面かを照らす（S3。ADR 0068 §4）。自分のパスが取れなければ（`None`）、常に断る。
+///
+/// 設定画面の exe の名前（`ikari_pipe::peer::SETTINGS_EXE_NAME`）が決まるまでは、どの相手も断る（安全な側）。
+pub fn verify_settings_client(own_exe: Option<&str>, peer_exe: &str) -> Result<(), PeerRejection> {
+    let own_exe = own_exe.ok_or(PeerRejection::NoSelfPath)?;
+    verify_peer_path(
+        SelfModule::EngineHost,
+        own_exe,
+        Endpoint::Settings,
+        peer_exe,
+    )
+}
+
 /// このプロセスのユーザーとセッションの、設定画面のパイプの受け口（`cfg(windows)`。Windows の CI か実機で確かめる）。
-/// DACL は自分のユーザーと SYSTEM だけ（`NamedPipeListener::bind`）。
+/// DACL は自分のユーザーと SYSTEM だけ（`NamedPipeListener::bind`）。受け付けるたびに、最初の枠を読む前に、相手が
+/// インストール先の設定画面かを照らす（`verify_settings_client`）。
 #[cfg(windows)]
 pub fn bind_settings_listener() -> io::Result<ikari_pipe::os::windows::NamedPipeListener> {
-    use ikari_pipe::os::windows::{current_session_id, current_user_sid};
+    use ikari_pipe::os::windows::{current_session_id, current_user_sid, long_path_name};
     let name = ikari_pipe::settings_pipe_name(&current_user_sid()?, current_session_id()?)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "unexpected user SID format"))?;
-    ikari_pipe::os::windows::NamedPipeListener::bind(&name)
+    // 自分のパスは、起動のときに 1 回だけ取る（OS が記録したパス。環境変数などから決めない）
+    let own_exe = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.to_str().map(long_path_name));
+    Ok(
+        ikari_pipe::os::windows::NamedPipeListener::bind(&name)?.require_client(Box::new(
+            move |peer| verify_settings_client(own_exe.as_deref(), peer),
+        )),
+    )
 }
 
 /// 受け口が閉じられるまで、設定画面の接続を受ける。`Server` はエンジンのパイプとは別に持つ。
@@ -233,6 +257,31 @@ mod tests {
         assert!(settings.starts_with(ikari_pipe::SETTINGS_NAME_PREFIX));
         assert_ne!(engine, settings);
         assert_eq!(SETTINGS_PIPE_PROTOCOL, "ikari.bridge.v1");
+    }
+
+    #[test]
+    fn settings_clients_are_refused_until_the_settings_exe_name_is_decided() {
+        let engine = r"C:\Program Files\ikari-ime\ikari-engine-host.exe";
+        let settings = r"C:\Program Files\ikari-ime\settings\ikari-settings.exe";
+        assert_eq!(ikari_pipe::peer::SETTINGS_EXE_NAME, None);
+        assert_eq!(
+            verify_settings_client(Some(engine), settings),
+            Err(PeerRejection::NotThePeer)
+        );
+        assert_eq!(
+            verify_settings_client(None, settings),
+            Err(PeerRejection::NoSelfPath)
+        );
+        // 自分のパスが engine-host の形でなければ、インストール先を決めない
+        assert_eq!(
+            verify_settings_client(Some(r"C:\Users\example\x.exe"), settings),
+            Err(PeerRejection::SelfPathInvalid)
+        );
+        // TIP やほかのアプリは、設定の口の相手ではない
+        assert_eq!(
+            verify_settings_client(Some(engine), r"C:\Windows\notepad.exe"),
+            Err(PeerRejection::NotThePeer)
+        );
     }
 
     #[test]
