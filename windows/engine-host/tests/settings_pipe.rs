@@ -275,6 +275,32 @@ fn admin_requests_reach_the_engine_and_typing_requests_are_refused() {
     );
 }
 
+/// 学習の全文（書き出しと取り込み）は、この口で運ばない（ADR 0068 §4）。接続はそのまま使える
+#[test]
+fn export_and_import_are_not_relayed_and_the_connection_stays() {
+    let fixture = Fixture::new();
+    let client = fixture.ready_client();
+    let bodies = [
+        envelope::Body::ExportData(pb::ExportData {}),
+        envelope::Body::ImportData(pb::ImportData {
+            content: b"x".to_vec(),
+            dry_run: true,
+        }),
+    ];
+    for (id, body) in (4..).zip(bodies) {
+        let reply = call(&client, engine_frame(id, body));
+        assert_eq!(reply.request_id, id);
+        assert_eq!(
+            error_code(&reply),
+            Some((BridgeErrorCode::NotAllowed as i32, ""))
+        );
+    }
+    assert!(matches!(
+        call(&client, get_settings(9)).body,
+        Some(Body::Settings(_))
+    ));
+}
+
 #[test]
 fn a_request_over_the_pipe_limit_closes_the_connection_without_a_reply() {
     let fixture = Fixture::new();

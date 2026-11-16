@@ -13,10 +13,11 @@
 //! - `ikari.settings.v1` の `AppRequest` / `AppReply`（`ikari_settings_app`。状態を持たない純関数の口）は、このパイプでは
 //!   運ばない。答えるのは `ikari_shell_core::settings` の関数で、画面が同じプロセスの中で呼べる（W4-s3 の方式で決める）。
 //!   運ぶ必要が出たら、`Frame` の種類を足すのでなく、版を分けた別の枠にする（`SETTINGS_PIPE_PROTOCOL`）。
-//! - 上限: パイプの枠は `ikari_pipe::MAX_FRAME_LEN`（16 MiB）。超える要求は、枠の本体を読まずに接続を切る
-//!   （枠の位置が分からなくなるため、返事を返せない）。画面は送る前に `settings::import_size` で
-//!   見るので（`MAX_IMPORT_BYTES` は 64 MiB。16 MiB を超える分は未解決。PR に書いた）、通常は起きない。
-//!   返事が上限を超えるとき（大きな `ExportData`）は、接続を保ったまま `TOO_LARGE` の枠を返す。
+//! - 学習の全文を運ばない（ADR 0068 §4。B-2）: `ExportData` と `ImportData` の中継は `NOT_ALLOWED` で断る
+//!   （`relay_policy::whole_data_rejection`）。書き出しと取り込みは、画面が選んだファイルのパスで engine-host が行う
+//!   （`transfer`。パスを運ぶ枠は W4-s3 の第 2 段）。これで、枠の上限（16 MiB）と取り込みの上限（64 MiB）のずれも無くなる。
+//! - 上限: パイプの枠は口ごとの上限（`Port::Settings`）。超える要求は、枠の本体を読まずに接続を切る
+//!   （枠の位置が分からなくなるため、返事を返せない）。返事が上限を超えるときは、接続を保ったまま `TOO_LARGE` の枠を返す。
 //! - TIP が設定の変更を知る方法（ファイルの変更を見るか、engine-host から知らせるか）は W4-s2 では決めない
 //!   （この口は `settings.tsv` を書くだけ。`SettingsChanged` の通知は、要求と返事の流れでは送れないので送らない。画面は
 //!   `UpdateSettings` の返事で反映後の一式を受け取る）。
@@ -31,6 +32,7 @@ use ikari_pipe::{FrameKind, Listener, MAX_FRAME_LEN, Port, Server};
 use ikari_shell_core::SettingsEntry;
 use ikari_shell_core::bridge::proto::{BridgeErrorCode, Frame, UpdateSettings};
 use ikari_shell_core::bridge::protocol::{error_frame, snapshot_frame};
+use ikari_shell_core::bridge::relay_policy::whole_data_rejection;
 use ikari_shell_core::bridge::server::{relay_reply, update_failure};
 use ikari_shell_core::bridge::{Handshake, RelayGate, Route, frame_codec, handshake, route};
 use ikari_shell_core::settings::{
@@ -94,6 +96,10 @@ impl SettingsHost {
                 // 最初の枠が `Hello` でない。macOS は何も返さずに閉じる。ここは閉じられないので `Error` にする
                 Handshake::Close => None,
             };
+        }
+        // 学習の全文（書き出しと取り込み）は、この口で運ばない（ADR 0068 §4。パスで行う。`transfer`）
+        if let Some(reply) = whole_data_rejection(&frame) {
+            return Some(encode(reply));
         }
         let reply = match route(frame, &self.gate) {
             Route::Reply(reply) => reply,
