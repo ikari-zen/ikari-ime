@@ -50,6 +50,16 @@ $DevEngineExe = Join-Path $DevInstallDir $EngineExeName
 $EngineSideDllPatterns = @('llama*.dll', 'ggml*.dll')
 $EngineBackendsDirName = 'backends'
 $TipVersionsDir = Join-Path $DevInstallDir 'tip'
+# The candidate window (ADR 0062): <install dir>\candidate\ikari-candidate.exe with the self-contained .NET and Windows App SDK
+# files next to it. The engine starts and watches it (Job Object; windows/engine-host/src/candidate_window.rs); the TIP talks
+# only to that exe (ADR 0068 s5). build.ps1 publishes it to $CandidatePublishDir; Install-DevEngine copies it.
+$CandidateDirName = 'candidate'
+$CandidateExeName = 'ikari-candidate.exe'
+$CandidateProject = Join-Path $RepoRoot 'windows\candidate-ui'
+$CandidateCoreDll = Join-Path $ReleaseDir 'ikari_candidate.dll'
+$CandidatePublishDir = Join-Path $ReleaseDir 'candidate-publish'
+$DevCandidateDir = Join-Path $DevInstallDir $CandidateDirName
+$DevCandidateExe = Join-Path $DevCandidateDir $CandidateExeName
 $TipResourcesDirName = 'resources'
 # Folder name of a version made by register.ps1: sortable time (sorting by name = sorting by age)
 $TipVersionFormat = 'yyyyMMdd-HHmmss-fff'
@@ -63,6 +73,7 @@ $TipClsid = '{83A140BE-DECB-4358-867B-7B77D6541276}'
 # Name prefixes of the named pipes (pipe/src/name.rs). Full name: <prefix><user SID>-s<session id>
 $EnginePipePrefix = 'ikari-ime-engine-v1-'
 $SettingsPipePrefix = 'ikari-ime-settings-v1-'
+$CandidatePipePrefix = 'ikari-ime-candidate-v1-'
 
 $Regsvr32 = Join-Path $env:windir 'System32\regsvr32.exe'
 
@@ -125,6 +136,18 @@ function Install-DevEngine([string]$SourceExe) {
             Copy-Item -LiteralPath $f.FullName -Destination (Join-Path $DevInstallDir $f.Name) -Force
         }
     }
+    # The candidate window (published by build.ps1, or the "candidate" folder of the CI artifact). It is stopped with the
+    # engine (Job Object), so it can be overwritten here. Without it, typing works without the window.
+    $candidateSource = $null
+    foreach ($dir in @($CandidatePublishDir, (Join-Path $sourceDir $CandidateDirName))) {
+        if (Test-Path -LiteralPath (Join-Path $dir $CandidateExeName)) { $candidateSource = $dir; break }
+    }
+    if ($candidateSource) {
+        if (-not (Test-Path -LiteralPath $DevCandidateDir)) { New-Item -ItemType Directory -Path $DevCandidateDir | Out-Null }
+        Copy-Item -Path (Join-Path $candidateSource '*') -Destination $DevCandidateDir -Recurse -Force
+        Write-Note "candidate window: $DevCandidateExe"
+    }
+    else { Write-Warn "no candidate window built ($CandidatePublishDir). Typing works, but without the window." }
     $backends = Join-Path $sourceDir $EngineBackendsDirName
     if (Test-Path -LiteralPath $backends -PathType Container) {
         $backendsDest = Join-Path $DevInstallDir $EngineBackendsDirName
@@ -202,7 +225,8 @@ function Get-IkariPipes {
     $result = @()
     foreach ($n in $names) {
         $leaf = Split-Path -Leaf $n
-        if ($leaf.StartsWith($EnginePipePrefix) -or $leaf.StartsWith($SettingsPipePrefix)) { $result += $leaf }
+        if ($leaf.StartsWith($EnginePipePrefix) -or $leaf.StartsWith($SettingsPipePrefix) -or
+            $leaf.StartsWith($CandidatePipePrefix)) { $result += $leaf }
     }
     return $result
 }

@@ -4,6 +4,9 @@
   With -Lm or -LmVulkan it also builds the LM child process (ikari-lm-host.exe, next to the engine exe): the engine
   asks it to run the model (ADR 0060 Q4). The engine itself never contains llama.cpp (ADR 0072 section 5): without that
   file next to it, the engine runs without the LM.
+.PARAMETER NoCandidate
+  Do not build the candidate window (ikari_candidate.dll and ikari-candidate.exe, ADR 0062). The window needs the .NET SDK
+  (version in windows\candidate-ui\global.json); without the SDK this step is skipped with a warning.
 .PARAMETER HideConsole
   Build the engine with the "hide-console" feature (no console window; failures go to logs\start-failure.log).
   Leave it off while testing: you want the console.
@@ -25,7 +28,7 @@
   -LmVulkan: if the build stops in rc.exe with RC2136, the build folder path is too long: set CARGO_TARGET_DIR to a short
   path (for example C:\t) and run it again.
 #>
-param([switch]$HideConsole, [switch]$Lm, [switch]$LmVulkan)
+param([switch]$HideConsole, [switch]$Lm, [switch]$LmVulkan, [switch]$NoCandidate)
 
 . "$PSScriptRoot\common.ps1"
 
@@ -58,6 +61,8 @@ if ($LmVulkan) {
 }
 
 $cargoArgs = @('build', '--release', '-p', 'ikari-engine-host', '-p', 'ikari-tip')
+# The candidate window's core (ikari_candidate.dll; the C# screen calls only this DLL). It has no dev-knobs.
+if (-not $NoCandidate) { $cargoArgs += @('-p', 'ikari-candidate') }
 if ($features.Count -gt 0) { $cargoArgs += @('--features', ($features -join ',')) }
 
 Write-Step "cargo $($cargoArgs -join ' ')   (in $RepoRoot)"
@@ -103,6 +108,23 @@ if ($LmVulkan) {
     Copy-Item -Path (Join-Path $sysOut 'bin\*.dll') -Destination $ReleaseDir -Force
     if (-not (Get-ChildItem -LiteralPath $ReleaseDir -File -Filter 'llama*.dll')) { throw "llama*.dll was not found in $sysOut" }
     Write-Note "backends: $backendsOut ($((Get-ChildItem -LiteralPath $backendsOut -Filter '*.dll').Count) DLLs)"
+}
+
+if (-not $NoCandidate) {
+    if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
+        Write-Warn 'dotnet not found: the candidate window is not built (typing works without it). Install the .NET SDK (windows\candidate-ui\global.json).'
+    }
+    else {
+        if (-not (Test-Path -LiteralPath $CandidateCoreDll)) { throw "build finished but $CandidateCoreDll does not exist" }
+        # Self-contained, unpackaged (ADR 0062 s3). The NuGet packages must match windows\candidate-ui\packages.lock.json.
+        $publishArgs = @('publish', $CandidateProject, '-c', 'Release', '-o', $CandidatePublishDir, "-p:IkariCoreDll=$CandidateCoreDll", '-p:RestoreLockedMode=true')
+        Write-Step "dotnet $($publishArgs -join ' ')"
+        & dotnet @publishArgs
+        if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed (exit code $LASTEXITCODE)" }
+        $candidateExe = Join-Path $CandidatePublishDir $CandidateExeName
+        if (-not (Test-Path -LiteralPath $candidateExe)) { throw "publish finished but $candidateExe does not exist" }
+        Write-Note "candidate window: $candidateExe"
+    }
 }
 
 foreach ($f in @($EngineExe, $TipDllBuilt)) {

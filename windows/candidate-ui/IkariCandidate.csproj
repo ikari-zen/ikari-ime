@@ -23,6 +23,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- LibraryImport（ソースの生成）と、核の知らせ（関数ポインタ）に要る -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- NuGet の依存を packages.lock.json で固定する（間接の依存と中身のハッシュまで）。CI（CI=true）と build.ps1 は
+         ロックの通りでなければ失敗する。版を上げたら、Windows で dotnet restore を流してロックを更新する -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
     <!-- 核の DLL（ikari-candidate の crate の release ビルドの成果物）。別の場所なら IkariCoreDll のプロパティで渡す -->
     <IkariCoreDll Condition="'$(IkariCoreDll)' == ''">$(MSBuildThisFileDirectory)..\..\target\release\ikari_candidate.dll</IkariCoreDll>
   </PropertyGroup>
