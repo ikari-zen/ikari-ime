@@ -150,19 +150,30 @@ pub struct SessionUser<'a> {
     pub session: Option<u32>,
 }
 
-/// つないだパイプの持ち主（受ける側のプロセス `server`）が、つなぐ側の自分（`own`）と同じ利用者で、同じセッションかを
-/// 判定する（ADR 0068 §2 の 2）。どれかが取れなければ拒む。
+/// つないだパイプの持ち主が、つなぐ側の自分（`own`）と同じ利用者で、同じセッションかを判定する（ADR 0068 §2 の 2）。
+/// どれかが取れなければ拒む。見るのは次の 3 つ。
+///
+/// - `object_owner_sid`: パイプそのものの持ち主の SID（B-01 / FB-1）。受ける側の PID に依らず、作ったあとに
+///   別の利用者へ替えられない。主な確認はこれ。
+/// - `server`: 受ける側のプロセスのトークンの利用者の SID と、パイプのセッション番号（二重の守り）。
 ///
 /// パイプの名前には利用者とセッションが入るが、名前は先に作った者が持てる。名前だけでは相手を信じず、実際に受けて
 /// いるプロセスの利用者とセッションを照らす（ADR 0066 P1、P2）。SID は OS が作った正規の文字列どうしを、そのまま比べる。
 pub fn verify_pipe_owner(
     own: SessionUser<'_>,
+    object_owner_sid: Option<&str>,
     server: SessionUser<'_>,
 ) -> Result<(), PeerRejection> {
     let (Some(own_sid), Some(own_session)) = (own.user_sid.filter(|s| !s.is_empty()), own.session)
     else {
         return Err(PeerRejection::NoSelfOwner);
     };
+    let Some(object_owner_sid) = object_owner_sid.filter(|s| !s.is_empty()) else {
+        return Err(PeerRejection::NoPeerOwner);
+    };
+    if own_sid != object_owner_sid {
+        return Err(PeerRejection::OtherUser);
+    }
     let (Some(server_sid), Some(server_session)) =
         (server.user_sid.filter(|s| !s.is_empty()), server.session)
     else {
@@ -698,11 +709,12 @@ mod tests {
         assert_eq!(texts.len(), all.len());
     }
 
+    const ME: &str = "S-1-5-21-1004336348-1177238915-682003330-1001";
+    const OTHER: &str = "S-1-5-21-1004336348-1177238915-682003330-1002";
+
     /// つなぐ側の持ち主の確認（ADR 0068 §2 の 2）
     #[test]
     fn pipe_owner_table() {
-        const ME: &str = "S-1-5-21-1004336348-1177238915-682003330-1001";
-        const OTHER: &str = "S-1-5-21-1004336348-1177238915-682003330-1002";
         const ME_WITH_SUFFIX: &str = "S-1-5-21-1004336348-1177238915-682003330-10010";
         let who = |user_sid, session| SessionUser { user_sid, session };
         let cases: &[(&str, SessionUser, SessionUser, Result<(), PeerRejection>)] = &[
@@ -781,7 +793,55 @@ mod tests {
             ),
         ];
         for (name, own, server, expected) in cases {
-            assert_eq!(verify_pipe_owner(*own, *server), *expected, "{name}");
+            // パイプそのものの持ち主は、ここでは自分（持ち主の違いは次の表で見る）
+            assert_eq!(
+                verify_pipe_owner(*own, Some(ME), *server),
+                *expected,
+                "{name}"
+            );
+        }
+    }
+
+    /// パイプそのものの持ち主が主な確認になる（B-01 / FB-1）
+    #[test]
+    fn object_owner_table() {
+        let who = |user_sid, session| SessionUser { user_sid, session };
+        let own = who(Some(ME), Some(1));
+        let cases: &[(&str, Option<&str>, SessionUser, Result<(), PeerRejection>)] = &[
+            ("owner is me", Some(ME), who(Some(ME), Some(1)), OK),
+            (
+                "token is me but the object owner is another user",
+                Some(OTHER),
+                who(Some(ME), Some(1)),
+                Err(PeerRejection::OtherUser),
+            ),
+            (
+                "object owner is an administrators group",
+                Some("S-1-5-32-544"),
+                who(Some(ME), Some(1)),
+                Err(PeerRejection::OtherUser),
+            ),
+            (
+                "object owner unknown",
+                None,
+                who(Some(ME), Some(1)),
+                Err(PeerRejection::NoPeerOwner),
+            ),
+            (
+                "object owner empty",
+                Some(""),
+                who(Some(ME), Some(1)),
+                Err(PeerRejection::NoPeerOwner),
+            ),
+            (
+                "object owner is me but the token is another user",
+                Some(ME),
+                who(Some(OTHER), Some(1)),
+                Err(PeerRejection::OtherUser),
+            ),
+        ];
+        for (name, owner, server, expected) in cases {
+            assert_eq!(verify_pipe_owner(own, *owner, *server), *expected, "{name}");
         }
     }
 }

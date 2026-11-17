@@ -4,12 +4,15 @@
 //! 続けてよいか・つなぎを受けてよいかだけを決める。取れないときは断る（安全な側）。
 //!
 //! - 起動: 高い権限（整合性が高以上）で起動された engine-host などは、何もせずに終わる（`check_self`）。
-//! - 受け付け: つないできた相手の整合性が高以上なら、何も読まずに切る（`check_peer`）。
+//! - 受け付け: つないできた相手の整合性が高以上、または中より低いなら、何も読まずに切る（`check_peer`）。
 //!   自分が高い権限のときだけは、相手が高くても断らない（製品の engine-host はそもそも高い権限で動かない。
 //!   これは、管理者権限で流れるテストの実行環境のため）。
 
 /// 整合性のレベルの「高い」（`SECURITY_MANDATORY_HIGH_RID`）。これ以上が高い権限
 pub const HIGH_INTEGRITY_RID: u32 = 0x3000;
+
+/// 整合性のレベルの「中」（`SECURITY_MANDATORY_MEDIUM_RID`）。これより低い相手は受けない（FP-1）
+pub const MEDIUM_INTEGRITY_RID: u32 = 0x2000;
 
 /// 断った理由（ログに出す固定の語になる）
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -20,6 +23,8 @@ pub enum Refusal {
     SelfUnknown,
     /// 相手が高い権限
     PeerElevated,
+    /// 相手の整合性が中より低い（檻の中の子など。FP-1）
+    PeerLow,
     /// 相手の整合性のレベルが取れない（高い権限のプロセスのトークンは、ふつうの権限からは開けない）
     PeerUnknown,
 }
@@ -31,6 +36,7 @@ impl Refusal {
             Self::SelfElevated => "self-elevated",
             Self::SelfUnknown => "self-integrity-unknown",
             Self::PeerElevated => "peer-elevated",
+            Self::PeerLow => "peer-low",
             Self::PeerUnknown => "peer-integrity-unknown",
         }
     }
@@ -58,6 +64,10 @@ pub fn check_peer(own_rid: Option<u32>, peer_rid: Option<u32>) -> Result<(), Ref
     match peer_rid {
         None => Err(Refusal::PeerUnknown),
         Some(rid) if is_elevated(rid) => Err(Refusal::PeerElevated),
+        // 中より低い整合性の者は、正しい相手にいない（低い整合性・AppContainer の TIP は、そもそもつながない）
+        Some(rid) if rid < MEDIUM_INTEGRITY_RID && own >= MEDIUM_INTEGRITY_RID => {
+            Err(Refusal::PeerLow)
+        }
         Some(_) => Ok(()),
     }
 }
@@ -93,7 +103,19 @@ mod tests {
         type Case = (&'static str, Option<u32>, Option<u32>, Result<(), Refusal>);
         let cases: &[Case] = &[
             ("medium to medium", Some(MEDIUM), Some(MEDIUM), Ok(())),
-            ("medium to low", Some(MEDIUM), Some(LOW), Ok(())),
+            (
+                "medium to low",
+                Some(MEDIUM),
+                Some(LOW),
+                Err(Refusal::PeerLow),
+            ),
+            (
+                "medium to just below medium",
+                Some(MEDIUM),
+                Some(MEDIUM - 1),
+                Err(Refusal::PeerLow),
+            ),
+            ("medium plus to medium", Some(MEDIUM_PLUS), Some(MEDIUM), Ok(())),
             (
                 "medium to high",
                 Some(MEDIUM),
@@ -133,6 +155,7 @@ mod tests {
             Refusal::SelfElevated,
             Refusal::SelfUnknown,
             Refusal::PeerElevated,
+            Refusal::PeerLow,
             Refusal::PeerUnknown,
         ];
         let texts: std::collections::HashSet<_> = all.iter().map(|r| r.as_str()).collect();
