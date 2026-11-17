@@ -6,10 +6,13 @@
 //! つながらなければ `None`（`TransportError::Unavailable`。キーは失わず、漢字に変換できないだけ）。
 //!
 //! # 相手の確認（#409）
+//! パイプの持ち主（受ける側の利用者とセッション）が自分と同じかは、pipe 層の `connect_duplex` が確かめる
+//! （違えば・取れなければ断る。ADR 0068 §2 の 2）。
 //! つないだら、何かを送る前に、相手が本物のエンジンかを確かめる。相手の PID（pipe 層が返す）から実行ファイルの
 //! パスを取り、TIP の DLL 自身のパスとあわせて `peer::verify_engine_path`（判断。OS に依存しない）に渡す。
-//! ここは OS からパスを取ることと、8.3 の短い名前を長い名前に直すことだけを行う。PID やパスが取れないときも拒む
-//! （フェイルクローズ）。拒んだら接続を閉じて `None`（何も送らない）。理由の種類だけを診断のログに 1 行出す。
+//! パスを取ることと、8.3 の短い名前を長い名前に直すことは pipe 層（`process_image_path`、`long_path_name`）が行う。
+//! PID やパスが取れないときも拒む（フェイルクローズ）。拒んだら接続を閉じて `None`（何も送らない）。理由の種類だけを
+//! 診断のログに 1 行出す。
 //!
 //! この確認は、インストール先に書き込めるのが管理者だけであることを前提にする（本番は Program Files。
 //! ADR 0063 Q2）。開発用の導入のように利用者が書ける場所では、同じ利用者が書ける場所を信頼するだけになる。
@@ -20,23 +23,15 @@
 //! 候補窓のパイプ（`pipe::candidate_pipe_name`）にも同じ確認をする。相手がインストール先の `ikari-candidate.exe`
 //! でなければ閉じて `None`（窓なしで入力を続ける。ADR 0062 §5.4）。候補と注釈の文字を偽の窓に渡さない。
 
-use std::ffi::{OsStr, OsString};
-use std::os::windows::ffi::{OsStrExt, OsStringExt};
-use std::os::windows::io::{FromRawHandle, OwnedHandle};
 use std::path::Path;
 
 use ikari_pipe::Client;
 use ikari_pipe::os::windows::{
     NamedPipeDuplex, connect_duplex, current_pipe_name, current_session_id, current_user_sid,
+    long_path_name, owner_rejection, process_image_path,
 };
-use windows::Win32::Foundation::{ERROR_INSUFFICIENT_BUFFER, HANDLE};
-use windows::Win32::Storage::FileSystem::GetLongPathNameW;
-use windows::Win32::System::Threading::{
-    OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
-};
-use windows_core::{PCWSTR, PWSTR};
 
-use super::host::{INITIAL_PATH_LEN, MAX_LONG_PATH, module_file};
+use super::host::module_file;
 use super::{dll, log};
 use crate::candidate_send::CandidateConnector;
 use crate::peer::{PeerRejection, verify_candidate_path, verify_engine_path};
@@ -85,7 +80,16 @@ fn open_checked(
     tip_dll: Option<&Path>,
     rule: PathRule,
 ) -> Option<(NamedPipeDuplex, Option<u32>)> {
-    let (duplex, pid) = connect_duplex(name).ok()?;
+    let (duplex, pid) = match connect_duplex(name) {
+        Ok(opened) => opened,
+        Err(e) => {
+            // 持ち主の確認で断ったときだけ、理由の種類を出す（動いていない、などはふつうのこと）
+            if let Some(reason) = owner_rejection(&e) {
+                log::peer_rejected(reason.as_str());
+            }
+            return None;
+        }
+    };
     match verify_peer(tip_dll, pid, rule) {
         Ok(()) => Some((duplex, pid)),
         Err(reason) => {
@@ -105,72 +109,8 @@ fn verify_peer(
     let tip_dll = tip_dll.ok_or(PeerRejection::NoSelfPath)?;
     let pid = pid.ok_or(PeerRejection::NoPeerPid)?;
     let peer_exe = process_image_path(pid).ok_or(PeerRejection::NoPeerPath)?;
-    let tip_dll = long_path(tip_dll.as_os_str());
-    let peer_exe = long_path(&peer_exe);
     let tip_dll = tip_dll.to_str().ok_or(PeerRejection::SelfPathInvalid)?;
-    let peer_exe = peer_exe.to_str().ok_or(PeerRejection::PeerPathInvalid)?;
-    rule(tip_dll, peer_exe)
-}
-
-/// プロセス `pid` の実行ファイルのフルパス（Win32 の形。OS が起動のときに記録したもの）。取れなければ `None`。
-fn process_image_path(pid: u32) -> Option<OsString> {
-    // SAFETY: 引数は値だけ。成功したら返るハンドルを下で所有する
-    let raw: HANDLE = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }.ok()?;
-    // SAFETY: raw は OpenProcess が返した有効なハンドルで、ほかに所有者はいない（落ちるときに閉じる）
-    let _process = unsafe { OwnedHandle::from_raw_handle(raw.0) };
-    let mut buffer = vec![0u16; INITIAL_PATH_LEN];
-    loop {
-        let mut len = u32::try_from(buffer.len()).ok()?;
-        // SAFETY: raw は上で開いたプロセスのハンドル（`_process` が所有し、まだ閉じていない）。
-        // buffer は len 個の u16 を書ける。成功すると len に NUL を除いた長さが入る
-        let result = unsafe {
-            QueryFullProcessImageNameW(
-                raw,
-                PROCESS_NAME_WIN32,
-                PWSTR(buffer.as_mut_ptr()),
-                &mut len,
-            )
-        };
-        match result {
-            Ok(()) => {
-                let len = usize::try_from(len).ok()?.min(buffer.len());
-                return Some(OsString::from_wide(&buffer[..len]));
-            }
-            Err(e) if e.code() == ERROR_INSUFFICIENT_BUFFER.to_hresult() => {
-                if buffer.len() >= MAX_LONG_PATH {
-                    return None;
-                }
-                buffer.resize((buffer.len() * 2).min(MAX_LONG_PATH), 0);
-            }
-            Err(_) => return None,
-        }
-    }
-}
-
-/// 8.3 の短い名前を長い名前に直す（`GetLongPathNameW`）。直せなければそのまま返す（そのままでは期待のパスと
-/// 一致しないので、拒む側に倒れる）。
-///
-/// 各段の名前を、同じフォルダの中の長い名前に置き換えるだけで、親のフォルダの並びは変わらない（リンクの先に
-/// 置き換えるのではない）。利用者の書ける場所から起動したプロセスのパスを、インストール先に見せることはできない。
-fn long_path(path: &OsStr) -> OsString {
-    let wide: Vec<u16> = path.encode_wide().chain(Some(0)).collect();
-    let mut buffer = vec![0u16; INITIAL_PATH_LEN];
-    loop {
-        // SAFETY: wide は NUL で終わる UTF-16 で、この呼び出しの間生きている。buffer はその長さまで書ける
-        let written =
-            unsafe { GetLongPathNameW(PCWSTR(wide.as_ptr()), Some(&mut buffer)) } as usize;
-        if written == 0 {
-            return path.to_owned();
-        }
-        if written < buffer.len() {
-            return OsString::from_wide(&buffer[..written]);
-        }
-        // 足りないときは、NUL を含めた要る長さが返る
-        if written > MAX_LONG_PATH {
-            return path.to_owned();
-        }
-        buffer.resize(written, 0);
-    }
+    rule(&long_path_name(tip_dll), &peer_exe)
 }
 
 /// TIP の DLL のパスを、試験で決めた場所にして `open_verified` を確かめる（Windows の CI でだけ流れる）。
@@ -275,7 +215,7 @@ mod tests {
 
     /// 期待のフォルダ（8.3 を展開した長い名前。CI の一時フォルダは短い名前のことがある）
     fn long_dir(dir: &Path) -> PathBuf {
-        PathBuf::from(long_path(dir.as_os_str()))
+        PathBuf::from(long_path_name(dir.to_str().expect("UTF-8 temp dir")))
     }
 
     fn finish(mut child: Child) {
