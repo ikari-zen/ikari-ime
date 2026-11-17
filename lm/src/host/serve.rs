@@ -4,18 +4,22 @@
 //! 今の採点がその番号以下なら印を立てる（枠を本体に回さない）。本体は、要求を取り出したときと、推論の止めどころで見る。
 
 use std::io::{self, Read, Write};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, mpsc};
 use std::thread;
 use std::time::Duration;
 
 use crate::cancel::CancelToken;
 use crate::error::LmError;
+#[cfg(unix)]
+use crate::host::cage::PARENT_WATCH_INTERVAL;
 use crate::host::proto::{FailKind, PROTOCOL_VERSION, Reply, Request, read_frame, write_frame};
 use crate::placement::GpuState;
 use crate::scorer::{LmDevice, LmScorer};
 
 const READER_THREAD_NAME: &str = "ikari-lm-host-stdin";
+#[cfg(unix)]
+const PARENT_WATCH_THREAD_NAME: &str = "ikari-lm-host-parent";
 /// 入力が閉じてから `on_input_end` を呼ぶまでの猶予。ふつうは、この間に本体の繰り返しが自分で終わる。
 /// 推論の中で固まっているときだけ、`on_input_end`（プロセスを終わらせる）が効く。計測で決めた値ではない
 const INPUT_END_GRACE: Duration = Duration::from_secs(2);
@@ -72,6 +76,62 @@ impl Cancels {
     }
 }
 
+/// 親の見張り（unix。ADR 0077 §3.1）: 親（エンジン、または檻役）が終わって自分が親なしになったら、`on_orphaned` を
+/// 呼ぶ（実物はプロセスを終わらせる）。檻役が落ちても、エンジンがパイプを持ったままだと入力が閉じないので、
+/// 入力の終わりとは別に見る。捨てると見張りを止める（次の見回りで終わる）
+struct ParentWatch {
+    stop: Arc<AtomicBool>,
+}
+
+impl ParentWatch {
+    #[cfg(unix)]
+    fn start(on_orphaned: impl FnOnce() + Send + 'static) -> io::Result<ParentWatch> {
+        let stop = Arc::new(AtomicBool::new(false));
+        let stopped = Arc::clone(&stop);
+        let parent = parent_id();
+        thread::Builder::new()
+            .name(PARENT_WATCH_THREAD_NAME.to_owned())
+            .spawn(move || {
+                while !stopped.load(Ordering::Acquire) {
+                    if is_orphaned(parent) {
+                        on_orphaned();
+                        return;
+                    }
+                    thread::sleep(PARENT_WATCH_INTERVAL);
+                }
+            })?;
+        Ok(ParentWatch { stop })
+    }
+
+    /// Windows は Job Object が子を終わらせる（`os`）。ここでは見張らない
+    #[cfg(not(unix))]
+    fn start(on_orphaned: impl FnOnce() + Send + 'static) -> io::Result<ParentWatch> {
+        drop(on_orphaned);
+        Ok(ParentWatch {
+            stop: Arc::new(AtomicBool::new(true)),
+        })
+    }
+}
+
+impl Drop for ParentWatch {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Release);
+    }
+}
+
+#[cfg(unix)]
+fn parent_id() -> libc::pid_t {
+    // SAFETY: 引数なしの呼び出し
+    unsafe { libc::getppid() }
+}
+
+/// 親が変わった（親が終わり、ほかのプロセスに引き取られた）。始めから launchd（1）の下なら、起動の直後に親が終わった
+#[cfg(unix)]
+fn is_orphaned(first_parent: libc::pid_t) -> bool {
+    const INIT_PID: libc::pid_t = 1;
+    first_parent == INIT_PID || parent_id() != first_parent
+}
+
 /// 要求を読んで採点し、返す。入力が閉じる（親が終わった・子を手放した）か、出力に書けなくなったら戻る。
 ///
 /// - `load`: モデルを読み込む。失敗したら `Failed(Load)` を 1 枚返して戻る。
@@ -86,6 +146,19 @@ where
     L: FnOnce() -> Result<(Box<dyn LmScorer>, ReadyInfo), LmError>,
     E: FnOnce() + Send + 'static,
 {
+    // 入力の終わりと親の終わりの、先に気づいたほうが 1 回だけ呼ぶ
+    let on_end = Arc::new(Mutex::new(Some(on_input_end)));
+    let end_once = {
+        let on_end = Arc::clone(&on_end);
+        move || {
+            let hook = on_end.lock().unwrap_or_else(|e| e.into_inner()).take();
+            if let Some(hook) = hook {
+                hook();
+            }
+        }
+    };
+    // 本体が戻ったら、親の見張りも終わる
+    let _watch = ParentWatch::start(end_once.clone())?;
     // 本体に回すのは採点の要求だけ。None は読めない枠（本体が終わる）
     let (tx, rx) = mpsc::channel::<Option<Request>>();
     let cancels = Arc::new(Cancels::default());
@@ -109,7 +182,7 @@ where
             }
             drop(tx);
             thread::sleep(INPUT_END_GRACE);
-            on_input_end();
+            end_once();
         })?;
 
     let mut scorer = match load() {

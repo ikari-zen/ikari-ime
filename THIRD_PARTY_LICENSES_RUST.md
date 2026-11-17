@@ -1,6 +1,6 @@
 # Rust 依存クレートのライセンス
 
-ikari.app に入る Rust の成果物（`ikari-engine-ffi`、`ikari-shell-ffi`、LM の子 `ikari-lm-host`）が含む依存クレート（62 個）のライセンスです。`cargo xtask licenses` で作ります（cargo-about。設定は `about.toml`）。手で書き換えないでください。
+ikari.app に入る Rust の成果物（`ikari-engine-ffi`、`ikari-shell-ffi`、LM の子 `ikari-lm-host`）が含む依存クレート（65 個）のライセンスです。`cargo xtask licenses` で作ります（cargo-about。設定は `about.toml`）。手で書き換えないでください。
 
 ビルドのときだけ使うもの、テストだけで使うもの、配らない道具（cli、dict-builder、評価、xtask）は含みません。同じ本文のライセンスはまとめてあります。
 
@@ -1523,6 +1523,33 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
+````
+
+## MIT（3 個）
+
+- block2 0.6.2（https://github.com/madsmtm/objc2）
+- objc2 0.6.5（https://github.com/madsmtm/objc2）
+- objc2-encode 4.1.0（https://github.com/madsmtm/objc2）
+
+````text
+MIT License
+
+Copyright (c) <year> <copyright holders>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+associated documentation files (the "Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the
+following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial
+portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
+LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO
+EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+USE OR OTHER DEALINGS IN THE SOFTWARE.
 ````
 
 ## MIT（1 個）
