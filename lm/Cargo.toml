@@ -30,6 +30,12 @@ name = "ikari-lm-host"
 path = "src/bin/ikari-lm-host.rs"
 required-features = ["llama"]
 
+# macOS の LM の檻役（ADR 0077。`IkariLMCage.xpc` の実行ファイル）。llama.cpp は要らない。macOS 以外では何もしない
+[[bin]]
+name = "ikari-lm-cage"
+path = "src/bin/ikari-lm-cage.rs"
+test = false
+
 # テスト用の偽の子（モデルなし。落ちる・固まる・壊れた返事を引数で選ぶ）。配布物には入れない
 [[bin]]
 name = "ikari-lm-host-fake"
@@ -43,6 +49,10 @@ llama-cpp-2 = { workspace = true, optional = true }
 # 子の stdin のパイプに SIGPIPE を出させない設定（`src/host/os.rs` だけが使う）
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+# libxpc のハンドラの block（檻役と、エンジンの側の檻役への口。`src/host/cage/` の下だけが使う。ADR 0077 §3.4）
+[target.'cfg(target_vendor = "apple")'.dependencies]
+block2 = "0.6"
 
 # Job Object、低い整合性、AppContainer（子の檻。`src/host/os.rs` の下だけが使う）。Win32 の宣言だけ
 [target.'cfg(windows)'.dependencies]
