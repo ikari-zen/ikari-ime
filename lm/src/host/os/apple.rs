@@ -4,6 +4,9 @@
 //!   ファイルの操作（`dup2`、`open`）で作ったもの以外は、close-on-exec の印に関わらず子で閉じる。
 //! - 実行ファイルは絶対パスで渡し、PATH から探さない（`posix_spawn`。`posix_spawnp` ではない）。
 //! - 標準エラーは `/dev/null`。シグナルのマスクは空、SIGPIPE は既定の動きに戻す（`std::process` と同じ）。
+//! - 製品の macOS は、子を檻役に起こしてもらう（ADR 0077 §6）。エンジンが自分で起こす道（[`spawn`]）は、テストと
+//!   開発用のビルド（`dev-knobs`）だけに残し、製品のビルドでは起動せずに誤りを返す（FC-4。起動の口の選び方の
+//!   書き忘れが、黙って檻なしで動くことにならないように、いちばん下の層でも閉じる）。`xtask check` が形を検査する。
 
 use std::ffi::{CString, OsStr, OsString};
 use std::io;
@@ -15,6 +18,15 @@ use std::process::{ChildStdin, ChildStdout};
 use std::ptr;
 
 const NULL_DEVICE: &std::ffi::CStr = c"/dev/null";
+
+/// 移行の間だけ、製品のビルドでも自分で起こす道を開けておく（檻役の起動がつながるまで、製品の LM を止めないため）。
+/// レーン D-3-mac で檻役の起動をつなぐときに、この定数と [`direct_spawn_allowed`] の中の参照を消す
+const DIRECT_SPAWN_TRANSITION: bool = true;
+
+/// エンジンが自分で子を起こしてよいか（テストと開発用のビルドだけ。移行の間は上の定数）
+pub(super) fn direct_spawn_allowed() -> bool {
+    cfg!(any(test, feature = "dev-knobs")) || DIRECT_SPAWN_TRANSITION
+}
 
 /// 起動した子。`reap` は 1 回だけ効く（2 回目からは何もしない）
 pub(super) struct Proc {
@@ -52,6 +64,12 @@ pub(super) fn spawn(
     program: &Path,
     args: &[OsString],
 ) -> io::Result<(Proc, ChildStdin, ChildStdout)> {
+    if !direct_spawn_allowed() {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "direct lm host spawn is closed in product builds",
+        ));
+    }
     let words: Vec<CString> = iter::once(program.as_os_str())
         .chain(args.iter().map(OsString::as_os_str))
         .map(c_string)
