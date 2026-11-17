@@ -3,6 +3,7 @@
 //! 文に入れるのは、キーの名前、件数、理由の種類だけ。パスやファイルの中身は入れない。
 
 use ikari_proto::v1::{DataCounts, DataIssue, DataIssueKind, ErrorCode, ExportReply, ImportReply};
+use ikari_resource::app_version::{AppVersion, VersionVerdict, verdict};
 use ikari_resource::fetch_report::FetchErrorCode;
 use ikari_shell_core::bridge::proto::BridgeErrorCode;
 
@@ -86,17 +87,28 @@ fn fetch_done(s: &crate::fetch::Snapshot) -> String {
     "取得しました。内容を確かめています".to_owned()
 }
 
-/// 版の確認が終わったときの文（`latest` の版から。比べ方は `ikari_resource::app_version::verdict`）。
-/// 契約のスタブ（D-2d）: 今は版の番号を出すだけ（今の `ikari-data` は `latest` の行を出さない）
+/// 版の確認が終わったときの文（`latest` の版から。比べ方は `ikari_resource::app_version::verdict`）
 fn version_done(latest: &str) -> String {
     version_verdict(latest, env!("CARGO_PKG_VERSION"))
 }
 
-/// 版の確認の表示（3 つだけ: 新しい版があります・最新です・この版のほうが新しい（開発版）。読めない版は
-/// 「確かめられませんでした」）。契約のスタブ（D-2d）
+const VERSION_NEWER: &str = "新しい版があります";
+const VERSION_UP_TO_DATE: &str = "最新です";
+const VERSION_AHEAD: &str = "この版のほうが新しい（開発版）";
+const VERSION_UNKNOWN: &str = "確かめられませんでした";
+
+/// 版の確認の表示（3 つだけ: 新しい版があります・最新です・この版のほうが新しい（開発版）。どちらかの版が
+/// 読めなければ「確かめられませんでした」）。古い版は勧めない
 pub fn version_verdict(latest: &str, current: &str) -> String {
-    let _ = current;
-    format!("配布元の最新の版: {latest}")
+    let Some(latest) = AppVersion::parse(latest) else {
+        return VERSION_UNKNOWN.to_owned();
+    };
+    match verdict(current, latest) {
+        Some(VersionVerdict::Newer(v)) => format!("{VERSION_NEWER}（{v}）"),
+        Some(VersionVerdict::UpToDate) => VERSION_UP_TO_DATE.to_owned(),
+        Some(VersionVerdict::Ahead) => VERSION_AHEAD.to_owned(),
+        None => VERSION_UNKNOWN.to_owned(),
+    }
 }
 
 /// 自由指定の URL・ファイルで sha256 を入れなかったときの警告（OS で分けない。「sha256 なしでは、通信の経路だけが
@@ -217,6 +229,27 @@ mod tests {
             link_error(&LinkError::Refused("reserved-name")),
             "このファイルの場所は使えません"
         );
+    }
+
+    #[test]
+    fn version_verdict_has_three_texts_and_never_recommends_older() {
+        assert_eq!(
+            version_verdict("0.3.2", "0.3.1"),
+            "新しい版があります（0.3.2）"
+        );
+        assert_eq!(version_verdict("0.3.1", "0.3.1"), "最新です");
+        assert_eq!(
+            version_verdict("0.3.0", "0.3.1"),
+            "この版のほうが新しい（開発版）"
+        );
+        assert_eq!(version_verdict("x", "0.3.1"), "確かめられませんでした");
+        assert_eq!(version_verdict("0.3.1", "dev"), "確かめられませんでした");
+    }
+
+    #[test]
+    fn version_done_uses_the_own_version() {
+        let text = version_done("999999999.0.0");
+        assert!(text.starts_with("新しい版があります"), "{text}");
     }
 
     #[test]
