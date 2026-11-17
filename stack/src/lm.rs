@@ -3,7 +3,7 @@
 
 use super::*;
 
-use ikari_lm::host::{HostHealth, HostSpec, host_loader};
+use ikari_lm::host::{HostCage, HostHealth, HostSpec, host_loader};
 use ikari_lm::{LmLoader, ZenzConfig, ZenzRanker};
 
 /// `host` が Some なら、その実行ファイルを子として起動して採点を頼む（このビルドに llama.cpp は要らない）。
@@ -27,6 +27,8 @@ pub fn build(
                 model: path.to_path_buf(),
                 use_gpu: cfg.gpu,
                 limits: cfg.host.clone(),
+                // プリセット（アプリに埋めた sha256 のモデル）だけを読む間は段 1（ADR 0072 §4。段 2 にするかは #424 のあと）
+                cage: HostCage::Standard,
             });
             (loader, Some(health))
         }

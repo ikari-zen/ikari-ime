@@ -36,7 +36,7 @@ pub fn sha256_file(path: &Path) -> io::Result<String> {
 }
 
 /// manifest の sha256 の欄の形（小文字 16 進 64 文字）
-pub(crate) fn is_sha256_hex(s: &str) -> bool {
+pub fn is_sha256_hex(s: &str) -> bool {
     s.len() == SHA256_HEX_LEN
         && s.bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))

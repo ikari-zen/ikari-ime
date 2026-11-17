@@ -71,6 +71,18 @@ fn main() -> ExitCode {
         },
         Command::WerExclude(names) => wer(&names, true),
         Command::WerInclude(names) => wer(&names, false),
+        Command::CageProfileDelete => {
+            match os::delete_appcontainer_profile(ikari_setup_helper::LM_CAGE_PROFILE) {
+                Ok(()) => {
+                    println!("cage profile deleted");
+                    exit::OK
+                }
+                Err(hr) => {
+                    println!("cage profile delete failed hr={hr:#010x}");
+                    exit::OS_ERROR
+                }
+            }
+        }
     };
     ExitCode::from(code)
 }

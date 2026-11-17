@@ -4,6 +4,10 @@ members = [
     "core", "cli", "dict-builder", "dict-format", "resource", "eval", "import", "lm",
     "input", "stack", "runmark", "testtime", "proto", "engine", "engine-ffi", "shell-ffi", "shell-core", "xtask",
     "pipe", "windows/engine-host", "windows/tip", "windows/candidate", "windows/installer/helper", "windows/settings",
+    # Windows の子の絞った起動（低い整合性、Job Object、渡すハンドルの限定。ikari-data と設定画面の核が使う）
+    "windows/sandbox",
+    # 取得する部品（ADR 0076。通信してよい唯一の crate）
+    "fetch",
     # 測定ツール（ADR 0075 §4。製品には入らない。配る物の検査 `cargo xtask scan-product` が、製品の成果物に
     # この crate の印が無いことを見る）
     "tools/npu-probe",
@@ -53,7 +57,7 @@ ikari-shell-core = { path = "shell-core" }
 ikari-pipe = { path = "pipe" }
 ikari-candidate = { path = "windows/candidate" }
 ikari-settings-core = { path = "windows/settings" }
-
+ikari-sandbox = { path = "windows/sandbox" }
 # xtask は debug ビルドで走る（`cargo xtask`）。辞書の入力（数百 MB）の sha256 を取るので、この crate だけ最適化する
 [profile.dev.package.xtask]
 opt-level = 3

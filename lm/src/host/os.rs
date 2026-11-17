@@ -7,6 +7,10 @@
 //!   親のハンドルが閉じたら OS が子を終わらせる。
 //! - 檻の段 1（ADR 0072 §3）: Windows は `windows` の説明のとおり（Job の制限、低い整合性）。macOS は、エンジンの
 //!   App Sandbox を引き継ぐ（今のまま）。
+//! - 檻の段 2（ADR 0072 §3、§12 の実測）: Windows だけ。[`Cage::AppContainer`] で、能力なしの AppContainer に入れる
+//!   （`appcontainer`）。読めるのは、渡したファイル 1 つ（起動の前に読み取りを許す）と、すべてのアプリのパッケージに
+//!   開かれた場所（インストール先の Program Files、システムのフォルダ）だけ。ほかの OS では起動しない（失敗を返す）。
+//!   段 2 が張れないときに段 1 へ落とすかは、呼び出し側が決める（ここでは落とさない）。
 //! - 絞りがかけられないときは、子を止めて失敗を返す。呼び出し側（`scorer`）は失敗に数え、LM なしで動く。
 //! - macOS: 子の stdin のパイプに `F_SETNOSIGPIPE` を付ける。エンジンは Swift の XPC サービスの中の静的ライブラリで、
 //!   Rust の `main` を通らないので SIGPIPE が無視されていない。付けないと、死んだ子への書き込みでエンジンが落ちる。
@@ -18,6 +22,8 @@ use std::path::Path;
 #[cfg(not(windows))]
 use std::process::{ChildStdin, ChildStdout};
 
+#[cfg(windows)]
+mod appcontainer;
 #[cfg(target_vendor = "apple")]
 mod apple;
 #[cfg(any(windows, test))]
@@ -47,14 +53,65 @@ pub(super) type ToChild = io::PipeWriter;
 #[cfg(windows)]
 pub(super) type FromChild = io::PipeReader;
 
+/// 子にかける檻（ADR 0072 §3）
+#[derive(Clone, Copy, Debug)]
+pub(super) enum Cage<'a> {
+    /// 段 1（Windows: Job の制限と、低い整合性。macOS: エンジンの Sandbox を引き継ぐ）
+    Standard,
+    /// 段 2（Windows だけ）: 能力なしの AppContainer。`readable` に読み取りを許してから起動する
+    #[cfg_attr(not(windows), allow(dead_code))]
+    AppContainer { readable: &'a Path },
+}
+
+/// 実際にかけた檻（`lm_load` のログの `box=` の語）
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CageState {
+    /// まだ起動していない
+    Unknown,
+    /// AppContainer（段 2。Windows）
+    AppContainer,
+    /// 低い整合性と Job（段 1。Windows）
+    LowIntegrity,
+    /// Job だけ（段 1 から低い整合性を外した開発用の設定。Windows）、または絞りなし（製品の対象でない unix）
+    None,
+    /// エンジンの App Sandbox を引き継ぐ（段 1。macOS）
+    Inherited,
+}
+
+impl CageState {
+    pub(crate) fn word(self) -> &'static str {
+        match self {
+            CageState::Unknown => "unknown",
+            CageState::AppContainer => "appcontainer",
+            CageState::LowIntegrity => "low",
+            CageState::None => "none",
+            CageState::Inherited => "inherited",
+        }
+    }
+
+    pub(crate) const ALL: [CageState; 5] = [
+        CageState::Unknown,
+        CageState::AppContainer,
+        CageState::LowIntegrity,
+        CageState::None,
+        CageState::Inherited,
+    ];
+}
+
 /// 起動した子。捨てると kill して wait する
 pub(super) struct ChildProc {
     inner: imp::Proc,
+    cage: CageState,
 }
 
 impl ChildProc {
     pub(super) fn id(&self) -> u32 {
         self.inner.id()
+    }
+
+    /// この子にかけた檻
+    pub(super) fn cage(&self) -> CageState {
+        self.cage
     }
 }
 
@@ -64,17 +121,56 @@ impl Drop for ChildProc {
     }
 }
 
-/// `program`（絶対パス）を、標準入出力をパイプにして起動する。標準エラーは捨てる
+/// `program`（絶対パス）を、標準入出力をパイプにして、`cage` の檻に入れて起動する。標準エラーは捨てる
 pub(super) fn spawn(
     program: &Path,
     args: &[OsString],
+    cage: Cage<'_>,
 ) -> io::Result<(ChildProc, ToChild, FromChild)> {
-    let (inner, stdin, stdout) = imp::spawn(program, args)?;
+    #[cfg(windows)]
+    let (inner, stdin, stdout, cage) = imp::spawn(program, args, cage)?;
+    #[cfg(not(windows))]
+    let (inner, stdin, stdout, cage) = match cage {
+        Cage::Standard => {
+            let (inner, stdin, stdout) = imp::spawn(program, args)?;
+            (inner, stdin, stdout, NOT_WINDOWS_CAGE)
+        }
+        Cage::AppContainer { .. } => {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "appcontainer is windows only",
+            ));
+        }
+    };
     // ここから先は、失敗しても `proc` の Drop が子を回収する
-    let proc = ChildProc { inner };
+    let proc = ChildProc { inner, cage };
     #[cfg(target_vendor = "apple")]
     imp::no_sigpipe(&stdin)?;
     Ok((proc, stdin, stdout))
+}
+
+/// Windows でない OS の段 1 の檻
+#[cfg(target_vendor = "apple")]
+const NOT_WINDOWS_CAGE: CageState = CageState::Inherited;
+#[cfg(not(any(target_vendor = "apple", windows)))]
+const NOT_WINDOWS_CAGE: CageState = CageState::None;
+
+/// `path` から、段 2 の子への読み取りの許可を外す（Windows。無くても成功）。ほかの OS では何もしない
+pub(super) fn revoke_cage_read(path: &Path) -> io::Result<()> {
+    #[cfg(windows)]
+    return appcontainer::revoke_read(path);
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+        Ok(())
+    }
+}
+
+/// 段 2 の AppContainer のプロファイルを消す（Windows。アンインストールのとき。無くても成功）。
+/// 消えるのは、呼んだ利用者のものだけ（プロファイルは利用者ごと）
+#[cfg(windows)]
+pub(super) fn delete_cage_profile() -> io::Result<()> {
+    appcontainer::delete_profile()
 }
 
 /// 製品の対象でない unix（テストと CLI だけ）。`std::process` で起動する。Rust の標準ライブラリが開く fd は
@@ -144,7 +240,7 @@ mod tests {
 
     #[test]
     fn child_stdin_does_not_raise_sigpipe() {
-        let (_proc, stdin, _stdout) = spawn(Path::new("/bin/cat"), &[]).unwrap();
+        let (_proc, stdin, _stdout) = spawn(Path::new("/bin/cat"), &[], Cage::Standard).unwrap();
         assert!(imp::has_no_sigpipe(&stdin));
     }
 
@@ -165,32 +261,68 @@ mod tests {
             .unwrap();
         assert_eq!(String::from_utf8_lossy(&leaked.stdout), "open\n");
 
-        let (_proc, stdin, stdout) =
-            spawn(Path::new("/bin/sh"), &["-c".into(), probe_script()]).unwrap();
+        let (_proc, stdin, stdout) = spawn(
+            Path::new("/bin/sh"),
+            &["-c".into(), probe_script()],
+            Cage::Standard,
+        )
+        .unwrap();
         assert_eq!(run(stdin, stdout), "closed\n");
     }
 
     #[test]
     fn stdin_and_stdout_reach_the_child() {
-        let (_proc, mut stdin, stdout) = spawn(Path::new("/bin/cat"), &[]).unwrap();
+        let (_proc, mut stdin, stdout) = spawn(Path::new("/bin/cat"), &[], Cage::Standard).unwrap();
         stdin.write_all(b"ping\n").unwrap();
         assert_eq!(run(stdin, stdout), "ping\n");
     }
 
     #[test]
     fn a_missing_program_is_an_error() {
-        assert!(spawn(Path::new("/nonexistent/ikari-lm-host"), &[]).is_err());
+        assert!(spawn(Path::new("/nonexistent/ikari-lm-host"), &[], Cage::Standard).is_err());
+    }
+
+    #[test]
+    fn the_child_inherits_the_engine_sandbox() {
+        let (proc, _stdin, _stdout) = spawn(Path::new("/bin/cat"), &[], Cage::Standard).unwrap();
+        assert_eq!(proc.cage(), CageState::Inherited);
+    }
+
+    #[test]
+    fn appcontainer_is_refused_outside_windows() {
+        let model = Path::new("/nonexistent/model.gguf");
+        let err = spawn(
+            Path::new("/bin/cat"),
+            &[],
+            Cage::AppContainer { readable: model },
+        )
+        .err()
+        .unwrap();
+        assert_eq!(err.kind(), io::ErrorKind::Unsupported);
     }
 
     #[test]
     fn dropping_the_child_kills_and_reaps_it() {
-        let (proc, _stdin, _stdout) = spawn(Path::new("/bin/cat"), &[]).unwrap();
+        let (proc, _stdin, _stdout) = spawn(Path::new("/bin/cat"), &[], Cage::Standard).unwrap();
         let pid = proc.id() as libc::pid_t;
         drop(proc);
         // 回収済みなら、もう自分の子ではない
         // SAFETY: 状態を聞くだけ（WNOHANG）
         let rc = unsafe { libc::waitpid(pid, std::ptr::null_mut(), libc::WNOHANG) };
         assert_eq!(rc, -1);
+    }
+}
+
+#[cfg(test)]
+mod cage_tests {
+    use super::CageState;
+
+    #[test]
+    fn cage_words_are_fixed_and_distinct() {
+        let mut words: Vec<&str> = CageState::ALL.iter().map(|s| s.word()).collect();
+        words.sort_unstable();
+        words.dedup();
+        assert_eq!(words.len(), CageState::ALL.len());
     }
 }
 

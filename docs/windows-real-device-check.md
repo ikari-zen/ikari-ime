@@ -679,6 +679,14 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 - 期待する結果（**見込み**）: どれもそのとおり。(c) の書き出しは、設定の口に全文が流れない（engine-host がファイルに書く）。
 - うまくいかないとき: 状態の欄と結果の欄の文、エンジンのコンソールの出力、`settings.tsv` の差分を残す（学習のファイルの中身は残さない）。
 
+#### 項目 68: モデルの取得（`ikari-data`。Hugging Face から。ADR 0076。D-2b・D-2c）
+
+- 前提: **Windows の低い整合性の子（`transfer`）、Job Object、`ureq` と SChannel は、Windows で 1 度もビルド・実行していない**（Mac の `cargo clippy --target x86_64-pc-windows-msvc` まで。スパイクの結果は ADR 0076 §16）。インストール先に `ikari-data.exe` を置く（`<インストール先>\ikari-data.exe`。ファイアウォールの送信ブロックはかけない）。ふだんの（中の整合性の）ログオンで、デスクトップから流す。VM の空きは 1GiB 以上。取得する前に、`inbox\` と `LocalLow\ikari-ime\fetch\` が空であることを確かめる。
+- やること: (a) 中の整合性のコマンドプロンプトで `ikari-data.exe model fetch --preset zenz-small` を流し、標準出力の行（`progress`、最後に `done`）と終了コード（0）を記録する。`inbox\zenz-small\` に `manifest.json` とモデルがあり、`.partial` と `fetch\download.bin` が残っていないこと。(b) 流している間に、プロセスエクスプローラで `ikari-data.exe` が 2 つ（親は中、子は低の整合性）で、子の Job に入っていることを見る。(c) 取得の間の送信を記録する（項目 57 と同じ方法）。(d) 流している間に、もう 1 つ同じコマンドを流し、`error busy` で終わること。(e) 流している間にコマンドプロンプトを閉じ（または設定画面の核から取り消し）、2 つの `ikari-data.exe` が終わること。そのあと `ikari-data.exe cleanup` で、`fetch\` と `.partial` が消えること。(f) 回線を途中で切り（VM のネットワークを無効にする）、`error stalled`（無通信 60 秒）か `error network` で終わり、作業の場所が消えること。(g) 管理者のコマンドプロンプトで流し、`error refused` で終わること。(h) `ikari-data.exe transfer --url https://huggingface.co/ --out C:\Windows\Temp\x --max-size 10` を中の整合性で流し、`error refused` で終わること。(i) プロキシを使う環境で `HTTPS_PROXY`（認証なし）を設定して (a) を流し、取れること。`http://` のプロキシの URL でも通ること。(j) Windows 10（TLS 1.2 まで）の VM で (a) を流す。(k) 設定画面の核の ABI（`ikari_settings_fetch_start`、`_poll`、`_cancel`）を、画面ができたあとに同じ手順で確かめる。
+- 期待する結果（**見込み**）: (a) 取れて、`done zenz-small <表の sha256>`。大きいモデルでも、転送の回数の上限（5）の中で最後まで取れる（スパイクは先頭の 8MiB まで）。(b) そのとおり。(c) 送信するのは `ikari-data.exe` だけで、行き先は表のホストと転送先だけ。(d) `busy`。(e) 2 つとも終わり、残りが消える。(f) どちらかの語で終わる。(g)(h) `refused`。(i) 取れる。(j) 取れる。
+- うまくいかないとき: 行と終了コード、`ikari-data.exe` と子のプロセスの整合性、イベントビューアの「Application」のエラーを残す。`tool` なら、低い整合性の子を起こせていない（原因はコードの再読が要る）。仮置きの値（転送 5 回、接続 30 秒、無通信 60 秒、ディスクの余裕 256MiB）は計測なし。この項目で、実際の時間と値を記録する。
+- macOS（`ikari.app/Contents/Helpers/` に置いたとき。D-2e のあと）: 設定アプリから起動して、Sandbox の中で取れること（ADR 0076 §11 の 8）。この PR では未実装。
+
 ## 6. 結果の記録の書き方
 
 次の表を、コピーして使います（この文書に書き込まず、issue のコメントか、別のメモに書いてください。この文書は手順書として保ちます）。1 項目 1 行。「結果」は、○（期待どおり）、△（一部、または条件つき）、×（期待と違う）、－（できなかった。理由を備考に）のどれか。「見たこと」は、事実だけを書き、推測は備考に、「推測」と付けて書きます。
@@ -694,7 +702,7 @@ ikari のコミット（git rev-parse --short HEAD）:
 | --- | --- | --- | --- | --- |
 | 1 |  |  |  |  |
 | 2 |  |  |  |  |
-（項目 67 まで。番号は 47〜55 インストーラ、56〜58・67 設定画面、59〜66 候補窓）
+（項目 68 まで。番号は 47〜55 インストーラ、56〜58・67 設定画面、59〜66 候補窓、68 モデルの取得）
 
 スクリプトで直したところ（ファイル、直した内容、理由）:
 -

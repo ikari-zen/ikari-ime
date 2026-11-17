@@ -14,7 +14,7 @@ pub mod proto;
 mod scorer;
 mod serve;
 
-pub use scorer::{HostHealth, HostLimits, HostSpec, host_loader};
+pub use scorer::{HostCage, HostHealth, HostLimits, HostSpec, host_loader};
 pub use serve::{ReadyInfo, serve};
 
 /// 子の実行ファイルの名前（拡張子なし）。エンジンの実行ファイルと同じフォルダに置く
@@ -29,6 +29,22 @@ pub const ARG_GPU: &str = "--gpu";
 pub const ARG_GPU_ON: &str = "on";
 pub const ARG_GPU_OFF: &str = "off";
 pub const ARG_GPU_CPU: &str = "cpu";
+
+/// LM の子の檻の段 2（AppContainer）のプロファイルの名前（利用者ごとに 1 つ。インストーラの helper も同じ名前で消す）
+pub const CAGE_PROFILE_NAME: &str = "io.github.ikari-zen.lm-host";
+
+/// モデルのファイルから、段 2 の子への読み取りの許可を外す（Windows。モデルを置き換えるとき・消すときにエンジンが
+/// 呼ぶ。許可が無くても成功。ADR 0072 §12.8）。ほかの OS では何もしない
+pub fn revoke_cage_read(model: &std::path::Path) -> std::io::Result<()> {
+    os::revoke_cage_read(model)
+}
+
+/// LM の子の檻の段 2（AppContainer）のプロファイルを消す（Windows。アンインストールのとき。無くても成功）。
+/// プロファイルは利用者ごとにあり、消えるのは呼んだ利用者のものだけ（ADR 0072 §12）
+#[cfg(windows)]
+pub fn delete_cage_profile() -> std::io::Result<()> {
+    os::delete_cage_profile()
+}
 
 /// 子の実行ファイルの名前（Windows は `.exe` つき）
 pub fn host_exe_name() -> String {

@@ -30,6 +30,7 @@ fn component(kind: ComponentKind, format: u32, files: Vec<FileEntry>) -> Compone
         files,
         builder: None,
         sources: None,
+        profile: None,
     }
 }
 

@@ -1,0 +1,21 @@
+[package]
+name = "ikari-sandbox"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Windows の子の絞った起動（止めた状態で作り、Job Object に入れ、渡すハンドルを限ってから動かす。整合性を低くもできる）。ADR 0072 §3、ADR 0076 §3.2"
+
+# 依存の向き: fetch（ikari-data）、windows/settings → windows/sandbox。通信の手段を持たない。
+# コマンドラインの組み立て（`cmdline`）は OS に依存しないので、Mac でもテストする
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
+
+# テストだけ（子の標準のハンドルの種類を見る）
+[target.'cfg(windows)'.dev-dependencies]
+windows-sys = { workspace = true, features = ["Win32_Storage_FileSystem"] }

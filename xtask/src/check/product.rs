@@ -80,7 +80,8 @@ pub fn dev_strings_gated(root: &Path) -> Result<(), Failure> {
         let is_source = file.ends_with(".rs")
             && SOURCE_ROOTS.iter().any(|r| file.starts_with(r))
             && !file.contains("/tests/")
-            && !file.ends_with("/tests.rs");
+            && !file.ends_with("/tests.rs")
+            && !file.ends_with("_tests.rs");
         if !is_source {
             continue;
         }
@@ -109,7 +110,8 @@ pub fn lm_spawn_single(root: &Path) -> Result<(), Failure> {
             && !file.starts_with("lm/")
             && file != LM_SPAWN_ENTRY
             && !file.contains("/tests/")
-            && !file.ends_with("/tests.rs");
+            && !file.ends_with("/tests.rs")
+            && !file.ends_with("_tests.rs");
         if !is_source {
             continue;
         }
@@ -133,6 +135,69 @@ fn spawn_calls_outside_tests(text: &str) -> Vec<usize> {
         }
         if !trimmed.starts_with("//") && trimmed.contains(LM_SPAWN_CALL) {
             found.push(index + 1);
+        }
+    }
+    found
+}
+
+/// 通信の呼び出しを書いてよい、唯一のファイル（ADR 0076 §10）
+const NET_ENTRY: &str = "fetch/src/transfer.rs";
+/// 製品のソースに書かない語（通信の呼び出し）。`NET_ENTRY` だけが使う
+const NET_WORDS: &[&str] = &["ureq::", "native_tls", "std::net", "TcpStream", "UdpSocket"];
+/// 通信の呼び出しを調べるソースの置き場（`SOURCE_ROOTS` のほかの製品の crate。`ikari-data` の `fetch/` を含む）
+const NET_SOURCE_ROOTS: &[&str] = &[
+    "resource/",
+    "dict-format/",
+    "input/",
+    "import/",
+    "textfile/",
+    "runmark/",
+    "proto/",
+    "shell-core/",
+    "fetch/",
+];
+
+/// 通信の呼び出し（`ureq`、`native_tls`、`std::net`）が、`NET_ENTRY` の 1 か所だけにあること（ADR 0076 §10）
+pub fn net_call_single(root: &Path) -> Result<(), Failure> {
+    log("通信の呼び出しが 1 か所だけにあること（ADR 0076 §10）");
+    let mut problems = Vec::new();
+    for file in tracked(root, "")? {
+        let in_scope = SOURCE_ROOTS
+            .iter()
+            .chain(NET_SOURCE_ROOTS)
+            .any(|r| file.starts_with(r));
+        let is_source = file.ends_with(".rs")
+            && in_scope
+            && file != NET_ENTRY
+            && !file.contains("/tests/")
+            && !file.ends_with("/tests.rs")
+            && !file.ends_with("_tests.rs");
+        if !is_source {
+            continue;
+        }
+        let text = read(root, &file)?;
+        if let Some((line_no, word)) = net_words_outside_tests(&text).first() {
+            problems.push(format!(
+                "{file}:{line_no}: `{word}` を書いています（通信の呼び出しは {NET_ENTRY} だけ）"
+            ));
+        }
+    }
+    finish(problems)
+}
+
+/// テストの前で、コメントでない行にある通信の語（行番号と語）
+fn net_words_outside_tests(text: &str) -> Vec<(usize, &'static str)> {
+    let mut found = Vec::new();
+    for (index, line) in text.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.starts_with(TEST_MODULE_MARK) {
+            break;
+        }
+        if trimmed.starts_with("//") {
+            continue;
+        }
+        if let Some(word) = NET_WORDS.iter().find(|w| trimmed.contains(**w)) {
+            found.push((index + 1, *word));
         }
     }
     found
@@ -277,6 +342,15 @@ fn is_gated(lines: &[&str], index: usize) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn net_words_are_found_outside_tests_only() {
+        let text = "// std::net の話\nlet a = ureq::get();\nuse std::net::TcpStream;\n#[cfg(test)]\nmod t { use std::net::TcpListener; }\n";
+        assert_eq!(
+            super::net_words_outside_tests(text),
+            [(2, "ureq::"), (3, "std::net")]
+        );
+    }
+
     use super::*;
 
     #[test]

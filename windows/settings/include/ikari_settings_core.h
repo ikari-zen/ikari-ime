@@ -64,6 +64,33 @@ int32_t ikari_settings_core_import(const IkariSettingsSession *session, const ui
 /* 書き出しの既定の名前（ikari-export-YYYYMMDD.tsv）。 */
 int32_t ikari_settings_core_export_file_name(uint32_t year, uint32_t month, uint32_t day, IkariSettingsBuf *out);
 
+/* ---- 取得（ikari-data.exe）の起動、進み具合、取り消し（src/fetch_abi.rs。ADR 0076）----
+ * 画面はボタンで start、タイマーで poll、取り消しで cancel、終わったら free。文は核が作る。 */
+#define IKARI_SETTINGS_FETCH_PRESET 1 /* a = 表のモデルの ID */
+#define IKARI_SETTINGS_FETCH_URL 2    /* a = https の URL。format が要る。sha256 と name は空でよい */
+#define IKARI_SETTINGS_FETCH_PHASE_RUNNING 0
+#define IKARI_SETTINGS_FETCH_PHASE_DONE 1
+#define IKARI_SETTINGS_FETCH_PHASE_FAILED 2
+#define IKARI_SETTINGS_FETCH_PHASE_CANCELLED 3
+
+typedef struct IkariSettingsFetch IkariSettingsFetch;
+
+typedef struct IkariSettingsFetchStatus {
+    int32_t phase;
+    uint64_t received;
+    uint64_t total; /* has_total が 0 なら使わない */
+    uint8_t has_total;
+} IkariSettingsFetchStatus;
+
+/* 始める。成功で *out に値（free で解放）。ERR_ARG は引数、ERR_FAILED は起こせない（msg に文）。 */
+int32_t ikari_settings_fetch_start(int32_t kind, const uint8_t *a, size_t a_len, const uint8_t *format, size_t format_len,
+                                   const uint8_t *sha256, size_t sha256_len, const uint8_t *name, size_t name_len,
+                                   IkariSettingsFetch **out, IkariSettingsBuf *msg);
+/* 様子。status に数、text に文（NULL なら書かない）。 */
+int32_t ikari_settings_fetch_poll(const IkariSettingsFetch *fetch, IkariSettingsFetchStatus *status, IkariSettingsBuf *text);
+int32_t ikari_settings_fetch_cancel(const IkariSettingsFetch *fetch);
+void ikari_settings_fetch_free(IkariSettingsFetch *fetch);
+
 #ifdef __cplusplus
 }
 #endif

@@ -1,0 +1,41 @@
+[package]
+name = "ikari-data"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "取得する部品（ADR 0076）。通信してよいのはこの crate だけ。モデルの取得（ADR 0071 §3）。1 回の起動で 1 つの仕事をして終わる"
+
+[lib]
+name = "ikari_data"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ikari-data"
+path = "src/main.rs"
+
+[dependencies]
+ikari-resource.workspace = true
+ikari-core.workspace = true
+jiff.workspace = true
+
+# 通信の手段。配る対象（Windows、macOS）だけに置く（ADR 0076 §9。CI の ubuntu で OpenSSL を引かないため）。
+# TLS は OS のもの（SChannel、Security.framework）。根の証明書は埋め込まない。実行時に
+# `TlsProvider::NativeTls` と `RootCerts::PlatformVerifier` を明示する（`src/transfer.rs`）。圧縮、cookie、json などは入れない
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+ureq = { version = "3.5", default-features = false, features = ["native-tls-no-default"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+# 低い整合性の子の起動（`src/spawn_windows.rs`。作りは ikari-sandbox）、自分の整合性（ikari-pipe）、空きの確認
+[target.'cfg(windows)'.dependencies]
+ikari-pipe.workspace = true
+ikari-sandbox.workspace = true
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+] }
+
+[dev-dependencies]
+tempfile.workspace = true

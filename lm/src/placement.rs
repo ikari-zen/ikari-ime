@@ -15,6 +15,10 @@ pub const GPU_ENV: &str = "IKARI_LM_GPU";
 #[cfg(all(feature = "dev-knobs", windows))]
 pub const LOW_INTEGRITY_ENV: &str = "IKARI_LM_LOW_INTEGRITY";
 
+/// 子の檻（`HostSpec::cage`）の上書き（開発用。VM での計測）。`appcontainer` で段 2 だけ、`prefer` で段 2 を優先、
+/// `standard` で段 1。ほかの値と未設定は上書きしない。製品のビルドは、この変数を読まない
+#[cfg(all(feature = "dev-knobs", windows))]
+pub const CAGE_ENV: &str = "IKARI_LM_CAGE";
 /// 低い整合性で起動するか。`value` は環境変数の値（開発用ビルドだけが渡す）。`0` のときだけ `false`
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn low_integrity(value: Option<&str>) -> bool {
