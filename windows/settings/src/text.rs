@@ -71,10 +71,44 @@ pub fn fetch_snapshot(s: &crate::fetch::Snapshot) -> String {
             ),
             _ => format!("取得しています（{} MB）", s.received / MEGABYTE),
         },
-        Phase::Done => "取得しました。内容を確かめています".to_owned(),
+        Phase::Done => match &s.latest {
+            Some(latest) => version_done(latest),
+            None => fetch_done(s),
+        },
         Phase::Cancelled => fetch_error(FetchErrorCode::Cancelled).to_owned(),
         Phase::Failed => fetch_error(s.error.unwrap_or(FetchErrorCode::Internal)).to_owned(),
     }
+}
+
+/// モデルの取得が終わったときの文（D-4: sha256 なしで取ったときは、数えた sha256 を出す。ADR 0076 §18.1）
+fn fetch_done(s: &crate::fetch::Snapshot) -> String {
+    let _ = s;
+    "取得しました。内容を確かめています".to_owned()
+}
+
+/// 版の確認が終わったときの文（`latest` の版から。比べ方は `ikari_resource::app_version::verdict`）。
+/// 契約のスタブ（D-2d）: 今は版の番号を出すだけ（今の `ikari-data` は `latest` の行を出さない）
+fn version_done(latest: &str) -> String {
+    version_verdict(latest, env!("CARGO_PKG_VERSION"))
+}
+
+/// 版の確認の表示（3 つだけ: 新しい版があります・最新です・この版のほうが新しい（開発版）。読めない版は
+/// 「確かめられませんでした」）。契約のスタブ（D-2d）
+pub fn version_verdict(latest: &str, current: &str) -> String {
+    let _ = current;
+    format!("配布元の最新の版: {latest}")
+}
+
+/// 自由指定の URL・ファイルで sha256 を入れなかったときの警告（OS で分けない。「sha256 なしでは、通信の経路だけが
+/// 頼り」と書く。ADR 0076 §4.3、§18.1）。契約のスタブ（D-4）: 文はまだ無い
+pub fn custom_model_without_sha256_warning() -> &'static str {
+    ""
+}
+
+/// sha256 なしで取った・取り込んだあとに、数えた sha256 を見せる文（配布元の値と比べてもらう。ADR 0076 §18.1）。
+/// 契約のスタブ（D-4）
+pub fn counted_sha256(sha256: &str) -> String {
+    sha256.to_owned()
 }
 
 pub fn link_error(e: &LinkError) -> String {

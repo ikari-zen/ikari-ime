@@ -26,8 +26,33 @@ fn model_at(tag: &str, bytes: &[u8]) -> (PathBuf, PathBuf) {
 fn correct_model_is_selected() {
     let (dir, path) = model_at("model-ok", GOOD);
     let (model, reject) = select_lm_model(true, &path, NAME, &known());
-    assert_eq!(model.as_deref(), Some(path.as_path()));
+    assert_eq!(path_of(&model), Some(path.clone()));
     assert_eq!(reject, None);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+fn path_of(model: &Option<ikari_stack::LmModelHandle>) -> Option<PathBuf> {
+    model.as_ref().map(|h| h.path().to_owned())
+}
+
+fn checked(lm_wanted: bool, path: &Path, name: &str) -> (Option<PathBuf>, Option<ModelReject>) {
+    let (model, reject) = select_lm_model(lm_wanted, path, name, &known());
+    (path_of(&model), reject)
+}
+
+/// 照合のあとで名前ごと差し替えられても、持っているハンドルは照合した物を読む（C-03、FC-3）
+#[cfg(unix)]
+#[test]
+fn the_verified_handle_keeps_reading_the_verified_file() {
+    use std::io::Read;
+    let (dir, path) = model_at("model-swap", GOOD);
+    let (model, _) = select_lm_model(true, &path, NAME, &known());
+    let model = model.expect("verified");
+    std::fs::rename(&path, dir.join("old.gguf")).unwrap();
+    std::fs::write(&path, b"swapped-after-check").unwrap();
+    let mut read = Vec::new();
+    model.for_child().unwrap().read_to_end(&mut read).unwrap();
+    assert_eq!(read, GOOD);
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -36,7 +61,7 @@ fn broken_model_of_same_size_is_not_selected() {
     let mut bytes = GOOD.to_vec();
     bytes[0] ^= 0xff;
     let (dir, path) = model_at("model-broken", &bytes);
-    let (model, reject) = select_lm_model(true, &path, NAME, &known());
+    let (model, reject) = checked(true, &path, NAME);
     assert_eq!(model, None);
     assert_eq!(reject, Some(ModelReject::Sha256));
     let _ = std::fs::remove_dir_all(dir);
@@ -45,7 +70,7 @@ fn broken_model_of_same_size_is_not_selected() {
 #[test]
 fn model_of_unknown_size_is_not_selected() {
     let (dir, path) = model_at("model-size", b"short");
-    let (model, reject) = select_lm_model(true, &path, NAME, &known());
+    let (model, reject) = checked(true, &path, NAME);
     assert_eq!(model, None);
     assert_eq!(reject, Some(ModelReject::Size));
     let _ = std::fs::remove_dir_all(dir);
@@ -54,7 +79,7 @@ fn model_of_unknown_size_is_not_selected() {
 #[test]
 fn model_with_unknown_name_is_not_selected() {
     let (dir, path) = model_at("model-name", GOOD);
-    let (model, reject) = select_lm_model(true, &path, "other.gguf", &known());
+    let (model, reject) = checked(true, &path, "other.gguf");
     assert_eq!(model, None);
     assert_eq!(reject, Some(ModelReject::UnknownName));
     let _ = std::fs::remove_dir_all(dir);
@@ -63,9 +88,9 @@ fn model_with_unknown_name_is_not_selected() {
 #[test]
 fn nothing_is_checked_when_lm_is_not_wanted_or_the_file_is_absent() {
     let (dir, path) = model_at("model-skip", b"not checked");
-    assert_eq!(select_lm_model(false, &path, NAME, &known()), (None, None));
+    assert_eq!(checked(false, &path, NAME), (None, None));
     let gone = dir.join("nothing.gguf");
-    assert_eq!(select_lm_model(true, &gone, NAME, &known()), (None, None));
+    assert_eq!(checked(true, &gone, NAME), (None, None));
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -105,14 +130,14 @@ fn symlink_to_correct_model_passes_and_to_broken_model_is_rejected() {
     let (dir, good) = model_at("model-link", GOOD);
     let link = dir.join("link.gguf");
     std::os::unix::fs::symlink(&good, &link).unwrap();
-    let (model, reject) = select_lm_model(true, &link, NAME, &known());
-    assert_eq!(model.as_deref(), Some(link.as_path()));
+    let (model, reject) = checked(true, &link, NAME);
+    assert_eq!(model, Some(link.clone()));
     assert_eq!(reject, None);
 
     let mut bytes = GOOD.to_vec();
     bytes[0] ^= 0xff;
     std::fs::write(&good, &bytes).unwrap();
-    let (model, reject) = select_lm_model(true, &link, NAME, &known());
+    let (model, reject) = checked(true, &link, NAME);
     assert_eq!(model, None);
     assert_eq!(reject, Some(ModelReject::Sha256));
     let _ = std::fs::remove_dir_all(dir);
@@ -124,7 +149,7 @@ fn directory_and_fifo_are_rejected_without_blocking() {
     let sub = dir.join("sub.gguf");
     std::fs::create_dir(&sub).unwrap();
     assert_eq!(
-        select_lm_model(true, &sub, NAME, &known()),
+        checked(true, &sub, NAME),
         (None, Some(ModelReject::Unreadable))
     );
     // FIFO は Unix にしかない（Windows の CI の Git の mkfifo は普通のファイルを作ってしまう）
@@ -138,7 +163,7 @@ fn directory_and_fifo_are_rejected_without_blocking() {
         assert!(status.success());
         // open すると書き手が来るまで止まる。止まらずに返ること（種類を先に見る）
         assert_eq!(
-            select_lm_model(true, &fifo, NAME, &known()),
+            checked(true, &fifo, NAME),
             (None, Some(ModelReject::Unreadable))
         );
     }

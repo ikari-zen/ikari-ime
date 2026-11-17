@@ -24,11 +24,13 @@ mod diag;
 mod diag_schema;
 mod dispatch;
 mod lm;
+mod lm_cage;
 mod lock;
 mod log;
 #[cfg(test)]
 mod mock_seam;
 mod model_check;
+mod model_select;
 mod rss;
 mod segments;
 mod session;
@@ -54,9 +56,10 @@ use ikari_proto::SCHEMA_VERSION;
 use ikari_proto::v1 as pb;
 use ikari_proto::v1::{Envelope, ErrorCode, ErrorReply, LmState, envelope};
 use ikari_runmark::RunMark;
+use ikari_stack::lm_cage::CageSlot;
 use ikari_stack::{
-    LmOverrides, LmStats, ProfileSel, RankerSet, Reuse, Stack, StackError, StackOptions,
-    StackPaths, build_stack, build_stack_with, lm_host_exe_name,
+    LmIsolation, LmOverrides, LmStats, ProfileSel, RankerSet, Reuse, Stack, StackError,
+    StackOptions, StackPaths, build_stack, build_stack_with, lm_host_exe_name,
 };
 use prost::Message;
 
@@ -246,18 +249,22 @@ impl Engine {
         let idle_unload_secs = settings.idle_unload_secs.unwrap_or(cfg.idle_unload_secs);
 
         let lock = EngineLock::acquire(&data_dir).map_err(|e| EngineError::Open(e.to_string()))?;
-        let model = data_dir.join(MODELS_DIR_NAME).join(MODEL_FILE_NAME);
-        // 読む前に、既知のモデルの表と照合する。通らなければ LM なしで起動する（理由はログに書く）
-        // （LM のないビルドでも照合して記録する。読むのは LM のあるビルドだけ）
-        let (lm_model, model_reject) = model_check::select_lm_model(
-            lm_requested,
-            &model,
-            MODEL_FILE_NAME,
-            ikari_resource::KNOWN_MODELS,
-        );
+        // どのモデルを、どの檻の段で読むか（ADR 0060 §7、ADR 0072 §12.8 の 1。`model_select`）
+        let resolved = model_select::resolve_model(lm_requested, &data_dir, &settings);
         // 別プロセスの子があれば、このビルドに llama.cpp が無くても LM を使える
         let lm_host = lm_host.resolve();
-        let lm_model = lm_model.filter(|_| lm_host.is_some() || cfg!(feature = "lm"));
+        // 照合したハンドルは、エンジンの寿命の間持ち、子に渡す（FC-3）。読まないビルドでは持たない
+        let lm_handle = resolved
+            .model
+            .filter(|_| lm_host.is_some() || cfg!(feature = "lm"));
+        let lm_model = lm_handle.as_ref().map(|h| h.path().to_owned());
+        // 子の起動の口（ADR 0077。`lm_cage`）。檻役の口は、開いたあとに `attach_lm_cage` で入る
+        let lm_cage_slot = Arc::new(CageSlot::default());
+        let lm_isolation = LmIsolation {
+            cage: model_select::cage_for(resolved.origin),
+            launcher: lm_cage::product_launcher(&lm_cage_slot),
+            model: lm_handle,
+        };
         // GPU のときだけ解放を遅くする対象か（Vulkan。Metal の挙動は変えない）。別プロセスのときは、
         // このビルドの feature ではなく OS で見る（子が Vulkan のビルドかは、エンジンからは分からない。
         // GPU に載らなければ、遅くする値は使われない）
@@ -276,6 +283,7 @@ impl Engine {
         };
         let mut opts = stack_options(idle_unload_secs, lm_budget);
         opts.lm.gpu = Some(settings.lm_gpu_or_default());
+        opts.lm_isolation = lm_isolation;
         if slow_gpu_unload {
             opts.lm.idle_unload_gpu_secs = Some(
                 settings
@@ -296,17 +304,21 @@ impl Engine {
         };
         let stack = build_stack(&paths, &opts).map_err(|e| EngineError::Open(e.to_string()))?;
         let rebuild: StackBuilder = Box::new(move |reuse| build_stack_with(&paths, &opts, reuse));
-        let engine = Engine::from_parts(EngineParts {
-            stack,
-            rebuild: Some(rebuild),
-            data_dir: Some(data_dir),
-            lm_requested,
-            lm_budget,
-            convert_wait: settings.convert_wait_or_default(),
-            lock: Some(lock),
-        });
-        if let Some(reason) = model_reject {
-            engine.inner.record_lm_reject(MODEL_FILE_NAME, reason);
+        let engine = Engine::from_parts_with(
+            EngineParts {
+                stack,
+                rebuild: Some(rebuild),
+                data_dir: Some(data_dir),
+                lm_requested,
+                lm_budget,
+                convert_wait: settings.convert_wait_or_default(),
+                lock: Some(lock),
+            },
+            None,
+            lm_cage_slot,
+        );
+        if let Some(reason) = resolved.reject {
+            engine.inner.record_lm_reject(&resolved.file_name, reason);
         }
         Ok(engine)
     }
@@ -320,6 +332,15 @@ impl Engine {
     pub(crate) fn from_parts_seam(
         parts: EngineParts,
         seam_override: Option<Arc<dyn SegmentSeam>>,
+    ) -> Engine {
+        Engine::from_parts_with(parts, seam_override, Arc::default())
+    }
+
+    /// `from_parts_seam` と同じ。檻役の口を入れる場所（`lm_cage`）を、組み立てに渡したものと同じにする
+    fn from_parts_with(
+        parts: EngineParts,
+        seam_override: Option<Arc<dyn SegmentSeam>>,
+        lm_cage: Arc<CageSlot>,
     ) -> Engine {
         let EngineParts {
             stack,
@@ -382,6 +403,7 @@ impl Engine {
             save_io: Mutex::new(()),
             learning_quarantined,
             seam_override,
+            lm_cage,
         });
         diag::set_panic_log(&inner.log);
         // 前回の終わり方は、このエンジンの最初の行にする（ワーカーを起こす前に書く）
@@ -570,6 +592,8 @@ struct Inner {
     learning_quarantined: AtomicBool,
     /// 文節の区切りをコアに頼む口。None なら本番（`RealSeam`）。テストだけがモックを入れる
     seam_override: Option<Arc<dyn SegmentSeam>>,
+    /// 檻役の口（macOS の段 2。ADR 0077。`lm_cage`）。組み立ての `HostLauncher::Cage` と同じもの
+    lm_cage: Arc<CageSlot>,
 }
 
 /// 起動時にデータ用フォルダ（本体、backups、logs）を 0700、中のファイルを 0600 にする。

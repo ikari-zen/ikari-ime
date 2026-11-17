@@ -270,13 +270,20 @@ pub fn verify_model_file(
     file_name: &str,
     known: &[KnownModel],
 ) -> Result<(), ResourceError> {
-    let Some(model) = known.iter().find(|m| m.file_name == file_name) else {
-        return Err(ResourceError::UnknownModel {
-            name: file_name.to_owned(),
-            sha256: String::new(),
-        });
-    };
+    known_model(file_name, known)?;
     let file = File::open(path).map_err(|e| ResourceError::io(path, e))?;
+    verify_model_open(&file, path, file_name, known)
+}
+
+/// [`verify_model_file`] と同じ照合を、開いたハンドルで行う（照合した物と、あとで子に渡す物を同じにする。C-03、FC-3）。
+/// 読むのは位置を動かさない読み方（unix の `read_at`）で、ハンドルの読み書きの位置に依らない。`path` は誤りの文にだけ使う
+pub fn verify_model_open(
+    file: &File,
+    path: &Path,
+    file_name: &str,
+    known: &[KnownModel],
+) -> Result<(), ResourceError> {
+    let model = known_model(file_name, known)?;
     let meta = file.metadata().map_err(|e| ResourceError::io(path, e))?;
     if !meta.is_file() {
         return Err(ResourceError::NotRegularFile {
@@ -298,7 +305,8 @@ pub fn verify_model_file(
             actual,
         });
     }
-    let digest = sha256_reader(file).map_err(|e| ResourceError::io(path, e))?;
+    let digest = sha256_reader(PositionalReader { file, offset: 0 })
+        .map_err(|e| ResourceError::io(path, e))?;
     if digest != model.sha256 {
         return Err(ResourceError::Sha256Mismatch {
             name: file_name.to_owned(),
@@ -307,6 +315,37 @@ pub fn verify_model_file(
         });
     }
     Ok(())
+}
+
+fn known_model<'a>(
+    file_name: &str,
+    known: &'a [KnownModel],
+) -> Result<&'a KnownModel, ResourceError> {
+    known
+        .iter()
+        .find(|m| m.file_name == file_name)
+        .ok_or_else(|| ResourceError::UnknownModel {
+            name: file_name.to_owned(),
+            sha256: String::new(),
+        })
+}
+
+/// 先頭から順に、位置を指定して読む（ハンドルの位置を共有する写しがあっても、その位置に依らない）。
+/// Windows の `seek_read` はハンドルの位置も動かすが、Windows の子はモデルをパスで開くので関わらない
+struct PositionalReader<'a> {
+    file: &'a File,
+    offset: u64,
+}
+
+impl std::io::Read for PositionalReader<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        #[cfg(unix)]
+        let n = std::os::unix::fs::FileExt::read_at(self.file, buf, self.offset)?;
+        #[cfg(windows)]
+        let n = std::os::windows::fs::FileExt::seek_read(self.file, buf, self.offset)?;
+        self.offset += n as u64;
+        Ok(n)
+    }
 }
 
 fn reject_if_symlink(path: &Path, name: &str) -> Result<(), ResourceError> {

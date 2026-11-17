@@ -334,6 +334,68 @@ pub unsafe extern "C" fn ikari_settings_core_import(
     }))
 }
 
+/// 自由指定のモデルをファイルから取り込む（ADR 0076 §7、ADR 0060 の段 4）。画面はファイルを選ぶ窓で得たパスと、
+/// 形式の語、sha256（空なら照らさない。警告の確認を済ませたとき）、表示の名前（空でよい）を渡す。結果の文は `msg`。
+///
+/// 契約のスタブ（第 4 弾。中身はレーン D-4）: 今は送らずに `ERR_FAILED`。
+///
+/// # Safety
+/// `ikari_settings_core_edit` と同じ。
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn ikari_settings_core_import_model(
+    session: *const SettingsSession,
+    path: *const u8,
+    path_len: usize,
+    format: *const u8,
+    format_len: usize,
+    sha256: *const u8,
+    sha256_len: usize,
+    name: *const u8,
+    name_len: usize,
+    msg: *mut IkariSettingsBuf,
+) -> i32 {
+    // SAFETY: 呼び出しの約束
+    let session = unsafe { session.as_ref() };
+    // SAFETY: 呼び出しの約束
+    let strings = unsafe {
+        (
+            read_str(path, path_len),
+            read_str(format, format_len),
+            read_str(sha256, sha256_len),
+            read_str(name, name_len),
+        )
+    };
+    let (Some(session), (Some(path), Some(format), Some(sha256), Some(name))) = (session, strings)
+    else {
+        return IKARI_SETTINGS_CORE_ERR_ARG;
+    };
+    guarded(AssertUnwindSafe(|| {
+        let sha256 = (!sha256.is_empty()).then_some(sha256);
+        let name = (!name.is_empty()).then_some(name);
+        match session.link.import_model_file(path, format, sha256, name) {
+            Ok(_) => IKARI_SETTINGS_CORE_OK,
+            Err(e) => fail(&e, msg),
+        }
+    }))
+}
+
+/// 自由指定のモデル（URL、ファイル）のボタンを出してよいか（1 なら出す、0 なら出さない）。判断は核
+/// （段 2 のある OS でだけ出す。ADR 0072 §4.2、ADR 0076 §7）。`session` は null でよい（つながっていない）。
+///
+/// 契約のスタブ（第 4 弾。中身はレーン D-4）: 今は常に 0。
+///
+/// # Safety
+/// `session` は null か、開いたもの。
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ikari_settings_core_custom_model_offered(
+    session: *const SettingsSession,
+) -> i32 {
+    // SAFETY: 呼び出しの約束
+    let _ = unsafe { session.as_ref() };
+    0
+}
+
 /// 書き出しの既定の名前（`ikari-export-YYYYMMDD.tsv`）。年月日は画面が利用者の暦と時刻帯で数えて渡す。
 ///
 /// # Safety

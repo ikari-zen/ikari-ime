@@ -18,8 +18,10 @@ use std::time::{Duration, Instant};
 
 /// LM の推論の取り消しの印と、スレッドの範囲（ADR 0074。エンジンが先行計算のジョブに付ける）
 pub use ikari_lm::cancel as lm_cancel;
+pub use ikari_lm::host::cage as lm_cage;
 /// 別プロセスの LM（`ikari-lm-host`）の実行ファイルの名前（Windows は `.exe` つき）
 pub use ikari_lm::host::host_exe_name as lm_host_exe_name;
+pub use ikari_lm::host::{HostCage, HostLauncher, LmIsolation, ModelHandle as LmModelHandle};
 /// LM の計測の型と記録（エンジンが `ikari-lm` を直接知らずに使う。ADR 0061）
 pub use ikari_lm::trace as lm_trace;
 pub use ikari_lm::{CancelToken, LmDevice, LmTrace};
@@ -224,6 +226,9 @@ pub struct StackOptions {
     pub unicode: UnicodeOptions,
     /// 日付の動作（設定 `date.weekday_dates`）
     pub date: DateOptions,
+    /// LM の子の檻（求める段と起動の口。別プロセスで動かすときだけ使う。既定は段 1 で自分で起動する。
+    /// ADR 0072 §4、ADR 0077）
+    pub lm_isolation: LmIsolation,
 }
 
 impl fmt::Debug for StackOptions {
@@ -244,6 +249,7 @@ impl fmt::Debug for StackOptions {
             .field("postal", &self.postal)
             .field("unicode", &self.unicode)
             .field("date", &self.date)
+            .field("lm_isolation", &self.lm_isolation)
             .finish()
     }
 }

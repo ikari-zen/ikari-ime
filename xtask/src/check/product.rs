@@ -140,6 +140,55 @@ fn spawn_calls_outside_tests(text: &str) -> Vec<usize> {
     found
 }
 
+/// macOS の LM の子を、エンジンが自分で起こす口（ADR 0077 §6。FC-4）
+const MAC_DIRECT_SPAWN_FILE: &str = "lm/src/host/os/apple.rs";
+const MAC_SPAWN_FN: &str = "pub(super) fn spawn(";
+const MAC_GATE_FN: &str = "pub(super) fn direct_spawn_allowed() -> bool {";
+const MAC_GATE_CALL: &str = "if !direct_spawn_allowed() {";
+/// 自分で起こしてよいのは、テストと開発用のビルドだけ
+const MAC_GATE_BODY: &str = "cfg!(any(test, feature = \"dev-knobs\"))";
+/// 移行の間だけ足してよい定数（D-3-mac で消す）
+const MAC_GATE_TRANSITION: &str = "|| DIRECT_SPAWN_TRANSITION";
+
+/// 製品の macOS で、エンジンが自分で LM の子を起こす口が、テストと開発用のビルドに閉じていること（FC-4）
+pub fn mac_direct_spawn_closed(root: &Path) -> Result<(), Failure> {
+    log("macOS の製品のビルドで、エンジンが自分で LM の子を起こさないこと（ADR 0077 §6）");
+    let text = read(root, MAC_DIRECT_SPAWN_FILE)?;
+    finish(
+        mac_direct_spawn_problems(&text, false)
+            .into_iter()
+            .map(|p| format!("{MAC_DIRECT_SPAWN_FILE}: {p}"))
+            .collect(),
+    )
+}
+
+/// `strict` なら、移行の間の定数も認めない（D-3-mac のあと）
+fn mac_direct_spawn_problems(text: &str, strict: bool) -> Vec<String> {
+    let lines: Vec<&str> = text.lines().map(str::trim).collect();
+    let first_after = |head: &str| {
+        let at = lines.iter().position(|l| l.starts_with(head))?;
+        // 宣言の `{` の行の次の、空でない最初の行
+        let open = (at..lines.len()).find(|&i| lines[i].ends_with('{'))?;
+        lines[open + 1..].iter().find(|l| !l.is_empty()).copied()
+    };
+    let mut problems = Vec::new();
+    if first_after(MAC_SPAWN_FN) != Some(MAC_GATE_CALL) {
+        problems.push(format!(
+            "`{MAC_SPAWN_FN}` の最初の行が `{MAC_GATE_CALL}` ではありません"
+        ));
+    }
+    let body = first_after(MAC_GATE_FN);
+    let transition = format!("{MAC_GATE_BODY} {MAC_GATE_TRANSITION}");
+    let ok = body == Some(MAC_GATE_BODY) || (!strict && body == Some(transition.as_str()));
+    if !ok {
+        problems.push(format!(
+            "`{MAC_GATE_FN}` の中身が `{MAC_GATE_BODY}` ではありません: {}",
+            body.unwrap_or("（見つからない）")
+        ));
+    }
+    problems
+}
+
 /// 通信の呼び出しを書いてよい、唯一のファイル（ADR 0076 §10）
 const NET_ENTRY: &str = "fetch/src/transfer.rs";
 /// 製品のソースに書かない語（通信の呼び出し）。`NET_ENTRY` だけが使う
@@ -402,6 +451,39 @@ mod tests {
         let found = ungated_words(text);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].0, 11);
+    }
+
+    const MAC_OK: &str = "pub(super) fn direct_spawn_allowed() -> bool {\n    cfg!(any(test, feature = \"dev-knobs\"))\n}\n\npub(super) fn spawn(\n    program: &Path,\n) -> io::Result<()> {\n    if !direct_spawn_allowed() {\n        return Err(e);\n    }\n";
+
+    #[test]
+    fn mac_direct_spawn_must_be_gated_to_tests_and_dev_knobs() {
+        assert!(mac_direct_spawn_problems(MAC_OK, true).is_empty());
+        let transition = MAC_OK.replace(
+            "\"dev-knobs\"))\n",
+            "\"dev-knobs\")) || DIRECT_SPAWN_TRANSITION\n",
+        );
+        assert!(mac_direct_spawn_problems(&transition, false).is_empty());
+        assert_eq!(mac_direct_spawn_problems(&transition, true).len(), 1);
+        let ungated = MAC_OK.replace("    if !direct_spawn_allowed() {\n", "");
+        assert_eq!(mac_direct_spawn_problems(&ungated, false).len(), 1);
+        let widened = MAC_OK.replace("any(test, feature = \"dev-knobs\")", "any(test, unix)");
+        assert_eq!(mac_direct_spawn_problems(&widened, false).len(), 1);
+        assert_eq!(mac_direct_spawn_problems("", false).len(), 2);
+    }
+
+    #[test]
+    fn the_repository_passes_the_mac_direct_spawn_check() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let text = read(&root, MAC_DIRECT_SPAWN_FILE).unwrap();
+        assert!(mac_direct_spawn_problems(&text, false).is_empty());
+    }
+
+    #[test]
+    #[ignore = "D-3-mac: 檻役の起動をつないだら、移行の間の定数（DIRECT_SPAWN_TRANSITION）を消す"]
+    fn mac_direct_spawn_has_no_transition() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let text = read(&root, MAC_DIRECT_SPAWN_FILE).unwrap();
+        assert!(mac_direct_spawn_problems(&text, true).is_empty());
     }
 
     #[test]

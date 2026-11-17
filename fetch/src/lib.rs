@@ -7,6 +7,7 @@
 //! - `transfer`: 通信（`ureq`。設定は 1 か所）。`child`、`spawn_windows`: Windows の低い整合性の子
 //! - `workspace`: 作業の場所、錠、片づけ、ディスクの見積もり
 //! - `job`: 流れ（落とす → 信じずに数え直して写す → rename）。`run`: 入口
+//! - `version`: 版の確認（`version-check`。ADR 0076 §6）
 //!
 //! 判断の置き場所: すべて Rust（UI の C#・Swift には判断を置かない）。
 
@@ -21,6 +22,7 @@ pub mod run;
 pub mod spawn_windows;
 pub mod transfer;
 pub mod url;
+pub mod version;
 pub mod workspace;
 
 pub use error::FetchError;
