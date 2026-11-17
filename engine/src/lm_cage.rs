@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use ikari_proto::v1 as pb;
 use ikari_stack::HostLauncher;
-use ikari_stack::lm_cage::{CageClient, CageSlot};
+use ikari_stack::lm_cage::{CageClient, CageSlot, HandshakeError};
 
 use crate::Engine;
 
@@ -28,10 +28,10 @@ pub(crate) fn hello_lm_cage(slot: &CageSlot) -> pb::LmCage {
 }
 
 impl Engine {
-    /// 檻役の口を入れる（前の口は捨てる）。口の先の署名要件の確かめは、口を作る側（`ikari_stack::lm_cage`）が
-    /// 済ませてから渡す（D-3-mac）。確かめていない口を渡さない
-    pub fn attach_lm_cage(&self, client: Arc<dyn CageClient>) {
-        self.inner.lm_cage.attach(client);
+    /// 殻から届いた檻役の口を確かめ（`hello` の返事の送り手の署名要件と版。FC-1）、通れば入れる（前の口は捨てる）。
+    /// 通らなければ届いた口を捨て、今の口はそのまま。確かめる前の口には `hello` しか送らない
+    pub fn attach_lm_cage(&self, client: Arc<dyn CageClient>) -> Result<(), HandshakeError> {
+        self.inner.lm_cage.attach_unverified(client)
     }
 }
 

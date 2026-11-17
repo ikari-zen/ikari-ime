@@ -28,8 +28,13 @@ mod appcontainer;
 mod apple;
 #[cfg(any(windows, test))]
 mod cmdline;
+#[cfg(unix)]
+mod fd;
 #[cfg(windows)]
 mod windows;
+
+#[cfg(unix)]
+pub(crate) use fd::fd_facts;
 
 #[cfg(target_vendor = "apple")]
 use apple as imp;
