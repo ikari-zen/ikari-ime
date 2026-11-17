@@ -136,7 +136,7 @@ make_xcframework() { # <.a> <ヘッダのディレクトリ> <ヘッダ名> <モ
 
 # 檻役の bin（llama.cpp なし。ADR 0077 §3.4）。LM の子と feature が違うので、target のディレクトリを分ける
 build_cage() {
-  log "cargo build: $LM_CAGE_NAME（llama.cpp なし）"
+  log "cargo build: ${LM_CAGE_NAME}（llama.cpp なし）"
   (cd "$IKARI_ROOT" && CARGO_TARGET_DIR="$IKARI_ROOT/target/lm-cage" cargo build --release \
     --target "$RUST_TARGET" -p ikari-lm --bin "$LM_CAGE_NAME") || die "$LM_CAGE_NAME をビルドできません"
   [[ -x "$LM_CAGE_BUILT" ]] || die "$LM_CAGE_BUILT がありません"
@@ -379,8 +379,8 @@ verify_bundle() {
 # 署名要件が殻（名前の口）とエンジン（匿名の口）を指す
 verify_cage() {
   local lm_host="$CAGE/Contents/MacOS/$LM_HOST_NAME" cage_exe="$CAGE/Contents/MacOS/$LM_CAGE_NAME"
-  [[ -x "$cage_exe" ]] || die "檻役（$LM_CAGE_NAME）が $CAGE にありません"
-  [[ -x "$lm_host" ]] || die "LM の子（$LM_HOST_NAME）が檻役の束にありません"
+  [[ -x "$cage_exe" ]] || die "檻役（${LM_CAGE_NAME}）が $CAGE にありません"
+  [[ -x "$lm_host" ]] || die "LM の子（${LM_HOST_NAME}）が檻役の束にありません"
   codesign --verify --deep --strict "$CAGE" || die "檻役の署名を検証できません"
 
   local info identifier host_info
@@ -407,7 +407,7 @@ verify_cage() {
   grep -q "MacOS/$LM_HOST_NAME" "$CAGE/Contents/_CodeSignature/CodeResources" || die "檻役の署名が $LM_HOST_NAME を封印していません"
   grep -q "XPCServices/IkariLMCage.xpc" "$APP/Contents/_CodeSignature/CodeResources" || die "ikari.app の署名が IkariLMCage.xpc を封印していません"
   # 檻役は llama.cpp を持たない（LM は子だけが持つ）
-  if grep -aqE 'llama_model_load|ggml_backend' "$cage_exe"; then die "檻役（$LM_CAGE_NAME）に llama.cpp が入っています"; fi
+  if grep -aqE 'llama_model_load|ggml_backend' "$cage_exe"; then die "檻役（${LM_CAGE_NAME}）に llama.cpp が入っています"; fi
   echo "lm host: no entitlements (inherits the cage sandbox), sealed by the cage; cage: no llama.cpp"
 
   # 署名要件: 檻役が、自分の名前の口（殻）と匿名の口（エンジン）の要件を持ち、相手が檻役の要件を満たす
@@ -424,7 +424,7 @@ verify_cage() {
   # 読む側（檻役の bin、エンジンの殻）が、ここで埋めたキーと同じ名前を読む（キーの名前の食い違いを防ぐ）
   local key
   for key in IkariPeerRequirement IkariCageEnginePeerRequirement; do
-    grep -aqF "$key" "$cage_exe" || die "檻役（$LM_CAGE_NAME）が Info.plist のキー $key を読みません"
+    grep -aqF "$key" "$cage_exe" || die "檻役（${LM_CAGE_NAME}）が Info.plist のキー $key を読みません"
   done
   grep -aqF IkariCagePeerRequirement "$XPC/Contents/MacOS/IkariEngine" || die "エンジンが Info.plist のキー IkariCagePeerRequirement を読みません"
   echo "signing requirements satisfied (lm cage); cage allow-lists: shell (named), engine (anonymous)"
