@@ -755,6 +755,7 @@ name = "ikari-resource"
 version = "0.1.0"
 dependencies = [
  "ikari-dict-format",
+ "ikari-textfile",
  "serde",
  "serde_json",
  "sha2",

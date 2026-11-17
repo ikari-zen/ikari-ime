@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 ikari-dict-format.workspace = true
+ikari-textfile.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
