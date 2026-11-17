@@ -27,6 +27,7 @@ pub fn run(args: &[String], out: &mut dyn Write) -> i32 {
     };
     match command {
         Command::Transfer(transfer) => run_transfer(&transfer, out),
+        Command::VersionProbe => run_version_probe(out),
         Command::ModelFetch(_) | Command::Cleanup | Command::VersionCheck => {
             run_parent(command, out)
         }
@@ -39,7 +40,7 @@ fn run_parent(command: Command, out: &mut dyn Write) -> i32 {
         job::emit(out, &Report::Error(FetchErrorCode::Refused));
         return EXIT_ERROR;
     }
-    // 版の確認（ADR 0076 §6。`version`。中身は D-2d）。作業の場所も錠も使わない
+    // 版の確認（ADR 0076 §6）。作業の場所も錠も使わない
     if command == Command::VersionCheck {
         return crate::version::run_version_check(out);
     }
@@ -61,7 +62,7 @@ fn run_parent(command: Command, out: &mut dyn Write) -> i32 {
             };
             job::model_fetch(&source, &ctx, out)
         }
-        Command::VersionCheck | Command::Transfer(_) => EXIT_USAGE,
+        Command::VersionCheck | Command::VersionProbe | Command::Transfer(_) => EXIT_USAGE,
     }
 }
 
@@ -108,6 +109,23 @@ fn run_transfer(args: &TransferArgs, out: &mut dyn Write) -> i32 {
 /// macOS は子を作らない（自分で通信する）ので、Windows 以外の `transfer` は使わせない
 #[cfg(not(windows))]
 fn run_transfer(_args: &TransferArgs, _out: &mut dyn Write) -> i32 {
+    EXIT_USAGE
+}
+
+/// 版の確認の通信をする子の仕事。`transfer` と同じく、Windows では低い整合性でなければ `refused`
+#[cfg(windows)]
+fn run_version_probe(out: &mut dyn Write) -> i32 {
+    use ikari_pipe::os::windows::current_integrity_rid;
+    if !crate::child::is_low_integrity(current_integrity_rid()) {
+        job::emit(out, &Report::Error(FetchErrorCode::Refused));
+        return EXIT_ERROR;
+    }
+    crate::version::run_probe(out)
+}
+
+/// macOS は子を作らない（`version-check` が自分で通信する）ので、Windows 以外の `version-probe` は使わせない
+#[cfg(not(windows))]
+fn run_version_probe(_out: &mut dyn Write) -> i32 {
     EXIT_USAGE
 }
 
@@ -241,16 +259,20 @@ mod tests {
         }
     }
 
+    #[cfg(windows)]
     #[test]
-    fn version_check_is_not_implemented_yet() {
-        let (code, out) = run_str("version-check");
-        // Windows のテストは中の整合性で動くので、実装の前に `refused` で終わる
-        let expected = if cfg!(windows) {
-            "error refused\n"
-        } else {
-            "error tool\n"
-        };
-        assert_eq!((code, out.as_str()), (EXIT_ERROR, expected));
+    fn version_probe_refuses_unless_low_integrity() {
+        // Windows のテストは中の整合性で動くので、通信の前に `refused` で終わる
+        assert_eq!(
+            run_str("version-probe"),
+            (EXIT_ERROR, "error refused\n".to_owned())
+        );
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn version_probe_is_not_for_people_outside_windows() {
+        assert_eq!(run_str("version-probe"), (EXIT_USAGE, String::new()));
     }
 
     #[cfg(not(windows))]

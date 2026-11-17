@@ -26,6 +26,8 @@ pub enum Command {
     Cleanup,
     /// 通信する子の仕事（`ikari-data` が自分の子にだけ使う。使い方の表示には出さない）
     Transfer(TransferArgs),
+    /// 版の確認の通信をする子の仕事（`transfer` と同じく、自分の子にだけ使う。引数なし）
+    VersionProbe,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,6 +68,7 @@ pub fn parse(args: &[String]) -> Result<Command, Usage> {
             parse_model_fetch(rest)
         }
         "version-check" if rest.is_empty() => Ok(Command::VersionCheck),
+        "version-probe" if rest.is_empty() => Ok(Command::VersionProbe),
         "cleanup" if rest.is_empty() => Ok(Command::Cleanup),
         "transfer" => parse_transfer(rest),
         _ => Err(Usage),
@@ -184,6 +187,8 @@ mod tests {
             }))
         );
         assert_eq!(parse_str("version-check"), Ok(Command::VersionCheck));
+        assert_eq!(parse_str("version-probe"), Ok(Command::VersionProbe));
+        assert_eq!(parse_str("version-probe --x 1"), Err(Usage));
         assert_eq!(parse_str("cleanup"), Ok(Command::Cleanup));
         assert_eq!(
             parse_str(&format!(
