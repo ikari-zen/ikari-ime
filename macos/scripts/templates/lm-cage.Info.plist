@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- IkariLMCage.xpc の Info.plist のテンプレート（ADR 0077 §3.4）。
+     版、IkariSigningMode、IkariPeerRequirement、IkariEnginePeerRequirement は build.sh が PlistBuddy で埋める。
+     IkariPeerRequirement: 名前の口（殻。開発の smoke を含む）が満たす要件。ikari-smoke --print-requirement shell|shell-distribution <方式> の出力。
+     IkariEnginePeerRequirement: 匿名の口（エンジンだけ）が満たす要件。ikari-smoke --print-requirement engine <方式> の出力。
+     どちらも SigningRequirements（IkariXPC）が唯一の出どころ。書かれていなければ、檻役は全部の接続を断る。 -->
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>ja</string>
+    <key>CFBundleExecutable</key>
+    <string>ikari-lm-cage</string>
+    <key>CFBundleIdentifier</key>
+    <string>@IKARI_ID_PREFIX@.inputmethod.ikari.lm-cage</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>IkariLMCage</string>
+    <key>CFBundlePackageType</key>
+    <string>XPC!</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.0.0</string>
+    <key>CFBundleVersion</key>
+    <string>0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>26.0</string>
+    <key>XPCService</key>
+    <dict>
+        <key>ServiceType</key>
+        <string>Application</string>
+    </dict>
+    <key>IkariSigningMode</key>
+    <string>team</string>
+    <key>IkariPeerRequirement</key>
+    <string></string>
+    <key>IkariEnginePeerRequirement</key>
+    <string></string>
+</dict>
+</plist>

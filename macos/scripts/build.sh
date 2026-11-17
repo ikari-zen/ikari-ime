@@ -6,9 +6,10 @@
 #   --signing team   Apple Development 証明書（チームID（`lib.sh` の `TEAM_ID`））で署名する。既定
 #   --signing adhoc  ad-hoc 署名（署名要件は identifier の一致だけになる）
 #   --release/--debug  Swift のビルド種別（Rust は常に release）。既定は release
-#   --no-lm          llama.cpp（Metal）を入れない（cmake が使えないとき、LM が要らないとき）。LM の子（ikari-lm-host）も作らない
+#   --no-lm          llama.cpp（Metal）を入れない（cmake が使えないとき、LM が要らないとき）。LM の子（ikari-lm-host）も、檻役（IkariLMCage.xpc）も作らない
 #   --skip-rust      cargo と XCFramework の作成を飛ばし、macos/Frameworks/ にあるものを使う
-#   --allow-stub     XCFramework がなくてもビルドする（FFI なしのスタブのエンジンになる。インストールしてはいけない）
+#   --allow-stub     XCFramework がなくてもビルドする（FFI なしのスタブのエンジンになる。インストールしてはいけない）。
+#                    檻役の bin（ikari-lm-cage）がまだ無いときも、空のスタブで束と署名を作る（同じく、インストールしてはいけない）
 #   --distribution   配布用（未署名の公開物。ADR 0069 §6、#40）。--signing adhoc が要る。Smoke を同梱せず、エンジンの許可リストからも外す。出力は <種別>-adhoc-dist/
 #   --frameworks-only  XCFramework（macos/Frameworks/）だけ作って終わる。Swift のビルド、組み立て、署名はしない（CI の swift test 用）
 #
@@ -35,7 +36,7 @@ while [[ $# -gt 0 ]]; do
     --allow-stub) ALLOW_STUB=1 ;;
     --frameworks-only) FRAMEWORKS_ONLY=1 ;;
     --distribution) DISTRIBUTION=1 ;;
-    -h | --help) sed -n '2,16p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h | --help) sed -n '2,17p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) parse_common_flag "$1" || die "不明な引数: $1" ;;
   esac
   shift
@@ -52,14 +53,19 @@ SHELL_REQ_TARGET=shell
 [[ "$DISTRIBUTION" -eq 0 ]] || SHELL_REQ_TARGET=shell-distribution
 APP="$OUT/$APP_NAME"
 XPC="$APP/Contents/XPCServices/IkariEngine.xpc"
+# 檻役（ADR 0077）。LM の子を起動して回収するだけの XPC サービス（App Sandbox だけ。子はこの Sandbox を引き継ぐ）
+CAGE="$APP/Contents/XPCServices/IkariLMCage.xpc"
 SETTINGS="$APP/Contents/Helpers/$SETTINGS_APP_NAME"
 TEMPLATES="$IKARI_SCRIPTS_DIR/templates"
 FRAMEWORKS="$IKARI_MACOS_DIR/Frameworks"
 RUST_TARGET=aarch64-apple-darwin
-# LM の推論を担う別プロセス（ADR 0060 Q4）。エンジンは、自分の実行ファイルの隣（XPC サービスの Contents/MacOS/）から起動する。
-# App Sandbox はエンジンから引き継ぐ（ネットワークなし）。専用の（もっと狭い）Sandbox は、計測のあとに決める
+# LM の推論を担う別プロセス（ADR 0060 Q4）。檻役の束（IkariLMCage.xpc/Contents/MacOS/）に置き、檻役が起動する（ADR 0077 §3.4）。
+# App Sandbox は檻役から引き継ぐ（entitlement は付けない。ネットワークなし）
 LM_HOST_NAME=ikari-lm-host
 LM_HOST_BUILT="$IKARI_ROOT/target/lm/$RUST_TARGET/release/$LM_HOST_NAME"
+# 檻役の実行ファイル（Rust の bin。llama.cpp は持たない）。LM の子とは別の target で作る（feature を混ぜない）
+LM_CAGE_NAME=ikari-lm-cage
+LM_CAGE_BUILT="$IKARI_ROOT/target/lm-cage/$RUST_TARGET/release/$LM_CAGE_NAME"
 VERSION="$(workspace_version)"
 [[ -n "$VERSION" ]] || die "Cargo.toml から版を読めません"
 
@@ -128,6 +134,19 @@ make_xcframework() { # <.a> <ヘッダのディレクトリ> <ヘッダ名> <モ
   xcodebuild -create-xcframework -library "$1" -headers "$staged" -output "$5" >/dev/null
 }
 
+# 檻役の bin。まだ無い（レーン 1a の前）ときは、--allow-stub なら空のスタブで進む
+build_cage() {
+  log "cargo build: $LM_CAGE_NAME"
+  if (cd "$IKARI_ROOT" && CARGO_TARGET_DIR="$IKARI_ROOT/target/lm-cage" cargo build --release \
+    --target "$RUST_TARGET" -p ikari-lm --bin "$LM_CAGE_NAME") && [[ -x "$LM_CAGE_BUILT" ]]; then
+    return
+  fi
+  [[ "$ALLOW_STUB" -eq 1 ]] || die "$LM_CAGE_NAME をビルドできません（--no-lm を付けるか、スタブでよければ --allow-stub を付ける）"
+  warn "$LM_CAGE_NAME をビルドできません（--allow-stub: 何もしないスタブを入れる。インストールしないこと）"
+  mkdir -p "$(dirname "$LM_CAGE_BUILT")"
+  printf 'int main(void) { return 0; }\n' | clang -x c -o "$LM_CAGE_BUILT" -
+}
+
 build_rust() {
   log "cargo build: ikari-shell-ffi"
   (cd "$IKARI_ROOT" && cargo build --release --target "$RUST_TARGET" -p ikari-shell-ffi)
@@ -149,6 +168,8 @@ build_rust() {
       --target "$RUST_TARGET" -p ikari-lm --bin "$LM_HOST_NAME" --features metal)
     [[ -x "$LM_HOST_BUILT" ]] || die "$LM_HOST_BUILT がありません"
   fi
+
+  if [[ "$WITH_LM" == 1 ]]; then build_cage; fi
 
   log "XCFramework"
   mkdir -p "$FRAMEWORKS" "$OUT"
@@ -206,14 +227,18 @@ assemble_bundle() {
   rm -rf "$APP"
   mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$XPC/Contents/MacOS" \
     "$SETTINGS/Contents/MacOS" "$SETTINGS/Contents/Resources"
+  [[ "$WITH_LM" == 0 ]] || mkdir -p "$CAGE/Contents/MacOS"
 
   cp "$BIN_DIR/ikari" "$APP/Contents/MacOS/ikari"
   [[ "$DISTRIBUTION" -eq 1 ]] || cp "$BIN_DIR/ikari-smoke" "$APP/Contents/MacOS/ikari-smoke"
   cp "$BIN_DIR/IkariEngine" "$XPC/Contents/MacOS/IkariEngine"
-  # LM の子は、エンジンの実行ファイルの隣に置く（エンジンは隣だけを見る。無ければ LM なしで動く）
+  # 檻役と、その束の中の LM の子（檻役は自分の束の中の ikari-lm-host だけを起動する。エンジンの束には置かない。ADR 0077 §3.4）。
+  # 檻役が無ければ、エンジンは「口が来ない → LM なし」で動く
   if [[ "$WITH_LM" == 1 ]]; then
     [[ -x "$LM_HOST_BUILT" ]] || die "$LM_HOST_BUILT がありません（--skip-rust を外してビルドするか、--no-lm を付ける）"
-    cp "$LM_HOST_BUILT" "$XPC/Contents/MacOS/$LM_HOST_NAME"
+    [[ -x "$LM_CAGE_BUILT" ]] || die "$LM_CAGE_BUILT がありません（--skip-rust を外してビルドするか、--no-lm を付ける）"
+    cp "$LM_HOST_BUILT" "$CAGE/Contents/MacOS/$LM_HOST_NAME"
+    cp "$LM_CAGE_BUILT" "$CAGE/Contents/MacOS/$LM_CAGE_NAME"
   fi
   cp "$BIN_DIR/IkariSettings" "$SETTINGS/Contents/MacOS/IkariSettings"
 
@@ -233,6 +258,18 @@ assemble_bundle() {
   plist_set_string "$XPC/Contents/Info.plist" CFBundleVersion "$VERSION"
   plist_set_string "$XPC/Contents/Info.plist" IkariSigningMode "$SIGNING"
   plist_set_string "$XPC/Contents/Info.plist" IkariPeerRequirement "$peer"
+  plist_set_string "$XPC/Contents/Info.plist" IkariLMCageRequirement "$("$BIN_DIR/ikari-smoke" --print-requirement lm-cage "$SIGNING")"
+
+  if [[ "$WITH_LM" == 1 ]]; then
+    # 檻役の名前の口は殻（開発では smoke も）、匿名の口はエンジンだけ。要件の出どころは SigningRequirements
+    cp "$TEMPLATES/lm-cage.Info.plist" "$CAGE/Contents/Info.plist"
+    render_identity "$CAGE/Contents/Info.plist"
+    plist_set_string "$CAGE/Contents/Info.plist" CFBundleShortVersionString "$VERSION"
+    plist_set_string "$CAGE/Contents/Info.plist" CFBundleVersion "$VERSION"
+    plist_set_string "$CAGE/Contents/Info.plist" IkariSigningMode "$SIGNING"
+    plist_set_string "$CAGE/Contents/Info.plist" IkariPeerRequirement "$peer"
+    plist_set_string "$CAGE/Contents/Info.plist" IkariEnginePeerRequirement "$("$BIN_DIR/ikari-smoke" --print-requirement engine "$SIGNING")"
+  fi
 
   assemble_settings_app
 
@@ -265,9 +302,13 @@ sign_bundle() {
   local common=(--force --options runtime --timestamp=none -s "$IDENTITY")
   # 内側から
   [[ "$DISTRIBUTION" -eq 1 ]] || codesign "${common[@]}" -i "$SMOKE_ID" "$APP/Contents/MacOS/ikari-smoke"
-  # LM の子: Hardened Runtime。entitlement は付けない（起動したエンジンの Sandbox をそのまま引き継ぐ）
-  if [[ -f "$XPC/Contents/MacOS/$LM_HOST_NAME" ]]; then
-    codesign "${common[@]}" -i "$LM_HOST_ID" "$XPC/Contents/MacOS/$LM_HOST_NAME"
+  # LM の子: Hardened Runtime。entitlement は付けない（起動した檻役の Sandbox をそのまま引き継ぐ）
+  if [[ -f "$CAGE/Contents/MacOS/$LM_HOST_NAME" ]]; then
+    codesign "${common[@]}" -i "$LM_HOST_ID" "$CAGE/Contents/MacOS/$LM_HOST_NAME"
+  fi
+  # 檻役: Hardened Runtime、App Sandbox だけ（network も一時例外もなし）。子の署名を封印する。エンジンより先に署名する
+  if [[ -d "$CAGE" ]]; then
+    codesign "${common[@]}" -i "$LM_CAGE_ID" --entitlements "$TEMPLATES/lm-cage.entitlements" "$CAGE"
   fi
   codesign "${common[@]}" --entitlements "$TEMPLATES/engine.entitlements" "$XPC"
   # 設定アプリ: Hardened Runtime（--options runtime）、Sandbox なし。identifier は署名要件（SigningRequirements.settingsApp）が見る
@@ -301,23 +342,10 @@ verify_bundle() {
   fi
   echo "engine: no llama.cpp linked"
 
-  # LM の子（ADR 0060 Q4）: エンジンの隣にあり、エンジンの署名に封印されていて、network の権限がない
-  local lm_host="$XPC/Contents/MacOS/$LM_HOST_NAME"
-  if [[ "$WITH_LM" == 1 ]]; then
-    [[ -x "$lm_host" ]] || die "LM の子（$LM_HOST_NAME）がエンジンの隣にありません"
-    codesign --verify --strict "$lm_host" || die "LM の子の署名を検証できません"
-    if entitlements_of "$lm_host" | grep -q 'com\.apple\.security\.network'; then
-      die "LM の子に com.apple.security.network.* があります"
-    fi
-    grep -q "MacOS/$LM_HOST_NAME" "$XPC/Contents/_CodeSignature/CodeResources" \
-      || die "エンジンの署名が $LM_HOST_NAME を封印していません"
-    if [[ "$SIGNING" == team ]]; then
-      local lm_team
-      lm_team="$(codesign -dv "$lm_host" 2>&1 | sed -n 's/^TeamIdentifier=//p')"
-      [[ "$lm_team" == "$TEAM_ID" ]] || die "LM の子のチームID が $TEAM_ID ではありません: '$lm_team'"
-    fi
-    echo "lm host: signed ($LM_HOST_ID), sealed by the engine, network=none"
-  fi
+  # エンジンの束に LM の子が無い（檻役の束に移した。ADR 0077 §3.4）
+  [[ ! -e "$XPC/Contents/MacOS/$LM_HOST_NAME" ]] || die "エンジンの束に $LM_HOST_NAME があります（檻役の束だけに置く）"
+
+  if [[ "$WITH_LM" == 1 ]]; then verify_cage; fi
 
   # 殻は Sandbox なし
   if entitlements_of "$APP" | grep -q 'com\.apple\.security\.app-sandbox'; then
@@ -349,6 +377,64 @@ verify_bundle() {
       [[ "$team" == "$TEAM_ID" ]] || die "$target のチームID が $TEAM_ID ではありません: '$team'"
     done
     echo "TeamIdentifier=$TEAM_ID (app, engine, smoke)"
+  fi
+}
+
+# 檻役（ADR 0077 §3.4）: App Sandbox だけ（network も一時例外もなし）、LM の子は entitlement なしで檻役の署名に封印されている、
+# 署名要件が殻（名前の口）とエンジン（匿名の口）を指す
+verify_cage() {
+  local lm_host="$CAGE/Contents/MacOS/$LM_HOST_NAME" cage_exe="$CAGE/Contents/MacOS/$LM_CAGE_NAME"
+  [[ -x "$cage_exe" ]] || die "檻役（$LM_CAGE_NAME）が $CAGE にありません"
+  [[ -x "$lm_host" ]] || die "LM の子（$LM_HOST_NAME）が檻役の束にありません"
+  codesign --verify --deep --strict "$CAGE" || die "檻役の署名を検証できません"
+
+  local info identifier host_info
+  info="$(codesign -dv "$CAGE" 2>&1)"
+  identifier="$(printf '%s\n' "$info" | sed -n 's/^Identifier=//p')"
+  [[ "$identifier" == "$LM_CAGE_ID" ]] || die "檻役の identifier が $LM_CAGE_ID ではありません: '$identifier'"
+  printf '%s\n' "$info" | grep -Eq '^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime' || die "檻役に Hardened Runtime（runtime）が付いていません"
+
+  # entitlement は app-sandbox の 1 つだけ（network も一時例外もない）
+  local ents keys
+  ents="$(entitlements_of "$CAGE")"
+  [[ -n "$ents" ]] || die "檻役の entitlement を読めません"
+  [[ "$(printf '%s' "$ents" | plutil -extract 'com\.apple\.security\.app-sandbox' raw - 2>/dev/null || true)" == true ]] \
+    || die "檻役に com.apple.security.app-sandbox がありません"
+  keys="$(printf '%s' "$ents" | plutil -convert xml1 -o - - | grep -c '<key>')"
+  [[ "$keys" -eq 1 ]] || die "檻役の entitlement が app-sandbox の 1 つだけではありません（キーが $keys 個）"
+  echo "lm cage entitlements: app-sandbox=true only (no network, no temporary-exception)"
+
+  # LM の子: entitlement なし、Hardened Runtime、檻役の署名に封印されている
+  [[ -z "$(entitlements_of "$lm_host")" ]] || die "LM の子に entitlement があります（檻役の Sandbox を引き継ぐので、付けない）"
+  codesign --verify --strict "$lm_host" || die "LM の子の署名を検証できません"
+  host_info="$(codesign -dv "$lm_host" 2>&1)"
+  printf '%s\n' "$host_info" | grep -Eq '^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime' || die "LM の子に Hardened Runtime（runtime）が付いていません"
+  grep -q "MacOS/$LM_HOST_NAME" "$CAGE/Contents/_CodeSignature/CodeResources" || die "檻役の署名が $LM_HOST_NAME を封印していません"
+  grep -q "XPCServices/IkariLMCage.xpc" "$APP/Contents/_CodeSignature/CodeResources" || die "ikari.app の署名が IkariLMCage.xpc を封印していません"
+  # 檻役は llama.cpp を持たない（LM は子だけが持つ）
+  if grep -aqE 'llama_model_load|ggml_backend' "$cage_exe"; then die "檻役（$LM_CAGE_NAME）に llama.cpp が入っています"; fi
+  echo "lm host: no entitlements (inherits the cage sandbox), sealed by the cage; cage: no llama.cpp"
+
+  # 署名要件: 檻役が、自分の名前の口（殻）と匿名の口（エンジン）の要件を持ち、相手が檻役の要件を満たす
+  local cage_req engine_req
+  cage_req="$("$BIN_DIR/ikari-smoke" --print-requirement lm-cage "$SIGNING")"
+  engine_req="$("$BIN_DIR/ikari-smoke" --print-requirement engine "$SIGNING")"
+  codesign --verify -R="$cage_req" "$CAGE" || die "檻役が署名要件を満たしません: $cage_req"
+  [[ "$(plutil -extract IkariPeerRequirement raw "$CAGE/Contents/Info.plist")" == "$("$BIN_DIR/ikari-smoke" --print-requirement "$SHELL_REQ_TARGET" "$SIGNING")" ]] \
+    || die "檻役の IkariPeerRequirement（名前の口の相手 = 殻）が署名要件と違います"
+  [[ "$(plutil -extract IkariEnginePeerRequirement raw "$CAGE/Contents/Info.plist")" == "$engine_req" ]] \
+    || die "檻役の IkariEnginePeerRequirement（匿名の口の相手 = エンジン）が署名要件と違います"
+  [[ "$(plutil -extract IkariLMCageRequirement raw "$XPC/Contents/Info.plist")" == "$cage_req" ]] \
+    || die "エンジンの IkariLMCageRequirement（口の先 = 檻役）が署名要件と違います"
+  echo "signing requirements satisfied (lm cage); cage allow-lists: shell (named), engine (anonymous)"
+
+  if [[ "$SIGNING" == team ]]; then
+    local target team
+    for target in "$CAGE" "$lm_host"; do
+      team="$(codesign -dv "$target" 2>&1 | sed -n 's/^TeamIdentifier=//p')"
+      [[ "$team" == "$TEAM_ID" ]] || die "$target のチームID が $TEAM_ID ではありません: '$team'"
+    done
+    echo "TeamIdentifier=$TEAM_ID (lm cage, lm host)"
   fi
 }
 
