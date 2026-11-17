@@ -155,7 +155,7 @@ fn reply_word(reply: &Obj) -> Option<CageReply> {
 }
 
 /// 送って、返事の辞書を `deadline` まで待つ。相手の確認で落とされた・接続が切れた・締め切りは誤り
-fn request(conn: &Connection, message: &Obj, deadline: Duration) -> io::Result<Obj> {
+pub(super) fn request(conn: &Connection, message: &Obj, deadline: Duration) -> io::Result<Obj> {
     let (tx, rx) = mpsc::sync_channel::<io::Result<Obj>>(1);
     conn.send_with_reply(message, move |reply| {
         let result = match xpc::kind_of(reply) {

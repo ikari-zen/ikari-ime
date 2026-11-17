@@ -711,66 +711,9 @@ mod tests {
         }
         assert_eq!(check_launch_fds(stdin, stdout, probe(ro.as_fd())), Ok(()));
     }
-
-    // ---- D-3-mac の骨組み（実装のレーンで中身を書き、`#[ignore]` を外す）
-
-    #[test]
-    #[ignore = "D-3-mac: 檻役の子に付く fd が 0・1・3 だけ（POSIX_SPAWN_CLOEXEC_DEFAULT）"]
-    fn caged_child_gets_only_fds_0_1_3() {
-        unimplemented!("D-3-mac")
-    }
-
-    #[test]
-    #[ignore = "D-3-mac: 檻役の子の環境変数が空"]
-    fn caged_child_has_an_empty_environment() {
-        unimplemented!("D-3-mac")
-    }
-
-    #[test]
-    #[ignore = "D-3-mac: 全体の上限（MAX_CHILDREN_TOTAL）を超える起動は Busy"]
-    fn launches_beyond_the_total_limit_are_busy() {
-        unimplemented!("D-3-mac")
-    }
-
-    #[test]
-    #[ignore = "D-3-mac: 接続ごとに子は 1 つまで（2 つ目は Busy）"]
-    fn one_child_per_connection() {
-        unimplemented!("D-3-mac")
-    }
-
-    #[test]
-    #[ignore = "D-3-mac: 止めるは SIGKILL と回収のあとで返事をする"]
-    fn stop_replies_after_kill_and_reap() {
-        unimplemented!("D-3-mac")
-    }
-
-    #[test]
-    #[ignore = "D-3-mac: 接続を捨てたら、檻役が子を止めて回収する"]
-    fn dropping_the_connection_reaps_the_child() {
-        unimplemented!("D-3-mac")
-    }
-
-    #[test]
-    #[ignore = "D-3-mac: 版が違う要求は VersionMismatch で、起動しない"]
-    fn version_mismatch_is_refused_without_spawning() {
-        unimplemented!("D-3-mac")
-    }
-
-    #[test]
-    #[ignore = "D-3-mac: libxpc の口で、hello の伝言に fd を付けず、hello の返事の前に launch を送らない"]
-    fn xpc_hello_carries_no_fd_and_comes_first() {
-        unimplemented!("D-3-mac")
-    }
-
-    #[test]
-    #[ignore = "D-3-mac: 檻役は、受けた fd を probe_fd と check_launch_fds で確かめ、違えば起動しない"]
-    fn the_cage_checks_received_fds_before_spawning() {
-        unimplemented!("D-3-mac")
-    }
-
-    #[test]
-    #[ignore = "D-3-mac: 檻役が落ちたら、子は親の見張りで自分で終わる"]
-    fn child_exits_when_the_cage_dies() {
-        unimplemented!("D-3-mac")
-    }
 }
+
+// 檻役と口の往復（プロセスの中の匿名の口。束も署名も要らない）。偽の子での採点の往復と、檻役が落ちたときの
+// 子の終わりは lm/tests/cage_xpc.rs
+#[cfg(all(test, target_vendor = "apple"))]
+mod xpc_tests;
