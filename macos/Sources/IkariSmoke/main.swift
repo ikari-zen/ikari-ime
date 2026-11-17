@@ -2,7 +2,7 @@
 //
 //   ikari-smoke                          E2E を流す
 //   ikari-smoke --recovery-limit-ms N    kill -9 からの復帰の上限（既定 1000。測定のときだけ長くする）
-//   ikari-smoke --print-requirement engine|shell|settings team|adhoc
+//   ikari-smoke --print-requirement engine|shell|lm-cage|settings team|adhoc
 //                                        署名要件の文字列を出す（build.sh が XPC サービスの Info.plist に書く。
 //                                        settings は build.sh が設定アプリの署名を検査するのに使う）
 //
@@ -43,12 +43,13 @@ if arguments.first == "--print-requirement" {
     // パスが 4 つ目に要る
     guard arguments.count == 3 || arguments.count == 4, let mode = SigningMode(rawValue: arguments[2]) else {
         FileHandle.standardError.write(
-            Data("usage: ikari-smoke --print-requirement engine|shell|settings|bridge-shell team|adhoc [bundle-path]\n".utf8))
+            Data("usage: ikari-smoke --print-requirement engine|shell|shell-distribution|lm-cage|settings|bridge-shell team|adhoc [bundle-path]\n".utf8))
         exit(2)
     }
     let pinned = arguments.count == 4 ? BundlePinning.cdhash(ofBundleAt: URL(fileURLWithPath: arguments[3])) : nil
     switch arguments[1] {
     case "engine": print(SigningRequirements.engine(mode: mode))
+    case "lm-cage": print(SigningRequirements.lmCage(mode: mode))
     case "shell": print(SigningRequirements.shell(mode: mode))
     // 配布用のビルド（Smoke を許可しない。ADR 0069 §6-1）
     case "shell-distribution": print(SigningRequirements.shell(mode: mode, includeSmoke: false))
@@ -131,7 +132,9 @@ let report = Report()
 let signing = BuildSigning.current()
 let shellVersion =
     (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "unknown"
-let client = XPCEngineClient(signing: signing)
+// 檻役の口をエンジンに渡す（殻と同じ仲立ち。ADR 0077 §3.5）。LM の状態が ready なら、檻の中の子が動いている
+let lmCage = LMCageBroker(signing: signing)
+let client = XPCEngineClient(signing: signing, lmCage: lmCage)
 
 func seconds(_ duration: Duration) -> Double {
     let (whole, atto) = duration.components
@@ -176,6 +179,15 @@ do {
         report.fail("hello", "version mismatch: engine=\(client.lastEngineVersion ?? "?") shell=\(shellVersion)")
     } else {
         report.fail("hello", "\(error)")
+    }
+}
+
+// 檻役の口を取れたか（ADR 0077 §8-7）。LM が有効なのに口が無ければ、LM は動かない（製品は段 1 に落とさない）
+if lmEnabled {
+    if lmCage.currentGeneration != nil {
+        report.pass("lm-cage", "cage endpoint attached")
+    } else {
+        report.fail("lm-cage", "no endpoint from \(IkariIdentifiers.lmCage)")
     }
 }
 

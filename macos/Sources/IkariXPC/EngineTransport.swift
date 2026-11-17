@@ -53,20 +53,69 @@ private final class ReplyBox: @unchecked Sendable {
 
 /// `NSXPCConnection(serviceName:)` による実装。`setCodeSigningRequirement` を `resume()` の前に呼ぶ。
 final class XPCTransport: EngineTransport, @unchecked Sendable {
-    private let connection: NSXPCConnection
+    /// 口を渡す返事を待つ上限（エンジンの起動を含む）
+    static let attachTimeout: Duration = .seconds(5)
 
-    init(serviceName: String, requirement: String, onDown: @escaping @Sendable (TransportDown) -> Void) {
+    private let connection: NSXPCConnection
+    private let cage: LMCageBroker?
+    private let attachSerial = NSLock()
+    private let attachLock = NSLock()
+    /// 最後に渡した口の世代。nil は「まだ渡していない、またはエンジンが入れ替わった（渡し直す）」
+    private var attachedGenerationValue: UInt64?
+
+    init(
+        serviceName: String, requirement: String, cage: LMCageBroker? = nil,
+        onDown: @escaping @Sendable (TransportDown) -> Void
+    ) {
         connection = NSXPCConnection(serviceName: serviceName)
-        connection.remoteObjectInterface = NSXPCInterface(with: IkariEngineXPC.self)
+        self.cage = cage
+        connection.remoteObjectInterface = IkariEngineXPCInterface.make()
         connection.setCodeSigningRequirement(requirement)
-        connection.interruptionHandler = { onDown(.interrupted) }
+        connection.interruptionHandler = { [weak self] in
+            // エンジンが落ちた。新しいエンジンは口を持たないので、次の要求の前に渡し直す
+            self?.forgetAttachment()
+            onDown(.interrupted)
+        }
         connection.invalidationHandler = { onDown(.invalidated) }
         connection.resume()
+    }
+
+    private func forgetAttachment() { setAttachedGeneration(nil) }
+
+    /// 檻役の口が変わっていた、またはエンジンが入れ替わっていたら、口をエンジンに渡す。
+    /// 渡せなくても要求は止めない（エンジンは「口が無い → LM なし」で動く。ADR 0077 §3.3）。
+    /// 輸送の規則だけで、いつ LM を使うかの判断は持たない
+    private func attachCageIfNeeded() {
+        guard let cage else { return }
+        // 渡す処理は 1 つずつ。世代の読み書きは `attachLock` だけ（返事を待つ間は持たない。落ちた通知が止まらないように）
+        attachSerial.lock()
+        defer { attachSerial.unlock() }
+        guard let snapshot = cage.current(), snapshot.generation != attachedGeneration() else { return }
+        let result = AttachResult()
+        let proxy = connection.remoteObjectProxyWithErrorHandler { _ in result.finish(false) }
+        guard let engine = proxy as? IkariEngineXPC else { return }
+        engine.attachLMCage(snapshot.endpoint) { accepted in result.finish(accepted) }
+        if result.wait(timeout: Self.attachTimeout), result.accepted {
+            setAttachedGeneration(snapshot.generation)
+        }
+    }
+
+    private func attachedGeneration() -> UInt64? {
+        attachLock.lock()
+        defer { attachLock.unlock() }
+        return attachedGenerationValue
+    }
+
+    private func setAttachedGeneration(_ value: UInt64?) {
+        attachLock.lock()
+        attachedGenerationValue = value
+        attachLock.unlock()
     }
 
     var processIdentifier: Int32 { connection.processIdentifier }
 
     func request(_ data: Data, timeout: Duration) throws -> Data {
+        attachCageIfNeeded()
         let box = ReplyBox()
         let proxy = connection.remoteObjectProxyWithErrorHandler { _ in
             box.set(.failure(.unavailable))
@@ -86,11 +135,36 @@ final class XPCTransport: EngineTransport, @unchecked Sendable {
     }
 
     func post(_ data: Data) {
+        attachCageIfNeeded()
         let proxy = connection.remoteObjectProxyWithErrorHandler { _ in }
         (proxy as? IkariEngineXPC)?.handle(data) { _ in }
     }
 
     func close() {
         connection.invalidate()
+    }
+}
+
+/// 口を渡す返事の待ち
+private final class AttachResult: @unchecked Sendable {
+    private let semaphore = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
+    private var value = false
+
+    var accepted: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+
+    func finish(_ accepted: Bool) {
+        lock.lock()
+        value = accepted
+        lock.unlock()
+        semaphore.signal()
+    }
+
+    func wait(timeout: Duration) -> Bool {
+        semaphore.wait(timeout: .now() + timeout.timeInterval) == .success
     }
 }

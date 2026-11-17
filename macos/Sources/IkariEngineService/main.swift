@@ -7,8 +7,11 @@
 //
 // 相手の署名要件は、ビルド時に build.sh が自分の Info.plist（署名の対象）に書く（`IkariPeerRequirement`）。
 // IkariXPC の `SigningRequirements` が唯一の出どころで、書かれていなければ全部の接続を断る。
+// 檻役の口（ADR 0077）: 殻が渡す匿名の口（`attachLMCage`）を、そのままエンジン（Rust）に渡す。口の先が本物の檻役かの確認
+// （署名要件。Info.plist の `IkariLMCageRequirement`）も、LM の判断もエンジンが持つ。ここは輸送だけ。
 import Foundation
 import IkariProto
+@preconcurrency import XPC
 
 #if IKARI_HAS_ENGINE_FFI
 import IkariEngineFFI
@@ -18,10 +21,13 @@ import IkariEngineFFI
 @objc(IkariEngineXPC)
 protocol EngineXPC {
     func handle(_ request: Data, reply: @escaping (Data) -> Void)
+    func attachLMCage(_ endpoint: xpc_endpoint_t, reply: @escaping (Bool) -> Void)
 }
 
 enum ServiceConstants {
     static let requirementKey = "IkariPeerRequirement"
+    /// 檻役の署名要件（エンジンが、もらった口の先を確かめるのに使う。build.sh が埋める）
+    static let cageRequirementKey = "IkariLMCageRequirement"
     static let dataDirectoryComponents = ["Library", "Application Support", "ikari-ime"]
     static let defaultIdleUnloadSeconds: UInt32 = 300
     /// 返事が相手に届くのを待ってから終わる
@@ -108,6 +114,20 @@ final class EngineHost: @unchecked Sendable {
 #endif
     }
 
+    /// 殻から届いた檻役の口をエンジンに渡す。受け取ったか（確かめの結果ではない）を返す。
+    /// 確かめに失敗すれば、エンジンが口を捨てて「檻なし」にする（Rust 側。ADR 0077 §3.2 の条件 1）
+    func attachLMCage(_ endpoint: xpc_endpoint_t, requirement: String?) -> Bool {
+#if IKARI_HAS_ENGINE_FFI && IKARI_HAS_LM_CAGE_FFI
+        guard let requirement else { return false }
+        let accepted: Bool?? = gate.withResource(open: openIfDue) { engine in
+            ikari_engine_attach_lm_cage(engine, endpoint, requirement)
+        }
+        return (accepted ?? nil) ?? false
+#else
+        return false
+#endif
+    }
+
     /// 新しい要求を断り、処理中の要求の終わりを待ってから解放する（待ちの上限は `closeDrainTimeout`）
     func close() {
 #if IKARI_HAS_ENGINE_FFI
@@ -142,8 +162,16 @@ final class EngineHost: @unchecked Sendable {
 
 final class EngineService: NSObject, EngineXPC, @unchecked Sendable {
     private let host: EngineHost
+    private let cageRequirement: String?
 
-    init(host: EngineHost) { self.host = host }
+    init(host: EngineHost, cageRequirement: String?) {
+        self.host = host
+        self.cageRequirement = cageRequirement
+    }
+
+    func attachLMCage(_ endpoint: xpc_endpoint_t, reply: @escaping (Bool) -> Void) {
+        reply(host.attachLMCage(endpoint, requirement: cageRequirement))
+    }
 
     func handle(_ request: Data, reply: @escaping (Data) -> Void) {
         // 同じ接続の要求は順番に処理する。Convert は締め切りまでここで止まってよい
@@ -169,7 +197,9 @@ final class ListenerDelegate: NSObject, NSXPCListenerDelegate, @unchecked Sendab
         // 要件が分からないときは誰も受け付けない
         guard let peerRequirement else { return false }
         connection.setCodeSigningRequirement(peerRequirement)
-        connection.exportedInterface = NSXPCInterface(with: EngineXPC.self)
+        let interface = NSXPCInterface(with: EngineXPC.self)
+        interface.setXPCType(XPC_TYPE_ENDPOINT, for: #selector(EngineXPC.attachLMCage(_:reply:)), argumentIndex: 0, ofReply: false)
+        connection.exportedInterface = interface
         connection.exportedObject = service
         connection.resume()
         return true
@@ -181,7 +211,9 @@ if peerRequirement == nil {
     FileHandle.standardError.write(Data("IkariEngine: no peer requirement; rejecting every connection\n".utf8))
 }
 let host = EngineHost()
-let delegate = ListenerDelegate(service: EngineService(host: host), peerRequirement: peerRequirement)
+let cageRequirement = Bundle.main.object(forInfoDictionaryKey: ServiceConstants.cageRequirementKey) as? String
+let delegate = ListenerDelegate(
+    service: EngineService(host: host, cageRequirement: cageRequirement), peerRequirement: peerRequirement)
 let listener = NSXPCListener.service()
 listener.delegate = delegate
 listener.resume()

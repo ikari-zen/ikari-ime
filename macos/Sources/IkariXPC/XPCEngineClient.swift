@@ -33,11 +33,12 @@ public final class XPCEngineClient: @unchecked Sendable {
     private var suspendedUntil: Date?
     private var observedEngineVersion: String?
     /// 同梱の XPC サービスにつなぐ。`signing` で署名要件（相手 = エンジン）が決まる。
-    public convenience init(serviceName: String = IkariIdentifiers.engine, signing: SigningMode) {
+    /// `lmCage` があれば、エンジンに檻役の口を渡す（smoke の「檻あり」の確かめ。ADR 0077 §3.5）
+    public convenience init(serviceName: String = IkariIdentifiers.engine, signing: SigningMode, lmCage: LMCageBroker? = nil) {
         let requirement = SigningRequirements.engine(mode: signing)
         self.init(
             transportFactory: { onDown in
-                XPCTransport(serviceName: serviceName, requirement: requirement, onDown: onDown)
+                XPCTransport(serviceName: serviceName, requirement: requirement, cage: lmCage, onDown: onDown)
             },
             now: { Date() }
         )
