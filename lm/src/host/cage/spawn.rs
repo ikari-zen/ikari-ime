@@ -1,11 +1,13 @@
 //! 檻役が子を起動し、見張り、止めて回収する（macOS。ADR 0077 §3.2 の起動の規則）。
 //!
 //! - 子に付ける fd は [`CHILD_FDS`]（0・1・3）だけ（`POSIX_SPAWN_CLOEXEC_DEFAULT`）。環境変数は空。
+//!   標準エラー（fd 2）には、親の fd を付けず、`/dev/null` を開く（空いたままだと、子が次に開くファイルが fd 2 になり、
+//!   標準エラーへの書き込みがそのファイルへ向かう）。
 //!   引数は [`child_args`] だけ。実行ファイルは絶対パスで、PATH から探さない。
 //! - 子ごとに見張りのスレッドを 1 つ置き、終わったら回収する（ゾンビを残さない）。止めるときは、回収の前に
 //!   印の錠の下で SIGKILL を送る（回収した pid には送らない）。
 
-use std::ffi::{CString, OsStr};
+use std::ffi::{CStr, CString, OsStr};
 use std::io;
 use std::iter;
 use std::os::fd::{AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd};
@@ -16,6 +18,11 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
 
 use crate::host::cage::{CHILD_FDS, CHILD_MODEL_FD, CageGpu, child_args};
+
+/// 子の標準エラーの番号（[`CHILD_FDS`] に入れず、`/dev/null` を開く）
+const CHILD_STDERR_FD: RawFd = 2;
+/// 子の標準エラーに開くもの
+const NULL_DEVICE: &CStr = c"/dev/null";
 
 const REAPER_THREAD_NAME: &str = "ikari-lm-cage-reaper";
 /// 受けた fd を、子の番号と重ならない番号へ写すときの下限（0・1・3 への写しが互いを壊さないように）
@@ -121,6 +128,7 @@ pub(super) fn spawn(
         actions.dup2(from.as_raw_fd(), to)?;
     }
     debug_assert_eq!(CHILD_FDS[2], CHILD_MODEL_FD);
+    actions.open_null(CHILD_STDERR_FD)?;
     let mut attr = SpawnAttr::new()?;
     attr.only_listed_fds()?;
 
@@ -211,6 +219,20 @@ impl FileActions {
     fn dup2(&mut self, from: RawFd, to: RawFd) -> io::Result<()> {
         // SAFETY: 初期化済みの値に、操作を 1 つ足すだけ
         check(unsafe { libc::posix_spawn_file_actions_adddup2(&mut self.0, from, to) })
+    }
+
+    /// 子の `fd` に `/dev/null` を書き込みだけで開く（親の fd は渡さない）
+    fn open_null(&mut self, fd: RawFd) -> io::Result<()> {
+        // SAFETY: 初期化済みの値に、操作を 1 つ足すだけ。パスは 'static の NUL で終わる文字列
+        check(unsafe {
+            libc::posix_spawn_file_actions_addopen(
+                &mut self.0,
+                fd,
+                NULL_DEVICE.as_ptr(),
+                libc::O_WRONLY,
+                0,
+            )
+        })
     }
 
     fn as_ptr(&self) -> *const libc::posix_spawn_file_actions_t {
