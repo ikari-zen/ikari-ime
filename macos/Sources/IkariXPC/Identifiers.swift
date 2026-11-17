@@ -6,6 +6,10 @@ public enum IkariIdentifiers {
     public static let shell = Identity.productID
     /// 同梱の XPC サービス。サービス名もこれ
     public static let engine = "\(Identity.productID).engine"
+    /// 檻役の XPC サービス（IkariLMCage.xpc。ADR 0077）。サービス名もこれ
+    public static let lmCage = "\(Identity.productID).lm-cage"
+    /// LM の子（ikari-lm-host）の署名の identifier（檻役の束の中。build.sh の `LM_HOST_ID` と同じ）
+    public static let lmHost = "\(Identity.productID).lm-host"
     /// 補助の E2E 実行ファイル（署名の identifier）
     public static let smoke = "\(Identity.productID).smoke"
     /// IMK の接続名（Info.plist の `InputMethodConnectionName`）
@@ -32,6 +36,16 @@ public enum SigningRequirements {
     /// 殻 → エンジン: 相手（エンジン）が正しいか
     public static func engine(mode: SigningMode, teamID: String = IkariIdentifiers.teamID) -> String {
         let identifier = "identifier \"\(IkariIdentifiers.engine)\""
+        switch mode {
+        case .team: return "\(identifier) and \(teamClause(teamID))"
+        case .adhoc: return identifier
+        }
+    }
+
+    /// 殻、またはエンジン → 檻役: 相手（檻役）が正しいか（ADR 0077 §3.2）。
+    /// 殻が名前の口でつなぐときと、エンジンがもらった匿名の口の先を確かめるときの、両方で使う
+    public static func lmCage(mode: SigningMode, teamID: String = IkariIdentifiers.teamID) -> String {
+        let identifier = "identifier \"\(IkariIdentifiers.lmCage)\""
         switch mode {
         case .team: return "\(identifier) and \(teamClause(teamID))"
         case .adhoc: return identifier

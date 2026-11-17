@@ -23,6 +23,14 @@ import Testing
         )
     }
 
+    @Test func lmCageRequirementPinsTheIdentifierAndTheTeam() {
+        #expect(
+            SigningRequirements.lmCage(mode: .team)
+                == "identifier \"io.github.ikari-zen.inputmethod.ikari.lm-cage\" and anchor apple generic and certificate leaf[subject.OU] = \"L9Z8SK775X\""
+        )
+        #expect(SigningRequirements.lmCage(mode: .adhoc) == "identifier \"io.github.ikari-zen.inputmethod.ikari.lm-cage\"")
+    }
+
     @Test func distributionShellRequirementExcludesSmoke() {
         #expect(SigningRequirements.shell(mode: .adhoc, includeSmoke: false) == "identifier \"io.github.ikari-zen.inputmethod.ikari\"")
         #expect(!SigningRequirements.shell(mode: .team, includeSmoke: false).contains("smoke"))
