@@ -56,6 +56,9 @@ const DEFAULT_REQUEST_DEADLINE: Duration = Duration::from_secs(30);
 /// そのあと CPU の子でこの回数（合わせて 2 倍）
 const DEFAULT_MAX_FAILURES: u32 = 3;
 
+/// 檻役の口が無いときに `lm_load` のログへ足す固定の語
+const NO_CAGE_NOTE: &str = "host_no_cage=1";
+
 const READER_THREAD_NAME: &str = "ikari-lm-host-read";
 const WRITER_THREAD_NAME: &str = "ikari-lm-host-write";
 /// ログに出すデバイスの要約の上限（バイト）と、通す文字。子から来た文字列をそのままログに書かない（NFR-19）
@@ -143,6 +146,8 @@ pub struct HostHealth {
     child_id: AtomicU32,
     /// 最後に起動した子の檻（`CageState::ALL` の番号）
     cage: AtomicU8,
+    /// 檻役の口が無くて起動しなかった（ADR 0077 §3.3 の「檻なし」。失敗には数えない）
+    no_cage: AtomicBool,
 }
 
 impl HostHealth {
@@ -156,7 +161,13 @@ impl HostHealth {
             gpu_unused: AtomicBool::new(false),
             child_id: AtomicU32::new(0),
             cage: AtomicU8::new(cage_index(CageState::Unknown)),
+            no_cage: AtomicBool::new(false),
         }
+    }
+
+    /// 檻役の口が無くて、子を起動しなかった状態か（口が届けば戻る）
+    pub fn no_cage(&self) -> bool {
+        self.no_cage.load(Ordering::Acquire)
     }
 
     /// 最後に起動した子の檻
@@ -198,14 +209,19 @@ impl HostHealth {
 
     /// `lm_load` のログに足す固定の語（数だけ）
     pub fn log_note(&self) -> String {
-        format!(
+        let note = format!(
             "host=on host_spawns={} host_failures={} host_gave_up={} host_gpu_off={} box={}",
             self.spawns(),
             self.consecutive_failures(),
             u8::from(self.gave_up()),
             u8::from(self.gpu_disabled()),
             self.cage().word()
-        )
+        );
+        if self.no_cage() {
+            format!("{note} {NO_CAGE_NOTE}")
+        } else {
+            note
+        }
     }
 
     /// 失敗を 1 つ数える。GPU を使う子で上限に達したら、諦める前に、CPU だけの子に切り替えて数を戻す。
@@ -270,6 +286,11 @@ fn spawn_caged(
             }
         },
     }
+}
+
+/// 起動の口が檻役で、その口がまだ（または、もう）無いか
+fn cage_missing(launcher: &HostLauncher) -> bool {
+    matches!(launcher, HostLauncher::Cage(slot) if slot.current().is_none())
 }
 
 /// 子を起動して採点を頼む loader（`ZenzRanker::new` に渡す）と、子の様子。
@@ -421,6 +442,13 @@ impl HostScorer {
         if health.gave_up() {
             return Err(LmError::Load("lm host gave up".to_owned()));
         }
+        // 檻役の口が無いときは、段 1 に落とさず、起動しない（ADR 0077 §6）。口が来るのを待つ状態で、
+        // 子の失敗ではないので数えない（数えると、口が届く前に断念してしまう）
+        if cage_missing(&spec.launcher) {
+            health.no_cage.store(true, Ordering::Release);
+            return Err(LmError::Load("lm host: no cage".to_owned()));
+        }
+        health.no_cage.store(false, Ordering::Release);
         health.spawns.fetch_add(1, Ordering::AcqRel);
         let failed = |what: &str| {
             health.record_failure();
@@ -599,6 +627,7 @@ fn sanitize_devices(devices: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::host::cage::CageSlot;
 
     #[test]
     fn the_cage_defaults_to_standard_and_parses_only_its_words() {
@@ -677,5 +706,45 @@ mod tests {
         assert_eq!(sanitize_devices("秘密"), "invalid");
         assert_eq!(sanitize_devices(""), "invalid");
         assert_eq!(sanitize_devices(&"a".repeat(129)), "invalid");
+    }
+
+    fn spec_with(launcher: HostLauncher) -> HostSpec {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("model.gguf");
+        std::fs::write(&path, b"GGUF").unwrap();
+        HostSpec {
+            program: PathBuf::from("/nonexistent/ikari-lm-host"),
+            model: ModelHandle::open(&path).unwrap(),
+            use_gpu: false,
+            limits: HostLimits::default(),
+            cage: HostCage::Standard,
+            launcher,
+        }
+    }
+
+    #[test]
+    fn without_a_cage_nothing_is_started_and_nothing_is_counted() {
+        let spec = spec_with(HostLauncher::Cage(Arc::new(CageSlot::default())));
+        let (loader, health) = host_loader(spec);
+        // 口が無いあいだは何度頼んでも、起動も失敗の数え上げもしない（断念しない）
+        for _ in 0..(DEFAULT_MAX_FAILURES * 3) {
+            assert!(loader().is_err());
+        }
+        assert_eq!(health.spawns(), 0);
+        assert_eq!(health.consecutive_failures(), 0);
+        assert!(!health.gave_up());
+        assert!(health.no_cage());
+        assert!(health.log_note().ends_with(NO_CAGE_NOTE));
+    }
+
+    #[test]
+    fn a_direct_launcher_is_never_without_a_cage() {
+        // 直接の口（テスト、開発、Windows）は、檻役の口を見ない。起動に失敗すれば、今までどおり数える
+        let (loader, health) = host_loader(spec_with(HostLauncher::Direct));
+        assert!(loader().is_err());
+        assert_eq!(health.spawns(), 1);
+        assert_eq!(health.consecutive_failures(), 1);
+        assert!(!health.no_cage());
+        assert!(!health.log_note().contains(NO_CAGE_NOTE));
     }
 }

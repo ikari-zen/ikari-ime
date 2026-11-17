@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- IkariLMCage.xpc の Info.plist のテンプレート（ADR 0077 §3.4）。
-     版、IkariSigningMode、IkariPeerRequirement、IkariEnginePeerRequirement は build.sh が PlistBuddy で埋める。
+     版、IkariSigningMode、IkariPeerRequirement、IkariCageEnginePeerRequirement は build.sh が PlistBuddy で埋める。
      IkariPeerRequirement: 名前の口（殻。開発の smoke を含む）が満たす要件。ikari-smoke --print-requirement shell|shell-distribution <方式> の出力。
-     IkariEnginePeerRequirement: 匿名の口（エンジンだけ）が満たす要件。ikari-smoke --print-requirement engine <方式> の出力。
+     IkariCageEnginePeerRequirement: 匿名の口（エンジンだけ）が満たす要件。ikari-smoke --print-requirement engine <方式> の出力。
      どちらも SigningRequirements（IkariXPC）が唯一の出どころ。書かれていなければ、檻役は全部の接続を断る。 -->
 <plist version="1.0">
 <dict>
@@ -34,7 +34,7 @@
     <string>team</string>
     <key>IkariPeerRequirement</key>
     <string></string>
-    <key>IkariEnginePeerRequirement</key>
+    <key>IkariCageEnginePeerRequirement</key>
     <string></string>
 </dict>
 </plist>

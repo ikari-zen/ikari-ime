@@ -653,6 +653,7 @@ dependencies = [
  "ikari-dict-builder",
  "ikari-engine",
  "ikari-proto",
+ "ikari-stack",
  "prost",
  "tempfile",
 ]

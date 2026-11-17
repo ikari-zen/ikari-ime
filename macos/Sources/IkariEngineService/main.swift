@@ -8,7 +8,7 @@
 // 相手の署名要件は、ビルド時に build.sh が自分の Info.plist（署名の対象）に書く（`IkariPeerRequirement`）。
 // IkariXPC の `SigningRequirements` が唯一の出どころで、書かれていなければ全部の接続を断る。
 // 檻役の口（ADR 0077）: 殻が渡す匿名の口（`attachLMCage`）を、そのままエンジン（Rust）に渡す。口の先が本物の檻役かの確認
-// （署名要件。Info.plist の `IkariLMCageRequirement`）も、LM の判断もエンジンが持つ。ここは輸送だけ。
+// （署名要件。Info.plist の `IkariCagePeerRequirement`）も、LM の判断もエンジンが持つ。ここは輸送だけ。
 import Foundation
 import IkariProto
 @preconcurrency import XPC
@@ -27,7 +27,7 @@ protocol EngineXPC {
 enum ServiceConstants {
     static let requirementKey = "IkariPeerRequirement"
     /// 檻役の署名要件（エンジンが、もらった口の先を確かめるのに使う。build.sh が埋める）
-    static let cageRequirementKey = "IkariLMCageRequirement"
+    static let cageRequirementKey = "IkariCagePeerRequirement"
     static let dataDirectoryComponents = ["Library", "Application Support", "ikari-ime"]
     static let defaultIdleUnloadSeconds: UInt32 = 300
     /// 返事が相手に届くのを待ってから終わる

@@ -19,13 +19,9 @@ use std::ptr;
 
 const NULL_DEVICE: &std::ffi::CStr = c"/dev/null";
 
-/// 移行の間だけ、製品のビルドでも自分で起こす道を開けておく（檻役の起動がつながるまで、製品の LM を止めないため）。
-/// レーン D-3-mac で檻役の起動をつなぐときに、この定数と [`direct_spawn_allowed`] の中の参照を消す
-const DIRECT_SPAWN_TRANSITION: bool = true;
-
-/// エンジンが自分で子を起こしてよいか（テストと開発用のビルドだけ。移行の間は上の定数）
+/// エンジンが自分で子を起こしてよいか（テストと開発用のビルドだけ）
 pub(super) fn direct_spawn_allowed() -> bool {
-    cfg!(any(test, feature = "dev-knobs")) || DIRECT_SPAWN_TRANSITION
+    cfg!(any(test, feature = "dev-knobs"))
 }
 
 /// 起動した子。`reap` は 1 回だけ効く（2 回目からは何もしない）
