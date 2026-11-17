@@ -75,12 +75,19 @@ pub fn download(
 /// `url` に転送を追わずに 1 回だけ要求し、応答の `Location` を返す（無ければ None）。本文は `body_limit` まで読んで
 /// 捨てる（版の確認。ADR 0076 §6）。配る対象でない OS では `Tool`。
 ///
-/// 契約のスタブ（第 4 弾）: 今は通信せず、どの OS でも `Tool`。中身はレーン D-2d（`net` の中に、`NetLimits::VERSION_CHECK`
-/// で作った agent の呼び出しを足す。通信の呼び出しはこのファイルだけ）。転送を追わない設定では、3xx を失敗にしない
-/// 扱いが要る（`max_redirects_will_error` と `http_status_as_error` の組み合わせ。`build_config` の単体テストを保つ）
+/// 転送を追わない（`NetLimits::VERSION_CHECK`。`max_redirects` が 0 なら、ureq は 3xx の応答をそのまま返し、
+/// `TooManyRedirects` にしない）。`Location` は、3xx の応答のときだけ返す（200 などは None）。中身の検査は呼び出し側。
 pub fn redirect_location(url: &HttpsUrl, body_limit: u64) -> Result<Option<String>, FetchError> {
-    let _ = (url, body_limit);
-    Err(FetchError(FetchErrorCode::Tool))
+    #[cfg(any(windows, target_os = "macos"))]
+    {
+        let agent = net::agent(&NetLimits::VERSION_CHECK);
+        net::redirect_location_with(&agent, url, body_limit)
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        let _ = (url, body_limit);
+        Err(FetchError(FetchErrorCode::Tool))
+    }
 }
 
 #[cfg(any(windows, target_os = "macos"))]
@@ -96,6 +103,30 @@ mod net {
 
     /// 1 回に読む大きさ
     const READ_CHUNK_BYTES: usize = 64 * 1024;
+
+    /// 転送を追わずに 1 回だけ要求し、3xx の応答の `Location` を返す
+    pub(super) fn redirect_location_with(
+        agent: &Agent,
+        url: &HttpsUrl,
+        body_limit: u64,
+    ) -> Result<Option<String>, FetchError> {
+        let response = agent.get(url.as_str()).call().map_err(|e| map_error(&e))?;
+        let location = if response.status().is_redirection() {
+            response
+                .headers()
+                .get(ureq::http::header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_owned)
+        } else {
+            None
+        };
+        // 本文は読んで捨てる（上限まで。読めなくても、欲しかったのは Location だけなので失敗にしない）
+        let mut body = response.into_body();
+        let mut reader = body.with_config().limit(body_limit).reader();
+        let mut buf = vec![0u8; READ_CHUNK_BYTES];
+        while matches!(reader.read(&mut buf), Ok(n) if n > 0) {}
+        Ok(location)
+    }
 
     /// 通信の設定。単体テストが、各項目を確かめる（ADR 0076 §10）
     pub(super) fn build_config(limits: &NetLimits, proxy: Option<Proxy>) -> Config {
@@ -240,6 +271,69 @@ mod net {
             assert_eq!(
                 format!("{:?}", c.user_agent()),
                 format!("{:?}", ureq::config::AutoHeaderValue::from(USER_AGENT))
+            );
+        }
+
+        #[test]
+        fn version_check_config_does_not_follow_redirects_and_stays_strict() {
+            let c = build_config(&NetLimits::VERSION_CHECK, None);
+            assert_eq!(c.max_redirects(), 0);
+            assert!(c.https_only());
+            assert!(c.http_status_as_error());
+            assert!(!c.tls_config().disable_verification());
+        }
+
+        fn locate(url: &str) -> Result<Option<String>, FetchError> {
+            let url = HttpsUrl::parse(url).unwrap();
+            let agent = Agent::with_parts(
+                build_config(&NetLimits::VERSION_CHECK, None),
+                PlainAsSecure::default(),
+                DefaultResolver::default(),
+            );
+            redirect_location_with(&agent, &url, 1024)
+        }
+
+        #[test]
+        fn a_302_is_read_without_following_it() {
+            let (port, hits) = serve(|_, _| redirect("https://example.com/releases/tag/v0.3.1"));
+            let got = locate(&format!("https://127.0.0.1:{port}/latest")).unwrap();
+            assert_eq!(
+                got.as_deref(),
+                Some("https://example.com/releases/tag/v0.3.1")
+            );
+            assert_eq!(hits.load(Ordering::SeqCst), 1, "転送先には行かない");
+        }
+
+        #[test]
+        fn a_reply_without_a_redirect_has_no_location() {
+            let (port, _) = serve(|_, _| ok(b"hello"));
+            assert_eq!(
+                locate(&format!("https://127.0.0.1:{port}/latest")).unwrap(),
+                None
+            );
+        }
+
+        #[test]
+        fn a_redirect_without_location_has_no_location() {
+            let (port, _) = serve(|_, _| {
+                b"HTTP/1.1 302 Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec()
+            });
+            assert_eq!(
+                locate(&format!("https://127.0.0.1:{port}/latest")).unwrap(),
+                None
+            );
+        }
+
+        #[test]
+        fn version_check_errors_keep_their_words() {
+            let (port, _) = serve(|_, _| {
+                b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec()
+            });
+            assert_eq!(
+                locate(&format!("https://127.0.0.1:{port}/latest"))
+                    .unwrap_err()
+                    .code(),
+                FetchErrorCode::HttpStatus
             );
         }
 

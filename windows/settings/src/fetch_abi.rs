@@ -175,9 +175,7 @@ fn to_status(s: &Snapshot) -> IkariSettingsFetchStatus {
 }
 
 /// 版の確認を始める（`ikari-data version-check`。ADR 0076 §6）。成功したら `*out` に値を書く。様子と文は
-/// `ikari_settings_fetch_poll`、解放は `ikari_settings_fetch_free`（取得と同じ）。
-///
-/// 契約のスタブ（第 4 弾。中身はレーン D-2d）: 今は起動せず、`ERR_FAILED` と文を返す。
+/// `ikari_settings_fetch_poll`、解放は `ikari_settings_fetch_free`（取得と同じ）。失敗は `msg` に文を書く。
 ///
 /// # Safety
 /// `out` は書き込める。`msg` は null か書き込める。
@@ -189,16 +187,21 @@ pub unsafe extern "C" fn ikari_settings_version_check_start(
     if out.is_null() {
         return IKARI_SETTINGS_CORE_ERR_NULL;
     }
+    let out_addr = out as usize;
     let msg_addr = msg as usize;
     guarded(AssertUnwindSafe(move || {
-        // SAFETY: `msg` は null か書き込める（呼び出しの約束）
-        unsafe {
-            write_text(
-                msg_addr as *mut IkariSettingsBuf,
-                text::fetch_error(ikari_resource::fetch_report::FetchErrorCode::Tool),
-            )
-        };
-        IKARI_SETTINGS_CORE_ERR_FAILED
+        match start_with(&ProductLauncher, &FetchRequest::VersionCheck) {
+            Ok(fetch) => {
+                // SAFETY: `out` は null でなく、書き込める（呼び出しの約束）
+                unsafe { (out_addr as *mut *mut SettingsFetch).write(Box::into_raw(fetch)) };
+                IKARI_SETTINGS_CORE_OK
+            }
+            Err(message) => {
+                // SAFETY: `msg` は null か書き込める（呼び出しの約束）
+                unsafe { write_text(msg_addr as *mut IkariSettingsBuf, message) };
+                IKARI_SETTINGS_CORE_ERR_FAILED
+            }
+        }
     }))
 }
 

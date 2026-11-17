@@ -171,20 +171,9 @@ fn parse_number(s: &str) -> Option<u64> {
     s.parse().ok()
 }
 
-/// `数.数.数`（版の確認で読むタグの `v` を除いた形。ADR 0076 §6）
+/// `数.数.数`（版の確認で読むタグの `v` を除いた形。ADR 0076 §6。形と桁の上限は `app_version` が決める）
 pub fn is_version(s: &str) -> bool {
-    let mut count = 0;
-    for part in s.split('.') {
-        // 桁が多すぎる数は拒む（表示と比較で扱える範囲に収める）
-        if part.is_empty()
-            || part.len() > crate::app_version::MAX_VERSION_PART_DIGITS
-            || parse_number(part).is_none()
-        {
-            return false;
-        }
-        count += 1;
-    }
-    count == 3
+    crate::app_version::AppVersion::parse(s).is_some()
 }
 
 /// 子の出力から読んだ 1 行
