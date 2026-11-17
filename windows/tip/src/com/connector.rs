@@ -8,10 +8,10 @@
 //! # 相手の確認（#409）
 //! パイプの持ち主（受ける側の利用者とセッション）が自分と同じかは、pipe 層の `connect_duplex` が確かめる
 //! （違えば・取れなければ断る。ADR 0068 §2 の 2）。
-//! つないだら、何かを送る前に、相手が本物のエンジンかを確かめる。相手の PID（pipe 層が返す）から実行ファイルの
-//! パスを取り、TIP の DLL 自身のパスとあわせて `peer::verify_engine_path`（判断。OS に依存しない）に渡す。
-//! パスを取ることと、8.3 の短い名前を長い名前に直すことは pipe 層（`process_image_path`、`long_path_name`）が行う。
-//! PID やパスが取れないときも拒む（フェイルクローズ）。拒んだら接続を閉じて `None`（何も送らない）。理由の種類だけを
+//! つないだら、何かを送る前に、相手が本物のエンジンかを確かめる。相手の実行ファイルのパス（pipe 層が、
+//! 持ち主の確認で開いた相手のプロセスから 1 回で取って返す）を、TIP の DLL 自身のパスとあわせて `peer::verify_engine_path`（判断。OS に依存しない）に渡す。
+//! パスを取ることと、8.3 の短い名前を長い名前に直すことは pipe 層（`connect_duplex`、`long_path_name`）が行う。
+//! パスが取れないときも拒む（フェイルクローズ）。拒んだら接続を閉じて `None`（何も送らない）。理由の種類だけを
 //! 診断のログに 1 行出す。
 //!
 //! この確認は、インストール先に書き込めるのが管理者だけであることを前提にする（本番は Program Files。
@@ -28,7 +28,7 @@ use std::path::Path;
 use ikari_pipe::Client;
 use ikari_pipe::os::windows::{
     NamedPipeDuplex, connect_duplex, current_pipe_name, current_session_id, current_user_sid,
-    long_path_name, owner_rejection, process_image_path,
+    long_path_name, owner_rejection,
 };
 
 use super::host::module_file;
@@ -80,7 +80,7 @@ fn open_checked(
     tip_dll: Option<&Path>,
     rule: PathRule,
 ) -> Option<(NamedPipeDuplex, Option<u32>)> {
-    let (duplex, pid) = match connect_duplex(name) {
+    let (duplex, server) = match connect_duplex(name) {
         Ok(opened) => opened,
         Err(e) => {
             // 持ち主の確認で断ったときだけ、理由の種類を出す（動いていない、などはふつうのこと）
@@ -90,8 +90,8 @@ fn open_checked(
             return None;
         }
     };
-    match verify_peer(tip_dll, pid, rule) {
-        Ok(()) => Some((duplex, pid)),
+    match verify_peer(tip_dll, server.image_path.as_deref(), rule) {
+        Ok(()) => Some((duplex, server.pid)),
         Err(reason) => {
             // 何も送らずに閉じる（ハンドルを閉じれば、相手には切断に見える）
             drop(duplex);
@@ -103,14 +103,14 @@ fn open_checked(
 
 fn verify_peer(
     tip_dll: Option<&Path>,
-    pid: Option<u32>,
+    peer_exe: Option<&str>,
     rule: PathRule,
 ) -> Result<(), PeerRejection> {
     let tip_dll = tip_dll.ok_or(PeerRejection::NoSelfPath)?;
-    let pid = pid.ok_or(PeerRejection::NoPeerPid)?;
-    let peer_exe = process_image_path(pid).ok_or(PeerRejection::NoPeerPath)?;
+    // 相手のパスは、`connect_duplex` が開いたプロセスから取ったもの（取れなければ断る）
+    let peer_exe = peer_exe.ok_or(PeerRejection::NoPeerPath)?;
     let tip_dll = tip_dll.to_str().ok_or(PeerRejection::SelfPathInvalid)?;
-    rule(&long_path_name(tip_dll), &peer_exe)
+    rule(&long_path_name(tip_dll), peer_exe)
 }
 
 /// TIP の DLL のパスを、試験で決めた場所にして `open_verified` を確かめる（Windows の CI でだけ流れる）。

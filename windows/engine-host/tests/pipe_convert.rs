@@ -51,8 +51,8 @@ impl Host {
     }
 
     fn connect(&self) -> Client {
-        let (duplex, server_pid) = connect_duplex(&self.name).expect("connect to the pipe");
-        Client::new(duplex, server_pid)
+        let (duplex, server) = connect_duplex(&self.name).expect("connect to the pipe");
+        Client::new(duplex, server.pid)
     }
 
     fn stop(mut self) {

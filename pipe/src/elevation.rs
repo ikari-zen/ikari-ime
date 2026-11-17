@@ -115,7 +115,12 @@ mod tests {
                 Some(MEDIUM - 1),
                 Err(Refusal::PeerLow),
             ),
-            ("medium plus to medium", Some(MEDIUM_PLUS), Some(MEDIUM), Ok(())),
+            (
+                "medium plus to medium",
+                Some(MEDIUM_PLUS),
+                Some(MEDIUM),
+                Ok(()),
+            ),
             (
                 "medium to high",
                 Some(MEDIUM),

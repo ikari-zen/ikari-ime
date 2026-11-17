@@ -807,7 +807,13 @@ mod tests {
     fn object_owner_table() {
         let who = |user_sid, session| SessionUser { user_sid, session };
         let own = who(Some(ME), Some(1));
-        let cases: &[(&str, Option<&str>, SessionUser, Result<(), PeerRejection>)] = &[
+        type Case<'a> = (
+            &'a str,
+            Option<&'a str>,
+            SessionUser<'a>,
+            Result<(), PeerRejection>,
+        );
+        let cases: &[Case] = &[
             ("owner is me", Some(ME), who(Some(ME), Some(1)), OK),
             (
                 "token is me but the object owner is another user",
