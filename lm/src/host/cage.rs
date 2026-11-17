@@ -38,6 +38,32 @@ use std::time::Duration;
 
 use crate::host::{ARG_GPU, ARG_GPU_CPU, ARG_GPU_OFF, ARG_GPU_ON, ARG_MODEL};
 
+// 実装（D-3-mac）: libxpc の呼び出し、檻役の側、エンジンの側。macOS だけ
+#[cfg(target_vendor = "apple")]
+mod client;
+#[cfg(target_vendor = "apple")]
+mod service;
+#[cfg(target_vendor = "apple")]
+mod spawn;
+#[cfg(target_vendor = "apple")]
+mod xpc;
+
+#[cfg(target_vendor = "apple")]
+pub use client::XpcCageClient;
+#[cfg(target_vendor = "apple")]
+pub use service::{CageCore, CageListener, run_service};
+
+/// 署名要件は、それぞれの束の Info.plist（署名の対象）に build.sh が書く（今のエンジンの `IkariPeerRequirement` と
+/// 同じ形）。檻役は bin が読んで [`run_service`] に渡し、エンジンは殻が読んで口と一緒に渡す（ライブラリは
+/// CoreFoundation を要らないようにする。エンジンの静的ライブラリのリンクの一覧を増やさない）。
+///
+/// 檻役の束の Info.plist のキー: 名前の口につないでくる相手（殻、smoke）の署名要件（エンジンの束と同じキー）
+pub const INFO_KEY_SHELL_PEER_REQUIREMENT: &str = "IkariPeerRequirement";
+/// 檻役の束の Info.plist のキー: 匿名の口につないでくる相手（エンジン）の署名要件
+pub const INFO_KEY_ENGINE_PEER_REQUIREMENT: &str = "IkariCageEnginePeerRequirement";
+/// エンジンの束の Info.plist のキー: もらった口の先（檻役）の署名要件（FC-1）
+pub const INFO_KEY_CAGE_PEER_REQUIREMENT: &str = "IkariCagePeerRequirement";
+
 /// エンジンと檻役の取り決めの版。辞書のキーや語を変えたら上げる
 pub const CAGE_PROTOCOL_VERSION: u32 = 1;
 
@@ -62,6 +88,9 @@ pub const STOP_REPLY_DEADLINE: Duration = Duration::from_secs(5);
 /// 契約のレーンの仮置き。実装のレーンで計測して PR に書き、ユーザーに確かめる。
 /// `hello` の返事を待つ上限。過ぎたら、その口は確かめに失敗したとして捨てる（FC-1）
 pub const HELLO_REPLY_DEADLINE: Duration = Duration::from_secs(5);
+/// 実装のレーン（D-3-mac）の仮置き。計測して PR に書き、ユーザーに確かめる。
+/// `launch` の返事を待つ上限（§13.5 の実測では、頼みから起動まで 1ms 未満）。過ぎたら、その接続を捨てる
+pub const LAUNCH_REPLY_DEADLINE: Duration = Duration::from_secs(5);
 /// 契約のレーンの仮置き。実装のレーンで計測して PR に書き、ユーザーに確かめる。
 /// 子（`ikari-lm-host`）が、親（檻役）が終わったかを見る間隔（固まった子が残らないように。ADR 0077 §3.1）
 pub const PARENT_WATCH_INTERVAL: Duration = Duration::from_secs(1);
@@ -95,6 +124,12 @@ pub mod wire {
     pub const OP_HELLO: &str = "hello";
     pub const OP_LAUNCH: &str = "launch";
     pub const OP_STOP: &str = "stop";
+
+    /// 名前の口（殻 → 檻役）: 匿名の口をもらう。`KEY_OP` と `KEY_VERSION` だけ。返事は `KEY_REPLY`、
+    /// `KEY_VERSION`、`ok` のときだけ `KEY_ENDPOINT`（`xpc_endpoint`）
+    pub const OP_ENDPOINT: &str = "endpoint";
+    /// 匿名の口（`xpc_endpoint`。[`OP_ENDPOINT`] の返事）
+    pub const KEY_ENDPOINT: &str = "endpoint";
 }
 
 /// 子の GPU の扱い（`ikari-lm-host` の `--gpu` の値と 1 対 1）。檻役は、これから引数を自分で組む
@@ -265,23 +300,28 @@ impl VerifiedCage {
     /// 失敗したら口は捨てる（呼び出し側は [`CageSlot`] に入れない）。`launch` は送らない
     pub fn handshake(client: Arc<dyn CageClient>) -> Result<VerifiedCage, HandshakeError> {
         let answer = client.hello().map_err(HandshakeError::Io)?;
-        if answer.peer != PeerCheck::Verified {
-            return Err(HandshakeError::PeerRejected);
-        }
-        match (answer.reply, answer.version) {
-            (Some(CageReply::Ok), Some(v)) if v == u64::from(CAGE_PROTOCOL_VERSION) => {
-                Ok(VerifiedCage { client })
-            }
-            (Some(CageReply::Ok), Some(_)) | (Some(CageReply::VersionMismatch), _) => {
-                Err(HandshakeError::VersionMismatch)
-            }
-            _ => Err(HandshakeError::BadReply),
-        }
+        check_hello(answer)?;
+        Ok(VerifiedCage { client })
     }
 
     /// 子を 1 つ起動してもらう
     pub fn launch(&self, launch: CageLaunch) -> io::Result<Box<dyn CageChild>> {
         self.client.launch(launch)
+    }
+}
+
+/// `hello` の返事を確かめる（送り手が署名要件を満たし、`ok` で版が同じ）。[`VerifiedCage::handshake`] と、
+/// libxpc の口が `launch` の接続ごとに送る `hello` の両方が使う
+fn check_hello(answer: HelloAnswer) -> Result<(), HandshakeError> {
+    if answer.peer != PeerCheck::Verified {
+        return Err(HandshakeError::PeerRejected);
+    }
+    match (answer.reply, answer.version) {
+        (Some(CageReply::Ok), Some(v)) if v == u64::from(CAGE_PROTOCOL_VERSION) => Ok(()),
+        (Some(CageReply::Ok), Some(_)) | (Some(CageReply::VersionMismatch), _) => {
+            Err(HandshakeError::VersionMismatch)
+        }
+        _ => Err(HandshakeError::BadReply),
     }
 }
 
@@ -667,66 +707,9 @@ mod tests {
         }
         assert_eq!(check_launch_fds(stdin, stdout, probe(ro.as_fd())), Ok(()));
     }
-
-    // ---- D-3-mac の骨組み（実装のレーンで中身を書き、`#[ignore]` を外す）
-
-    #[test]
-    #[ignore = "D-3-mac: 檻役の子に付く fd が 0・1・3 だけ（POSIX_SPAWN_CLOEXEC_DEFAULT）"]
-    fn caged_child_gets_only_fds_0_1_3() {
-        unimplemented!("D-3-mac")
-    }
-
-    #[test]
-    #[ignore = "D-3-mac: 檻役の子の環境変数が空"]
-    fn caged_child_has_an_empty_environment() {
-        unimplemented!("D-3-mac")
-    }
-
-    #[test]
-    #[ignore = "D-3-mac: 全体の上限（MAX_CHILDREN_TOTAL）を超える起動は Busy"]
-    fn launches_beyond_the_total_limit_are_busy() {
-        unimplemented!("D-3-mac")
-    }
-
-    #[test]
-    #[ignore = "D-3-mac: 接続ごとに子は 1 つまで（2 つ目は Busy）"]
-    fn one_child_per_connection() {
-        unimplemented!("D-3-mac")
-    }
-
-    #[test]
-    #[ignore = "D-3-mac: 止めるは SIGKILL と回収のあとで返事をする"]
-    fn stop_replies_after_kill_and_reap() {
-        unimplemented!("D-3-mac")
-    }
-
-    #[test]
-    #[ignore = "D-3-mac: 接続を捨てたら、檻役が子を止めて回収する"]
-    fn dropping_the_connection_reaps_the_child() {
-        unimplemented!("D-3-mac")
-    }
-
-    #[test]
-    #[ignore = "D-3-mac: 版が違う要求は VersionMismatch で、起動しない"]
-    fn version_mismatch_is_refused_without_spawning() {
-        unimplemented!("D-3-mac")
-    }
-
-    #[test]
-    #[ignore = "D-3-mac: libxpc の口で、hello の伝言に fd を付けず、hello の返事の前に launch を送らない"]
-    fn xpc_hello_carries_no_fd_and_comes_first() {
-        unimplemented!("D-3-mac")
-    }
-
-    #[test]
-    #[ignore = "D-3-mac: 檻役は、受けた fd を probe_fd と check_launch_fds で確かめ、違えば起動しない"]
-    fn the_cage_checks_received_fds_before_spawning() {
-        unimplemented!("D-3-mac")
-    }
-
-    #[test]
-    #[ignore = "D-3-mac: 檻役が落ちたら、子は親の見張りで自分で終わる"]
-    fn child_exits_when_the_cage_dies() {
-        unimplemented!("D-3-mac")
-    }
 }
+
+// 檻役と口の往復（プロセスの中の匿名の口。束も署名も要らない）。偽の子での採点の往復と、檻役が落ちたときの
+// 子の終わりは lm/tests/cage_xpc.rs
+#[cfg(all(test, target_vendor = "apple"))]
+mod xpc_tests;

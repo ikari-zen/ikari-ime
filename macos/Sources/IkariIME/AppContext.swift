@@ -34,7 +34,8 @@ final class AppContext: @unchecked Sendable {
 
         // 落ちた通知は XPC のキューから来る。shell を作り直しても届くよう、箱を通す
         let downBox = DownNotifierBox()
-        let connections = XPCEngineConnections(signing: signing) { connection, kind in
+        // 檻役の口をエンジンに渡す仲立ち（ADR 0077 §3.1）。判断はエンジン（Rust）。ここは輸送だけ
+        let connections = XPCEngineConnections(signing: signing, cage: LMCageBroker(signing: signing)) { connection, kind in
             downBox.engineDown(connection: connection, kind: kind == .interrupted ? .interrupted : .invalidated)
         }
         let shellVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""

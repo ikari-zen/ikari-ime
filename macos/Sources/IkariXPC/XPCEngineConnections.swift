@@ -20,14 +20,20 @@ public final class XPCEngineConnections: @unchecked Sendable {
     private let serviceName: String
     private let requirement: String
     private let onDown: DownHandler
+    private let cage: LMCageBroker?
     private let lock = NSLock()
     private var connections: [UInt64: XPCTransport] = [:]
     /// 次の番号。0 は「つながらない」なので使わない。使い回さない
     private var nextID: UInt64 = 1
 
     /// `onDown` は XPC のキューから呼ばれる（主スレッドが要求の返事を待っている間にも届く）
-    public init(serviceName: String = IkariIdentifiers.engine, signing: SigningMode, onDown: @escaping DownHandler) {
+    /// `cage` があれば、エンジンに檻役の口を渡す（ADR 0077 §3.1）。殻が 1 つだけ作って共有する
+    public init(
+        serviceName: String = IkariIdentifiers.engine, signing: SigningMode, cage: LMCageBroker? = nil,
+        onDown: @escaping DownHandler
+    ) {
         self.serviceName = serviceName
+        self.cage = cage
         requirement = SigningRequirements.engine(mode: signing)
         self.onDown = onDown
     }
@@ -39,7 +45,7 @@ public final class XPCEngineConnections: @unchecked Sendable {
         nextID &+= 1
         lock.unlock()
         let onDown = onDown
-        let transport = XPCTransport(serviceName: serviceName, requirement: requirement) { down in
+        let transport = XPCTransport(serviceName: serviceName, requirement: requirement, cage: cage) { down in
             switch down {
             case .interrupted: onDown(id, .interrupted)
             case .invalidated: onDown(id, .invalidated)

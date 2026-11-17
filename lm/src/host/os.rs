@@ -81,6 +81,8 @@ pub(crate) enum CageState {
     None,
     /// エンジンの App Sandbox を引き継ぐ（段 1。macOS）
     Inherited,
+    /// 檻役が起動し、檻役の App Sandbox を引き継ぐ（段 2。macOS。ADR 0077）
+    Cage,
 }
 
 impl CageState {
@@ -91,27 +93,51 @@ impl CageState {
             CageState::LowIntegrity => "low",
             CageState::None => "none",
             CageState::Inherited => "inherited",
+            CageState::Cage => "cage",
         }
     }
 
-    pub(crate) const ALL: [CageState; 5] = [
+    pub(crate) const ALL: [CageState; 6] = [
         CageState::Unknown,
         CageState::AppContainer,
         CageState::LowIntegrity,
         CageState::None,
         CageState::Inherited,
+        CageState::Cage,
     ];
 }
 
-/// 起動した子。捨てると kill して wait する
+/// 子の持ち手
+enum ProcHandle {
+    /// 自分で起動した子
+    Own(imp::Proc),
+    /// 檻役が起動した子（止めるのは檻役に頼む。macOS）
+    #[cfg(target_vendor = "apple")]
+    Caged(Box<dyn crate::host::cage::CageChild>),
+}
+
+#[cfg(all(test, windows))]
+impl ProcHandle {
+    /// 子のプロセスのハンドル（Windows のテストが、かけた檻を確かめる）
+    fn process_handle(&self) -> windows_sys::Win32::Foundation::HANDLE {
+        let ProcHandle::Own(p) = self;
+        p.process_handle()
+    }
+}
+
+/// 起動した子。捨てると kill して wait する（檻役の子は、檻役に止めて回収してもらう）
 pub(super) struct ChildProc {
-    inner: imp::Proc,
+    inner: ProcHandle,
     cage: CageState,
 }
 
 impl ChildProc {
     pub(super) fn id(&self) -> u32 {
-        self.inner.id()
+        match &self.inner {
+            ProcHandle::Own(p) => p.id(),
+            #[cfg(target_vendor = "apple")]
+            ProcHandle::Caged(c) => c.pid(),
+        }
     }
 
     /// この子にかけた檻
@@ -122,7 +148,14 @@ impl ChildProc {
 
 impl Drop for ChildProc {
     fn drop(&mut self) {
-        self.inner.reap();
+        match &mut self.inner {
+            ProcHandle::Own(p) => p.reap(),
+            // 返事が来なくても、持ち手を捨てると接続が切れ、檻役が止める
+            #[cfg(target_vendor = "apple")]
+            ProcHandle::Caged(c) => {
+                let _ = c.stop();
+            }
+        }
     }
 }
 
@@ -148,7 +181,10 @@ pub(super) fn spawn(
         }
     };
     // ここから先は、失敗しても `proc` の Drop が子を回収する
-    let proc = ChildProc { inner, cage };
+    let proc = ChildProc {
+        inner: ProcHandle::Own(inner),
+        cage,
+    };
     #[cfg(target_vendor = "apple")]
     imp::no_sigpipe(&stdin)?;
     Ok((proc, stdin, stdout))
@@ -159,7 +195,8 @@ pub(super) fn spawn(
 /// 契約のスタブ（第 4 弾）: 中身はレーン D-3-mac。`args` は今の `--model <path> --gpu <語>` のまま渡す
 /// （檻役には `--gpu` の語だけを [`cage::CageGpu`] で送り、モデルは照合したハンドルの写し（`model.for_child()`。
 /// 起動のたびに位置を先頭へ戻したもの）を fd で渡す。パスで開き直さない。FC-3）。
-/// 口が無い（`slot` が空）ときは「檻なし」で起動しない。今は常に `Unsupported`。
+/// 口が無い（`slot` が空）ときは「檻なし」で起動しない。檻役の子は段 2 なので、`cage` の求め（段 1 か段 2）は
+/// どれも満たす。macOS 以外では起動しない（`Unsupported`）。
 ///
 /// [`cage::CageGpu`]: crate::host::cage::CageGpu
 pub(super) fn spawn_via_cage(
@@ -168,11 +205,71 @@ pub(super) fn spawn_via_cage(
     args: &[OsString],
     cage: crate::host::scorer::HostCage,
 ) -> io::Result<(ChildProc, ToChild, FromChild)> {
-    let _ = (slot, model, args, cage);
-    Err(io::Error::new(
-        io::ErrorKind::Unsupported,
-        "lm cage launcher is not implemented",
-    ))
+    let _ = cage;
+    #[cfg(target_vendor = "apple")]
+    return apple_cage::spawn(slot, model, args);
+    #[cfg(not(target_vendor = "apple"))]
+    {
+        let _ = (slot, model, args);
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "lm cage launcher is macos only",
+        ))
+    }
+}
+
+/// 檻役に頼む起動（macOS）
+#[cfg(target_vendor = "apple")]
+mod apple_cage {
+    use std::ffi::OsString;
+    use std::io;
+    use std::os::fd::OwnedFd;
+    use std::process::{ChildStdin, ChildStdout};
+
+    use super::{CageState, ChildProc, ProcHandle, imp};
+    use crate::host::ARG_GPU;
+    use crate::host::ModelHandle;
+    use crate::host::cage::{CageGpu, CageLaunch, CageSlot};
+
+    /// `--gpu <語>` の語（無い・知らない語は誤り）
+    fn gpu_of(args: &[OsString]) -> io::Result<CageGpu> {
+        args.iter()
+            .position(|a| a == ARG_GPU)
+            .and_then(|i| args.get(i + 1))
+            .and_then(|v| v.to_str())
+            .and_then(CageGpu::from_word)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "lm host gpu argument"))
+    }
+
+    pub(super) fn spawn(
+        slot: &CageSlot,
+        model: &ModelHandle,
+        args: &[OsString],
+    ) -> io::Result<(ChildProc, ChildStdin, ChildStdout)> {
+        let Some(cage) = slot.current() else {
+            return Err(io::Error::new(io::ErrorKind::NotConnected, "no lm cage"));
+        };
+        let gpu = gpu_of(args)?;
+        // 子が読む側（標準入力）と、子が書く側（標準出力）
+        let (child_in, parent_in) = io::pipe()?;
+        let (parent_out, child_out) = io::pipe()?;
+        let launch = CageLaunch {
+            stdin: child_in,
+            stdout: child_out,
+            model: model.for_child()?,
+            gpu,
+        };
+        // 子の側の端は `launch` の中で閉じる
+        let child = cage.launch(launch)?;
+        let proc = ChildProc {
+            inner: ProcHandle::Caged(child),
+            cage: CageState::Cage,
+        };
+        let stdin = ChildStdin::from(OwnedFd::from(parent_in));
+        let stdout = ChildStdout::from(OwnedFd::from(parent_out));
+        imp::no_sigpipe(&stdin)?;
+        Ok((proc, stdin, stdout))
+    }
 }
 
 /// Windows でない OS の段 1 の檻

@@ -78,6 +78,11 @@ deny = [
     { crate = "axum" },
     { crate = "warp" },
     { crate = "actix-web" },
+    # ここから下は通信の手段ではない（NET_CRATES には入れない）。unsafe の多い橋を、使ってよい crate の下に閉じる。
+    # block2（libxpc のハンドラの block。MIT）は ikari-lm の檻役の口だけ（ADR 0077 §3.4、§3.4.1）。objc2 と objc2-encode（MIT）は block2 の下だけ
+    { crate = "block2", wrappers = ["ikari-lm"] },
+    { crate = "objc2", wrappers = ["block2"] },
+    { crate = "objc2-encode", wrappers = ["objc2"] },
 ]
 
 [sources]
