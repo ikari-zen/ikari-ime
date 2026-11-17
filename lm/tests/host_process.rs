@@ -161,8 +161,11 @@ impl Harness {
         }
     }
 
+    /// 次に起動する子の台本（台本そのものはハンドルで持っているので、横の `.next` に書く。偽の子の説明）
     fn set_script(&self, script: &str) {
-        std::fs::write(&self.script, script).unwrap();
+        let mut path = self.script.clone().into_os_string();
+        path.push(".next");
+        std::fs::write(path, script).unwrap();
     }
 
     /// 偽の子が起動のたびに書いた `--gpu` の値
