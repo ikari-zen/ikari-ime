@@ -3,7 +3,7 @@
 
 use super::*;
 
-use ikari_lm::host::{HostHealth, HostSpec, LmIsolation, ModelHandle, host_loader};
+use ikari_lm::host::{HostCage, HostHealth, HostSpec, LmIsolation, ModelHandle, host_loader};
 use ikari_lm::{LmLoader, ZenzConfig, ZenzRanker};
 
 /// `host` が Some なら、その実行ファイルを子として起動して採点を頼む（このビルドに llama.cpp は要らない）。
@@ -16,6 +16,12 @@ pub fn build(
 ) -> Result<LmParts, StackError> {
     if host.is_none() && !cfg!(feature = "lm") {
         return Err(StackError::LmNotBuilt);
+    }
+    // 段 2 だけを求めるモデル（自由指定）は、同じプロセスでは読まない（檻を素通りするため。ADR 0072 §4 の 2、D-4 の条件 6）
+    if host.is_none() && isolation.cage == HostCage::RequireAppContainer {
+        return Err(StackError::Open(
+            "LM: this model needs the level-2 cage and cannot run in-process".into(),
+        ));
     }
     if !path.exists() {
         return Err(StackError::LmModelNotFound(path.to_path_buf()));

@@ -25,6 +25,8 @@ pub use ikari_lm::host::{HostCage, HostLauncher, LmIsolation, ModelHandle as LmM
 /// LM の計測の型と記録（エンジンが `ikari-lm` を直接知らずに使う。ADR 0061）
 pub use ikari_lm::trace as lm_trace;
 pub use ikari_lm::{CancelToken, LmDevice, LmTrace};
+/// モデルの記述（ADR 0060 §3。エンジンのモデルの解決が使う）
+pub use ikari_lm::{ModelProfile, PromptFormat, profile_by_id};
 
 use ikari_core::user::{IT_PACK_ID, UserDictionary, UserDir, builtin_it_pack};
 use ikari_core::{
@@ -229,6 +231,9 @@ pub struct StackOptions {
     /// LM の子の檻（求める段と起動の口。別プロセスで動かすときだけ使う。既定は段 1 で自分で起動する。
     /// ADR 0072 §4、ADR 0077）
     pub lm_isolation: LmIsolation,
+    /// LM のプロンプトの形式（モデルの記述から。自由指定のモデルは利用者が選んだ形式。ADR 0060 §3・§4）。
+    /// None なら `ranker_config` の `zenz.model_kind`、それも無ければ既定（zenz v3）
+    pub lm_format: Option<PromptFormat>,
 }
 
 impl fmt::Debug for StackOptions {
@@ -250,6 +255,7 @@ impl fmt::Debug for StackOptions {
             .field("unicode", &self.unicode)
             .field("date", &self.date)
             .field("lm_isolation", &self.lm_isolation)
+            .field("lm_format", &self.lm_format)
             .finish()
     }
 }

@@ -31,6 +31,8 @@ pub(super) fn default_rewriters(
 const CONVERT_KEY_PREFIX: &str = "convert.";
 /// LM が採点する最初のプールの件数のキー（既定は `ConvertOptions::first_pool_capacity`。ADR 0048 §7）
 const KEY_LM_MAX_CANDIDATES: &str = "zenz.max_candidates";
+/// LM のプロンプトの形式のキー（`StackOptions::lm_format` で上書きする）
+const KEY_LM_MODEL_KIND: &str = "zenz.model_kind";
 
 /// LM に渡す kv。`zenz.max_candidates` が無ければ最初のプールの件数にする（指定があればそちらが優先）。
 fn build_lm_kv(
@@ -316,7 +318,10 @@ pub(super) fn assemble_with(
             Some(parts) => parts,
             None => {
                 let path = paths.lm_model.as_deref().unwrap_or(Path::new(""));
-                let lm_kv = build_lm_kv(&opts.ranker_config, opts.lm, &convert);
+                let mut lm_kv = build_lm_kv(&opts.ranker_config, opts.lm, &convert);
+                if let Some(format) = opts.lm_format {
+                    lm_kv.insert(KEY_LM_MODEL_KIND.to_owned(), format.as_str().to_owned());
+                }
                 lm::build(path, &lm_kv, paths.lm_host.as_deref(), &opts.lm_isolation)?
             }
         };
