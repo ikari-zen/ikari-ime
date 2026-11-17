@@ -18,6 +18,7 @@ use crate::placement::GpuState;
 use crate::scorer::{LmDevice, LmScorer};
 
 const READER_THREAD_NAME: &str = "ikari-lm-host-stdin";
+#[cfg(unix)]
 const PARENT_WATCH_THREAD_NAME: &str = "ikari-lm-host-parent";
 /// 入力が閉じてから `on_input_end` を呼ぶまでの猶予。ふつうは、この間に本体の繰り返しが自分で終わる。
 /// 推論の中で固まっているときだけ、`on_input_end`（プロセスを終わらせる）が効く。計測で決めた値ではない

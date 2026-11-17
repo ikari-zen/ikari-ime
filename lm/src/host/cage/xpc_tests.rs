@@ -258,15 +258,15 @@ fn a_child_that_exits_by_itself_is_reaped_and_frees_its_slot() {
 fn version_mismatch_is_refused_without_spawning() {
     let rig = Rig::new(CAT_SCRIPT);
     let model = File::open(&rig.model).unwrap();
-    let other = Some(u64::from(CAGE_PROTOCOL_VERSION) + 1);
+    let other = u64::from(CAGE_PROTOCOL_VERSION) + 1;
     let conn = rig.raw();
     assert_eq!(
-        ask(&conn, &message(wire::OP_HELLO, other)),
+        ask(&conn, &message(wire::OP_HELLO, Some(other))),
         Some(CageReply::VersionMismatch)
     );
     assert_eq!(ask(&conn, &message(wire::OP_HELLO, V)), Some(CageReply::Ok));
     let (launch, _in, _out) = launch_message(&model);
-    launch.set_u64(wire::KEY_VERSION, other.unwrap());
+    launch.set_u64(wire::KEY_VERSION, other);
     assert_eq!(ask(&conn, &launch), Some(CageReply::VersionMismatch));
     assert_eq!(rig.core.live_children(), 0);
 }

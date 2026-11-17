@@ -112,8 +112,17 @@ enum ProcHandle {
     /// 自分で起動した子
     Own(imp::Proc),
     /// 檻役が起動した子（止めるのは檻役に頼む。macOS）
-    #[cfg_attr(not(target_vendor = "apple"), allow(dead_code))]
+    #[cfg(target_vendor = "apple")]
     Caged(Box<dyn crate::host::cage::CageChild>),
+}
+
+#[cfg(all(test, windows))]
+impl ProcHandle {
+    /// 子のプロセスのハンドル（Windows のテストが、かけた檻を確かめる）
+    fn process_handle(&self) -> windows_sys::Win32::Foundation::HANDLE {
+        let ProcHandle::Own(p) = self;
+        p.process_handle()
+    }
 }
 
 /// 起動した子。捨てると kill して wait する（檻役の子は、檻役に止めて回収してもらう）
@@ -126,6 +135,7 @@ impl ChildProc {
     pub(super) fn id(&self) -> u32 {
         match &self.inner {
             ProcHandle::Own(p) => p.id(),
+            #[cfg(target_vendor = "apple")]
             ProcHandle::Caged(c) => c.pid(),
         }
     }
@@ -141,6 +151,7 @@ impl Drop for ChildProc {
         match &mut self.inner {
             ProcHandle::Own(p) => p.reap(),
             // 返事が来なくても、持ち手を捨てると接続が切れ、檻役が止める
+            #[cfg(target_vendor = "apple")]
             ProcHandle::Caged(c) => {
                 let _ = c.stop();
             }
