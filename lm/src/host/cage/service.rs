@@ -18,8 +18,7 @@ use super::client::XpcCageClient;
 use super::spawn::{self, CagedChild};
 use super::xpc::{self, Connection, Kind, Obj, RawObj};
 use super::{
-    CAGE_PROTOCOL_VERSION, CageGpu, CageReply, CageSession, INFO_KEY_ENGINE_PEER_REQUIREMENT,
-    INFO_KEY_SHELL_PEER_REQUIREMENT, MAX_CHILDREN_TOTAL, check_launch_fds, main_bundle_string,
+    CAGE_PROTOCOL_VERSION, CageGpu, CageReply, CageSession, MAX_CHILDREN_TOTAL, check_launch_fds,
     probe_fd, wire,
 };
 use crate::host::HOST_EXE_STEM;
@@ -332,18 +331,17 @@ struct Service {
 static SERVICE: OnceLock<Service> = OnceLock::new();
 
 /// 檻役の XPC サービスとして動く（戻らない）。実行ファイルは自分の隣の `ikari-lm-host`。
-/// 署名要件は自分の束の Info.plist（無い口は、すべての接続を断る）
-pub fn run_service() -> ! {
+/// 署名要件は、bin が自分の束の Info.plist（[`super::INFO_KEY_SHELL_PEER_REQUIREMENT`]、
+/// [`super::INFO_KEY_ENGINE_PEER_REQUIREMENT`]）から読んで渡す。無い口は、すべての接続を断る
+pub fn run_service(shell_requirement: Option<&str>, engine_requirement: Option<&str>) -> ! {
     let program = std::env::current_exe()
         .ok()
         .and_then(|exe| exe.parent().map(|dir| dir.join(HOST_EXE_STEM)));
     let mut core = CageCore::new(program.as_deref().unwrap_or(Path::new("")));
     core.transactions = true;
     let core = Arc::new(core);
-    let shell_requirement =
-        main_bundle_string(INFO_KEY_SHELL_PEER_REQUIREMENT).and_then(|r| CString::new(r).ok());
-    let listener = main_bundle_string(INFO_KEY_ENGINE_PEER_REQUIREMENT)
-        .and_then(|r| CageListener::start(Arc::clone(&core), &r).ok());
+    let shell_requirement = shell_requirement.and_then(|r| CString::new(r).ok());
+    let listener = engine_requirement.and_then(|r| CageListener::start(Arc::clone(&core), r).ok());
     let _ = SERVICE.set(Service {
         shell_requirement,
         listener,

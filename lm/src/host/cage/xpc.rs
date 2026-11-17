@@ -1,5 +1,5 @@
 //! libxpc の呼び出し（macOS。檻役とエンジンの側の両方が使う。ADR 0077 §3.4）。`unsafe` は、このファイルと
-//! `spawn.rs`、`bundle.rs` に閉じる。
+//! `spawn.rs` に閉じる（檻役の Info.plist の読み取りは bin `ikari-lm-cage` の中）。
 //!
 //! - [`Obj`] は、xpc の値 1 つへの参照（retain を 1 つ持ち、捨てると release する）。
 //! - ハンドラは `block2` の block で渡す。libxpc は block を写して持つので、こちらの `RcBlock` は渡したあと捨ててよい。

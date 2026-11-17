@@ -40,8 +40,6 @@ use crate::host::{ARG_GPU, ARG_GPU_CPU, ARG_GPU_OFF, ARG_GPU_ON, ARG_MODEL};
 
 // 実装（D-3-mac）: libxpc の呼び出し、檻役の側、エンジンの側。macOS だけ
 #[cfg(target_vendor = "apple")]
-mod bundle;
-#[cfg(target_vendor = "apple")]
 mod client;
 #[cfg(target_vendor = "apple")]
 mod service;
@@ -55,12 +53,10 @@ pub use client::XpcCageClient;
 #[cfg(target_vendor = "apple")]
 pub use service::{CageCore, CageListener, run_service};
 
-/// 主の束（自分の束）の Info.plist の文字列（無い・文字列でないときは None）。署名要件の読み取りに使う
-#[cfg(target_vendor = "apple")]
-pub fn main_bundle_string(key: &str) -> Option<String> {
-    bundle::main_bundle_string(key)
-}
-
+/// 署名要件は、それぞれの束の Info.plist（署名の対象）に build.sh が書く（今のエンジンの `IkariPeerRequirement` と
+/// 同じ形）。檻役は bin が読んで [`run_service`] に渡し、エンジンは殻が読んで口と一緒に渡す（ライブラリは
+/// CoreFoundation を要らないようにする。エンジンの静的ライブラリのリンクの一覧を増やさない）。
+///
 /// 檻役の束の Info.plist のキー: 名前の口につないでくる相手（殻、smoke）の署名要件（エンジンの束と同じキー）
 pub const INFO_KEY_SHELL_PEER_REQUIREMENT: &str = "IkariPeerRequirement";
 /// 檻役の束の Info.plist のキー: 匿名の口につないでくる相手（エンジン）の署名要件
