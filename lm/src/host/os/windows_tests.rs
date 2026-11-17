@@ -171,14 +171,14 @@ fn the_child_runs_confined() {
     assert!(out.contains(NESTED_BLOCKED), "{out}");
 }
 
-/// この環境で AppContainer のプロファイルが作れるか。GitHub Actions の runner では
-/// `ensure_profile` が 0x8007010A（環境が正しくない）で失敗する（VM と実機では動く。ADR 0072 §12）。
-/// その特定のエラーのときだけ、テストを飛ばす（ほかの失敗は落とす）
+/// GitHub Actions の runner では、AppContainer のプロファイルが作れない（`CreateAppContainerProfile` が
+/// 0x8007010A や 0x8000FFFF など、一定しないエラーで失敗する。VM と実機では動く。ADR 0072 §12）。
+/// CI（`GITHUB_ACTIONS` が立っている）でプロファイルが作れないときだけ、テストを飛ばす。
+/// 手元・VM・実機では、作れなければ落とす
 fn appcontainer_unavailable_here() -> bool {
-    const ENVIRONMENT_INCORRECT: i32 = 0x8007_010Au32 as i32;
     match appcontainer::ensure_profile() {
-        Err(e) if e.raw_os_error() == Some(ENVIRONMENT_INCORRECT) => {
-            eprintln!("skip: この環境では AppContainer のプロファイルが作れない（{e}）");
+        Err(e) if std::env::var_os("GITHUB_ACTIONS").is_some() => {
+            eprintln!("skip: CI の runner では AppContainer のプロファイルが作れない（{e}）");
             true
         }
         _ => false,
