@@ -1,4 +1,5 @@
-//! パイプの相手が、インストール先の決まった実行ファイルかの判定（ADR 0068 §2 の 2。ADR 0040 §2.7、ADR 0063 §3 の 5）。
+//! パイプの相手が、インストール先の決まった実行ファイルかの判定（ADR 0068 §2 の 2。ADR 0040 §2.7、ADR 0063 §3 の 5）と、
+//! つないだパイプの持ち主が自分と同じ利用者・セッションかの判定（`verify_pipe_owner`）。
 //! **OS に依存しない**（Mac でテストする）。
 //!
 //! 3 つの口（エンジン、設定、候補窓）で同じ規則を使うので、ここ 1 か所に置く。置き場所を `pipe` にしたのは、
@@ -103,7 +104,24 @@ pub enum PeerRejection {
     PeerPathInvalid,
     /// 相手が、その口に期待する実行ファイルでない
     NotThePeer,
+    /// 自分の利用者の SID かセッション番号が取れない
+    NoSelfOwner,
+    /// パイプの持ち主（受ける側のプロセスの利用者の SID かセッション番号）が取れない
+    NoPeerOwner,
+    /// パイプの持ち主が、別の利用者
+    OtherUser,
+    /// パイプの持ち主が、別のセッション
+    OtherSession,
 }
+
+impl std::fmt::Display for PeerRejection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// OS 層が `io::Error` に包んで返せるようにする（つなぐ側の持ち主の確認。`os::windows::connect_duplex`）
+impl std::error::Error for PeerRejection {}
 
 impl PeerRejection {
     /// ログに出す固定の文
@@ -115,8 +133,59 @@ impl PeerRejection {
             Self::SelfPathInvalid => "self-path-invalid",
             Self::PeerPathInvalid => "peer-path-invalid",
             Self::NotThePeer => "not-the-peer",
+            Self::NoSelfOwner => "no-self-owner",
+            Self::NoPeerOwner => "no-peer-owner",
+            Self::OtherUser => "other-user",
+            Self::OtherSession => "other-session",
         }
     }
+}
+
+/// プロセスの利用者とセッション（パイプの持ち主の確認に使う）。取れなかったものは `None`。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SessionUser<'a> {
+    /// トークンの「ユーザー」の SID の文字列（`S-1-5-21-…`）。UAC の昇格の前後で変わらない
+    pub user_sid: Option<&'a str>,
+    /// Windows のセッション番号
+    pub session: Option<u32>,
+}
+
+/// つないだパイプの持ち主が、つなぐ側の自分（`own`）と同じ利用者で、同じセッションかを判定する（ADR 0068 §2 の 2）。
+/// どれかが取れなければ拒む。見るのは次の 3 つ。
+///
+/// - `object_owner_sid`: パイプそのものの持ち主の SID（B-01 / FB-1）。受ける側の PID に依らず、作ったあとに
+///   別の利用者へ替えられない。主な確認はこれ。
+/// - `server`: 受ける側のプロセスのトークンの利用者の SID と、パイプのセッション番号（二重の守り）。
+///
+/// パイプの名前には利用者とセッションが入るが、名前は先に作った者が持てる。名前だけでは相手を信じず、実際に受けて
+/// いるプロセスの利用者とセッションを照らす（ADR 0066 P1、P2）。SID は OS が作った正規の文字列どうしを、そのまま比べる。
+pub fn verify_pipe_owner(
+    own: SessionUser<'_>,
+    object_owner_sid: Option<&str>,
+    server: SessionUser<'_>,
+) -> Result<(), PeerRejection> {
+    let (Some(own_sid), Some(own_session)) = (own.user_sid.filter(|s| !s.is_empty()), own.session)
+    else {
+        return Err(PeerRejection::NoSelfOwner);
+    };
+    let Some(object_owner_sid) = object_owner_sid.filter(|s| !s.is_empty()) else {
+        return Err(PeerRejection::NoPeerOwner);
+    };
+    if own_sid != object_owner_sid {
+        return Err(PeerRejection::OtherUser);
+    }
+    let (Some(server_sid), Some(server_session)) =
+        (server.user_sid.filter(|s| !s.is_empty()), server.session)
+    else {
+        return Err(PeerRejection::NoPeerOwner);
+    };
+    if own_sid != server_sid {
+        return Err(PeerRejection::OtherUser);
+    }
+    if own_session != server_session {
+        return Err(PeerRejection::OtherSession);
+    }
+    Ok(())
 }
 
 /// 比べられる形にしたパス（ドライブ文字と、その下の名前の並び）
@@ -631,8 +700,154 @@ mod tests {
             PeerRejection::SelfPathInvalid,
             PeerRejection::PeerPathInvalid,
             PeerRejection::NotThePeer,
+            PeerRejection::NoSelfOwner,
+            PeerRejection::NoPeerOwner,
+            PeerRejection::OtherUser,
+            PeerRejection::OtherSession,
         ];
         let texts: std::collections::HashSet<_> = all.iter().map(|r| r.as_str()).collect();
         assert_eq!(texts.len(), all.len());
+    }
+
+    const ME: &str = "S-1-5-21-1004336348-1177238915-682003330-1001";
+    const OTHER: &str = "S-1-5-21-1004336348-1177238915-682003330-1002";
+
+    /// つなぐ側の持ち主の確認（ADR 0068 §2 の 2）
+    #[test]
+    fn pipe_owner_table() {
+        const ME_WITH_SUFFIX: &str = "S-1-5-21-1004336348-1177238915-682003330-10010";
+        let who = |user_sid, session| SessionUser { user_sid, session };
+        let cases: &[(&str, SessionUser, SessionUser, Result<(), PeerRejection>)] = &[
+            (
+                "same user and session",
+                who(Some(ME), Some(1)),
+                who(Some(ME), Some(1)),
+                OK,
+            ),
+            (
+                "other user",
+                who(Some(ME), Some(1)),
+                who(Some(OTHER), Some(1)),
+                Err(PeerRejection::OtherUser),
+            ),
+            (
+                "other session",
+                who(Some(ME), Some(1)),
+                who(Some(ME), Some(2)),
+                Err(PeerRejection::OtherSession),
+            ),
+            (
+                "other user and session",
+                who(Some(ME), Some(1)),
+                who(Some(OTHER), Some(2)),
+                Err(PeerRejection::OtherUser),
+            ),
+            (
+                "SID differs only by a suffix",
+                who(Some(ME), Some(1)),
+                who(Some(ME_WITH_SUFFIX), Some(1)),
+                Err(PeerRejection::OtherUser),
+            ),
+            (
+                "no server SID",
+                who(Some(ME), Some(1)),
+                who(None, Some(1)),
+                Err(PeerRejection::NoPeerOwner),
+            ),
+            (
+                "empty server SID",
+                who(Some(ME), Some(1)),
+                who(Some(""), Some(1)),
+                Err(PeerRejection::NoPeerOwner),
+            ),
+            (
+                "no server session",
+                who(Some(ME), Some(1)),
+                who(Some(ME), None),
+                Err(PeerRejection::NoPeerOwner),
+            ),
+            (
+                "no own SID",
+                who(None, Some(1)),
+                who(Some(ME), Some(1)),
+                Err(PeerRejection::NoSelfOwner),
+            ),
+            (
+                "no own session",
+                who(Some(ME), None),
+                who(Some(ME), Some(1)),
+                Err(PeerRejection::NoSelfOwner),
+            ),
+            (
+                "nothing on either side",
+                who(None, None),
+                who(None, None),
+                Err(PeerRejection::NoSelfOwner),
+            ),
+            // セッション 0（サービス）どうしでも、同じなら通す（番号の値で特別扱いしない）
+            (
+                "session zero",
+                who(Some(ME), Some(0)),
+                who(Some(ME), Some(0)),
+                OK,
+            ),
+        ];
+        for (name, own, server, expected) in cases {
+            // パイプそのものの持ち主は、ここでは自分（持ち主の違いは次の表で見る）
+            assert_eq!(
+                verify_pipe_owner(*own, Some(ME), *server),
+                *expected,
+                "{name}"
+            );
+        }
+    }
+
+    /// パイプそのものの持ち主が主な確認になる（B-01 / FB-1）
+    #[test]
+    fn object_owner_table() {
+        let who = |user_sid, session| SessionUser { user_sid, session };
+        let own = who(Some(ME), Some(1));
+        type Case<'a> = (
+            &'a str,
+            Option<&'a str>,
+            SessionUser<'a>,
+            Result<(), PeerRejection>,
+        );
+        let cases: &[Case] = &[
+            ("owner is me", Some(ME), who(Some(ME), Some(1)), OK),
+            (
+                "token is me but the object owner is another user",
+                Some(OTHER),
+                who(Some(ME), Some(1)),
+                Err(PeerRejection::OtherUser),
+            ),
+            (
+                "object owner is an administrators group",
+                Some("S-1-5-32-544"),
+                who(Some(ME), Some(1)),
+                Err(PeerRejection::OtherUser),
+            ),
+            (
+                "object owner unknown",
+                None,
+                who(Some(ME), Some(1)),
+                Err(PeerRejection::NoPeerOwner),
+            ),
+            (
+                "object owner empty",
+                Some(""),
+                who(Some(ME), Some(1)),
+                Err(PeerRejection::NoPeerOwner),
+            ),
+            (
+                "object owner is me but the token is another user",
+                Some(ME),
+                who(Some(OTHER), Some(1)),
+                Err(PeerRejection::OtherUser),
+            ),
+        ];
+        for (name, owner, server, expected) in cases {
+            assert_eq!(verify_pipe_owner(own, *owner, *server), *expected, "{name}");
+        }
     }
 }

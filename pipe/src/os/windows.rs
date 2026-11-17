@@ -4,8 +4,10 @@
 //!   失敗する。なりすましの対策）、`PIPE_REJECT_REMOTE_CLIENTS`、自分のユーザーと SYSTEM だけの DACL。
 //!   受け付けのたびに次のインスタンスを先に作り、名前を手放さない。
 //! - クライアント（`connect`）: `CreateFileW` で開き、`GetNamedPipeServerProcessId` で相手の PID を取って
-//!   `Client::server_pid()` に返す。PID が正しい相手か（インストール先のパスと一致するか）は判断なので、
-//!   使う側（TIP）が決める。
+//!   `Client::server_pid()` に返す。返す前に、パイプそのものの持ち主の SID（主）と、受ける側のプロセスの利用者と
+//!   セッションが自分と同じかを確かめ、違えば・取れなければ断つ（`peer::verify_pipe_owner`。ADR 0068 §2 の 2）。
+//!   受ける側のプロセスは 1 回だけ開き、トークンと実行ファイルのパスの両方をそのハンドルで取る（`ServerProcess`）。
+//!   相手のパスが正しいか（インストール先のパスと一致するか）は口ごとに違う判断なので、使う側（TIP、設定画面）が決める。
 //! - 流れ（`NamedPipeDuplex`）: 重ね合わせ（overlapped）の I/O。読みと書きは別の `OVERLAPPED` とイベントを
 //!   使うので、同じハンドルでも直列にならない。`Shutdown` は、閉じる指示のイベントで待ちを起こし、
 //!   進行中の操作を `CancelIoEx` で取り消してから、ハンドルを閉じる（相手には切断が伝わる）。
@@ -27,12 +29,13 @@ use windows_sys::Win32::Foundation::{
     WAIT_TIMEOUT,
 };
 use windows_sys::Win32::Security::Authorization::{
-    ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+    ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, GetSecurityInfo,
+    SDDL_REVISION_1, SE_KERNEL_OBJECT,
 };
 use windows_sys::Win32::Security::{
-    GetSidSubAuthority, GetSidSubAuthorityCount, GetTokenInformation, PSECURITY_DESCRIPTOR,
-    SECURITY_ATTRIBUTES, TOKEN_MANDATORY_LABEL, TOKEN_QUERY, TOKEN_USER, TokenIntegrityLevel,
-    TokenUser,
+    GetSidSubAuthority, GetSidSubAuthorityCount, GetTokenInformation, OWNER_SECURITY_INFORMATION,
+    PSECURITY_DESCRIPTOR, PSID, SECURITY_ATTRIBUTES, TOKEN_MANDATORY_LABEL, TOKEN_QUERY,
+    TOKEN_USER, TokenIntegrityLevel, TokenUser,
 };
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FILE_FLAG_FIRST_PIPE_INSTANCE, FILE_FLAG_OVERLAPPED, FILE_FLAGS_AND_ATTRIBUTES,
@@ -42,8 +45,9 @@ use windows_sys::Win32::Storage::FileSystem::{
 use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
 use windows_sys::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, GetNamedPipeClientProcessId,
-    GetNamedPipeServerProcessId, NAMED_PIPE_MODE, PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS,
-    PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, PIPE_WAIT, WaitNamedPipeW,
+    GetNamedPipeServerProcessId, GetNamedPipeServerSessionId, NAMED_PIPE_MODE, PIPE_READMODE_BYTE,
+    PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, PIPE_WAIT,
+    WaitNamedPipeW,
 };
 use windows_sys::Win32::System::RemoteDesktop::ProcessIdToSessionId;
 use windows_sys::Win32::System::Threading::{
@@ -56,7 +60,7 @@ use crate::client::Client;
 use crate::duplex::{Duplex, Halves, Listener, Shutdown, WRITE_DEADLINE};
 use crate::elevation::{self, Refusal};
 use crate::name::pipe_name;
-use crate::peer::PeerRejection;
+use crate::peer::{PeerRejection, SessionUser, verify_pipe_owner};
 
 /// サーバーのインスタンスの開き方。読み書きの両方向、重ね合わせの I/O。
 const SERVER_OPEN_MODE: FILE_FLAGS_AND_ATTRIBUTES = PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED;
@@ -638,14 +642,18 @@ impl NamedPipeListener {
         if self.close.closed.load(Ordering::SeqCst) {
             return Ok(Accepted::Stopped);
         }
-        let refusal = match check_client(&instance) {
+        // 相手のプロセスは 1 回だけ開き、権限とパスの両方をそのハンドルで見る（PID の使い回しで、別々のプロセスを
+        // 見ないため。ADR 0068 §10）
+        let client = open_client_process(&instance);
+        let refusal = match check_client(client.as_ref()) {
             Err(refusal) => Some(refusal.as_str()),
             Ok(()) => self
                 .client_rule
                 .as_ref()
-                .and_then(|rule| check_client_path(&instance, rule).err())
+                .and_then(|rule| check_client_path(client.as_ref(), rule).err())
                 .map(PeerRejection::as_str),
         };
+        drop(client);
         if let Some(reason) = refusal {
             // 理由の語だけを書く（番号やパスは出さない）
             eprintln!("ikari-pipe: refused a connection ({reason})");
@@ -661,55 +669,46 @@ impl NamedPipeListener {
     }
 }
 
-/// つないできた相手（クライアント）のプロセスが、高い権限でないかを確かめる。取れなければ断る。
-fn check_client(instance: &OwnedHandle) -> Result<(), Refusal> {
-    let mut pid = 0u32;
-    // SAFETY: instance は接続済みのパイプのサーバー側。pid は書ける u32 で、この呼び出しの間生きている。
-    let ok = unsafe { GetNamedPipeClientProcessId(instance.as_raw_handle(), &mut pid) };
-    let peer_rid = if ok == FALSE {
-        None
-    } else {
-        // SAFETY: 引数は値だけ。返り値は own_handle が確かめて所有する（開けなければ None）。
-        let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid) };
-        own_handle(process)
-            .ok()
-            .and_then(|process| integrity_rid_of(process.as_raw_handle()))
-    };
-    elevation::check_peer(current_integrity_rid(), peer_rid)
-}
-
-/// つないできた相手（クライアント）の実行ファイルのパスを `rule` で照らす。相手のプロセスのハンドルを開いたまま
-/// パスを取って比べる（PID の使い回しで、別のプロセスのパスを見ないため。ADR 0068 §10）。
-fn check_client_path(instance: &OwnedHandle, rule: &ClientRule) -> Result<(), PeerRejection> {
+/// つないできた相手（クライアント）のプロセス。PID が取れなければ `NoPeerPid`、開けなければ `NoPeerPath`。
+fn open_client_process(instance: &OwnedHandle) -> Result<OwnedHandle, PeerRejection> {
     let mut pid = 0u32;
     // SAFETY: instance は接続済みのパイプのサーバー側。pid は書ける u32 で、この呼び出しの間生きている。
     let ok = unsafe { GetNamedPipeClientProcessId(instance.as_raw_handle(), &mut pid) };
     if ok == FALSE {
         return Err(PeerRejection::NoPeerPid);
     }
-    // SAFETY: 引数は値だけ。返り値は own_handle が確かめて所有する（開けなければ誤り）。
-    let process = own_handle(unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid) })
-        .map_err(|_| PeerRejection::NoPeerPath)?;
-    let path = image_path_of(&process).ok_or(PeerRejection::NoPeerPath)?;
-    let path = long_path_name(&path);
-    let result = rule(&path);
-    drop(process);
-    result
+    open_process(pid).ok_or(PeerRejection::NoPeerPath)
+}
+
+/// `pid` のプロセスを、情報を読むだけの権利で開く。開けなければ `None`。
+fn open_process(pid: u32) -> Option<OwnedHandle> {
+    // SAFETY: 引数は値だけ。返り値は own_handle が確かめて所有する（開けなければ None）。
+    own_handle(unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid) }).ok()
+}
+
+/// つないできた相手（クライアント）のプロセスが、高い権限でないかを確かめる。取れなければ断る。
+fn check_client(client: Result<&OwnedHandle, &PeerRejection>) -> Result<(), Refusal> {
+    let peer_rid = client
+        .ok()
+        .and_then(|process| integrity_rid_of(process.as_raw_handle()));
+    elevation::check_peer(current_integrity_rid(), peer_rid)
+}
+
+/// つないできた相手（クライアント）の実行ファイルのパスを `rule` で照らす。呼ぶ側が相手のプロセスのハンドルを
+/// 開いたまま、そこからパスを取って比べる（PID の使い回しで、別のプロセスのパスを見ないため。ADR 0068 §10）。
+fn check_client_path(
+    client: Result<&OwnedHandle, &PeerRejection>,
+    rule: &ClientRule,
+) -> Result<(), PeerRejection> {
+    let process = client.map_err(|reason| *reason)?;
+    let path = image_path_of(process).ok_or(PeerRejection::NoPeerPath)?;
+    rule(&long_path_name(&path))
 }
 
 /// パスを取るときの最初のバッファの長さ（UTF-16 の単位。ふつうのパスはこれに収まる）
 const INITIAL_PATH_LEN: usize = 260;
 /// パスの長さの上限（UTF-16 の単位。Windows の長いパスの上限と NUL）
 const MAX_LONG_PATH: usize = 32_768;
-
-/// プロセス `pid` の実行ファイルのフルパス（Win32 の形。OS が起動のときに記録したもの。8.3 の短い名前は展開する）。
-/// 取れなければ `None`。設定画面の核が、設定の口の相手（engine-host）を照らすときに使う。
-pub fn process_image_path(pid: u32) -> Option<String> {
-    // SAFETY: 引数は値だけ。返り値は own_handle が確かめて所有する（開けなければ None）。
-    let process =
-        own_handle(unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid) }).ok()?;
-    image_path_of(&process).map(|path| long_path_name(&path))
-}
 
 /// 開いたプロセスの実行ファイルのフルパス
 fn image_path_of(process: &OwnedHandle) -> Option<String> {
@@ -828,17 +827,27 @@ fn integrity_rid_of(process: HANDLE) -> Option<u32> {
     Some(unsafe { *GetSidSubAuthority(sid, u32::from(count) - 1) })
 }
 
+/// つないだ相手（受ける側）のプロセスの情報。`connect_duplex` が、プロセスを 1 回だけ開いて取る。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ServerProcess {
+    /// プロセスの番号。取れなければ `None`
+    pub pid: Option<u32>,
+    /// 実行ファイルのフルパス（8.3 の短い名前は展開済み）。取れなければ `None`（使う側は断る側に倒す）
+    pub image_path: Option<String>,
+}
+
 /// `name`（`\\.\pipe\…`）につなぐ。相手の PID が取れたら `Client::server_pid()` に入る。
 ///
 /// エンジンが動いていない（`ERROR_FILE_NOT_FOUND`）ときは、すぐ誤りで戻る（起動するかは使う側が決める）。
-/// DACL で拒まれたら `ERROR_ACCESS_DENIED`。
+/// DACL で拒まれたら `ERROR_ACCESS_DENIED`。パイプの持ち主が自分と違う・確かめられないときは、何も読み書きせずに
+/// 閉じて `PermissionDenied`（理由は `owner_rejection` で取れる）。
 pub fn connect(name: &str) -> io::Result<Client> {
-    let (duplex, server_pid) = connect_duplex(name)?;
-    Ok(Client::new(duplex, server_pid))
+    let (duplex, server) = connect_duplex(name)?;
+    Ok(Client::new(duplex, server.pid))
 }
 
-/// `connect` の、流れと相手の PID を返す形（`Client` を作らない）。
-pub fn connect_duplex(name: &str) -> io::Result<(NamedPipeDuplex, Option<u32>)> {
+/// `connect` の、流れと相手のプロセスの情報（PID、実行ファイルのパス）を返す形（`Client` を作らない）。
+pub fn connect_duplex(name: &str) -> io::Result<(NamedPipeDuplex, ServerProcess)> {
     let wide = to_wide(name)?;
     let mut busy_retries = 0u32;
     let handle = loop {
@@ -866,8 +875,91 @@ pub fn connect_duplex(name: &str) -> io::Result<(NamedPipeDuplex, Option<u32>)> 
             Err(e) => return Err(e),
         }
     };
+    // 相手のプロセスは 1 回だけ開き、トークンとパスの両方をそのハンドルで見る（PID の使い回しで、別々のプロセスを
+    // 見ないため。ADR 0068 §10）
     let server_pid = server_process_id(&handle);
-    Ok((NamedPipeDuplex::new(handle, None)?, server_pid))
+    let process = server_pid.and_then(open_process);
+    if let Err(reason) = check_server_owner(&handle, process.as_ref()) {
+        // 何も読み書きせずに閉じる（相手には切断に見える）
+        drop(handle);
+        return Err(io::Error::new(io::ErrorKind::PermissionDenied, reason));
+    }
+    let image_path = process
+        .as_ref()
+        .and_then(image_path_of)
+        .map(|path| long_path_name(&path));
+    drop(process);
+    let server = ServerProcess {
+        pid: server_pid,
+        image_path,
+    };
+    Ok((NamedPipeDuplex::new(handle, None)?, server))
+}
+
+/// `connect` と `connect_duplex` が、パイプの持ち主の確認で断ったときの理由。ほかの誤りは `None`。
+pub fn owner_rejection(e: &io::Error) -> Option<PeerRejection> {
+    e.get_ref()?.downcast_ref::<PeerRejection>().copied()
+}
+
+/// つないだパイプの持ち主が自分と同じかを確かめる（ADR 0068 §2 の 2）。判断は `peer::verify_pipe_owner` で、
+/// ここは OS から取るだけ。取るのは、パイプそのものの持ち主の SID（主。受ける側の PID に依らない）と、受ける側
+/// のプロセス（`process`。開いたもの）のトークンの利用者の SID、パイプのセッション番号。
+///
+/// 比べるのはトークンの「ユーザー」の SID なので、UAC で昇格したつなぐ側と、昇格していない受ける側の組み合わせでも
+/// 同じになる。相手のトークンを開けないとき（別の利用者のプロセスなど）は、取れないとして断る。
+fn check_server_owner(
+    handle: &OwnedHandle,
+    process: Option<&OwnedHandle>,
+) -> Result<(), PeerRejection> {
+    let own_sid = current_user_sid().ok();
+    let own = SessionUser {
+        user_sid: own_sid.as_deref(),
+        session: current_session_id().ok(),
+    };
+    let object_owner = pipe_owner_sid(handle).ok();
+    let server_sid = process.and_then(|process| user_sid_of(process.as_raw_handle()).ok());
+    let server = SessionUser {
+        user_sid: server_sid.as_deref(),
+        session: server_session_id(handle),
+    };
+    verify_pipe_owner(own, object_owner.as_deref(), server)
+}
+
+/// パイプそのもの（オブジェクト）の持ち主の SID の文字列。開いたハンドルは `GENERIC_READ`（`READ_CONTROL` を含む）。
+fn pipe_owner_sid(handle: &OwnedHandle) -> io::Result<String> {
+    let mut owner: PSID = ptr::null_mut();
+    let mut sd: PSECURITY_DESCRIPTOR = ptr::null_mut();
+    // SAFETY: handle は開いたパイプのハンドル。owner と sd は書ける場所で、この呼び出しの間生きている。成功すると
+    // sd に OS が LocalAlloc した記述子が入り（解放は下の LocalMem）、owner はその中を指す。ほかは要らないので null。
+    let status = unsafe {
+        GetSecurityInfo(
+            handle.as_raw_handle(),
+            SE_KERNEL_OBJECT,
+            OWNER_SECURITY_INFORMATION,
+            &mut owner,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            &mut sd,
+        )
+    };
+    let _sd = LocalMem(sd);
+    if status != 0 {
+        return Err(io::Error::from_raw_os_error(status as i32));
+    }
+    if owner.is_null() {
+        return Err(io::Error::new(io::ErrorKind::NotFound, "pipe has no owner"));
+    }
+    // SAFETY: owner は有効な SID で、sd（_sd が落ちるまで生きている）の中を指す。
+    unsafe { sid_to_string(owner) }
+}
+
+/// 相手（サーバー）のセッション番号。取れなければ `None`。
+fn server_session_id(handle: &OwnedHandle) -> Option<u32> {
+    let mut session = 0u32;
+    // SAFETY: handle は開いたパイプのクライアント側。session は書ける u32 で、この呼び出しの間生きている。
+    let ok = unsafe { GetNamedPipeServerSessionId(handle.as_raw_handle(), &mut session) };
+    (ok != FALSE).then_some(session)
 }
 
 /// 相手（サーバー）のプロセスの番号。取れなければ `None`（相手を確かめられないので、使う側が判断する）。
@@ -880,10 +972,16 @@ fn server_process_id(handle: &OwnedHandle) -> Option<u32> {
 
 /// このプロセスのユーザーの SID（`S-1-5-21-…`）。
 pub fn current_user_sid() -> io::Result<String> {
+    // SAFETY: GetCurrentProcess は引数を取らず、閉じなくてよい疑似ハンドルを返す。
+    user_sid_of(unsafe { GetCurrentProcess() })
+}
+
+/// `process` のトークンのユーザーの SID の文字列。トークンを開けない・読めないときは誤り。
+fn user_sid_of(process: HANDLE) -> io::Result<String> {
     let mut raw_token: HANDLE = ptr::null_mut();
-    // SAFETY: GetCurrentProcess は閉じなくてよい疑似ハンドルを返す。raw_token には開いたトークンが書かれる
-    // （成功したときだけ。所有は下の own_handle）。
-    let ok = unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut raw_token) };
+    // SAFETY: process は有効なプロセスのハンドル（呼ぶ側が生かしている。疑似ハンドルでもよい）。raw_token には
+    // 開いたトークンが書かれる（成功したときだけ。所有は下の own_handle）。
+    let ok = unsafe { OpenProcessToken(process, TOKEN_QUERY, &mut raw_token) };
     if ok == FALSE {
         return Err(io::Error::last_os_error());
     }
@@ -921,9 +1019,17 @@ pub fn current_user_sid() -> io::Result<String> {
     // SAFETY: 成功したので、buf の先頭は TOKEN_USER（揃いと大きさは上で確かめた）。Sid は buf の中を指し、
     // buf は下で使い終わるまで生きている。
     let sid = unsafe { (*buf.as_ptr().cast::<TOKEN_USER>()).User.Sid };
+    // SAFETY: sid は上の有効な SID（buf が生きている）。
+    unsafe { sid_to_string(sid) }
+}
 
+/// SID の文字列（`S-1-5-21-…`）。
+///
+/// # Safety
+/// `sid` は有効な SID を指し、この呼び出しの間生きていること。
+unsafe fn sid_to_string(sid: PSID) -> io::Result<String> {
     let mut text: *mut u16 = ptr::null_mut();
-    // SAFETY: sid は上の有効な SID（buf が生きている）。text には OS が LocalAlloc した文字列を書く
+    // SAFETY: sid は呼ぶ側の約束で有効。text には OS が LocalAlloc した文字列を書く
     // （成功したときだけ。解放は下の LocalMem）。
     let ok = unsafe { ConvertSidToStringSidW(sid, &mut text) };
     if ok == FALSE {
@@ -1188,13 +1294,6 @@ mod tests {
     }
 
     #[test]
-    fn process_image_path_of_self_is_the_current_exe() {
-        let own = long_path_name(&std::env::current_exe().unwrap().to_string_lossy());
-        let path = process_image_path(std::process::id()).unwrap();
-        assert!(path.eq_ignore_ascii_case(&own), "{path} vs {own}");
-    }
-
-    #[test]
     fn shutdown_wakes_a_blocked_reader_and_fails_writes() {
         let name = unique_name();
         let server = accept_once(&name);
@@ -1257,6 +1356,62 @@ mod tests {
     fn missing_pipe_fails_fast() {
         let err = connect_duplex(&unique_name()).err().unwrap();
         assert_eq!(err.kind(), io::ErrorKind::NotFound, "{err:?}");
+    }
+
+    /// 同じ利用者・同じセッションの受け口には、持ち主の確認を通ってつながる（自分のプロセスどうし）
+    #[test]
+    fn the_owner_of_an_own_pipe_is_accepted() {
+        let name = unique_name();
+        let server = accept_once(&name);
+        let (client, server_info) = connect_duplex(&name).unwrap();
+        let _server_side = server.join().unwrap();
+        assert_eq!(server_info.pid, Some(std::process::id()));
+        let process = server_info.pid.and_then(open_process);
+        assert_eq!(
+            check_server_owner(&client.slot.handle, process.as_ref()),
+            Ok(()),
+            "same user and session"
+        );
+        // 相手のプロセスが開けなければ、持ち主を確かめられないので断る
+        assert_eq!(
+            check_server_owner(&client.slot.handle, None),
+            Err(PeerRejection::NoPeerOwner)
+        );
+    }
+
+    /// パイプそのものの持ち主は、作った利用者の SID（昇格した管理者のトークンでも。SDDL で明示している。FB-1）
+    #[test]
+    fn the_pipe_object_is_owned_by_the_user() {
+        let name = unique_name();
+        let server = accept_once(&name);
+        let (client, _) = connect_duplex(&name).unwrap();
+        let _server_side = server.join().unwrap();
+        assert_eq!(
+            pipe_owner_sid(&client.slot.handle).unwrap(),
+            current_user_sid().unwrap()
+        );
+    }
+
+    /// つないだ相手のパスは、同じハンドルから取れる（FB-2）。自分のプロセスどうしなので、自分の exe
+    #[test]
+    fn connect_returns_the_server_image_path() {
+        let name = unique_name();
+        let server = accept_once(&name);
+        let (_client, info) = connect_duplex(&name).unwrap();
+        let _server_side = server.join().unwrap();
+        let expected = long_path_name(&std::env::current_exe().unwrap().to_string_lossy());
+        let path = info.image_path.expect("the path of the server");
+        assert!(path.eq_ignore_ascii_case(&expected), "{path} vs {expected}");
+    }
+
+    #[test]
+    fn owner_rejection_reads_only_the_owner_refusal() {
+        let refused = io::Error::new(io::ErrorKind::PermissionDenied, PeerRejection::OtherUser);
+        assert_eq!(owner_rejection(&refused), Some(PeerRejection::OtherUser));
+        assert_eq!(
+            owner_rejection(&io::Error::from(io::ErrorKind::NotFound)),
+            None
+        );
     }
 
     #[test]

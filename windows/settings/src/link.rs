@@ -185,7 +185,7 @@ pub fn connect_installed(app_version: &str) -> Result<SettingsLink, LinkStatus> 
     use ikari_pipe::elevation::check_self;
     use ikari_pipe::os::windows::{
         connect_duplex, current_integrity_rid, current_session_id, current_user_sid,
-        long_path_name, process_image_path,
+        long_path_name, owner_rejection,
     };
 
     check_self(current_integrity_rid()).map_err(|_| LinkStatus::Elevated)?;
@@ -193,8 +193,11 @@ pub fn connect_installed(app_version: &str) -> Result<SettingsLink, LinkStatus> 
     let session = current_session_id().map_err(|_| LinkStatus::Unavailable)?;
     let name =
         ikari_pipe::settings_pipe_name(&sid, session).map_err(|_| LinkStatus::Unavailable)?;
-    let (duplex, pid) = connect_duplex(&name).map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
+    // パイプの持ち主（受ける側の利用者とセッション）が自分と違えば、pipe 層が断る（ADR 0068 §2 の 2）
+    let (duplex, server) = connect_duplex(&name).map_err(|e| {
+        if owner_rejection(&e).is_some() {
+            LinkStatus::PeerNotVerified
+        } else if e.kind() == std::io::ErrorKind::NotFound {
             LinkStatus::EngineNotRunning
         } else {
             LinkStatus::Unavailable
@@ -204,16 +207,15 @@ pub fn connect_installed(app_version: &str) -> Result<SettingsLink, LinkStatus> 
     let own = std::env::current_exe()
         .ok()
         .and_then(|path| path.to_str().map(long_path_name));
-    let peer = pid.and_then(process_image_path);
-    let verified = match (own, peer) {
-        (Some(own), Some(peer)) => crate::peer::verify_engine_path(&own, &peer).is_ok(),
+    let verified = match (own, server.image_path.as_deref()) {
+        (Some(own), Some(peer)) => crate::peer::verify_engine_path(&own, peer).is_ok(),
         _ => false,
     };
     if !verified {
         drop(duplex);
         return Err(LinkStatus::PeerNotVerified);
     }
-    SettingsLink::open(Client::new(duplex, pid), app_version)
+    SettingsLink::open(Client::new(duplex, server.pid), app_version)
 }
 
 /// Windows 以外では、設定の口は無い

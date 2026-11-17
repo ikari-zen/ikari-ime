@@ -4,7 +4,7 @@
 //! つなぐ前でなく、つないだ直後・何かを送る前に照らす（TIP と同じ。相手の PID はつないで初めて分かる）。
 //!
 //! OS の呼び出し（相手の PID → 実行ファイルのパス、自分の exe のパス、8.3 の短い名前の展開）は、第 2 段で
-//! 設定の口につなぐときに `ikari_pipe::os::windows`（`process_image_path`、`long_path_name`）を使う。
+//! 設定の口につなぐときに `ikari_pipe::os::windows`（`connect_duplex` が返す相手のパス、`long_path_name`）を使う。
 
 pub use ikari_pipe::peer::PeerRejection;
 use ikari_pipe::peer::{Endpoint, SelfModule, verify_peer_path};
