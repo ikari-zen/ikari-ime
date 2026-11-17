@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use crate::error::LmError;
 use crate::host::HostLimits;
+use crate::profile::{ModelProfile, PromptFormat, ZENZ_V3_2_SMALL};
 
 /// `--ranker-config` で上書きするときのキーの接頭辞（他の Ranker と同じファイルに書けるように）
 pub const CONFIG_PREFIX: &str = "zenz.";
@@ -10,11 +11,7 @@ pub const CONFIG_PREFIX: &str = "zenz.";
 /// 待ちの上限。実際の待ちは変換1回の締め切り（ADR 0004 §3.4。30ms〜300ms）が決める
 const DEFAULT_BUDGET_MS: u64 = 300;
 const DEFAULT_IDLE_UNLOAD_SECS: u64 = 300; // NFR-11
-const DEFAULT_ALPHA: f32 = 1.0;
 const DEFAULT_MAX_TOTAL: i32 = 6000;
-const DEFAULT_CONTEXT_CHARS: usize = 40;
-/// 右文脈の先頭から渡す字数。測定で 10 字を採用（0 字より悪化 0 件。ADR 0015 付録 C。#270）
-const DEFAULT_RIGHT_CONTEXT_CHARS: usize = 10;
 const DEFAULT_TOPIC_WORDS: usize = 3;
 const DEFAULT_MAX_CANDIDATES: usize = 32;
 const DEFAULT_LOAD_RETRY_SECS: u64 = 10;
@@ -23,40 +20,10 @@ const DEFAULT_GPU: bool = true;
 /// NLL（nat）の差 1 あたりのコスト（ADR 0002 §13.2 の `× 1000`）
 pub const COST_PER_NAT: f32 = 1000.0;
 
-/// モデルの種類。プロンプトの形式が違う。採点の仕組み（プロンプトの続きとして候補を出す確率）は同じ。
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum ModelKind {
-    /// zenz v3: `[EE03 プロフィール][EE04 話題] [EE02 左文脈] EE00 読み EE01`。条件は空なら省く
-    #[default]
-    ZenzV3,
-    /// kanakanji-edge: `EE02 左文脈 EE00 読み EE01`。EE02 は文脈が空でも置く。プロフィールと話題は学習していない
-    KanakanjiEdge,
-}
-
-impl ModelKind {
-    pub const ZENZ_V3: &'static str = "zenz-v3";
-    pub const KANAKANJI_EDGE: &'static str = "kanakanji-edge";
-
-    pub fn parse(s: &str) -> Option<Self> {
-        match s.trim() {
-            Self::ZENZ_V3 => Some(Self::ZenzV3),
-            Self::KANAKANJI_EDGE => Some(Self::KanakanjiEdge),
-            _ => None,
-        }
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::ZenzV3 => Self::ZENZ_V3,
-            Self::KanakanjiEdge => Self::KANAKANJI_EDGE,
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct ZenzConfig {
-    /// モデルの種類（プロンプトの形式）。既定は zenz v3
-    pub model_kind: ModelKind,
+    /// プロンプトの形式（profile から。既定は zenz v3。`zenz.model_kind` で上書きできる）
+    pub format: PromptFormat,
     /// `rank()` が結果を待つ時間の上限。実際は `min(budget, 締め切りまでの残り)`（NFR-04）
     pub budget: Duration,
     /// 最後の要求からこの時間が経ったらモデルを解放する（NFR-11）
@@ -87,16 +54,24 @@ pub struct ZenzConfig {
 }
 
 impl Default for ZenzConfig {
+    /// zenz-v3.2 small の profile から作る（今までの既定と同じ値）
     fn default() -> Self {
+        Self::for_profile(&ZENZ_V3_2_SMALL)
+    }
+}
+
+impl ZenzConfig {
+    /// profile の値（形式、`alpha`、文脈の文字数）から作る。ほかの値はモデルに依らない既定（ADR 0060 §3）
+    pub fn for_profile(profile: &ModelProfile) -> Self {
         Self {
-            model_kind: ModelKind::default(),
+            format: profile.format,
             budget: Duration::from_millis(DEFAULT_BUDGET_MS),
             idle_unload: Duration::from_secs(DEFAULT_IDLE_UNLOAD_SECS),
             idle_unload_gpu: None,
-            alpha: DEFAULT_ALPHA,
+            alpha: profile.alpha,
             max_total: DEFAULT_MAX_TOTAL,
-            context_chars: DEFAULT_CONTEXT_CHARS,
-            right_context_chars: DEFAULT_RIGHT_CONTEXT_CHARS,
+            context_chars: profile.limits.context_chars,
+            right_context_chars: profile.limits.right_context_chars,
             topic_words: DEFAULT_TOPIC_WORDS,
             max_candidates: DEFAULT_MAX_CANDIDATES,
             load_retry: Duration::from_secs(DEFAULT_LOAD_RETRY_SECS),
@@ -125,7 +100,7 @@ impl ZenzConfig {
             };
             match name {
                 "model_kind" => {
-                    cfg.model_kind = ModelKind::parse(value)
+                    cfg.format = PromptFormat::parse(value)
                         .ok_or_else(|| bad("expected `zenz-v3` or `kanakanji-edge`"))?;
                 }
                 "alpha" => {
@@ -279,15 +254,12 @@ mod tests {
 
     #[test]
     fn model_kind_defaults_to_zenz_and_parses_both_names() {
-        assert_eq!(ZenzConfig::default().model_kind, ModelKind::ZenzV3);
+        assert_eq!(ZenzConfig::default().format, PromptFormat::ZenzV3);
         let c = ZenzConfig::from_kv(&kv(&[("zenz.model_kind", "kanakanji-edge")])).unwrap();
-        assert_eq!(c.model_kind, ModelKind::KanakanjiEdge);
+        assert_eq!(c.format, PromptFormat::KanakanjiEdge);
         let c = ZenzConfig::from_kv(&kv(&[("zenz.model_kind", "zenz-v3")])).unwrap();
-        assert_eq!(c.model_kind, ModelKind::ZenzV3);
+        assert_eq!(c.format, PromptFormat::ZenzV3);
         assert!(ZenzConfig::from_kv(&kv(&[("zenz.model_kind", "gpt")])).is_err());
-        for k in [ModelKind::ZenzV3, ModelKind::KanakanjiEdge] {
-            assert_eq!(ModelKind::parse(k.as_str()), Some(k));
-        }
     }
 
     #[test]

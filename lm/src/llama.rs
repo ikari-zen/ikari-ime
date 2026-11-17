@@ -33,9 +33,9 @@ const BATCH_TOKENS: u32 = 1024;
 /// 同時に持てるシーケンス数（0 = プロンプト、1.. = 候補）
 const MAX_SEQUENCES: u32 = 40;
 /// 候補1つあたりのトークン数の上限（EOS を含む）。超えた候補は評価しない
-const MAX_CANDIDATE_TOKENS: usize = 96;
+const MAX_CANDIDATE_TOKENS: usize = crate::profile::DEFAULT_LIMITS.max_candidate_tokens;
 /// プロンプトのトークン数の上限
-const MAX_PROMPT_TOKENS: usize = 512;
+const MAX_PROMPT_TOKENS: usize = crate::profile::DEFAULT_LIMITS.max_prompt_tokens;
 /// 出力の終端トークンの文字列
 const END_TOKEN_TEXT: &str = "</s>";
 const PRE_TOKENIZER_KEY: &str = "tokenizer.ggml.pre";

@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use ikari_core::ContextToken;
 
-use crate::config::ModelKind;
+use crate::profile::PromptFormat;
 
 pub const TAG_INPUT: char = '\u{EE00}';
 pub const TAG_OUTPUT: char = '\u{EE01}';
@@ -64,10 +64,10 @@ pub fn build_prompt(p: &PromptInput<'_>) -> String {
 ///
 /// kanakanji-edge は `EE02 左文脈 EE00 読み EE01` で、**EE02 は左文脈が空でも置く**（学習時の形式）。
 /// プロフィール（EE03）と話題（EE04）は学習していないので付けない。
-pub fn build_prompt_for(kind: ModelKind, p: &PromptInput<'_>) -> String {
+pub fn build_prompt_for(kind: PromptFormat, p: &PromptInput<'_>) -> String {
     match kind {
-        ModelKind::ZenzV3 => build_prompt(p),
-        ModelKind::KanakanjiEdge => {
+        PromptFormat::ZenzV3 => build_prompt(p),
+        PromptFormat::KanakanjiEdge => {
             let mut s = String::new();
             s.push(TAG_CONTEXT);
             s.push_str(p.left_context);
@@ -224,7 +224,7 @@ mod tests {
             reading: "こうせい",
         };
         assert_eq!(
-            build_prompt_for(ModelKind::KanakanjiEdge, &with),
+            build_prompt_for(PromptFormat::KanakanjiEdge, &with),
             "\u{EE02}システムの\u{EE00}コウセイ\u{EE01}"
         );
         // 左文脈が空でも EE02 を置く
@@ -233,16 +233,16 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            build_prompt_for(ModelKind::KanakanjiEdge, &empty),
+            build_prompt_for(PromptFormat::KanakanjiEdge, &empty),
             "\u{EE02}\u{EE00}ラーメン\u{EE01}"
         );
         // zenz の形式は変わらない（空なら EE02 を省く）
         assert_eq!(
-            build_prompt_for(ModelKind::ZenzV3, &empty),
+            build_prompt_for(PromptFormat::ZenzV3, &empty),
             "\u{EE00}ラーメン\u{EE01}"
         );
         assert_eq!(
-            build_prompt_for(ModelKind::ZenzV3, &with),
+            build_prompt_for(PromptFormat::ZenzV3, &with),
             build_prompt(&with)
         );
     }
