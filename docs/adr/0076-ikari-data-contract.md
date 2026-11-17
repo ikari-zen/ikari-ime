@@ -1,6 +1,6 @@
 # ADR 0076: 取得する部品 `ikari-data` の契約（プロセスの形、権限、入力と出力、版の確認、失敗、設定画面との口）
 
-- 状態: 承認（2026-11-17 ユーザー決定。質問はすべて推奨どおり。Q2 は「OS の curl をやめ、`ureq` と OS の TLS にする」。§15 を見る）
+- 状態: 承認（2026-11-17 ユーザー決定。質問はすべて推奨どおり。Q2 は「OS の curl をやめ、`ureq` と OS の TLS にする」。§15 を見る。同じ日の 2 回目の決定（失効した証明書の扱い、版の確認とデータの Release）は §18）
 - 日付: 2026-11-16（2026-11-17 に決定と実測を反映）
 - 対象: 新しい crate `ikari-data`（置き場所 `fetch/`。lib と bin `ikari-data`）、`resource`（束を作る関数と取得の報告の型）、`windows/settings`（設定画面の核。起動と進み具合）、`windows/settings-ui`（ボタンと表示だけ）、`engine`（ファイルからのモデルの取り込み。Windows）、`shell-ffi`（同。macOS の設定アプリ）、`xtask`（検査）、`deny.toml`、インストーラ。この ADR ではコードを変えない
 - 前提: origin/feat/security-impl2 = 0bd7822。[ADR 0071](0071-settings-ui-and-fetcher.md) §3（`ikari-data` の範囲。Q3 で 1.0.0 まではモデルだけ。Q2 の「OS の curl」はこの ADR の §9 で改める）、[ADR 0070](0070-update-and-vulnerability-response.md) §3 の 3 と Q3（「新しい版を確認」のボタン）、[ADR 0066](0066-security-premises.md) §6（通信しないの定義と L1〜L3）、[ADR 0058](0058-offline-resource-install.md)（inbox と束、検証、入れ替え）、[ADR 0060](0060-user-selectable-lm-model.md)（自由指定のモデル、sha256 なしは警告で許可、試しの採点、`.loading`）、[ADR 0068](0068-ipc-endpoints.md) §4（設定の口、パスだけを流す）、[ADR 0072](0072-lm-cage-levels.md)（檻）、[security-design.md](../security-design.md) §8.5 の D-2
@@ -94,6 +94,7 @@ ikari-data cleanup          # 落ちたあとに残った作業の場所と .par
 - Rust で厳しく読む（URL の crate は足さない）: `https://` で始まる。ホストは ASCII だけ（国際化ドメインは `xn--` の形で入れてもらう）。利用者名とパスワードを含まない（`@` を拒む）。長さは 2048 文字まで。空白と制御文字を拒む。
 - 確認の画面に出すホストは、Rust が読んだ ASCII のホストそのもの（0060 の「確認の画面でホストを出す」。見た目の似た文字にだまされないため ASCII に限る）。
 - sha256 を指定したら照らす。無ければ、核が警告の文を出し、利用者が確かめてから起動する（0060 のユーザー決定）。`ikari-data` は、sha256 なしで取得したことを manifest の `source` に残す。
+- 警告の文には、OS を分けずに「sha256 なしでは、通信の経路だけが頼り」と書く。sha256 なしで取ったときは、取得のあとに数えた sha256 を確認の画面に出す（§18.1。2026-11-17 ユーザー決定）。
 - `--format` は 0060 の `PromptFormat` の語。`ikari-data` は GGUF の中身を読まない（形式を推定しない。読むのは檻の中の子だけ）。
 
 ### 4.4 `ureq` の呼び出し方（Rust が全部決める）
@@ -134,12 +135,12 @@ ikari-data cleanup          # 落ちたあとに残った作業の場所と .par
 ## 6. 版の確認（ADR 0070 Q3）
 
 - `ikari-data version-check` は、`https://github.com/ikari-zen/ikari-ime/releases/latest` に、転送を追わずに 1 回だけ要求し（`max_redirects(0)`。本文は `limit(<版の確認の上限>)` で読んで捨てる）、応答の `Location` の末尾のタグを読む。URL は実行ファイルに埋めた固定のもの。`Location` は `https://github.com/ikari-zen/ikari-ime/releases/tag/` で始まるものだけを受ける。
-- タグは `v<数>.<数>.<数>` だけを受ける（ほかは `bad-reply`）。`latest 0.3.1` の行を出して終わる。
+- タグは `v<数>.<数>.<数>` だけを受ける（ほかは `bad-reply`。確認できない側に倒す）。各数字には桁の上限を置き、超えたら `bad-reply`（比べるときの桁あふれを避ける。§18.2）。`latest 0.3.1` の行を出して終わる。
 - 比べるのは設定画面の核（自分の版は `CARGO_PKG_VERSION`）。表示は 3 つだけ: 「新しい版があります（0.3.1）」、「最新です」、「この版のほうが新しい（開発版）」。**取った版が今より古くても、古い版を勧めない**（巻き戻しの拒否。0070 §3 の 4 で、古い版を入れるのはインストーラの確認つきだけ）。
 - 取得も導入もしない。「Releases を開く」のリンクは固定の URL で、押したときだけブラウザで開く（応答の中身を URL にしない）。真正性の確かめ方は ADR 0069 の案内に任せる。
 - 署名は付けない。表示するのは版の番号だけで、だまされても起きるのは「表示が違う」までのため（取得と導入に結びつけない限り）。TLS は OS の TLS が確かめる。
 - 自動では確認しない（起動のとき、定期、設定画面を開いたとき、のどれもしない）。
-- 2026-11-17 の時点で、このリポジトリの「最新の Release」の転送先は、アプリの版ではなくデータのタグ（`webwords-…`）だった（§16）。このままでは `bad-reply` になる。データの Release を「最新」にしない運用にするか、タグの形を決め直すかは、ボタンを作る段（D-2d）の前に決める（§15 の残り）。
+- 2026-11-17 の時点で、このリポジトリの「最新の Release」の転送先は、アプリの版ではなくデータのタグ（`webwords-…`）だった（§16）。このままでは `bad-reply` になる。**決定: データの Release は「最新」にしない運用にし、アプリの Release は明示して最新にする**（§18.2。2026-11-17 ユーザー決定）。
 
 ## 7. 自由指定のモデルの境界（ADR 0060 の段階 3〜5）と、ファイルからの取り込み
 
@@ -265,7 +266,7 @@ error <理由の語>
 - **Q1**: ファイルからのモデルの取り込みを `ikari-data` から外す（§7。0060 §6 の `ikari-data model import --file` を改める）。
 - **Q2**: 通信は OS の curl の起動をやめ、`ureq` 3.5.x ＋ `default-features = false, features = ["native-tls-no-default"]` ＋ 実行時に `RootCerts::PlatformVerifier` と `TlsProvider::NativeTls` を明示する（§4.4、§9）。ring、rustls、openssl、webpki、ISC、CDLA を入れない。依存は `ikari-data` の crate だけ（`deny.toml` と `supply.rs` の例外は、その crate の下に限る。`webpki-roots`、`webpki-root-certs`、`ring` の禁止を足す）。Windows のプロキシは環境変数だけ（OS の登録値は読まない。README と設定画面の文言に限界を書く）。Windows 10 の TLS 1.2 止まりは許す。低い整合性・App Sandbox の下で動くかは、先にスパイクで確かめる（§16。動いた）。
 - **Q3**: 仮置きの値（転送 5 回、接続 30 秒、無通信 60 秒、版の確認の上限 64KiB、ディスクの余裕 256MiB）は、仮置きのまま実装し、VM の確認（§11）で見直す。モデルの大きさの上限は 0060 §4 の値（未定）に従う。
-- 残り（ユーザーの決定が要る。D-2d の前）: 「最新の Release」がデータのタグを指している間の、版の確認の扱い（§6）。
+- 残りだった「最新の Release」がデータのタグを指す件（§6）は、同じ日の 2 回目の決定で決めた（§18.2）。
 
 ### （記録）決定の前の問い
 - Q1. ファイルからの取り込みを `ikari-data` から外す。推奨: 外す。
@@ -283,7 +284,7 @@ error <理由の語>
   - GitHub の `releases/latest`（`max_redirects(0)`）: 302 と `Location` を読めた。本文は 0 バイト、約 40 ミリ秒。このリポジトリの転送先はデータのタグ（`…/releases/tag/webwords-20261101`）だった（§6）。
   - 拒まれたもの: 期限切れの証明書、自己署名、ホスト名の不一致、信頼されない根、TLS 1.0 だけのサーバ（どれも native-tls の失敗）、`http://` の URL と、https から http への転送（どちらも `RequireHttpsOnly`）。
 - macOS: App Sandbox（`app-sandbox` と `network.client`）を付け、ad-hoc で署名した exe で、Windows と同じ結果だった（`APP_SANDBOX_CONTAINER_ID` が入り、Sandbox の中で動いたことを確かめた）。`network.client` を外すと、名前の解決から失敗した（https のすべての要求）。Info.plist を埋めない exe は、ad-hoc でも Apple Development の署名でも、Sandbox の初期化（`_libsecinit_appsandbox`）で SIGTRAP で落ちた。
-- 失効の確かめの扱いは、OS で違った（中身の真正性は、どちらも sha256 で受ける）。
+- 失効の確かめの扱いは、OS で違った（中身の真正性は、どちらも sha256 で受ける）。Windows の OS の TLS が失効した証明書を通すことの扱いは §18.1。
 - 依存（`cargo metadata --filter-platform`）: Windows は `ureq`、`ureq-proto`、`native-tls`、`schannel`、`http`、`httparse`、`der`、`rustls-pki-types` など 19、macOS は `security-framework`、`core-foundation`、`tempfile`、`rustix` など 29。ライセンスはどれも MIT か Apache-2.0（`rustix` は Apache-2.0 WITH LLVM-exception の選択肢つき）。`Cargo.lock` には、Linux 向けの `openssl`、`openssl-sys`、`openssl-probe` も載った（§9 の検査の書き方の理由）。
 - Windows の exe が取り込んだ DLL に、`WS2_32.dll`、`secur32.dll`、`crypt32.dll` があった。
 
@@ -297,3 +298,27 @@ error <理由の語>
   - `ikari-sandbox` の `Integrity` に、段 2 の値（AppContainer の SID を借りる形。SID の作成と許可は `lm` の `appcontainer` に残す）を足し、属性の一覧に `PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES` を足す（今の `AttrList` の中身）。
   - `lm` の `spawn` は、整合性の決め方（`low_integrity_enabled`、`Cage`、`CageState`）と、渡す 3 つのハンドル（標準エラーは `NUL`）を決めて `ikari_sandbox::spawn` を呼ぶだけにする。`Proc` は `Confined` を包む（`id`、`reap`）。`cmdline.rs` は `ikari_sandbox::cmdline` に替える。
   - 変えないもの: LM の子の起動の入口が `stack/src/lm.rs` の `host_loader(` の 1 か所であること（`xtask` の `lm_spawn_single`。`ikari-sandbox` は `host_loader(` を持たない）、開発用の口が `dev-knobs` の中だけにあること（`ikari-sandbox` は環境変数を読まない。整合性を選ぶのは呼ぶ側）。
+
+## 18. 2 回目の決定（2026-11-17。ユーザー（Fable の指摘つき）。リードの推奨どおり）
+
+### 18.1 Windows の OS の TLS が、失効した証明書を通すこと
+- 分かったこと: 失効の確かめの扱いは OS で違った（§16）。Windows の OS の TLS は、失効した証明書を通しうる。
+- **決定: 許す。** 自前の失効の確認（OCSP、CRL）は採らない。理由: 通信の行き先と、外から来たものを解釈するコードが増える（「通信してよいのは 1 つ、解釈は低い整合性の子だけ」を細くしておくため）。
+- プリセットは表の sha256 で必ず照らす（§4.2）ので、失効の扱いに左右されない。影響を受けるのは自由指定で sha256 なしのときだけ。
+- 自由指定（sha256 なし）の警告の文に、このことを書く。文は OS で分けず、「sha256 なしでは、通信の経路だけが頼り」と書く（macOS なら安全と読ませないため）。文は核が作る（§8.1 と同じ置き場所）。
+- sha256 なしで取ったときは、取得のあとに数えた sha256 を確認の画面に出す（利用者が配布元の値と比べられるように）。manifest の `source` に残すのは §4.3 のとおり（決定済み）。
+
+### 18.2 「最新の Release」がデータのタグを指すこと（§6）
+- **決定: データの Release は「最新」にしない運用にする。アプリの Release は、作るときに明示して最新にする。** チェックリストの文だけにせず、作るスクリプトと手順書に書く。
+  - データの Release を作るスクリプト（`cargo xtask webwords publish`。`xtask/src/webwords/publish.rs` の `release_args`）は、`gh release create` に `--latest=false` を付ける（実装の課題。§18.3）。手順書は [webwords-update.md](../webwords-update.md) §5 に書いた。
+  - アプリの Release は `--latest` を明示して作る（[publish-checklist.md](../publish-checklist.md) §4 に書いた）。
+- 版の確認は `v<数>.<数>.<数>` の形のタグだけを見る。ほかの形（データのタグ、`v` のない形、`-rc` などの付いた形）は `bad-reply` にする（「最新です」と出さず、確認できない側に倒す）。
+- 版の各数字に桁の上限を置き、超えたら `bad-reply`（比べるときの桁あふれを避ける）。上限の値は契約のレーンで決め、PR に書いてユーザーに確かめる（今は決めていない）。
+- 公開前チェックリスト（[publish-checklist.md](../publish-checklist.md) §4）に足した: アカウントの 2 要素認証（パスキーか物理キー）、`v*` と `webwords-*` のタグを守る ruleset、immutable releases（GitHub 側にこの機能があるか、どう設定するかは未確認なので「要確認」）、データの Release を最新にしないこと、アプリの Release を最新にすること。
+- **既知の限界**: アプリの Release を作れるアカウントを取られると、偽の `v9.9.9` を出せて、設定画面が「新しい版があります」と勧めうる。署名なしの配布では、版の確認の側でこれを防げない。
+  - 推測: 版の確認は表示だけで、取得と導入に結びつけない（§6）ので、害は「偽の Release のページに誘う」まで。そこから先は、利用者が ADR 0069 の証拠（作者の鍵の署名など）で確かめるかに懸かる。アカウントを取られた場合に、どの証拠が偽物を見分けられるかは確かめていない。
+
+### 18.3 実装の課題（issue はリードが切る）
+1. `publish.rs` の `release_args` に `--latest=false` を足し、テストで引数を確かめる。
+2. `version-check` の形の検査（`v<数>.<数>.<数>` だけ、桁の上限）と、`bad-reply` のときの設定画面の表示。
+3. 自由指定の警告の文（OS で分けない）と、sha256 なしで取ったあとの sha256 の表示（D-2c、D-4）。
