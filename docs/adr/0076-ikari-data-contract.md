@@ -51,7 +51,7 @@
 | プロセス | 整合性 | ほかの絞り | 理由 |
 | --- | --- | --- | --- |
 | `ikari-data` | 中（設定画面と同じ。`asInvoker`） | 高い権限で起動されたら何もせずに終わる（A-3 と同じ規則）。設定画面の核が Job Object に入れる（止めた状態で作り、入れてから動かす。閉じたら終わる。子の数の上限は、`ikari-data` と `transfer` の 2。UI の制限は `transfer` と同じ）。渡すハンドルは標準出力のパイプだけ（`PROC_THREAD_ATTRIBUTE_HANDLE_LIST`。S5）。起動の作りは `transfer` と同じ `ikari-sandbox`（§17） | `inbox` に書くため。受け取ったバイト列の解釈（TLS、HTTP）をしないので、中の整合性で動かしても、外から来たものを読むのは自分の作業の場所のファイルを写すところだけ |
-| `ikari-data transfer` | **低**（`lm/src/host/os/windows.rs` と同じ作り） | `ikari-data` が作る Job Object の中（`ikari-data` が終われば終わる。子の数の上限 1、UI の制限は LM の子と同じ）。継承するハンドルは標準出力のパイプだけ（`PROC_THREAD_ATTRIBUTE_HANDLE_LIST`。標準入力と標準エラーは渡さない） | ネットワークから来たものを解釈するのはこの子。利用者のファイルに書けないようにする |
+| `ikari-data transfer` | **低**（`lm/src/host/os/windows.rs` と同じ作り） | `ikari-data` が作る Job Object の中（`ikari-data` が終われば終わる。子の数の上限 1、UI の制限は LM の子と同じ）。継承するハンドルは標準出力のパイプだけ（`PROC_THREAD_ATTRIBUTE_HANDLE_LIST`。標準入力と標準エラーは渡さない） | ネットワークから来たものを解釈するのはこの子。利用者のファイルに書けないようにする。**書けなくするだけで、読めなくはならない**（低い整合性は読み取りを止めない。残る限界として security-design §4 に書く。ハンドル渡しと AppContainer への移行で狭める。#449） |
 
 - **Job の UI の制限**（2026-11-17 リード決定）: `ikari-data` の Job にも、`transfer` の Job と同じ UI の制限（クリップボードの読み書き、ほかのプロセスの窓、デスクトップの切り替え、画面とシステムの設定の変更、グローバルなアトム、サインアウト）をかける。理由: `ikari-data` に画面は無く、失うものが無い。中の整合性で動く分、ほかのアプリの窓や設定に触れられないようにしておく。`ikari-sandbox` はどの子にも必ずかける（選べる形にしない）。
 - `transfer` は、自分の整合性が低でなければ、何もせずに `refused` で終わる（人が手で打っても、中の整合性では通信しない。検査は §10）。
