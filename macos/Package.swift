@@ -11,6 +11,18 @@ func hasFramework(_ name: String) -> Bool {
 }
 let hasShellFFI = hasFramework("IkariShellFFI")
 let hasEngineFFI = hasFramework("IkariEngineFFI")
+// 檻役の口を渡す FFI（`ikari_engine_attach_lm_cage`。ADR 0077 §3.5）がヘッダにあるか。無い XCFramework（古い、または
+// レーン 1b の前）では、その呼び出しを入れずにビルドする
+let hasLMCageFFI: Bool = {
+    guard hasEngineFFI,
+        let found = FileManager.default.enumerator(atPath: "\(packageRoot)/Frameworks/IkariEngineFFI.xcframework")
+    else { return false }
+    for case let path as String in found where path.hasSuffix("ikari_engine.h") {
+        let header = try? String(contentsOfFile: "\(packageRoot)/Frameworks/IkariEngineFFI.xcframework/\(path)", encoding: .utf8)
+        return header?.contains("ikari_engine_attach_lm_cage") ?? false
+    }
+    return false
+}()
 
 // Rust の静的ライブラリ（llama.cpp を含む）が必要とするシステムのライブラリ（ADR 0004 §9.2-3）
 let rustNativeLibs: [LinkerSetting] = [
@@ -48,7 +60,8 @@ var targets: [Target] = [
     .executableTarget(
         name: "IkariEngineService",
         dependencies: ["IkariProto"] + (hasEngineFFI ? ["IkariEngineFFI"] : []),
-        swiftSettings: hasEngineFFI ? [.define("IKARI_HAS_ENGINE_FFI")] : [],
+        swiftSettings: (hasEngineFFI ? [.define("IKARI_HAS_ENGINE_FFI")] : [])
+            + (hasLMCageFFI ? [.define("IKARI_HAS_LM_CAGE_FFI")] : []),
         linkerSettings: hasEngineFFI ? rustNativeLibs : []
     ),
     // 殻の 1 本の口（ADR 0041 §4.4。`ikari_shell_*`）の薄い層と、キーコードの表（`KeyEvents`）。IkariIME と IkariSettings が使う

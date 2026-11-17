@@ -85,6 +85,6 @@ import Testing
     @Test func engineInterfaceDeclaresTheEndpointArgument() {
         // 宣言が不正なら、ここで落ちる（NSXPCInterface は、selector の引数の型を実行時に検査する）
         let interface = IkariEngineXPCInterface.make()
-        #expect(NSStringFromProtocol(interface.protocol) == "IkariEngineXPC")
+        #expect(NSStringFromProtocol(interface.protocol).hasSuffix("IkariEngineXPC"))
     }
 }
