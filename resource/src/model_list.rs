@@ -193,15 +193,38 @@ fn entry_from_component(
     component: &Component,
     formats: &[&str],
 ) -> Result<UserModelEntry, ResourceError> {
+    let entry = UserModelEntry::from_component(component, formats)?;
+    if key != entry.id.to_string() {
+        return Err(malformed(key, "名前が sha256 と合いません"));
+    }
+    Ok(entry)
+}
+
+impl UserModelEntry {
+    /// モデルの部品 1 つ（一覧の 1 件か、取り込む束の `model`）から作る。ID は sha256 から作り、ファイル名がそれに
+    /// 合うものだけを受ける。形式は `formats` の語だけ。表示名は掃除する
+    pub fn from_component(
+        component: &Component,
+        formats: &[&str],
+    ) -> Result<UserModelEntry, ResourceError> {
+        from_component(component, formats)
+    }
+}
+
+fn from_component(
+    component: &Component,
+    formats: &[&str],
+) -> Result<UserModelEntry, ResourceError> {
+    let key = "model";
     if component.kind != ComponentKind::Model || component.format != MODEL_FORMAT_VERSION {
         return Err(malformed(key, "モデルの部品ではありません"));
     }
     let [file] = component.files.as_slice() else {
         return Err(malformed(key, "ファイルは 1 つです"));
     };
-    // ID は sha256 から作り、欄の名前とファイル名がそれに合うかを見る（一覧の文字列からパスを作らない）
+    // ID は sha256 から作り、ファイル名がそれに合うかを見る（一覧の文字列からパスを作らない）
     let id = UserModelId::from_sha256(&file.sha256).ok_or_else(|| malformed(key, "sha256"))?;
-    if key != id.to_string() || file.name != id.file_name() {
+    if file.name != id.file_name() {
         return Err(malformed(key, "名前が sha256 と合いません"));
     }
     if file.size > MODEL_MAX_SIZE {

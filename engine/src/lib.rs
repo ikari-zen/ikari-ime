@@ -30,6 +30,7 @@ mod log;
 #[cfg(test)]
 mod mock_seam;
 mod model_check;
+mod model_import;
 mod model_select;
 mod rss;
 mod segments;
@@ -254,14 +255,27 @@ impl Engine {
         let idle_unload_secs = settings.idle_unload_secs.unwrap_or(cfg.idle_unload_secs);
 
         let lock = EngineLock::acquire(&data_dir).map_err(|e| EngineError::Open(e.to_string()))?;
-        // どのモデルを、どの檻の段で読むか（ADR 0060 §7、ADR 0072 §12.8 の 1。`model_select`）
-        let resolved = model_select::resolve_model(lm_requested, &data_dir, &settings);
+        // inbox のモデルの束を取り込む（D-4 の条件 1。モデルのハンドルを開く前に、ここ 1 か所で）
+        let imported = model_import::import_models(&data_dir, &model_select::format_words());
         // 別プロセスの子があれば、このビルドに llama.cpp が無くても LM を使える
         let lm_host = lm_host.resolve();
+        // どのモデルを、どの檻の段で読むか（ADR 0060 §7、ADR 0072 §12.8 の 1。`model_select`）。
+        // 自由指定は、段 2 のある構成でだけ読む（同じプロセスで動かすときは読まない）
+        let resolved = model_select::resolve_model(
+            lm_requested,
+            &data_dir,
+            &settings,
+            model_select::user_models_offered(lm_host.is_some()),
+        );
         // 照合したハンドルは、エンジンの寿命の間持ち、子に渡す（FC-3）。読まないビルドでは持たない
         let lm_handle = resolved
             .model
             .filter(|_| lm_host.is_some() || cfg!(feature = "lm"));
+        // 読み込みの印は、子を起こす前に書く（D-4 の条件 5。最初に読み込めたら消す）
+        let loading_mark = Arc::new(model_select::LoadingMark::default());
+        if let Some(id) = resolved.loading.filter(|_| lm_handle.is_some()) {
+            loading_mark.arm(&data_dir, id);
+        }
         let lm_model = lm_handle.as_ref().map(|h| h.path().to_owned());
         // 子の起動の口（ADR 0077。`lm_cage`）。檻役の口は、開いたあとに `attach_lm_cage` で入る
         let lm_cage_slot = Arc::new(CageSlot::default());
@@ -289,6 +303,7 @@ impl Engine {
         let mut opts = stack_options(idle_unload_secs, lm_budget);
         opts.lm.gpu = Some(settings.lm_gpu_or_default());
         opts.lm_isolation = lm_isolation;
+        opts.lm_format = resolved.format;
         if slow_gpu_unload {
             opts.lm.idle_unload_gpu_secs = Some(
                 settings
@@ -321,9 +336,13 @@ impl Engine {
             },
             None,
             lm_cage_slot,
+            loading_mark,
         );
-        if let Some(reason) = resolved.reject {
-            engine.inner.record_lm_reject(&resolved.file_name, reason);
+        for outcome in &imported {
+            engine.inner.record_model_import(outcome);
+        }
+        for (file_name, reason) in &resolved.rejects {
+            engine.inner.record_lm_reject(file_name, *reason);
         }
         Ok(engine)
     }
@@ -338,14 +357,16 @@ impl Engine {
         parts: EngineParts,
         seam_override: Option<Arc<dyn SegmentSeam>>,
     ) -> Engine {
-        Engine::from_parts_with(parts, seam_override, Arc::default())
+        Engine::from_parts_with(parts, seam_override, Arc::default(), Arc::default())
     }
 
-    /// `from_parts_seam` と同じ。檻役の口を入れる場所（`lm_cage`）を、組み立てに渡したものと同じにする
+    /// `from_parts_seam` と同じ。檻役の口を入れる場所（`lm_cage`）を、組み立てに渡したものと同じにする。
+    /// `loading_mark` は、組み立ての前に書いた読み込みの印（D-4 の条件 5）
     fn from_parts_with(
         parts: EngineParts,
         seam_override: Option<Arc<dyn SegmentSeam>>,
         lm_cage: Arc<CageSlot>,
+        loading_mark: Arc<model_select::LoadingMark>,
     ) -> Engine {
         let EngineParts {
             stack,
@@ -409,6 +430,7 @@ impl Engine {
             learning_quarantined,
             seam_override,
             lm_cage,
+            loading_mark,
         });
         diag::set_panic_log(&inner.log);
         // 前回の終わり方は、このエンジンの最初の行にする（ワーカーを起こす前に書く）
@@ -599,6 +621,8 @@ struct Inner {
     seam_override: Option<Arc<dyn SegmentSeam>>,
     /// 檻役の口（macOS の段 2。ADR 0077。`lm_cage`）。組み立ての `HostLauncher::Cage` と同じもの
     lm_cage: Arc<CageSlot>,
+    /// 自由指定のモデルの読み込みの印（`model_select`。最初に読み込めたら消す）
+    loading_mark: Arc<model_select::LoadingMark>,
 }
 
 /// 起動時にデータ用フォルダ（本体、backups、logs）を 0700、中のファイルを 0600 にする。

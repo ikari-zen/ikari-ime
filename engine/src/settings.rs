@@ -6,6 +6,8 @@
 use std::path::Path;
 use std::time::Duration;
 
+use crate::model_select::ModelChoice;
+
 pub const SETTINGS_FILE_NAME: &str = "settings.tsv";
 
 const COMMENT_PREFIX: char = '#';
@@ -21,6 +23,7 @@ const KEY_POSTAL_ENGLISH: &str = "postal.english";
 const KEY_POSTAL_TE_PREFIX: &str = "postal.te_prefix";
 const KEY_UNICODE_NOTATION: &str = "unicode.notation";
 const KEY_DATE_WEEKDAY_DATES: &str = "date.weekday_dates";
+const KEY_LM_MODEL: &str = "lm.model";
 const VALUE_ON: &str = "on";
 const VALUE_OFF: &str = "off";
 
@@ -84,6 +87,8 @@ pub struct Settings {
     pub unicode_notation: Option<bool>,
     /// `date.weekday_dates`（既定は off）
     pub date_weekday_dates: Option<bool>,
+    /// `lm.model`（使うモデルの ID。無い・形の合わない値は既定のモデル。ADR 0060 §7）
+    pub lm_model: Option<ModelChoice>,
 }
 
 impl Settings {
@@ -170,6 +175,8 @@ pub fn parse(text: &str) -> Settings {
                     settings.idle_unload_secs = Some(secs);
                 }
             }
+            // ID だけを受ける（プリセットの ID か `user-<12 桁>`）。パスやほかの値は無視して既定のモデル（D-4 の条件 4）
+            KEY_LM_MODEL => settings.lm_model = ModelChoice::parse(value),
             KEY_LM_DEADLINE_MS => settings.lm_deadline_ms = value.parse().ok(),
             KEY_CONVERT_WAIT_MS => settings.convert_wait_ms = value.parse().ok(),
             _ => {}
@@ -204,6 +211,27 @@ mod tests {
                 ..Settings::default()
             }
         );
+    }
+
+    #[test]
+    fn lm_model_takes_only_ids() {
+        let s = parse("lm.model\tzenz-small\n");
+        assert_eq!(s.lm_model.map(|c| c.id()), Some("zenz-small".to_owned()));
+        let s = parse("lm.model\tuser-ba7816bf8f01\n");
+        assert_eq!(
+            s.lm_model.map(|c| c.id()),
+            Some("user-ba7816bf8f01".to_owned())
+        );
+        for bad in [
+            "/tmp/evil.gguf",
+            "../models/x.gguf",
+            "user-ba7816bf8f01.gguf",
+            "USER-BA7816BF8F01",
+            "zenz-v3.2-small-Q5_K_M.gguf",
+            "",
+        ] {
+            assert_eq!(parse(&format!("lm.model\t{bad}\n")).lm_model, None, "{bad}");
+        }
     }
 
     #[test]

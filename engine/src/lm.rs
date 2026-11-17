@@ -82,6 +82,7 @@ impl Inner {
         let flag = Arc::clone(&self.warming);
         let log = Arc::clone(&self.log);
         let loaded_flag = self.diag.loaded_flag();
+        let loading_mark = Arc::clone(&self.loading_mark);
         let started = std::thread::Builder::new()
             .name("ikari-lm-warmup".to_owned())
             .spawn(move || {
@@ -89,6 +90,9 @@ impl Inner {
                 let _ = catch_unwind(AssertUnwindSafe(|| lm.warm_up()));
                 // 読み込み（またはその失敗）が終わった。所要を `lm_load` に書く（ADR 0034 §4.3）
                 let loaded = lm.is_loaded();
+                if loaded {
+                    loading_mark.loaded();
+                }
                 loaded_flag.store(loaded, Ordering::Release);
                 Inner::lm_load_line(&log, began, loaded, lm.device(), lm.load_note().as_deref());
                 flag.store(false, Ordering::Release);
