@@ -176,7 +176,10 @@ pub fn is_version(s: &str) -> bool {
     let mut count = 0;
     for part in s.split('.') {
         // 桁が多すぎる数は拒む（表示と比較で扱える範囲に収める）
-        if part.is_empty() || part.len() > 9 || parse_number(part).is_none() {
+        if part.is_empty()
+            || part.len() > crate::app_version::MAX_VERSION_PART_DIGITS
+            || parse_number(part).is_none()
+        {
             return false;
         }
         count += 1;

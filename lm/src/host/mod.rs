@@ -9,11 +9,16 @@
 //! 子が落ちる・固まる・壊れた返事をするときは、`LmScorer::nll` が `Err` を返し、`ZenzRanker` は何もせずに戻る
 //! （候補は辞書から作ったまま。LM は並べ替えにだけ使う）。
 
+pub mod cage;
+mod launch;
+mod model;
 mod os;
 pub mod proto;
 mod scorer;
 mod serve;
 
+pub use launch::{HostLauncher, LmIsolation};
+pub use model::ModelHandle;
 pub use scorer::{HostCage, HostHealth, HostLimits, HostSpec, host_loader};
 pub use serve::{ReadyInfo, serve};
 

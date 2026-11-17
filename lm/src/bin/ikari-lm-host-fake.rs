@@ -1,7 +1,8 @@
 //! テスト用の偽の `ikari-lm-host`（モデルなし）。配布物には入れない。
 //!
 //! 引数は本物と同じ（`--model <パス> --gpu on|off|cpu`）。`--model` のファイルを「台本」として読む（`key=value` の行）。
-//! テストは台本を書き換えて、次に起動する子の挙動を変えられる。
+//! テストは、次に起動する子の挙動を `<台本のパス>.next` に書いて変えられる（あれば台本より優先する）。台本そのものは、
+//! エンジンが照合したモデルとして開いたまま持つので（Windows は書き込みの共有なし）、書き換えない。
 //!
 //!   load=fail              読み込みの失敗を返して終わる
 //!   ready=never            Ready を出さずに止まる
@@ -36,6 +37,7 @@ use ikari_lm::{CancelToken, GpuState, LmDevice, LmError, LmScorer};
 const NLL_PREFIX: &str = "nll.";
 const DIE_SUFFIX: &str = ".die";
 const STARTS_SUFFIX: &str = ".starts";
+const NEXT_SUFFIX: &str = ".next";
 const FOREVER: Duration = Duration::from_secs(3600);
 
 #[derive(Default)]
@@ -135,7 +137,12 @@ fn main() -> ExitCode {
     };
     let gpu_arg = value_of(ARG_GPU).unwrap_or_default();
     let gpu_on = gpu_arg == ARG_GPU_ON;
-    let script = Script::read(&model);
+    let next = {
+        let mut path = model.clone().into_os_string();
+        path.push(NEXT_SUFFIX);
+        PathBuf::from(path)
+    };
+    let script = Script::read(if next.exists() { &next } else { &model });
     let die_flag = {
         let mut path = model.clone().into_os_string();
         path.push(DIE_SUFFIX);

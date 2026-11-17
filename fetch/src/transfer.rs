@@ -34,6 +34,13 @@ impl NetLimits {
         connect: CONNECT_TIMEOUT,
         read: READ_TIMEOUT,
     };
+
+    /// 版の確認（ADR 0076 §6）。転送は追わない（`Location` を読むだけ）。締め切りは取得と同じ仮置き
+    pub const VERSION_CHECK: NetLimits = NetLimits {
+        max_redirects: 0,
+        connect: CONNECT_TIMEOUT,
+        read: READ_TIMEOUT,
+    };
 }
 
 /// 1 回の取得の頼み
@@ -63,6 +70,17 @@ pub fn download(
         let _ = (request, out, progress);
         Err(FetchError(FetchErrorCode::Tool))
     }
+}
+
+/// `url` に転送を追わずに 1 回だけ要求し、応答の `Location` を返す（無ければ None）。本文は `body_limit` まで読んで
+/// 捨てる（版の確認。ADR 0076 §6）。配る対象でない OS では `Tool`。
+///
+/// 契約のスタブ（第 4 弾）: 今は通信せず、どの OS でも `Tool`。中身はレーン D-2d（`net` の中に、`NetLimits::VERSION_CHECK`
+/// で作った agent の呼び出しを足す。通信の呼び出しはこのファイルだけ）。転送を追わない設定では、3xx を失敗にしない
+/// 扱いが要る（`max_redirects_will_error` と `http_status_as_error` の組み合わせ。`build_config` の単体テストを保つ）
+pub fn redirect_location(url: &HttpsUrl, body_limit: u64) -> Result<Option<String>, FetchError> {
+    let _ = (url, body_limit);
+    Err(FetchError(FetchErrorCode::Tool))
 }
 
 #[cfg(any(windows, target_os = "macos"))]

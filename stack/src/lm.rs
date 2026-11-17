@@ -3,7 +3,7 @@
 
 use super::*;
 
-use ikari_lm::host::{HostCage, HostHealth, HostSpec, host_loader};
+use ikari_lm::host::{HostHealth, HostSpec, LmIsolation, ModelHandle, host_loader};
 use ikari_lm::{LmLoader, ZenzConfig, ZenzRanker};
 
 /// `host` が Some なら、その実行ファイルを子として起動して採点を頼む（このビルドに llama.cpp は要らない）。
@@ -12,6 +12,7 @@ pub fn build(
     path: &Path,
     kv: &BTreeMap<String, String>,
     host: Option<&Path>,
+    isolation: &LmIsolation,
 ) -> Result<LmParts, StackError> {
     if host.is_none() && !cfg!(feature = "lm") {
         return Err(StackError::LmNotBuilt);
@@ -22,13 +23,21 @@ pub fn build(
     let cfg = ZenzConfig::from_kv(kv).map_err(|e| config_err("zenz", e))?;
     let (loader, host) = match host {
         Some(program) => {
+            // 照合済みのハンドルがあれば、それを子に渡す（パスで開き直さない。FC-3）
+            let model = match &isolation.model {
+                Some(handle) => handle.clone(),
+                None => ModelHandle::open(path)
+                    .map_err(|e| StackError::Open(format!("LM model: {e}")))?,
+            };
             let (loader, health) = host_loader(HostSpec {
                 program: program.to_path_buf(),
-                model: path.to_path_buf(),
+                model,
                 use_gpu: cfg.gpu,
                 limits: cfg.host.clone(),
-                // プリセット（アプリに埋めた sha256 のモデル）だけを読む間は段 1（ADR 0072 §4。段 2 にするかは #424 のあと）
-                cage: HostCage::Standard,
+                // 檻の段はモデルの出どころで（エンジンのモデルの解決。既定は段 1。ADR 0072 §4、§12.8）、
+                // 起動の口は OS と配置で（エンジンの檻役の受け口。既定は自分で起動。ADR 0077）決まる
+                cage: isolation.cage,
+                launcher: isolation.launcher.clone(),
             });
             (loader, Some(health))
         }

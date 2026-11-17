@@ -28,6 +28,49 @@ fileprivate nonisolated struct _GeneratedWithProtocGenSwiftVersion: SwiftProtobu
   typealias Version = _2
 }
 
+/// LM_CAGE_NONE: 檻に届かない（macOS で檻役の口が無い・確かめに失敗した。LM なし）。LEVEL1: 段 1。LEVEL2: 段 2
+public nonisolated enum Ikari_Engine_V1_LmCage: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case none // = 1
+  case level1 // = 2
+  case level2 // = 3
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .none
+    case 2: self = .level1
+    case 3: self = .level2
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .none: return 1
+    case .level1: return 2
+    case .level2: return 3
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Ikari_Engine_V1_LmCage] = [
+    .unspecified,
+    .none,
+    .level1,
+    .level2,
+  ]
+
+}
+
 public nonisolated enum Ikari_Engine_V1_LmState: SwiftProtobuf.Enum, Swift.CaseIterable {
   public typealias RawValue = Int
   case unspecified // = 0
@@ -916,6 +959,8 @@ public nonisolated struct Ikari_Engine_V1_Hello: Sendable {
 /// （エンジンが 1 回だけ伝える。#271。追加だけなので schema_version は 1 のまま）
 /// lm_device: いま読み込まれているモデルの実行装置（設定アプリの「CPU で動いている」案内の元。#425）。
 /// lm が LM_READY のときだけ意味を持つ。読まれていなければ LM_DEVICE_UNSPECIFIED。古いエンジンも UNSPECIFIED（追加だけ）
+/// lm_cage: LM の子の檻の段（ADR 0072 §3、ADR 0077 §6。設定画面の「檻なし」の表示と、自由指定のモデルを出すかの判断の元）。
+/// 古いエンジン、まだ子を起動していないときは LM_CAGE_UNSPECIFIED（追加だけ）
 public nonisolated struct Ikari_Engine_V1_HelloReply: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -930,6 +975,8 @@ public nonisolated struct Ikari_Engine_V1_HelloReply: Sendable {
   public var learningQuarantined: Bool = false
 
   public var lmDevice: Ikari_Engine_V1_LmDevice = .unspecified
+
+  public var lmCage: Ikari_Engine_V1_LmCage = .unspecified
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -1867,6 +1914,10 @@ public nonisolated struct Ikari_Engine_V1_DiagTag: Sendable {
 
 fileprivate nonisolated let _protobuf_package = "ikari.engine.v1"
 
+nonisolated extension Ikari_Engine_V1_LmCage: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0LM_CAGE_UNSPECIFIED\0\u{1}LM_CAGE_NONE\0\u{1}LM_CAGE_LEVEL1\0\u{1}LM_CAGE_LEVEL2\0")
+}
+
 nonisolated extension Ikari_Engine_V1_LmState: SwiftProtobuf._ProtoNameProviding {
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0LM_STATE_UNSPECIFIED\0\u{1}LM_DISABLED\0\u{1}LM_LOADING\0\u{1}LM_READY\0\u{1}LM_FAILED\0")
 }
@@ -2715,7 +2766,7 @@ nonisolated extension Ikari_Engine_V1_Hello: SwiftProtobuf.Message, SwiftProtobu
 
 nonisolated extension Ikari_Engine_V1_HelloReply: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".HelloReply"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}engine_version\0\u{3}dict_label\0\u{1}lm\0\u{3}learning_quarantined\0\u{3}lm_device\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}engine_version\0\u{3}dict_label\0\u{1}lm\0\u{3}learning_quarantined\0\u{3}lm_device\0\u{3}lm_cage\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2728,6 +2779,7 @@ nonisolated extension Ikari_Engine_V1_HelloReply: SwiftProtobuf.Message, SwiftPr
       case 3: try { try decoder.decodeSingularEnumField(value: &self.lm) }()
       case 4: try { try decoder.decodeSingularBoolField(value: &self.learningQuarantined) }()
       case 5: try { try decoder.decodeSingularEnumField(value: &self.lmDevice) }()
+      case 6: try { try decoder.decodeSingularEnumField(value: &self.lmCage) }()
       default: break
       }
     }
@@ -2749,6 +2801,9 @@ nonisolated extension Ikari_Engine_V1_HelloReply: SwiftProtobuf.Message, SwiftPr
     if self.lmDevice != .unspecified {
       try visitor.visitSingularEnumField(value: self.lmDevice, fieldNumber: 5)
     }
+    if self.lmCage != .unspecified {
+      try visitor.visitSingularEnumField(value: self.lmCage, fieldNumber: 6)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -2758,6 +2813,7 @@ nonisolated extension Ikari_Engine_V1_HelloReply: SwiftProtobuf.Message, SwiftPr
     if lhs.lm != rhs.lm {return false}
     if lhs.learningQuarantined != rhs.learningQuarantined {return false}
     if lhs.lmDevice != rhs.lmDevice {return false}
+    if lhs.lmCage != rhs.lmCage {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

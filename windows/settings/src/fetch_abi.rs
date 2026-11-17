@@ -174,6 +174,54 @@ fn to_status(s: &Snapshot) -> IkariSettingsFetchStatus {
     }
 }
 
+/// 版の確認を始める（`ikari-data version-check`。ADR 0076 §6）。成功したら `*out` に値を書く。様子と文は
+/// `ikari_settings_fetch_poll`、解放は `ikari_settings_fetch_free`（取得と同じ）。
+///
+/// 契約のスタブ（第 4 弾。中身はレーン D-2d）: 今は起動せず、`ERR_FAILED` と文を返す。
+///
+/// # Safety
+/// `out` は書き込める。`msg` は null か書き込める。
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ikari_settings_version_check_start(
+    out: *mut *mut SettingsFetch,
+    msg: *mut IkariSettingsBuf,
+) -> i32 {
+    if out.is_null() {
+        return IKARI_SETTINGS_CORE_ERR_NULL;
+    }
+    let msg_addr = msg as usize;
+    guarded(AssertUnwindSafe(move || {
+        // SAFETY: `msg` は null か書き込める（呼び出しの約束）
+        unsafe {
+            write_text(
+                msg_addr as *mut IkariSettingsBuf,
+                text::fetch_error(ikari_resource::fetch_report::FetchErrorCode::Tool),
+            )
+        };
+        IKARI_SETTINGS_CORE_ERR_FAILED
+    }))
+}
+
+/// 取得が終わったときの sha256（`done` の行の値。64 桁の 16 進）を `out` に書く。まだ終わっていなければ `ERR_FAILED`。
+/// sha256 なしで取ったときに、確認の画面に出す（ADR 0076 §18.1）。
+///
+/// 契約のスタブ（第 4 弾。中身はレーン D-4）: 今は常に `ERR_FAILED`。
+///
+/// # Safety
+/// `fetch` は開いたもの（null なら `ERR_NULL`）。`out` は null か書き込める。
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ikari_settings_fetch_sha256(
+    fetch: *const SettingsFetch,
+    out: *mut IkariSettingsBuf,
+) -> i32 {
+    // SAFETY: 呼び出しの約束
+    let Some(_fetch) = (unsafe { fetch.as_ref() }) else {
+        return IKARI_SETTINGS_CORE_ERR_NULL;
+    };
+    let _ = out;
+    IKARI_SETTINGS_CORE_ERR_FAILED
+}
+
 /// 取り消す（子の木を終わらせる）。終わっていれば何も変えない。
 ///
 /// # Safety

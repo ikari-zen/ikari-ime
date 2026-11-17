@@ -3,10 +3,14 @@
 //! 通らなかったもの（未知の名前、大きさ違い、sha256 違い、読めない）は、LM なしで起動する
 //! （変換は辞書だけで動く）。理由は固定の語で `lm_reject` の行に書く（NFR-19: ファイル名と理由の種類だけ）。
 //! 判断の置き場所は Rust（殻は触らない）。
+//!
+//! 照合は、開いたハンドル（[`LmModelHandle`]）で行い、そのハンドルをエンジンの寿命の間持って、子に渡す
+//! （照合した物と子が読む物を同じにする。C-03、FC-3）。
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use ikari_resource::{KnownModel, ResourceError, verify_model_file};
+use ikari_resource::{KnownModel, ResourceError, verify_model_open};
+use ikari_stack::LmModelHandle;
 
 /// モデルを通さなかった理由（ログの語）。中身の違いまでは書かない
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,14 +47,22 @@ impl ModelReject {
     }
 }
 
-/// `model` を読んでよいか。通れば `Some(model)`、通らなければ `None` と理由
+/// `model` を読んでよいか。開いたハンドルで照合し、通ればそのハンドル、通らなければ `None` と理由
 pub(crate) fn vet_model(
-    model: PathBuf,
+    model: &Path,
     file_name: &str,
     known: &[KnownModel],
-) -> (Option<PathBuf>, Option<ModelReject>) {
-    match verify_model_file(&model, file_name, known) {
-        Ok(()) => (Some(model), None),
+) -> (Option<LmModelHandle>, Option<ModelReject>) {
+    // 表にない名前は開かない
+    if !known.iter().any(|m| m.file_name == file_name) {
+        return (None, Some(ModelReject::UnknownName));
+    }
+    let handle = match LmModelHandle::open(model) {
+        Ok(handle) => handle,
+        Err(_) => return (None, Some(ModelReject::Unreadable)),
+    };
+    match verify_model_open(handle.file(), model, file_name, known) {
+        Ok(()) => (Some(handle), None),
         Err(e) => (None, Some(ModelReject::from_error(&e))),
     }
 }
@@ -62,13 +74,13 @@ pub(crate) fn select_lm_model(
     model: &Path,
     file_name: &str,
     known: &[KnownModel],
-) -> (Option<PathBuf>, Option<ModelReject>) {
+) -> (Option<LmModelHandle>, Option<ModelReject>) {
     if !lm_wanted {
         return (None, None);
     }
     // 開く前に種類を見る（FIFO などを open して止まらない）。なければ黙る。あるのに普通のファイルでなければ拒む
     match std::fs::metadata(model) {
-        Ok(meta) if meta.is_file() => vet_model(model.to_owned(), file_name, known),
+        Ok(meta) if meta.is_file() => vet_model(model, file_name, known),
         Ok(_) => (None, Some(ModelReject::Unreadable)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => (None, None),
         Err(_) => (None, Some(ModelReject::Unreadable)),

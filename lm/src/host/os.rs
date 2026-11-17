@@ -28,8 +28,13 @@ mod appcontainer;
 mod apple;
 #[cfg(any(windows, test))]
 mod cmdline;
+#[cfg(unix)]
+mod fd;
 #[cfg(windows)]
 mod windows;
+
+#[cfg(unix)]
+pub(crate) use fd::fd_facts;
 
 #[cfg(target_vendor = "apple")]
 use apple as imp;
@@ -147,6 +152,27 @@ pub(super) fn spawn(
     #[cfg(target_vendor = "apple")]
     imp::no_sigpipe(&stdin)?;
     Ok((proc, stdin, stdout))
+}
+
+/// 檻役（`launcher` の口）に子の起動を頼む（macOS の段 2。ADR 0077）。
+///
+/// 契約のスタブ（第 4 弾）: 中身はレーン D-3-mac。`args` は今の `--model <path> --gpu <語>` のまま渡す
+/// （檻役には `--gpu` の語だけを [`cage::CageGpu`] で送り、モデルは照合したハンドルの写し（`model.for_child()`。
+/// 起動のたびに位置を先頭へ戻したもの）を fd で渡す。パスで開き直さない。FC-3）。
+/// 口が無い（`slot` が空）ときは「檻なし」で起動しない。今は常に `Unsupported`。
+///
+/// [`cage::CageGpu`]: crate::host::cage::CageGpu
+pub(super) fn spawn_via_cage(
+    slot: &crate::host::cage::CageSlot,
+    model: &crate::host::ModelHandle,
+    args: &[OsString],
+    cage: crate::host::scorer::HostCage,
+) -> io::Result<(ChildProc, ToChild, FromChild)> {
+    let _ = (slot, model, args, cage);
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "lm cage launcher is not implemented",
+    ))
 }
 
 /// Windows でない OS の段 1 の檻
