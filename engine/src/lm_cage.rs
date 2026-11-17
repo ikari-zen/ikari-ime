@@ -74,6 +74,17 @@ fn cage_report(uses_cage: bool, slot: &CageSlot) -> pb::LmCage {
     }
 }
 
+/// 檻役の口を待っているか（檻役を使うビルドで、口がまだ無い）。待っている間は読み込みを始めない
+/// （起動できないので、読み込みの失敗に数えられて `lm=failed` になり、口が届いても再試行の間隔まで待たされる）。
+/// 口が入ったら [`Engine::attach_lm_cage`] が読み込みを始める
+pub(crate) fn waiting_for_cage(slot: &CageSlot) -> bool {
+    waiting_for_cage_with(product_uses_cage(), slot)
+}
+
+fn waiting_for_cage_with(uses_cage: bool, slot: &CageSlot) -> bool {
+    uses_cage && slot.current().is_none()
+}
+
 /// 自由指定のモデルを、いま使ってよいか（ADR 0077 §6）。檻役を使うビルドは、口がある（確かめ済み）ときだけ。
 /// ほかは、段 2 を張れるかを起動の側が決める（Windows。ADR 0072 §12.8 の 1）
 #[allow(dead_code)] // D-4（自由指定のモデルの選択）で使う
@@ -87,9 +98,12 @@ fn user_model_usable_with(uses_cage: bool, slot: &CageSlot) -> bool {
 
 impl Engine {
     /// 殻から届いた檻役の口を確かめ（`hello` の返事の送り手の署名要件と版。FC-1）、通れば入れる（前の口は捨てる）。
-    /// 通らなければ届いた口を捨て、今の口はそのまま。確かめる前の口には `hello` しか送らない
+    /// 通らなければ届いた口を捨て、今の口はそのまま。確かめる前の口には `hello` しか送らない。
+    /// 入ったら、読み込みを始める（口を待つ間は始めない。[`waiting_for_cage`]）
     pub fn attach_lm_cage(&self, client: Arc<dyn CageClient>) -> Result<(), HandshakeError> {
-        self.inner.lm_cage.attach_unverified(client)
+        self.inner.lm_cage.attach_unverified(client)?;
+        self.inner.ensure_warm();
+        Ok(())
     }
 }
 
@@ -180,6 +194,16 @@ mod tests {
         assert_eq!(caged_host_program_with(true, Path::new("/x")), None);
         // このテストのビルドは檻役を使わない（隣を探す）
         assert_eq!(caged_host_program(exe), None);
+    }
+
+    #[test]
+    fn caged_builds_do_not_load_until_the_cage_arrives() {
+        let slot = CageSlot::default();
+        assert!(waiting_for_cage_with(true, &slot));
+        assert!(!waiting_for_cage_with(false, &slot));
+        slot.attach_unverified(Arc::new(Good)).unwrap();
+        assert!(!waiting_for_cage_with(true, &slot));
+        assert!(!waiting_for_cage(&CageSlot::default()));
     }
 
     #[test]

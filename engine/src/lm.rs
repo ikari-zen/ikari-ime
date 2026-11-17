@@ -73,7 +73,10 @@ impl Inner {
         let Some(lm) = stack.lm.clone() else {
             return;
         };
-        if lm.is_loaded() || self.warming.swap(true, Ordering::AcqRel) {
+        if lm.is_loaded() || crate::lm_cage::waiting_for_cage(&self.lm_cage) {
+            return;
+        }
+        if self.warming.swap(true, Ordering::AcqRel) {
             return;
         }
         let flag = Arc::clone(&self.warming);
