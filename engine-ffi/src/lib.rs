@@ -3,6 +3,7 @@
 //! メッセージは protobuf のバイト列。すべての入口で `catch_unwind` を使い、panic を FFI の外へ出さない。
 //! ヘッダと一致させること（シグネチャの変更は契約の変更）。
 
+use std::ffi::{CStr, c_char, c_void};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 use std::slice;
@@ -141,6 +142,58 @@ pub extern "C" fn ikari_engine_schema_version() -> u32 {
     SCHEMA_VERSION
 }
 
+/// 殻が仲立ちした檻役の匿名の口（`xpc_endpoint_t`）をエンジンに渡す（ADR 0077 §3.2、§3.5）。
+/// `requirement` は口の先（檻役）の署名要件（エンジンの束の Info.plist の値）。
+///
+/// 返り値は「エンジンが口を受け取って確かめた」か（確かめに通ったかではない）。確かめに通らなければ、エンジンは
+/// その口を捨てて今の口のまま（無ければ「檻なし」）にし、結果は `HelloReply.lm_cage` に出る。偽を返すのは、
+/// 引数が使えない（NULL、UTF-8 でない、口でない）ときと、macOS 以外だけ。殻は、偽のときだけ同じ口を渡し直す。
+///
+/// # Safety
+/// `e` は `ikari_engine_open` が返した、まだ close していないハンドル（または NULL）。`endpoint` は呼び出しの間
+/// 生きている `xpc_endpoint_t`（または NULL。こちらが retain して持つ）。`requirement` は NUL で終わる文字列（または NULL）。
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ikari_engine_attach_lm_cage(
+    e: *mut IkariEngine,
+    endpoint: *mut c_void,
+    requirement: *const c_char,
+) -> bool {
+    catch_unwind(AssertUnwindSafe(|| {
+        let Some(handle) = (unsafe { e.as_ref() }) else {
+            return false;
+        };
+        if endpoint.is_null() || requirement.is_null() {
+            return false;
+        }
+        let Ok(requirement) = (unsafe { CStr::from_ptr(requirement) }).to_str() else {
+            return false;
+        };
+        unsafe { attach_lm_cage(&handle.engine, endpoint, requirement) }
+    }))
+    .unwrap_or(false)
+}
+
+/// # Safety
+/// `endpoint` は呼び出しの間生きている `xpc_endpoint_t`
+#[cfg(target_vendor = "apple")]
+unsafe fn attach_lm_cage(engine: &Engine, endpoint: *mut c_void, requirement: &str) -> bool {
+    use std::sync::Arc;
+
+    use ikari_stack::lm_cage::XpcCageClient;
+
+    let Ok(client) = (unsafe { XpcCageClient::from_endpoint(endpoint, requirement) }) else {
+        return false;
+    };
+    // 確かめの失敗は、エンジンが口を捨てて状態に出す（ここでは数えない）
+    let _ = engine.attach_lm_cage(Arc::new(client));
+    true
+}
+
+#[cfg(not(target_vendor = "apple"))]
+unsafe fn attach_lm_cage(_engine: &Engine, _endpoint: *mut c_void, _requirement: &str) -> bool {
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -160,6 +213,7 @@ mod tests {
             "ikari_buf_free",
             "ikari_engine_close",
             "ikari_engine_schema_version",
+            "ikari_engine_attach_lm_cage",
         ] {
             assert!(
                 header.contains(name),
@@ -265,6 +319,11 @@ mod tests {
         unsafe {
             ikari_engine_close(ptr::null_mut());
             ikari_buf_free(EMPTY);
+            assert!(!ikari_engine_attach_lm_cage(
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null()
+            ));
         }
         assert_eq!(ikari_engine_schema_version(), SCHEMA_VERSION);
     }

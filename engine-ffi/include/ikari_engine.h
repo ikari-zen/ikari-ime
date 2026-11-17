@@ -4,8 +4,13 @@
 #ifndef IKARI_ENGINE_H
 #define IKARI_ENGINE_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+
+#ifdef __APPLE__
+#include <xpc/xpc.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,6 +40,14 @@ void ikari_engine_close(IkariEngine *e);
 
 // proto の schema_version（Envelope.schema_version と同じ値）
 uint32_t ikari_engine_schema_version(void);
+
+#ifdef __APPLE__
+// 殻が仲立ちした檻役の匿名の口を渡す（macOS。ADR 0077 §3.5）。requirement は口の先（檻役）の署名要件。
+// エンジンが口を retain して持つ（呼び出し側の参照はそのまま）。口の確かめ（hello）が終わるまで戻らない。
+// 返り値は「受け取って確かめた」か（確かめに通ったかではない。通らなければ、エンジンは口を捨てて今の口のままにする）。
+// false は、引数が使えない（NULL、UTF-8 でない、口でない）とき。
+bool ikari_engine_attach_lm_cage(IkariEngine *e, xpc_endpoint_t endpoint, const char *requirement);
+#endif
 
 #ifdef __cplusplus
 }
