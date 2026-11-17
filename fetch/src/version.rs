@@ -20,6 +20,8 @@ use ikari_resource::fetch_report::{EXIT_ERROR, EXIT_OK, FetchErrorCode, Report};
 use crate::error::FetchError;
 use crate::job;
 use crate::limits::VERSION_CHECK_BODY_LIMIT;
+#[cfg(windows)]
+use crate::limits::VERSION_CHECK_DEADLINE;
 use crate::transfer::redirect_location;
 use crate::url::HttpsUrl;
 
@@ -85,6 +87,9 @@ pub fn run_version_check(out: &mut dyn Write) -> i32 {
 #[cfg(windows)]
 fn check_in_child() -> Result<AppVersion, FetchError> {
     use std::io::BufReader;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::mpsc;
+    use std::thread;
 
     use ikari_resource::fetch_report::{Line, ReportReader, read_line_capped};
 
@@ -93,20 +98,41 @@ fn check_in_child() -> Result<AppVersion, FetchError> {
     let tool = || FetchError(FetchErrorCode::Tool);
     let exe = std::env::current_exe().map_err(|_| tool())?;
     let (child, stdout) = spawn_low(&exe, &[PROBE_COMMAND.to_owned()]).map_err(|_| tool())?;
-    let mut reader = BufReader::new(stdout);
-    let mut reports = ReportReader::new();
-    let mut latest = None;
-    let mut failure = None;
-    loop {
-        match read_line_capped(&mut reader) {
-            Ok(Line::Text(line)) => match reports.feed(&line) {
-                Some(Report::Latest { version }) => latest = AppVersion::parse(&version),
-                Some(Report::Error(code)) => failure = Some(code),
-                Some(_) | None => {}
-            },
-            Ok(Line::Dropped) => {}
-            Ok(Line::Eof) | Err(_) => break,
+    // 親の全体の締め切り（FV-1）。子が出力を閉じなくても、過ぎたら Job を閉じて（子を止めて）`network` にする
+    let (done_tx, done_rx) = mpsc::channel::<()>();
+    let timed_out = AtomicBool::new(false);
+    let (latest, failure) = thread::scope(|scope| {
+        let (child, timed_out) = (&child, &timed_out);
+        scope.spawn(move || {
+            if let Err(mpsc::RecvTimeoutError::Timeout) =
+                done_rx.recv_timeout(VERSION_CHECK_DEADLINE)
+            {
+                timed_out.store(true, Ordering::SeqCst);
+                child.terminate();
+            }
+        });
+        let mut reader = BufReader::new(stdout);
+        let mut reports = ReportReader::new();
+        let mut latest = None;
+        let mut failure = None;
+        loop {
+            match read_line_capped(&mut reader) {
+                Ok(Line::Text(line)) => match reports.feed(&line) {
+                    Some(Report::Latest { version }) => latest = AppVersion::parse(&version),
+                    Some(Report::Error(code)) => failure = Some(code),
+                    Some(_) | None => {}
+                },
+                Ok(Line::Dropped) => {}
+                Ok(Line::Eof) | Err(_) => break,
+            }
         }
+        // 読み終えた。見張りを止める
+        let _ = done_tx.send(());
+        (latest, failure)
+    });
+    if timed_out.load(Ordering::SeqCst) {
+        let _ = child.wait();
+        return Err(FetchError(FetchErrorCode::Network));
     }
     let exit = child.wait().map_err(|_| tool())?;
     match (failure, latest, exit) {
