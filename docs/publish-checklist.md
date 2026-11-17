@@ -108,7 +108,11 @@
 設計は [security-design.md](security-design.md)（[ADR 0069](adr/0069-distribution-authenticity.md)、[0070](adr/0070-update-and-vulnerability-response.md)）。タグを打つことと Release を公開することは、**作者だけが行う**（エージェントはしない）。
 
 - [ ] #241（未署名のアプリを開く手順と、macOS の置き場所の実機確認）が済んでいること。Windows は [windows-real-device-check.md](windows-real-device-check.md) の該当の項目が済んでいること。
-- [ ] 前の節（§3）の、Private vulnerability reporting が有効であること。リリースのタグ（`v*`）を作れる者を絞り、タグの付け替えと削除を禁じる設定をしたこと。Releases を immutable（公開したら変えられない）にする設定をしたこと。
+- [ ] 前の節（§3）の、Private vulnerability reporting が有効であること。
+- [ ] Release を作れるアカウント（作者）に、2 要素認証（パスキーか物理キー）を設定したこと。SMS や認証アプリだけにしない（ADR 0076 §18.2。アカウントを取られると、偽の版を「新しい版」として勧めうるため）。
+- [ ] タグを守る ruleset を入れたこと（Settings → Rules → Rulesets、対象はタグ）。対象は `v*`（アプリ）と `webwords-*`（データ）。作れる者を絞り、付け替え（force push）と削除を禁じる。
+- [ ] Releases を immutable（公開したら資産とタグを変えられない）にしたこと。**要確認**: GitHub 側にこの機能があるか、どこで設定するかは、まだ確かめていない。無ければ、無いことをここに書く。
+- [ ] 「最新の Release」の扱い（ADR 0076 §18.2）: アプリの Release は `gh release create … --latest` で明示して最新にする。データの Release（`webwords-*`）は `--latest=false` で作り、最新にしない。公開のあと、`gh release view --json tagName` の最新のタグが `v<数>.<数>.<数>` であることを確かめる。
 - [ ] [security-design.md](security-design.md) §5.2 の「版を出す前」の検査が済んでいること（製品のビルドであること、インストーラの確認、送信の記録、他社の部品の版、3 つの証拠）。
 - [ ] 配る物は、GitHub のランナーで、タグから作ったものだけ（作者や利用者の機械で作ったものは配らない）。Release は下書きにし、作者が中身を見てから公開する。
 - [ ] Release に 3 つの証拠が付いていること: `SHA256SUMS`、GitHub の成果物の証明（`gh attestation verify <ファイル> -R ikari-zen/ikari-ime` で確かめられる）、作者の鍵による `SHA256SUMS` の署名。
