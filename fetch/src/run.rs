@@ -14,6 +14,7 @@ use ikari_resource::fetch_report::{EXIT_ERROR, EXIT_USAGE, FetchErrorCode, Repor
 use crate::args::{Command, TransferArgs, Usage, parse};
 use crate::error::FetchError;
 use crate::job::{self, Context, DownloadJob, Fetcher, Throttle};
+use crate::nofollow;
 use crate::transfer::{DownloadRequest, download};
 use crate::url::HttpsUrl;
 use crate::workspace::Dirs;
@@ -115,11 +116,9 @@ fn run_transfer(_args: &TransferArgs, _out: &mut dyn Write) -> i32 {
 #[cfg_attr(not(windows), allow(dead_code))]
 fn transfer_to_file(args: &TransferArgs, out: &mut dyn Write) -> Result<(), FetchError> {
     let url = HttpsUrl::parse(&args.url)?;
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&args.out)
-        .map_err(|_| FetchError(FetchErrorCode::Internal))?;
+    let mut file =
+        nofollow::open_plain_file(OpenOptions::new().write(true).create_new(true), &args.out)
+            .map_err(|_| FetchError(FetchErrorCode::Internal))?;
     let request = DownloadRequest {
         url: &url,
         max_size: args.max_size,
@@ -204,11 +203,11 @@ impl Fetcher for ProductFetcher {
         dirs: &Dirs,
         progress: &mut dyn FnMut(u64, Option<u64>),
     ) -> Result<(), FetchError> {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(dirs.download_path())
-            .map_err(|_| FetchError(FetchErrorCode::Internal))?;
+        let mut file = nofollow::open_plain_file(
+            OpenOptions::new().write(true).create_new(true),
+            &dirs.download_path(),
+        )
+        .map_err(|_| FetchError(FetchErrorCode::Internal))?;
         let request = DownloadRequest {
             url: job.url,
             max_size: job.max_size,

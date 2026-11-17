@@ -7,12 +7,13 @@
 //!
 //! 取り込みの判断（束の検証、試しの採点、入れ替え）はエンジン。ここは束を inbox に置くまで。
 
-use std::fs::{self, File};
-use std::io::Write;
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, Write};
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use ikari_resource::fetch_report::{EXIT_ERROR, EXIT_OK, FetchErrorCode, Report};
-use ikari_resource::sha256::sha256_file;
+use ikari_resource::sha256::sha256_reader;
 use ikari_resource::{
     ComponentKind, Created, Expected, ModelPreset, Origin, Source, StagePlan, preset_by_id,
     stage_model_bundle,
@@ -21,6 +22,7 @@ use ikari_resource::{
 use crate::args::ModelSource;
 use crate::error::FetchError;
 use crate::limits::{MODEL_MAX_SIZE, PROGRESS_INTERVAL};
+use crate::nofollow;
 use crate::url::HttpsUrl;
 use crate::workspace::{Dirs, required_space, required_space_to_copy};
 
@@ -192,7 +194,9 @@ fn stage_downloaded(
 ) -> Result<Report, FetchError> {
     let dirs = ctx.dirs;
     let path = dirs.download_path();
-    let received = fs::metadata(&path)
+    // リンクを辿らずに開いたものの大きさを見る（パスでは見ない。D-01）
+    let received = open_download(&path)
+        .and_then(|f| f.metadata())
         .map_err(|_| FetchError(FetchErrorCode::Internal))?
         .len();
     if received > resolved.max_size {
@@ -213,14 +217,16 @@ fn stage_downloaded(
                 name,
             },
         ) => {
-            let hash = sha256_file(&path).map_err(|_| FetchError(FetchErrorCode::Internal))?;
+            let hash = open_download(&path)
+                .and_then(sha256_reader)
+                .map_err(|_| FetchError(FetchErrorCode::Internal))?;
             let plan = user_plan(&hash, url, format, sha256.as_deref(), name.as_deref(), ctx);
             (plan, Some(hash))
         }
         (None, ModelSource::Preset { .. }) => return Err(FetchErrorCode::Internal.into()),
     };
 
-    let mut file = File::open(&path).map_err(|_| FetchError(FetchErrorCode::Internal))?;
+    let mut file = open_download(&path).map_err(|_| FetchError(FetchErrorCode::Internal))?;
     let staged = stage_model_bundle(&mut file, &dirs.inbox, &plan)?;
     if pre_hash.is_some_and(|h| h != staged.sha256) {
         let _ = fs::remove_dir_all(&staged.path);
@@ -230,6 +236,11 @@ fn stage_downloaded(
         name: staged.name,
         sha256: staged.sha256,
     })
+}
+
+/// 作業の場所の落としたファイルを、リンクを辿らずに読み取りで開く（ふつうのファイルでなければ失敗）
+fn open_download(path: &Path) -> io::Result<File> {
+    nofollow::open_plain_file(OpenOptions::new().read(true), path)
 }
 
 fn preset_plan(preset: &ModelPreset, ctx: &Context<'_>) -> StagePlan {
