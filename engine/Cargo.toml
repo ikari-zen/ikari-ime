@@ -24,8 +24,9 @@ prost.workspace = true
 flate2.workspace = true
 jiff.workspace = true
 
-# RSS の取得（task_info。unsafe は src/rss.rs に閉じる。ADR 0034 §3.4）
-[target.'cfg(target_os = "macos")'.dependencies]
+# RSS の取得（macOS の task_info。unsafe は src/rss.rs に閉じる。ADR 0034 §3.4）と、
+# モデルの取り込みでリンクを辿らずに開く印（unix の O_NOFOLLOW。src/model_import.rs）
+[target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
 [dev-dependencies]
