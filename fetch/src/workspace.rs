@@ -1,13 +1,15 @@
 //! 作業の場所と錠、片づけ、ディスクの見積もり（ADR 0076 §3.1、§3.2、§8.3）。
 //!
-//! - 作業の場所（`fetch/`）: Windows は `%USERPROFILE%\AppData\LocalLow\ikari-ime\fetch\`（低い整合性の子が書ける場所。
-//!   ikari は ACL を変えない）、macOS は `<データの場所>/fetch/`。**ここのファイルは信じない**（`stage_model_bundle` が
-//!   写しながら数え直す）。
+//! - 作業の場所（`fetch/`）: Windows は `<LocalLow>\ikari-ime\fetch\`（`LocalLow` は環境変数でなく OS の関数で取る。
+//!   低い整合性の子が書ける場所。ikari は ACL を変えない）、macOS は `<データの場所>/fetch/`。**ここのファイルは
+//!   信じない**（`stage_model_bundle` が写しながら数え直す）。根から順に、リンクを辿らずに 1 段ずつ作って持つ
+//!   （`nofollow`。D-01）。持っている間、付け替えと削除をさせない。
 //! - inbox: `<データの場所>/inbox/`（エンジンが見回る。ADR 0058）。
 //! - 錠（`fetch/.lock`）: 同時に走る取得は 1 つ。OS の排他の錠なので、落ちても残らない。
 
 use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io;
+use std::path::Component;
 use std::path::{Path, PathBuf};
 
 use ikari_core::user::UserDir;
@@ -16,59 +18,126 @@ use ikari_resource::fetch_report::FetchErrorCode;
 
 use crate::error::FetchError;
 use crate::limits::DISK_MARGIN;
+use crate::nofollow::{self, HeldDir};
 
 const INBOX_DIR: &str = "inbox";
 const WORK_DIR: &str = "fetch";
 const LOCK_FILE: &str = ".lock";
 /// 作業の場所に落とすファイルの名前
 pub const DOWNLOAD_FILE: &str = "download.bin";
+/// Windows の作業の根の下の、ikari の名前
 #[cfg(windows)]
-const LOCAL_LOW_RELATIVE: &str = r"AppData\LocalLow\ikari-ime";
-#[cfg(windows)]
-const USERPROFILE_ENV: &str = "USERPROFILE";
+const LOCAL_LOW_APP_DIR: &str = "ikari-ime";
+
+/// 見た物の種類（リンクは辿らずに見る）。何を消してよいかの判断は `removable_kind`
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum NodeKind {
+    Missing,
+    File,
+    Dir,
+    /// リンク（シンボリックリンク。Windows は reparse point のすべて）
+    Link,
+}
+
+/// 作業の場所の中で、消してよい種類。ファイルとリンク（リンクそのもの）だけ。ディレクトリは、知らないものとして残す
+pub(crate) fn removable_kind(kind: NodeKind) -> bool {
+    matches!(kind, NodeKind::File | NodeKind::Link)
+}
 
 /// 使う場所
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Dirs {
     pub inbox: PathBuf,
     pub work: PathBuf,
+    /// 作業の場所の根（`work` の祖先。ここから `work` まで 1 段ずつ作って持つ）。根そのものはリンクでないことだけ確かめる
+    base: PathBuf,
 }
 
 impl Dirs {
+    /// 作業の場所の根は、`work` の親
     pub fn new(inbox: impl Into<PathBuf>, work: impl Into<PathBuf>) -> Self {
+        let work = work.into();
+        let base = work.parent().map(Path::to_path_buf).unwrap_or_default();
+        Self {
+            inbox: inbox.into(),
+            work,
+            base,
+        }
+    }
+
+    fn with_base(
+        inbox: impl Into<PathBuf>,
+        work: impl Into<PathBuf>,
+        base: impl Into<PathBuf>,
+    ) -> Self {
         Self {
             inbox: inbox.into(),
             work: work.into(),
+            base: base.into(),
         }
     }
 
     /// 製品の場所（データの場所は引数で変えられない。ADR 0067）。決められなければ `None`
     pub fn resolve() -> Option<Self> {
         let user = UserDir::resolve(None)?;
-        let work = work_root(user.root())?.join(WORK_DIR);
-        Some(Self::new(user.root().join(INBOX_DIR), work))
+        let base = work_root(user.root())?;
+        let work = base.join(WORK_DIR);
+        Some(Self::with_base(user.root().join(INBOX_DIR), work, base))
     }
 
-    /// 作業の場所の錠。取れなければ `busy`
+    /// 作業の場所の錠。取れなければ `busy`。根から作業の場所まで、リンクを辿らずに 1 段ずつ「作る → 持つ → 確かめる」。
+    /// 返す錠が、持った場所も持ち続ける
     pub fn lock(&self) -> Result<WorkLock, FetchError> {
-        fs::create_dir_all(&self.work).map_err(|_| FetchError(FetchErrorCode::Internal))?;
-        let file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(false)
-            .open(self.work.join(LOCK_FILE))
-            .map_err(|_| FetchError(FetchErrorCode::Internal))?;
+        let internal = |_| FetchError(FetchErrorCode::Internal);
+        let held = self.hold_work_chain().map_err(internal)?;
+        let file = nofollow::open_plain_file(
+            OpenOptions::new().create(true).write(true).truncate(false),
+            &self.work.join(LOCK_FILE),
+        )
+        .map_err(internal)?;
         match file.try_lock() {
-            Ok(()) => Ok(WorkLock { _file: file }),
+            Ok(()) => Ok(WorkLock { _file: file, held }),
             Err(TryLockError::WouldBlock) => Err(FetchError(FetchErrorCode::Busy)),
             Err(TryLockError::Error(_)) => Err(FetchError(FetchErrorCode::Internal)),
         }
     }
 
-    /// 落ちたあとに残った、作業の場所のファイルと inbox の `.partial` を消す（錠は残す）。**錠を持っているときだけ呼ぶ**
-    pub fn cleanup(&self, _lock: &WorkLock) -> io::Result<()> {
-        remove_children(&self.work, |name| name != LOCK_FILE)?;
-        remove_children(&self.inbox, |name| name.ends_with(PARTIAL_SUFFIX))
+    /// 根（リンクでないこと）から `work` まで、持った順の場所。最後が `work`
+    fn hold_work_chain(&self) -> io::Result<Vec<HeldDir>> {
+        let rest = self
+            .work
+            .strip_prefix(&self.base)
+            .map_err(|_| nofollow::not_plain())?;
+        fs::create_dir_all(&self.base)?;
+        let mut held = vec![nofollow::hold_dir(&self.base)?];
+        let mut path = self.base.clone();
+        for component in rest.components() {
+            let Component::Normal(name) = component else {
+                return Err(nofollow::not_plain());
+            };
+            path.push(name);
+            match fs::create_dir(&path) {
+                Ok(()) => {}
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+                Err(e) => return Err(e),
+            }
+            let dir = nofollow::hold_dir(&path)?;
+            dir.ensure_child_of(held.last().ok_or_else(nofollow::not_plain)?)?;
+            held.push(dir);
+        }
+        Ok(held)
+    }
+
+    /// 落ちたあとに残った、作業の場所のファイルと inbox の `.partial` を消す（錠は残す）。**錠を持っているときだけ呼ぶ**。
+    /// 作業の場所の中は、持っている場所の中の名前だけを、リンクを辿らずに消す。知らないディレクトリは消さずに続ける
+    pub fn cleanup(&self, lock: &WorkLock) -> io::Result<()> {
+        let work = lock.work_dir()?;
+        for name in child_names(&self.work)? {
+            if name != LOCK_FILE {
+                work.remove_entry(&name)?;
+            }
+        }
+        remove_partials(&self.inbox)
     }
 
     /// 作業の場所に落とすファイルの場所
@@ -80,7 +149,13 @@ impl Dirs {
     /// `required` を見る）。足りなければ `disk-full`。空きを調べられないときは、止めずに進む（書くときの失敗で受ける）
     pub fn check_space(&self, required: u64) -> Result<(), FetchError> {
         for dir in [&self.work, &self.inbox] {
-            fs::create_dir_all(dir).map_err(|_| FetchError(FetchErrorCode::Internal))?;
+            let dir = if dir == &self.work {
+                // 作業の場所は錠のときに作る（ここでは作らない）。まだ無ければ根で見る
+                if dir.exists() { dir } else { &self.base }
+            } else {
+                fs::create_dir_all(dir).map_err(|_| FetchError(FetchErrorCode::Internal))?;
+                dir
+            };
             if let Ok(free) = free_space(dir)
                 && free < required
             {
@@ -95,6 +170,14 @@ impl Dirs {
 #[derive(Debug)]
 pub struct WorkLock {
     _file: File,
+    /// 持っている場所（根から作業の場所まで。最後が作業の場所）。持っている間、付け替えと削除をさせない
+    held: Vec<HeldDir>,
+}
+
+impl WorkLock {
+    fn work_dir(&self) -> io::Result<&HeldDir> {
+        self.held.last().ok_or_else(nofollow::not_plain)
+    }
 }
 
 /// 要る空き（バイト）。大きさが分かっていれば（プリセット）その 2 倍（作業の場所と写し）と余裕、
@@ -111,23 +194,30 @@ pub fn required_space_to_copy(received: u64) -> u64 {
     received.saturating_add(DISK_MARGIN)
 }
 
-/// 親ディレクトリの中身を、`pick(名前)` が真のものだけ消す。親がなければ何もしない
-fn remove_children(dir: &Path, pick: impl Fn(&str) -> bool) -> io::Result<()> {
+/// `dir` の直下の名前（UTF-8 でないものは、扱わない）。`dir` が無ければ空
+fn child_names(dir: &Path) -> io::Result<Vec<String>> {
     let entries = match fs::read_dir(dir) {
         Ok(entries) => entries,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(e) => return Err(e),
     };
+    let mut names = Vec::new();
     for entry in entries {
-        let entry = entry?;
-        let name = entry.file_name();
-        let Some(name) = name.to_str() else { continue };
-        if !pick(name) {
+        if let Ok(name) = entry?.file_name().into_string() {
+            names.push(name);
+        }
+    }
+    Ok(names)
+}
+
+/// inbox（データの場所の下。低い整合性の書き手はいない）の `.partial` を消す。リンクは先を辿らずにリンクだけを消す
+fn remove_partials(inbox: &Path) -> io::Result<()> {
+    for name in child_names(inbox)? {
+        if !name.ends_with(PARTIAL_SUFFIX) {
             continue;
         }
-        let path = entry.path();
-        // シンボリックリンクは、先を辿らずにリンクだけを消す（`file_type` はリンクを辿らない）
-        if entry.file_type()?.is_dir() {
+        let path = inbox.join(&name);
+        if nofollow::node_kind(&path)? == NodeKind::Dir {
             fs::remove_dir_all(&path)?;
         } else {
             fs::remove_file(&path)?;
@@ -136,10 +226,42 @@ fn remove_children(dir: &Path, pick: impl Fn(&str) -> bool) -> io::Result<()> {
     Ok(())
 }
 
+/// `<LocalLow>\ikari-ime`。`LocalLow` は環境変数でなく OS の関数で取る（環境変数では根ごと別の場所に向けられる。D-03）
 #[cfg(windows)]
 fn work_root(_data_root: &Path) -> Option<PathBuf> {
-    let profile = std::env::var_os(USERPROFILE_ENV).filter(|v| !v.is_empty())?;
-    Some(PathBuf::from(profile).join(LOCAL_LOW_RELATIVE))
+    Some(local_low()?.join(LOCAL_LOW_APP_DIR))
+}
+
+#[cfg(windows)]
+fn local_low() -> Option<PathBuf> {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+    use windows_sys::Win32::System::Com::CoTaskMemFree;
+    use windows_sys::Win32::UI::Shell::{FOLDERID_LocalAppDataLow, SHGetKnownFolderPath};
+
+    let mut raw: *mut u16 = std::ptr::null_mut();
+    // SAFETY: 既知のフォルダの ID と、書き込める出力の置き場所を渡す。トークンは null（今の利用者）
+    let hr = unsafe {
+        SHGetKnownFolderPath(&FOLDERID_LocalAppDataLow, 0, std::ptr::null_mut(), &mut raw)
+    };
+    if hr < 0 || raw.is_null() {
+        if !raw.is_null() {
+            // SAFETY: 失敗でも OS が確保していたら、解放が要る
+            unsafe { CoTaskMemFree(raw.cast()) };
+        }
+        return None;
+    }
+    // SAFETY: 成功のとき `raw` は NUL で終わる文字列。長さを数えて読み、読み終えたら解放する
+    let path = unsafe {
+        let mut len = 0;
+        while *raw.add(len) != 0 {
+            len += 1;
+        }
+        let path = OsString::from_wide(std::slice::from_raw_parts(raw, len));
+        CoTaskMemFree(raw.cast());
+        path
+    };
+    (!path.is_empty()).then(|| PathBuf::from(path))
 }
 
 #[cfg(not(windows))]
@@ -217,8 +339,6 @@ mod tests {
         let d = dirs(tmp.path());
         let lock = d.lock().unwrap();
         fs::write(d.download_path(), b"half").unwrap();
-        fs::create_dir_all(d.work.join("sub")).unwrap();
-        fs::write(d.work.join("sub").join("x"), b"x").unwrap();
         fs::create_dir_all(d.inbox.join("user-aaa.partial")).unwrap();
         fs::write(d.inbox.join("user-aaa.partial").join("m.gguf"), b"x").unwrap();
         fs::create_dir_all(d.inbox.join("user-bbb")).unwrap();
@@ -228,7 +348,6 @@ mod tests {
 
         assert!(d.work.join(LOCK_FILE).exists());
         assert!(!d.download_path().exists());
-        assert!(!d.work.join("sub").exists());
         assert!(!d.inbox.join("user-aaa.partial").exists());
         // 完成した束と、エンジンの状態は触らない
         assert!(d.inbox.join("user-bbb").exists());
@@ -241,6 +360,113 @@ mod tests {
         let d = dirs(tmp.path());
         let lock = d.lock().unwrap();
         d.cleanup(&lock).unwrap();
+    }
+
+    #[test]
+    fn cleanup_keeps_unknown_directories_and_does_not_enter_them() {
+        let tmp = tempfile::tempdir().unwrap();
+        let d = dirs(tmp.path());
+        let lock = d.lock().unwrap();
+        fs::create_dir_all(d.work.join("sub")).unwrap();
+        fs::write(d.work.join("sub").join("x"), b"x").unwrap();
+        fs::write(d.download_path(), b"half").unwrap();
+        d.cleanup(&lock).unwrap();
+        assert!(
+            d.work.join("sub").join("x").exists(),
+            "知らないディレクトリは消さずに続ける"
+        );
+        assert!(!d.download_path().exists());
+    }
+
+    #[test]
+    fn lock_creates_missing_levels_and_rejects_a_plain_file_in_the_way() {
+        let tmp = tempfile::tempdir().unwrap();
+        let d = Dirs::with_base(
+            tmp.path().join("inbox"),
+            tmp.path().join("a").join("fetch"),
+            tmp.path(),
+        );
+        assert!(d.lock().is_ok());
+        let tmp2 = tempfile::tempdir().unwrap();
+        fs::write(tmp2.path().join("fetch"), b"x").unwrap();
+        assert!(dirs(tmp2.path()).lock().is_err(), "ファイルがあれば失敗");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn lock_refuses_a_linked_work_dir_and_a_linked_lock_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let outside = tmp.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, tmp.path().join("fetch")).unwrap();
+        assert!(dirs(tmp.path()).lock().is_err());
+        assert_eq!(fs::read_dir(&outside).unwrap().count(), 0, "先に作らない");
+
+        let tmp = tempfile::tempdir().unwrap();
+        let d = dirs(tmp.path());
+        fs::create_dir_all(&d.work).unwrap();
+        let target = tmp.path().join("target");
+        fs::write(&target, b"keep").unwrap();
+        std::os::unix::fs::symlink(&target, d.work.join(LOCK_FILE)).unwrap();
+        assert!(d.lock().is_err());
+        assert_eq!(fs::read(&target).unwrap(), b"keep");
+    }
+
+    #[cfg(windows)]
+    fn junction(link: &Path, target: &Path) {
+        let status = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(link)
+            .arg(target)
+            .output()
+            .unwrap()
+            .status;
+        assert!(status.success(), "ジャンクションを作れなかった");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_junctions_are_not_followed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let outside = tmp.path().join("outside");
+        fs::create_dir_all(outside.join("fetch")).unwrap();
+        fs::write(outside.join("keep"), b"x").unwrap();
+        fs::write(outside.join("fetch").join("keep"), b"x").unwrap();
+
+        // (a) `fetch` がジャンクション
+        let root_a = tmp.path().join("a");
+        fs::create_dir_all(root_a.join("ikari-ime")).unwrap();
+        junction(
+            &root_a.join("ikari-ime").join("fetch"),
+            &outside.join("fetch"),
+        );
+        let d = Dirs::with_base(
+            tmp.path().join("inbox"),
+            root_a.join("ikari-ime").join("fetch"),
+            &root_a,
+        );
+        assert!(d.lock().is_err());
+        assert!(outside.join("fetch").join("keep").exists());
+
+        // (b) `ikari-ime`（途中の要素）がジャンクション
+        let root_b = tmp.path().join("b");
+        fs::create_dir_all(&root_b).unwrap();
+        junction(&root_b.join("ikari-ime"), &outside);
+        let d = Dirs::with_base(
+            tmp.path().join("inbox"),
+            root_b.join("ikari-ime").join("fetch"),
+            &root_b,
+        );
+        assert!(d.lock().is_err());
+        assert!(outside.join("keep").exists());
+
+        // (c) 中身がジャンクション。リンクだけを消し、先は残る
+        let d = dirs(&tmp.path().join("c"));
+        fs::create_dir_all(&d.work).unwrap();
+        let lock = d.lock().unwrap();
+        junction(&d.work.join("link"), &outside);
+        d.cleanup(&lock).unwrap();
+        assert!(outside.join("keep").exists());
     }
 
     #[cfg(unix)]

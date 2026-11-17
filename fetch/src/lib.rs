@@ -15,6 +15,7 @@ pub mod child;
 pub mod error;
 pub mod job;
 pub mod limits;
+mod nofollow;
 pub mod run;
 #[cfg(windows)]
 pub mod spawn_windows;
