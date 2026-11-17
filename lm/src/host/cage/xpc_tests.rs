@@ -6,7 +6,7 @@ use std::io::{self, Read, Write};
 use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -33,15 +33,22 @@ const CAT_SCRIPT: &str = "exec /bin/cat";
 /// シェルが自分で足す環境変数（子に渡したものではない）
 const SHELL_OWN_VARS: [&str; 4] = ["PWD", "SHLVL", "_", "OLDPWD"];
 
+/// このファイルのテストは、プロセスの fd の番号（`PROBE_FD`）と子の起動をプロセス全体で使うので、1 つずつ流す。
+/// 並列に流すと、コアの多い機械（既定のスレッド数が多い）で、檻役の返事が時間内に来ずに落ちる
+static SERIAL: Mutex<()> = Mutex::new(());
+
 struct Rig {
+    /// 先に宣言したものから落ちるので、ほかの持ち物より最後まで持つよう、最後に置く（下の `_serial`）
     _dir: tempfile::TempDir,
     core: Arc<CageCore>,
     listener: CageListener,
     model: PathBuf,
+    _serial: MutexGuard<'static, ()>,
 }
 
 impl Rig {
     fn new(body: &str) -> Rig {
+        let serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let program = dir.path().join("child.sh");
         std::fs::write(&program, format!("#!/bin/sh\n{body}\n")).unwrap();
@@ -55,6 +62,7 @@ impl Rig {
             core,
             listener,
             model,
+            _serial: serial,
         }
     }
 
