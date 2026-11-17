@@ -1,8 +1,8 @@
 //! モデルの記述（profile。ADR 0060 §3）。モデルごとの差は、ここにだけ書く。
 //!
-//! - [`PromptFormat`]: プロンプトの形式（旧 `ModelKind`）。新しい形式は、enum の値と `build_prompt_for` の腕を
+//! - [`PromptFormat`] はプロンプトの形式（旧 `ModelKind`）。新しい形式は、enum の値と `build_prompt_for` の腕を
 //!   1 つずつ足して加える。条件（プロフィール、話題、右文脈）を使うかは [`PromptFormat::uses_conditions`] に聞く。
-//! - [`ModelProfile`]: ID、形式、`alpha`、上限（[`LmLimits`]）、アダプタの元モデル。
+//! - [`ModelProfile`] は ID、形式、`alpha`、上限（[`LmLimits`]）、アダプタの元モデル。
 //! - 特殊トークン、BOS、終端、トークナイザの上書きは持たない（今の汎用の処理で足りている。ADR 0060 §3）。
 //!
 //! 優先の順: profile の値 < `--ranker-config` の `zenz.*`（開発と評価だけ。製品は `zenz.*` を読まない）。
