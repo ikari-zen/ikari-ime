@@ -155,7 +155,7 @@ pub fn mac_direct_spawn_closed(root: &Path) -> Result<(), Failure> {
     log("macOS の製品のビルドで、エンジンが自分で LM の子を起こさないこと（ADR 0077 §6）");
     let text = read(root, MAC_DIRECT_SPAWN_FILE)?;
     finish(
-        mac_direct_spawn_problems(&text, false)
+        mac_direct_spawn_problems(&text, true)
             .into_iter()
             .map(|p| format!("{MAC_DIRECT_SPAWN_FILE}: {p}"))
             .collect(),
@@ -479,7 +479,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "D-3-mac: 檻役の起動をつないだら、移行の間の定数（DIRECT_SPAWN_TRANSITION）を消す"]
     fn mac_direct_spawn_has_no_transition() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
         let text = read(&root, MAC_DIRECT_SPAWN_FILE).unwrap();

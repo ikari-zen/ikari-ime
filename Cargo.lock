@@ -699,6 +699,7 @@ name = "ikari-lm"
 version = "0.1.0"
 dependencies = [
  "ikari-core",
+ "ikari-lm",
  "ikari-testtime",
  "libc",
  "llama-cpp-2",

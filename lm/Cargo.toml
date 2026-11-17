@@ -57,5 +57,8 @@ windows-sys = { workspace = true, features = [
 ] }
 
 [dev-dependencies]
+# 統合テスト（tests/）は、エンジンが自分で子を起動する口（macOS の製品では閉じている。ADR 0077 §6）を使う。
+# テストのビルドだけ dev-knobs を付ける（`cargo test -p ikari-lm` 単独でも通るように）
+ikari-lm = { path = ".", features = ["dev-knobs"] }
 ikari-testtime.workspace = true
 tempfile.workspace = true
