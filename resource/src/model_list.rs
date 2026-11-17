@@ -331,7 +331,7 @@ mod tests {
     }
 
     /// 一覧の JSON を書き換える手
-    type Edit = Box<dyn FnOnce(&mut serde_json::Value)>;
+    type Edit<'a> = Box<dyn FnOnce(&mut serde_json::Value) + 'a>;
 
     fn parse(json: &str) -> Result<ModelList, ResourceError> {
         ModelList::from_manifest(&Manifest::from_json(json)?, FORMATS)
@@ -340,7 +340,7 @@ mod tests {
     #[test]
     fn entries_that_do_not_match_their_sha256_or_format_are_refused() {
         let key = "user-ba7816bf8f01";
-        let cases: Vec<Edit> = vec![
+        let cases: Vec<Edit<'_>> = vec![
             // 欄の名前が sha256 と合わない
             Box::new(|v| {
                 let c = v["components"][key].take();
