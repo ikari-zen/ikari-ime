@@ -354,9 +354,11 @@ verify_bundle() {
   codesign --verify -R="$engine_req" "$XPC" || die "エンジンが署名要件を満たしません: $engine_req"
   codesign --verify -R="$shell_req" "$APP" || die "殻が署名要件を満たしません: $shell_req"
   if [[ "$DISTRIBUTION" -eq 1 ]]; then
-    # 配布用: Smoke が無く、エンジンの許可リスト（IkariPeerRequirement）にも smoke の識別子が無い
+    # 配布用: Smoke が無く、エンジンと檻役の許可リスト（IkariPeerRequirement）にも smoke の識別子が無い
     [[ ! -e "$APP/Contents/MacOS/ikari-smoke" ]] || die "配布用のバンドルに ikari-smoke があります"
-    ! grep -rqF "$SMOKE_ID" "$APP/Contents/Info.plist" "$XPC/Contents/Info.plist" \
+    local plists=("$APP/Contents/Info.plist" "$XPC/Contents/Info.plist")
+    [[ ! -d "$CAGE" ]] || plists+=("$CAGE/Contents/Info.plist")
+    ! grep -qF "$SMOKE_ID" "${plists[@]}" \
       || die "配布用のバンドルの Info.plist に smoke の識別子があります"
     ! printf '%s' "$shell_req" | grep -qF smoke || die "配布用の署名要件に smoke があります: $shell_req"
     echo "signing requirements satisfied (engine, shell); distribution: no smoke in bundle or allow-list"
