@@ -11,12 +11,14 @@
 
 pub mod cage;
 mod launch;
+mod model;
 mod os;
 pub mod proto;
 mod scorer;
 mod serve;
 
 pub use launch::{HostLauncher, LmIsolation};
+pub use model::ModelHandle;
 pub use scorer::{HostCage, HostHealth, HostLimits, HostSpec, host_loader};
 pub use serve::{ReadyInfo, serve};
 

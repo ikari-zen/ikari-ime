@@ -8,9 +8,9 @@
 //!
 //! 判断の置き場所: Rust（エンジン）。
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use ikari_stack::HostCage;
+use ikari_stack::{HostCage, LmModelHandle};
 
 use crate::model_check::{self, ModelReject};
 use crate::settings::Settings;
@@ -27,10 +27,10 @@ pub(crate) enum ModelOrigin {
 }
 
 /// 解決したモデル
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub(crate) struct ResolvedModel {
-    /// 読むモデル。None なら LM なし
-    pub(crate) path: Option<PathBuf>,
+    /// 読むモデル（照合したハンドル。FC-3）。None なら LM なし
+    pub(crate) model: Option<LmModelHandle>,
     /// ログの `lm_reject` に書くファイルの名前（パスは書かない）
     pub(crate) file_name: String,
     /// 通さなかった理由（通したとき、LM を使わないときは None）
@@ -48,14 +48,14 @@ pub(crate) fn resolve_model(
     let model = data_dir.join(MODELS_DIR_NAME).join(MODEL_FILE_NAME);
     // 読む前に、既知のモデルの表と照合する。通らなければ LM なしで起動する（理由はログに書く）
     // （LM のないビルドでも照合して記録する。読むのは LM のあるビルドだけ）
-    let (path, reject) = model_check::select_lm_model(
+    let (model, reject) = model_check::select_lm_model(
         lm_requested,
         &model,
         MODEL_FILE_NAME,
         ikari_resource::KNOWN_MODELS,
     );
     ResolvedModel {
-        path,
+        model,
         file_name: MODEL_FILE_NAME.to_owned(),
         reject,
         origin: ModelOrigin::Preset,

@@ -21,7 +21,7 @@ pub use ikari_lm::cancel as lm_cancel;
 pub use ikari_lm::host::cage as lm_cage;
 /// 別プロセスの LM（`ikari-lm-host`）の実行ファイルの名前（Windows は `.exe` つき）
 pub use ikari_lm::host::host_exe_name as lm_host_exe_name;
-pub use ikari_lm::host::{HostCage, HostLauncher, LmIsolation};
+pub use ikari_lm::host::{HostCage, HostLauncher, LmIsolation, ModelHandle as LmModelHandle};
 /// LM の計測の型と記録（エンジンが `ikari-lm` を直接知らずに使う。ADR 0061）
 pub use ikari_lm::trace as lm_trace;
 pub use ikari_lm::{CancelToken, LmDevice, LmTrace};

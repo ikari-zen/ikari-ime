@@ -39,5 +39,5 @@ pub use stage::{
 };
 pub use verify::{
     SupportedFormats, TABLE_FORMAT_VERSION, VerifiedBundle, VerifyOptions, verify_bundle,
-    verify_model_file,
+    verify_model_file, verify_model_open,
 };

@@ -12,6 +12,7 @@
 use std::sync::Arc;
 
 use crate::host::cage::CageSlot;
+use crate::host::model::ModelHandle;
 use crate::host::scorer::HostCage;
 
 /// だれが子を起動するか
@@ -24,9 +25,12 @@ pub enum HostLauncher {
     Cage(Arc<CageSlot>),
 }
 
-/// 子の檻（求める段と、起動の口）。`ikari-stack` の `StackOptions::lm_isolation` で渡す
+/// 子の檻（求める段と、起動の口と、子に渡すモデル）。`ikari-stack` の `StackOptions::lm_isolation` で渡す
 #[derive(Clone, Debug, Default)]
 pub struct LmIsolation {
     pub cage: HostCage,
     pub launcher: HostLauncher,
+    /// 照合済みのモデルのハンドル（エンジンが照合のときに開いたもの。FC-3）。None なら、組み立てがパスで開く
+    /// （CLI、評価、テスト。照合しない呼び出し）
+    pub model: Option<ModelHandle>,
 }

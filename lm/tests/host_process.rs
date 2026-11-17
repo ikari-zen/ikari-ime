@@ -3,7 +3,7 @@
 //! 時間は、テストが揺れない長さ（`ikari_testtime` で伸ばせる）。製品の既定値とは別。
 
 use std::cell::Cell;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::thread;
@@ -13,7 +13,9 @@ use ikari_core::{
     AnalyzedContext, Candidate, CandidateOrigin, Context, DenseGrammar, InMemoryDictionary,
     RankInput, Ranker, UnknownParams,
 };
-use ikari_lm::host::{HostCage, HostHealth, HostLauncher, HostLimits, HostSpec, host_loader};
+use ikari_lm::host::{
+    HostCage, HostHealth, HostLauncher, HostLimits, HostSpec, ModelHandle, host_loader,
+};
 use ikari_lm::{CancelToken, LmDevice, ZenzConfig, ZenzRanker, cancel};
 
 const FAKE_HOST: &str = env!("CARGO_BIN_EXE_ikari-lm-host-fake");
@@ -22,6 +24,17 @@ const FAKE_HOST_ENV: &str = "IKARI_TEST_LM_HOST_FAKE";
 
 fn fake_host() -> PathBuf {
     std::env::var_os(FAKE_HOST_ENV).map_or_else(|| PathBuf::from(FAKE_HOST), PathBuf::from)
+}
+
+/// 台本（モデルの代わり）を置いて、照合したモデルと同じく開いたハンドルにする（FC-3）。`missing` なら、開いたあとで
+/// パスから消す（unix。Windows は持っている間は消せないので使わない）
+fn script_model(path: &Path, script: &str, missing: bool) -> ModelHandle {
+    std::fs::write(path, script).unwrap();
+    let model = ModelHandle::open(path).unwrap();
+    if missing {
+        std::fs::remove_file(path).unwrap();
+    }
+    model
 }
 /// ranker が結果を待つ上限。偽の子の起動と応答より桁で長い
 const RANK_BUDGET_MS: u64 = 3000;
@@ -121,12 +134,10 @@ impl Harness {
             assert!(ok, "icacls /setintegritylevel failed");
         }
         let path = dir.path().join("script.txt");
-        if !missing {
-            std::fs::write(&path, script).unwrap();
-        }
+        let model = script_model(&path, script, missing);
         let (loader, health) = host_loader(HostSpec {
             program: fake_host(),
-            model: path.clone(),
+            model,
             use_gpu,
             limits: HostLimits {
                 ready_deadline: ikari_testtime::ms(READY_DEADLINE_MS),
@@ -353,9 +364,10 @@ fn a_version_mismatch_or_a_load_failure_is_counted_as_a_failure() {
 #[test]
 fn a_missing_program_is_a_failure_not_a_panic() {
     let dir = tempfile::tempdir().unwrap();
+    let model = script_model(&dir.path().join("model"), "", false);
     let (loader, health) = host_loader(HostSpec {
         program: dir.path().join("no-such-exe"),
-        model: dir.path().join("model"),
+        model,
         use_gpu: true,
         limits: HostLimits::default(),
         cage: HostCage::Standard,
@@ -572,6 +584,10 @@ fn a_required_appcontainer_runs_the_child_in_it_or_starts_none() {
 /// 段 2 だけを求めて、段 2 を張れない（モデルに許可を足せない。Windows でない）とき: 段 1 に落とさず、子を起動しない
 /// （LM なし）
 #[test]
+#[cfg_attr(
+    windows,
+    ignore = "FC-3: 持っている間はモデルを消せないので、段 2 を張れない状態をほかの形で作る（D-3。VM で確かめる）"
+)]
 fn a_required_appcontainer_that_cannot_be_set_up_starts_no_child() {
     let h = Harness::caged(
         HEALTHY,
@@ -590,6 +606,10 @@ fn a_required_appcontainer_that_cannot_be_set_up_starts_no_child() {
 
 /// 段 2 を優先して、段 2 を張れないとき: 段 1 の子が起動して採点する（台本なしの偽の子。並びは変わらない）
 #[test]
+#[cfg_attr(
+    windows,
+    ignore = "FC-3: 持っている間はモデルを消せないので、段 2 を張れない状態をほかの形で作る（D-3。VM で確かめる）"
+)]
 fn a_preferred_appcontainer_falls_back_to_the_standard_cage() {
     let h = Harness::caged(
         HEALTHY,

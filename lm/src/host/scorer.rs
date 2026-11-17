@@ -35,6 +35,7 @@ use std::time::{Duration, Instant};
 use crate::cancel::CancelToken;
 use crate::error::LmError;
 use crate::host::launch::HostLauncher;
+use crate::host::model::ModelHandle;
 use crate::host::os::{self, Cage, CageState, ChildProc};
 use crate::host::proto::{
     FailKind, MAX_FRAME_BYTES, PROTOCOL_VERSION, Reply, Request, read_frame, write_frame,
@@ -88,8 +89,8 @@ impl Default for HostLimits {
 pub struct HostSpec {
     /// 子の実行ファイル。絶対パスで渡す（PATH から探さない）
     pub program: PathBuf,
-    /// モデル（GGUF）
-    pub model: PathBuf,
+    /// モデル（GGUF）。照合のときに開いたハンドル（FC-3。`model` の説明）
+    pub model: ModelHandle,
     /// GPU を使ってよいか（設定 `engine.lm_gpu`）
     pub use_gpu: bool,
     pub limits: HostLimits,
@@ -255,7 +256,7 @@ fn spawn_caged(
         return os::spawn_via_cage(slot, &spec.model, args, cage_for(spec));
     }
     let container = Cage::AppContainer {
-        readable: &spec.model,
+        readable: spec.model.path(),
     };
     match cage_for(spec) {
         HostCage::Standard => os::spawn(&spec.program, args, Cage::Standard),
@@ -264,7 +265,7 @@ fn spawn_caged(
             Ok(child) => Ok(child),
             Err(_) => {
                 // 許可を外せなくても段 1 を試す（読めなければ、読み込みの失敗に数えられる）
-                let _ = os::revoke_cage_read(&spec.model);
+                let _ = os::revoke_cage_read(spec.model.path());
                 os::spawn(&spec.program, args, Cage::Standard)
             }
         },
@@ -331,7 +332,7 @@ impl Live {
     fn spawn(spec: &HostSpec, gpu: &str, health: &HostHealth) -> Result<Live, String> {
         let args: [OsString; 4] = [
             ARG_MODEL.into(),
-            spec.model.clone().into_os_string(),
+            spec.model.path().as_os_str().to_owned(),
             ARG_GPU.into(),
             gpu.into(),
         ];

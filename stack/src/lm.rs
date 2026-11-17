@@ -3,7 +3,7 @@
 
 use super::*;
 
-use ikari_lm::host::{HostHealth, HostSpec, LmIsolation, host_loader};
+use ikari_lm::host::{HostHealth, HostSpec, LmIsolation, ModelHandle, host_loader};
 use ikari_lm::{LmLoader, ZenzConfig, ZenzRanker};
 
 /// `host` が Some なら、その実行ファイルを子として起動して採点を頼む（このビルドに llama.cpp は要らない）。
@@ -23,9 +23,15 @@ pub fn build(
     let cfg = ZenzConfig::from_kv(kv).map_err(|e| config_err("zenz", e))?;
     let (loader, host) = match host {
         Some(program) => {
+            // 照合済みのハンドルがあれば、それを子に渡す（パスで開き直さない。FC-3）
+            let model = match &isolation.model {
+                Some(handle) => handle.clone(),
+                None => ModelHandle::open(path)
+                    .map_err(|e| StackError::Open(format!("LM model: {e}")))?,
+            };
             let (loader, health) = host_loader(HostSpec {
                 program: program.to_path_buf(),
-                model: path.to_path_buf(),
+                model,
                 use_gpu: cfg.gpu,
                 limits: cfg.host.clone(),
                 // 檻の段はモデルの出どころで（エンジンのモデルの解決。既定は段 1。ADR 0072 §4、§12.8）、

@@ -251,16 +251,20 @@ impl Engine {
         let lock = EngineLock::acquire(&data_dir).map_err(|e| EngineError::Open(e.to_string()))?;
         // どのモデルを、どの檻の段で読むか（ADR 0060 §7、ADR 0072 §12.8 の 1。`model_select`）
         let resolved = model_select::resolve_model(lm_requested, &data_dir, &settings);
-        let lm_model = resolved.path.clone();
+        // 別プロセスの子があれば、このビルドに llama.cpp が無くても LM を使える
+        let lm_host = lm_host.resolve();
+        // 照合したハンドルは、エンジンの寿命の間持ち、子に渡す（FC-3）。読まないビルドでは持たない
+        let lm_handle = resolved
+            .model
+            .filter(|_| lm_host.is_some() || cfg!(feature = "lm"));
+        let lm_model = lm_handle.as_ref().map(|h| h.path().to_owned());
         // 子の起動の口（ADR 0077。`lm_cage`）。檻役の口は、開いたあとに `attach_lm_cage` で入る
         let lm_cage_slot = Arc::new(CageSlot::default());
         let lm_isolation = LmIsolation {
             cage: model_select::cage_for(resolved.origin),
             launcher: lm_cage::product_launcher(&lm_cage_slot),
+            model: lm_handle,
         };
-        // 別プロセスの子があれば、このビルドに llama.cpp が無くても LM を使える
-        let lm_host = lm_host.resolve();
-        let lm_model = lm_model.filter(|_| lm_host.is_some() || cfg!(feature = "lm"));
         // GPU のときだけ解放を遅くする対象か（Vulkan。Metal の挙動は変えない）。別プロセスのときは、
         // このビルドの feature ではなく OS で見る（子が Vulkan のビルドかは、エンジンからは分からない。
         // GPU に載らなければ、遅くする値は使われない）
