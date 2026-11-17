@@ -181,10 +181,15 @@ impl LmHostChoice {
     /// 別プロセスとして起動する実行ファイル（絶対パス。PATH からは探さない）。None なら同じプロセス
     fn resolve(&self) -> Option<PathBuf> {
         match self {
-            LmHostChoice::Beside => std::env::current_exe()
-                .ok()
-                .and_then(|exe| exe.parent().map(|dir| dir.join(lm_host_exe_name())))
-                .filter(|path| path.is_file()),
+            LmHostChoice::Beside => {
+                let exe = std::env::current_exe().ok()?;
+                // macOS の製品は、子が檻役の束にある（ADR 0077 §3.4。`lm_cage`）
+                lm_cage::caged_host_program(&exe).or_else(|| {
+                    exe.parent()
+                        .map(|dir| dir.join(lm_host_exe_name()))
+                        .filter(|path| path.is_file())
+                })
+            }
             LmHostChoice::Exe(path) => Some(path.clone()),
             LmHostChoice::InProcess => None,
         }

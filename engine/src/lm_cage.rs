@@ -7,11 +7,12 @@
 //!
 //! 判断の置き場所: Rust。Swift は口をエンジンに渡すだけ（XPC サービスを名前で探せるのはアプリ本体だけ。OS の制約）。
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use ikari_proto::v1 as pb;
-use ikari_stack::HostLauncher;
-use ikari_stack::lm_cage::{CageClient, CageSlot, HandshakeError};
+use ikari_stack::lm_cage::{CAGE_SERVICE_BUNDLE, CageClient, CageSlot, HandshakeError};
+use ikari_stack::{HostLauncher, lm_host_exe_name};
 
 use crate::Engine;
 
@@ -35,6 +36,28 @@ fn launcher_for(uses_cage: bool, slot: &Arc<CageSlot>) -> HostLauncher {
     } else {
         HostLauncher::Direct
     }
+}
+
+/// 檻役を使うビルドの、子（`ikari-lm-host`）の場所。子はエンジンの束ではなく檻役の束にある（ADR 0077 §3.4）ので、
+/// エンジンの隣を探すと見つからず、LM を組まない（`lm=failed`）。エンジンはこのパスを起動しない（起動は檻役が
+/// 自分の束の中の絶対パスで行う）。組み立てに「別プロセスの LM」を組ませるための値で、ファイルの有無は見ない
+/// （Sandbox のエンジンからは、ほかの束の中を見られるとは限らない）。檻役を使わないビルドは None
+pub(crate) fn caged_host_program(engine_exe: &Path) -> Option<PathBuf> {
+    caged_host_program_with(product_uses_cage(), engine_exe)
+}
+
+fn caged_host_program_with(uses_cage: bool, engine_exe: &Path) -> Option<PathBuf> {
+    if !uses_cage {
+        return None;
+    }
+    // `…/XPCServices/IkariEngine.xpc/Contents/MacOS/IkariEngine` → `…/XPCServices`
+    let services = engine_exe.ancestors().nth(4)?;
+    Some(
+        services
+            .join(CAGE_SERVICE_BUNDLE)
+            .join("Contents/MacOS")
+            .join(lm_host_exe_name()),
+    )
 }
 
 /// `HelloReply.lm_cage`。檻役を使うビルドは、口があれば `LEVEL2`、無ければ `NONE`（設定画面の「檻なし」）。
@@ -141,6 +164,22 @@ mod tests {
         assert_eq!(cage_report(true, &engine_slot), pb::LmCage::None);
         // 檻役を使わないビルドは、口の有無に関わらず未指定
         assert_eq!(cage_report(false, &engine_slot), pb::LmCage::Unspecified);
+    }
+
+    #[test]
+    fn caged_builds_point_the_host_into_the_cage_bundle() {
+        let exe = Path::new(
+            "/A/ikari.app/Contents/XPCServices/IkariEngine.xpc/Contents/MacOS/IkariEngine",
+        );
+        let want = Path::new("/A/ikari.app/Contents/XPCServices")
+            .join(CAGE_SERVICE_BUNDLE)
+            .join("Contents/MacOS")
+            .join(lm_host_exe_name());
+        assert_eq!(caged_host_program_with(true, exe), Some(want));
+        assert_eq!(caged_host_program_with(false, exe), None);
+        assert_eq!(caged_host_program_with(true, Path::new("/x")), None);
+        // このテストのビルドは檻役を使わない（隣を探す）
+        assert_eq!(caged_host_program(exe), None);
     }
 
     #[test]
