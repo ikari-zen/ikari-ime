@@ -25,7 +25,7 @@ prost.workspace = true
 # 0.62 では `windows` の feature ではなく `windows-core` に常にあるので、同じ版で並べる。
 # features は使う API の名前空間だけ（全アプリのプロセスに入る DLL なので、増やすときは理由を書く）。
 [target.'cfg(windows)'.dependencies]
-windows-core = "0.62.2"
+windows-core = "0.100.0"
 windows = { version = "0.62.2", features = [
     # BOOL、HRESULT、HMODULE、RECT など
     "Win32_Foundation",
