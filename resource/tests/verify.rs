@@ -88,6 +88,7 @@ fn verify(dir: &Path, installed: Option<&Manifest>) -> Result<(), ResourceError>
     let opts = VerifyOptions {
         formats: SupportedFormats::current(),
         known_models: &models,
+        user_model_formats: &[],
         installed,
     };
     verify_bundle(dir, &opts).map(|_| ())
@@ -102,6 +103,7 @@ fn good_bundle_passes() {
     let opts = VerifyOptions {
         formats: SupportedFormats::current(),
         known_models: &models,
+        user_model_formats: &[],
         installed: None,
     };
     let v = verify_bundle(dir.path(), &opts).unwrap();
@@ -360,6 +362,7 @@ fn older_bundle_is_rejected_and_same_is_reported() {
     let opts = VerifyOptions {
         formats: SupportedFormats::current(),
         known_models: &models,
+        user_model_formats: &[],
         installed: Some(&same),
     };
     let v = verify_bundle(dir.path(), &opts).unwrap();
@@ -436,5 +439,60 @@ fn model_file_with_unknown_name_or_missing_is_rejected() {
     assert!(matches!(
         ikari_resource::verify_model_file(&gone, MODEL_NAME, &known_table()),
         Err(ResourceError::Io { .. })
+    ));
+}
+
+// ---- 自由指定のモデルの束（D-4） ----
+
+fn user_bundle(inbox: &Path, file_name: Option<&str>, origin: Origin) -> std::path::PathBuf {
+    let sha = sha256_reader(MODEL_BYTES).unwrap();
+    let id = ikari_resource::UserModelId::from_sha256(&sha).unwrap();
+    let plan = ikari_resource::StagePlan {
+        name: id.to_string(),
+        file_name: file_name.map_or_else(|| id.file_name(), str::to_owned),
+        kind: ComponentKind::Model,
+        origin,
+        created: Created::parse(CREATED).unwrap(),
+        expected: None,
+        profile_format: Some("zenz-v3".into()),
+        display_name: None,
+        source: None,
+        max_size: 1024,
+    };
+    ikari_resource::stage_model_bundle(&mut &MODEL_BYTES[..], inbox, &plan)
+        .unwrap()
+        .path
+}
+
+#[test]
+fn user_models_pass_only_with_a_known_format_and_a_name_from_their_sha256() {
+    let inbox = tempfile::tempdir().unwrap();
+    let dir = user_bundle(inbox.path(), None, Origin::User);
+    // 既定（形式を渡さない）では受けない
+    assert!(matches!(
+        verify_bundle(&dir, &VerifyOptions::default()),
+        Err(ResourceError::UnknownModel { .. })
+    ));
+    let opts = VerifyOptions {
+        user_model_formats: &["zenz-v3"],
+        ..VerifyOptions::default()
+    };
+    verify_bundle(&dir, &opts).unwrap();
+    // 知らない形式は受けない
+    let other = VerifyOptions {
+        user_model_formats: &["kanakanji-edge"],
+        ..VerifyOptions::default()
+    };
+    assert!(verify_bundle(&dir, &other).is_err());
+    // `origin` の語は見ない（プリセットと書いても、表に無ければ自由指定として形式の検査を受ける）
+    let inbox2 = tempfile::tempdir().unwrap();
+    let preset_labelled = user_bundle(inbox2.path(), None, Origin::Preset);
+    verify_bundle(&preset_labelled, &opts).unwrap();
+    // ファイル名が sha256 から作ったものでなければ受けない
+    let inbox3 = tempfile::tempdir().unwrap();
+    let renamed = user_bundle(inbox3.path(), Some("user-000000000000.gguf"), Origin::User);
+    assert!(matches!(
+        verify_bundle(&renamed, &opts),
+        Err(ResourceError::UnknownModel { .. })
     ));
 }

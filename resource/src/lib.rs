@@ -6,6 +6,7 @@
 //! - `manifest`: manifest.json の型と読み書き（schema の版つき）
 //! - `verify`: 束の検証（形、大きさ、sha256、形式の版、既知のモデル、古い版）
 //! - `models`: アプリに埋めた既知のモデルの表
+//! - `model_list`: 入っている自由指定のモデルの一覧（`models/MANIFEST.json`。D-4）
 //! - `journal`: 入れ替えの手順の記録（`inbox/.journal.json`）
 //! - `sha256`: ストリームでの sha256
 //! - `stage`: 取得・取り込みしたモデルの束を inbox に作る（ADR 0076）
@@ -17,6 +18,7 @@ pub mod error;
 pub mod fetch_report;
 pub mod journal;
 pub mod manifest;
+pub mod model_list;
 pub mod models;
 pub mod sha256;
 pub mod stage;
@@ -27,6 +29,10 @@ pub use journal::{JOURNAL_FILE_NAME, Journal, JournalOp, JournalStage};
 pub use manifest::{
     Component, ComponentKind, Created, FileEntry, Freshness, MANIFEST_FILE_NAME, MANIFEST_SCHEMA,
     Manifest, Origin,
+};
+pub use model_list::{
+    MAX_DISPLAY_NAME_CHARS, MODEL_FILE_EXTENSION, MODEL_LIST_FILE_NAME, MODEL_MAX_SIZE, ModelList,
+    USER_MODEL_HEX_DIGITS, USER_MODEL_PREFIX, UserModelEntry, UserModelId, sanitize_display_name,
 };
 pub use models::{
     KNOWN_MODELS, KnownModel, MODEL_PRESETS, ModelPreset, ZENZ_SMALL_FILE_NAME, ZENZ_SMALL_SHA256,
@@ -39,5 +45,5 @@ pub use stage::{
 };
 pub use verify::{
     SupportedFormats, TABLE_FORMAT_VERSION, VerifiedBundle, VerifyOptions, verify_bundle,
-    verify_model_file, verify_model_open,
+    verify_model_file, verify_model_open, verify_open_expected,
 };

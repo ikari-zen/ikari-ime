@@ -23,6 +23,12 @@ pub(crate) enum ModelReject {
     Sha256,
     /// 普通のファイルでない、または読めない
     Unreadable,
+    /// 自由指定のモデルの一覧（`models/MANIFEST.json`）が壊れている（既定のモデルに戻した。D-4）
+    Manifest,
+    /// 自由指定のモデルに要る段 2 が、この構成に無い（LM なし。D-4）
+    NoCage,
+    /// 前の起動で、このモデルの読み込みが終わらなかった（既定のモデルに戻した。D-4）
+    LoadingMark,
 }
 
 impl ModelReject {
@@ -32,6 +38,9 @@ impl ModelReject {
             ModelReject::Size => "size",
             ModelReject::Sha256 => "sha256",
             ModelReject::Unreadable => "unreadable",
+            ModelReject::Manifest => "manifest",
+            ModelReject::NoCage => "no_cage",
+            ModelReject::LoadingMark => "loading_mark",
         }
     }
 

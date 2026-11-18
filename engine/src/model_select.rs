@@ -1,20 +1,92 @@
-//! LM のモデルの解決（ADR 0060 §7、ADR 0072 §4・§12.8 の 1）。**契約（第 4 弾）。中身はレーン D-4**。
+//! LM のモデルの解決（ADR 0060 §7、ADR 0072 §4・§6・§12.8 の 1。D-4）。
 //!
-//! 起動のときに、どのモデルを、どの檻の段で読むかを決める。今は、今までどおり固定のプリセット
-//! （`models/` の `MODEL_FILE_NAME` を既知の表と照合する）だけを返す（挙動は変えていない）。
-//!
-//! D-4 で足すもの: 設定 `lm.model` の解決、`models/MANIFEST.json` の一覧、自由指定のモデル（`origin = user`）、
-//! `models/.loading` の印、自由指定は段 2 のある OS でだけ選べること。
+//! 起動のときに、どのモデルを、どの檻の段で読むかを決める。
+//! - 設定 `lm.model` は ID だけ（プリセットの ID か `user-<12 桁>`。パスは受けない。条件 4）。無ければ既定のプリセット。
+//! - プリセットは、今までどおり `models/` の表の名前のファイルを、アプリに埋めた表（名前、大きさ、sha256）と照合する。
+//! - 自由指定は、`models/MANIFEST.json`（[`ModelList`]）の 1 件を、記録した大きさと sha256 で照合する（破損の検知。
+//!   条件 7）。パスは ID から作る（一覧の文字列からは作らない。ADR 0072 §6）。一覧が壊れている・その ID が無いときは
+//!   既定のプリセットに戻す（条件 3）。
+//! - **檻の段は、一覧の記述から決めない。** 数えた sha256 がアプリに埋めた表にあればプリセット、無ければ自由指定
+//!   （段 2 だけ）。条件 2。
+//! - 自由指定は、段 2 のある構成でだけ読む（[`user_models_offered`]）。無ければ LM なし（既定に落とさない。条件 6）。
+//! - 読み込みの印（`models/.loading`）が、選んだ自由指定のモデルの ID のまま残っていたら、既定のプリセットに戻す
+//!   （そのモデルで読み込みが終わらなかった。条件 5）。印を読むのも書くのもエンジンだけ。
 //!
 //! 判断の置き場所: Rust（エンジン）。
 
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use ikari_stack::{HostCage, LmModelHandle};
+use ikari_resource::{
+    KNOWN_MODELS, ModelList, ModelPreset, ResourceError, UserModelId, preset_by_id,
+    verify_open_expected,
+};
+use ikari_stack::{HostCage, LmModelHandle, PromptFormat};
 
 use crate::model_check::{self, ModelReject};
 use crate::settings::Settings;
 use crate::{MODEL_FILE_NAME, MODELS_DIR_NAME};
+
+/// 読み込みの印のファイルの名前（`models/` の下）
+const LOADING_MARK_FILE_NAME: &str = ".loading";
+/// 印を読む量の上限（バイト。中身は ID 1 つ）
+const MAX_LOADING_MARK_BYTES: u64 = 64;
+
+/// macOS の製品で、自由指定のモデルを出すか。ADR 0077 §6: 檻役の実装がマージされ、§8 の実機の確認が済むまでは
+/// 出さない。**既定の判断はリードの確認待ち**（D-4 の PR の説明）
+const MACOS_USER_MODELS_RELEASED: bool = false;
+
+/// 設定 `lm.model` の値
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ModelChoice {
+    /// アプリに埋めた表のプリセット
+    Preset(&'static ModelPreset),
+    /// 取り込んだ自由指定のモデル
+    User(UserModelId),
+}
+
+impl ModelChoice {
+    /// ID だけを受ける（プリセットの ID か `user-<12 桁>`）
+    pub fn parse(value: &str) -> Option<ModelChoice> {
+        preset_by_id(value)
+            .map(ModelChoice::Preset)
+            .or_else(|| UserModelId::parse(value).map(ModelChoice::User))
+    }
+
+    /// 設定に書く ID
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn id(&self) -> String {
+        match self {
+            ModelChoice::Preset(p) => p.id.to_owned(),
+            ModelChoice::User(id) => id.to_string(),
+        }
+    }
+}
+
+/// 自由指定に受ける形式の語（`PromptFormat` の語。取り込みと一覧の読みに渡す）
+pub(crate) fn format_words() -> Vec<&'static str> {
+    PromptFormat::ALL.iter().map(|f| f.as_str()).collect()
+}
+
+/// この構成で、自由指定のモデルを出すか（段 2 があるか。ADR 0072 §4 の 2、ADR 0077 §6）。
+/// `lm_host`: 別プロセスで動かすか（同じプロセスでは檻が無いので、自由指定は読まない）
+pub(crate) fn user_models_offered(lm_host: bool) -> bool {
+    lm_host && platform_offers_user_models()
+}
+
+/// Windows は段 2（AppContainer。張れなければ起動しない）。macOS の製品は檻役（[`MACOS_USER_MODELS_RELEASED`]）。
+/// ほか（Linux、macOS の開発用のビルド）は段 2 が無いので出さない
+fn platform_offers_user_models() -> bool {
+    if cfg!(windows) {
+        true
+    } else if crate::lm_cage::product_uses_cage() {
+        MACOS_USER_MODELS_RELEASED
+    } else {
+        false
+    }
+}
 
 /// モデルの出どころ（檻の段の決め手）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,7 +94,6 @@ pub(crate) enum ModelOrigin {
     /// アプリに埋めた表の sha256 で確かめたもの
     Preset,
     /// 利用者が指定したもの（ファイル、URL。ADR 0060 の段 4・5）
-    #[allow(dead_code)] // D-4 で使う
     User,
 }
 
@@ -31,34 +102,137 @@ pub(crate) enum ModelOrigin {
 pub(crate) struct ResolvedModel {
     /// 読むモデル（照合したハンドル。FC-3）。None なら LM なし
     pub(crate) model: Option<LmModelHandle>,
-    /// ログの `lm_reject` に書くファイルの名前（パスは書かない）
-    pub(crate) file_name: String,
-    /// 通さなかった理由（通したとき、LM を使わないときは None）
-    pub(crate) reject: Option<ModelReject>,
+    /// プロンプトの形式（自由指定のときだけ。プリセットは profile の既定）
+    pub(crate) format: Option<PromptFormat>,
+    /// ログの `lm_reject` に書く、ファイルの名前（パスは書かない）と理由。通したとき、LM を使わないときは空
+    pub(crate) rejects: Vec<(String, ModelReject)>,
     pub(crate) origin: ModelOrigin,
+    /// 読み込みの印を書く自由指定のモデル（出どころが自由指定で、読むときだけ）
+    pub(crate) loading: Option<UserModelId>,
 }
 
-/// 起動のときに読むモデルを決める（契約のスタブ: 今は固定のプリセットだけ。今までと同じ照合）
+/// 起動のときに読むモデルを決める。`user_models_allowed` は [`user_models_offered`] の値
 pub(crate) fn resolve_model(
     lm_requested: bool,
     data_dir: &Path,
     settings: &Settings,
+    user_models_allowed: bool,
 ) -> ResolvedModel {
-    let _ = settings; // D-4: `lm.model` を読む
-    let model = data_dir.join(MODELS_DIR_NAME).join(MODEL_FILE_NAME);
+    let models = data_dir.join(MODELS_DIR_NAME);
+    let mark = read_loading_mark(&models);
+    let user = match settings.lm_model {
+        Some(ModelChoice::User(id)) => Some(id),
+        _ => None,
+    };
+    // 印は、今選んでいる自由指定のモデルのものだけを意味を持つ。ほかは消す（設定を変えたら、もう一度試せる）
+    if mark.is_some() && mark != user.map(Some) {
+        clear_loading_mark(&models);
+    }
+    let preset = match settings.lm_model {
+        Some(ModelChoice::Preset(p)) => Some(p),
+        _ => None,
+    };
+    let Some(id) = user else {
+        return resolve_preset(lm_requested, &models, preset, Vec::new());
+    };
+    if !lm_requested {
+        return resolve_preset(false, &models, None, Vec::new());
+    }
+    if mark == Some(Some(id)) {
+        let rejects = vec![(id.file_name(), ModelReject::LoadingMark)];
+        return resolve_preset(true, &models, None, rejects);
+    }
+    resolve_user(id, &models, user_models_allowed)
+}
+
+/// プリセット（既定は `MODEL_FILE_NAME`）。今までと同じ照合
+fn resolve_preset(
+    lm_requested: bool,
+    models: &Path,
+    preset: Option<&'static ModelPreset>,
+    mut rejects: Vec<(String, ModelReject)>,
+) -> ResolvedModel {
+    let file_name = preset.map_or(MODEL_FILE_NAME, |p| p.file_name);
     // 読む前に、既知のモデルの表と照合する。通らなければ LM なしで起動する（理由はログに書く）
     // （LM のないビルドでも照合して記録する。読むのは LM のあるビルドだけ）
     let (model, reject) = model_check::select_lm_model(
         lm_requested,
-        &model,
-        MODEL_FILE_NAME,
-        ikari_resource::KNOWN_MODELS,
+        &models.join(file_name),
+        file_name,
+        KNOWN_MODELS,
     );
+    rejects.extend(reject.map(|r| (file_name.to_owned(), r)));
     ResolvedModel {
         model,
-        file_name: MODEL_FILE_NAME.to_owned(),
-        reject,
+        format: None,
+        rejects,
         origin: ModelOrigin::Preset,
+        loading: None,
+    }
+}
+
+/// 自由指定のモデル。一覧が壊れている・ID が無いときは既定のプリセット、照合に通らない・段 2 が無いときは LM なし
+fn resolve_user(id: UserModelId, models: &Path, user_models_allowed: bool) -> ResolvedModel {
+    let file_name = id.file_name();
+    let fallback = |reason| resolve_preset(true, models, None, vec![(file_name.clone(), reason)]);
+    let list = match ModelList::read(models, &format_words()) {
+        Ok(list) => list,
+        Err(_) => return fallback(ModelReject::Manifest),
+    };
+    let Some(entry) = list.get(id) else {
+        return fallback(ModelReject::UnknownName);
+    };
+    let Some(format) = PromptFormat::parse(&entry.format) else {
+        return fallback(ModelReject::Manifest);
+    };
+    // 段は、数えた sha256 が表にあるかで決める（一覧の記述は信用しない）。照合で一覧の値と同じだと確かめるので、
+    // ここでは一覧の値で表を引き、表に無いものは段 2 が無ければ数える前に断る
+    let in_table = KNOWN_MODELS
+        .iter()
+        .any(|k| k.sha256 == entry.sha256 && k.size == entry.size);
+    let origin = if in_table {
+        ModelOrigin::Preset
+    } else {
+        ModelOrigin::User
+    };
+    let no_lm = |reason| ResolvedModel {
+        model: None,
+        format: None,
+        rejects: vec![(file_name.clone(), reason)],
+        origin,
+        loading: None,
+    };
+    if origin == ModelOrigin::User && !user_models_allowed {
+        return no_lm(ModelReject::NoCage);
+    }
+    let path = models.join(&file_name);
+    // 開く前に種類を見る（FIFO などを open して止まらない）
+    match fs::metadata(&path) {
+        Ok(meta) if meta.is_file() => {}
+        _ => return no_lm(ModelReject::Unreadable),
+    }
+    let Ok(handle) = LmModelHandle::open(&path) else {
+        return no_lm(ModelReject::Unreadable);
+    };
+    if let Err(e) =
+        verify_open_expected(handle.file(), &path, &file_name, entry.size, &entry.sha256)
+    {
+        return no_lm(reject_of(&e));
+    }
+    ResolvedModel {
+        model: Some(handle),
+        format: Some(format),
+        rejects: Vec::new(),
+        origin,
+        loading: (origin == ModelOrigin::User).then_some(id),
+    }
+}
+
+fn reject_of(e: &ResourceError) -> ModelReject {
+    match e {
+        ResourceError::Truncated { .. } | ResourceError::SizeMismatch { .. } => ModelReject::Size,
+        ResourceError::Sha256Mismatch { .. } => ModelReject::Sha256,
+        _ => ModelReject::Unreadable,
     }
 }
 
@@ -71,9 +245,112 @@ pub(crate) fn cage_for(origin: ModelOrigin) -> HostCage {
     }
 }
 
+fn loading_mark_path(models: &Path) -> PathBuf {
+    models.join(LOADING_MARK_FILE_NAME)
+}
+
+/// 印を読む。無ければ None、読めない・形の合わない印は `Some(None)`
+fn read_loading_mark(models: &Path) -> Option<Option<UserModelId>> {
+    let path = loading_mark_path(models);
+    match ikari_textfile::read_to_string_limited(&path, MAX_LOADING_MARK_BYTES) {
+        Ok(text) => Some(UserModelId::parse(text.trim())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(_) => Some(None),
+    }
+}
+
+fn clear_loading_mark(models: &Path) {
+    let _ = fs::remove_file(loading_mark_path(models));
+}
+
+/// 読み込みの印（条件 5）。起動のときに書き（子を起こす前）、最初に読み込めたら消す
+#[derive(Debug, Default)]
+pub(crate) struct LoadingMark {
+    path: OnceLock<PathBuf>,
+    cleared: AtomicBool,
+}
+
+impl LoadingMark {
+    /// 印を書いて、消す場所を覚える。書けなければ覚えない（印が無いのと同じ）
+    pub(crate) fn arm(&self, data_dir: &Path, id: UserModelId) {
+        let models = data_dir.join(MODELS_DIR_NAME);
+        let path = loading_mark_path(&models);
+        if fs::write(&path, id.to_string()).is_ok() {
+            let _ = self.path.set(path);
+        }
+    }
+
+    /// LM が読み込めた。印があれば 1 回だけ消す
+    pub(crate) fn loaded(&self) {
+        if let Some(path) = self.path.get()
+            && !self.cleared.swap(true, Ordering::AcqRel)
+        {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::io::Write;
+
+    use ikari_resource::{
+        Created, MODEL_LIST_FILE_NAME, Manifest, Origin, UserModelEntry, sha256_reader,
+    };
+
     use super::*;
+
+    const BODY: &[u8] = b"GGUF a user model";
+
+    struct Fixture {
+        dir: tempfile::TempDir,
+        id: UserModelId,
+    }
+
+    impl Fixture {
+        fn models(&self) -> PathBuf {
+            self.dir.path().join(MODELS_DIR_NAME)
+        }
+
+        fn settings(&self) -> Settings {
+            Settings {
+                lm_model: Some(ModelChoice::User(self.id)),
+                ..Settings::default()
+            }
+        }
+
+        fn resolve(&self, allowed: bool) -> ResolvedModel {
+            resolve_model(true, self.dir.path(), &self.settings(), allowed)
+        }
+    }
+
+    /// 自由指定のモデルを 1 つ入れた（取り込みの済んだ）データの場所
+    fn installed(format: &str) -> Fixture {
+        let dir = tempfile::tempdir().unwrap();
+        let models = dir.path().join(MODELS_DIR_NAME);
+        fs::create_dir_all(&models).unwrap();
+        let sha = sha256_reader(BODY).unwrap();
+        let id = UserModelId::from_sha256(&sha).unwrap();
+        fs::File::create(models.join(id.file_name()))
+            .unwrap()
+            .write_all(BODY)
+            .unwrap();
+        let mut list = ModelList::default();
+        list.upsert(UserModelEntry {
+            id,
+            size: BODY.len() as u64,
+            sha256: sha,
+            format: format.into(),
+            display_name: None,
+        });
+        list.write(&models, Created::parse("2026-11-18T00:00:00Z").unwrap())
+            .unwrap();
+        Fixture { dir, id }
+    }
+
+    fn words(r: &ResolvedModel) -> Vec<ModelReject> {
+        r.rejects.iter().map(|(_, w)| *w).collect()
+    }
 
     #[test]
     fn user_models_require_level_2_and_presets_stay_at_level_1() {
@@ -82,20 +359,112 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "D-4: 設定 lm.model で、models/MANIFEST.json にある自由指定のモデルを選べる"]
     fn lm_model_setting_selects_a_user_model() {
-        unimplemented!("D-4")
+        let f = installed("kanakanji-edge");
+        let r = f.resolve(true);
+        assert!(r.model.is_some());
+        assert_eq!(r.origin, ModelOrigin::User);
+        assert_eq!(cage_for(r.origin), HostCage::RequireAppContainer);
+        assert_eq!(r.format, Some(PromptFormat::KanakanjiEdge));
+        assert_eq!(r.loading, Some(f.id));
+        assert!(r.rejects.is_empty());
     }
 
     #[test]
-    #[ignore = "D-4: models/.loading が残っていたら、選択を既定に戻す"]
     fn a_leftover_loading_mark_falls_back_to_the_default() {
-        unimplemented!("D-4")
+        let f = installed("zenz-v3");
+        let mark = LoadingMark::default();
+        mark.arm(f.dir.path(), f.id);
+        // 読み込めないまま終わった → 次の起動は既定のプリセット（ここでは置いていないので LM なし）
+        let r = f.resolve(true);
+        assert_eq!(words(&r), [ModelReject::LoadingMark]);
+        assert_eq!(r.origin, ModelOrigin::Preset);
+        assert!(r.loading.is_none());
+        // 印は残る（同じ設定のままでは、もう一度は試さない）
+        assert!(loading_mark_path(&f.models()).exists());
+        // 設定を替えると印は消え、戻せばもう一度試せる
+        resolve_model(true, f.dir.path(), &Settings::default(), true);
+        assert!(!loading_mark_path(&f.models()).exists());
+        assert!(f.resolve(true).model.is_some());
     }
 
     #[test]
-    #[ignore = "D-4: 段 2 の無い OS では、自由指定のモデルを選ばない（LM なし）"]
+    fn the_mark_is_removed_once_the_model_loads() {
+        let f = installed("zenz-v3");
+        let mark = LoadingMark::default();
+        mark.arm(f.dir.path(), f.id);
+        assert!(loading_mark_path(&f.models()).exists());
+        mark.loaded();
+        assert!(!loading_mark_path(&f.models()).exists());
+        assert!(f.resolve(true).model.is_some());
+    }
+
+    #[test]
     fn user_models_are_not_used_without_level_2() {
-        unimplemented!("D-4")
+        let f = installed("zenz-v3");
+        let r = f.resolve(false);
+        assert!(r.model.is_none());
+        assert_eq!(words(&r), [ModelReject::NoCage]);
+        // 既定のプリセットにも落とさない（LM なし）
+        assert_eq!(r.origin, ModelOrigin::User);
+        // 同じプロセスで動かす構成は、段 2 が無い
+        assert!(!user_models_offered(false));
+    }
+
+    #[test]
+    fn a_list_saying_preset_does_not_make_an_unknown_file_a_preset() {
+        let f = installed("zenz-v3");
+        let path = f.models().join(MODEL_LIST_FILE_NAME);
+        let mut manifest = Manifest::read(&path).unwrap();
+        manifest.origin = Origin::Preset;
+        manifest.write(&path).unwrap();
+        let r = f.resolve(true);
+        assert_eq!(r.origin, ModelOrigin::User);
+        assert_eq!(cage_for(r.origin), HostCage::RequireAppContainer);
+    }
+
+    #[test]
+    fn a_changed_file_is_not_read() {
+        let f = installed("zenz-v3");
+        let mut other = BODY.to_vec();
+        other[0] ^= 0xff;
+        fs::write(f.models().join(f.id.file_name()), &other).unwrap();
+        let r = f.resolve(true);
+        assert!(r.model.is_none());
+        assert_eq!(words(&r), [ModelReject::Sha256]);
+        other.push(0);
+        fs::write(f.models().join(f.id.file_name()), &other).unwrap();
+        assert_eq!(words(&f.resolve(true)), [ModelReject::Size]);
+    }
+
+    #[test]
+    fn a_broken_or_missing_list_falls_back_to_the_default() {
+        let f = installed("zenz-v3");
+        let path = f.models().join(MODEL_LIST_FILE_NAME);
+        fs::write(&path, "{").unwrap();
+        let r = f.resolve(true);
+        assert_eq!(words(&r), [ModelReject::Manifest]);
+        assert_eq!(r.origin, ModelOrigin::Preset);
+        fs::remove_file(&path).unwrap();
+        assert_eq!(words(&f.resolve(true)), [ModelReject::UnknownName]);
+    }
+
+    #[test]
+    fn without_lm_nothing_is_read() {
+        let f = installed("zenz-v3");
+        let r = resolve_model(false, f.dir.path(), &f.settings(), true);
+        assert!(r.model.is_none());
+        assert!(r.rejects.is_empty());
+    }
+
+    #[test]
+    fn the_default_preset_is_the_fixed_file() {
+        let dir = tempfile::tempdir().unwrap();
+        // ファイルが無ければ黙って LM なし（今までと同じ）
+        let r = resolve_model(true, dir.path(), &Settings::default(), true);
+        assert!(r.model.is_none() && r.rejects.is_empty());
+        assert_eq!(r.origin, ModelOrigin::Preset);
+        let preset = ModelChoice::parse("zenz-small").unwrap();
+        assert!(matches!(preset, ModelChoice::Preset(p) if p.file_name == MODEL_FILE_NAME));
     }
 }

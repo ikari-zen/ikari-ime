@@ -18,7 +18,7 @@ use crate::Engine;
 
 /// 檻役だけを使うビルドか（macOS の製品。ADR 0077 §6）。テストと開発用のビルド（`dev-knobs`）は、
 /// 自分で起動する（`lm` の `os/apple.rs` の `direct_spawn_allowed` と同じ条件。FC-4）
-const fn product_uses_cage() -> bool {
+pub(crate) const fn product_uses_cage() -> bool {
     cfg!(all(
         target_vendor = "apple",
         not(any(test, feature = "dev-knobs"))

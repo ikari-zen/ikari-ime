@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use ikari_lm::{
-    CancelToken, LlamaScorer, LmScorer, ModelKind, PromptInput, build_prompt_for, tail_chars,
+    CancelToken, LlamaScorer, LmScorer, PromptFormat, PromptInput, build_prompt_for, tail_chars,
 };
 
 const MODEL_ENV: &str = "IKARI_EDGE_MODEL";
@@ -38,7 +38,7 @@ fn model_path() -> PathBuf {
 
 fn prompt(context: &str, reading: &str) -> String {
     build_prompt_for(
-        ModelKind::KanakanjiEdge,
+        PromptFormat::KanakanjiEdge,
         &PromptInput {
             left_context: tail_chars(context, CONTEXT_CHARS),
             reading,

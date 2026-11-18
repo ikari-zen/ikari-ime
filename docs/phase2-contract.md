@@ -62,6 +62,7 @@ Swift の定数は `macos/Sources/IkariXPC/Identifiers.swift`（`IkariIdentifier
 | `engine.lm_gpu` | `on` / `off` | `on` | エンジン | LM を GPU で動かす。Vulkan のビルド（Windows。ADR 0059）だけで効く。GPU があれば使い、GPU も `vulkan-1.dll` も無い機械・初期化に失敗した機械では自動で CPU。`Engine::open` のときだけ読む（変えたらエンジンを起こし直す）。設定画面にはまだ項目がない。開発用に環境変数 `IKARI_LM_GPU`（`1` / `0`）で上書きできる |
 | `engine.lm_deadline_ms` | ミリ秒（50〜2000。範囲外は丸める。暫定） | `300` | エンジン | 先行計算で LM に待てる締め切り（`LmBudget.max`）。`Engine::open` のときだけ読む（変えたらエンジンを起こし直す）。不正な値は既定 |
 | `engine.convert_wait_ms` | ミリ秒（0〜200。`0` = 待たない。範囲外は丸める。暫定） | `30` | エンジン | Space で先行計算の完了を待つ上限。`Engine::open` のときだけ読む（変えたらエンジンを起こし直す）。不正な値は既定 |
+| `lm.model` | モデルの ID（プリセットの `zenz-small`、または取り込んだ自由指定の `user-<16 進 12 桁>`）。パスは受けない | `zenz-small` | エンジン | 使う LM のモデル（ADR 0060 §7、D-4）。`Engine::open` のときだけ読む。形の合わない値・一覧に無い ID は既定。自由指定は段 2 のある構成でだけ読み、無ければ LM なし（ADR 0072 §4）。設定画面にはまだ項目がない |
 | `dict.pack_it` | `on` / `off` | `on` | エンジン | 同梱の IT の語彙集（`core/assets/packs/it.tsv`。ADR 0012 §4）を使う。変更は次のエンジン起動から。設定画面にはまだ項目がない |
 | `clause.min_chars` | `1`〜`10` | `3` | 殻 | 文節ごとの削除（`clause.delete`）で、消す文字がこの数に満たなければ前の文節まで広げる。`1` = 下限なし（ADR 0050 §4） |
 | `postal.japanese` | `on` / `off` | `on` | エンジン | 住所 ↔ 郵便番号の候補（`PostalRewriter`。ADR 0032 §2〜5）。`postal.tsv` がなければ何も出ない |

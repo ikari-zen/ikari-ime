@@ -18,8 +18,8 @@ pub const VERSION_CHECK_DEADLINE: Duration =
 pub const VERSION_CHECK_BODY_LIMIT: u64 = 64 * 1024;
 /// ディスクの空きの余裕（バイト。計測なし）
 pub const DISK_MARGIN: u64 = 256 * 1024 * 1024;
-/// 自由指定のモデルの大きさの上限（バイト）。ADR 0060 §4 の値は未定なので、仮に 4GiB（計測なし。未定の値に合わせて直す）
-pub const MODEL_MAX_SIZE: u64 = 4 * 1024 * 1024 * 1024;
+/// 自由指定のモデルの大きさの上限（バイト。エンジンの取り込みと同じ値。仮置きの理由は `ikari_resource::MODEL_MAX_SIZE`）
+pub const MODEL_MAX_SIZE: u64 = ikari_resource::MODEL_MAX_SIZE;
 /// 進み具合の行を出す最小の間隔（行が多すぎて核が詰まらないように。計測なし）
 pub const PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
 /// 要求の User-Agent（版を付けない。ADR 0076 §4.4）

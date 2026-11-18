@@ -28,6 +28,7 @@ const KIND_HOST: &str = "host";
 const KIND_PANIC: &str = "panic";
 
 const KIND_LM_REJECT: &str = "lm_reject";
+const KIND_MODEL_IMPORT: &str = "model_import";
 
 /// `lm_load` の失敗の語
 pub(crate) const ERR_LM_LOAD_FAILED: &str = "lm_load_failed";
@@ -274,6 +275,18 @@ impl Inner {
         );
     }
 
+    /// `model_import name=<ID か other> result=<語>`。起動のときに inbox のモデルの束を取り込んだ結果（D-4 の条件 1）
+    pub(crate) fn record_model_import(&self, outcome: &crate::model_import::ImportOutcome) {
+        let note = format!("name={} result={}", outcome.name, outcome.result.as_word());
+        self.log.record_note(
+            KIND_MODEL_IMPORT,
+            0,
+            self.lm_state_name(),
+            None,
+            Some(&note),
+        );
+    }
+
     pub(crate) fn record_lm_unload(&self, reason: UnloadReason) {
         let note = format!("reason={}", reason.as_word());
         self.log
@@ -290,6 +303,10 @@ impl Inner {
     /// （Stack の差し替えは `rebuild_stack` が `settings` で書く）
     fn detect_idle_unload(&self) {
         let loaded = self.stack().lm.as_ref().is_some_and(|lm| lm.is_loaded());
+        if loaded {
+            // 暖機のあとの要求で読み込めたときも、読み込みの印を消す（D-4 の条件 5。消すのは 1 回だけ）
+            self.loading_mark.loaded();
+        }
         let was = self.diag.lm_loaded.swap(loaded, Ordering::AcqRel);
         if was && !loaded {
             self.record_lm_unload(UnloadReason::Idle);
