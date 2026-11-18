@@ -11,6 +11,9 @@ pub const MAX_REDIRECTS: u32 = 5;
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 /// 無通信の締め切り。読むたびに数え直す（計測なし）。全体の締め切りは置かない（大きいモデルが遅い回線で落ちないため）
 pub const READ_TIMEOUT: Duration = Duration::from_secs(60);
+/// 版の確認の親の全体の締め切り（接続と無通信の和に余裕を足す。過ぎたら子を止めて `network`。計測なし。FV-1）
+pub const VERSION_CHECK_DEADLINE: Duration =
+    Duration::from_secs(CONNECT_TIMEOUT.as_secs() + READ_TIMEOUT.as_secs() + 10);
 /// 版の確認で読む本文の上限（バイト。計測なし。本文は読んで捨てる。実装は D-2d）
 pub const VERSION_CHECK_BODY_LIMIT: u64 = 64 * 1024;
 /// ディスクの空きの余裕（バイト。計測なし）

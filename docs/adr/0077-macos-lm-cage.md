@@ -1,6 +1,7 @@
 # ADR 0077: macOS の LM の檻の段 2（専用の Sandbox）の形。檻役の XPC サービスを置き、殻が口を仲立ちする
 
 - 状態: 承認（2026-11-17 ユーザー決定（Fable の指摘つき）。Q1〜Q3 はリードの推奨どおりで、条件が付いた。§11 を見る）
+- 実装: 2026-11-18 に #459（D-3-mac。#460、#462、#463）で main に入った。実機（team 署名）で smoke が全件通り、`ikari-lm-host` が檻役の子で `--model /dev/fd/3` になることを確かめた。§8 の項目 3〜6、8 は未確認（5、6 は配布の前に必須）
 - 日付: 2026-11-17
 - 対象: `lm/src/host/`（子の起動の口を 2 つにする。檻役との取り決め）、新しい bin `ikari-lm-cage`（檻役。Rust）、`ikari-lm-host`（親が終わったら自分も終わる）、`engine` / `engine-ffi`（檻役の口を受け取る。モデルを fd で渡す）、`macos/Sources/IkariXPC`・`IkariEngineService`・`IkariSmoke`（口の受け渡し）、`macos/scripts/build.sh` とテンプレート（新しい XPC サービスの束と署名）、`docs/architecture.md` §2 と表。この ADR ではコードを変えない
 - 前提: origin/lane/d3-mac = 7a78dc7。[ADR 0072](0072-lm-cage-levels.md)（段の分け方、§4 の出してよい条件、§13 の実測）、[ADR 0060](0060-user-selectable-lm-model.md) Q4（別プロセス、落ちてもエンジンは生き残る）、[ADR 0004](0004-phase2-macos.md) §5.1（殻とエンジンの XPC）、[ADR 0068](0068-ipc-endpoints.md)（口の一覧と相手の確認）、[ADR 0069](0069-distribution-authenticity.md) §6（ad-hoc の配布）、`docs/architecture.md` §2 と「LM の子」の行
