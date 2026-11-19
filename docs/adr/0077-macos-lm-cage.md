@@ -157,7 +157,7 @@ ikari.app（殻。Sandbox なし）
    - 手順の記録（参考）: ユーザーの手順（了承のうえ）: ikari を選んで候補が出るのを確かめ、`pkill -9 -f 'IkariLMCage.xpc.*ikari-lm-host'` のあとすぐ変換する。数秒後に ps で host が再び現れ、IkariEngine の pid が変わらず、候補の並びが LM つきに戻ることを見る。檻役は `pkill -9 -x ikari-lm-cage` で同様に確かめる。
 5. 殻の入れ替え（再インストール）、スリープからの復帰のあとに LM が戻る。**配布の前に必ず確かめる**（2026-11-17 決定）。
    - **一部（2026-11-19）**: 再インストールの直後の smoke が、LM つきで通った。
-   - **未確認**: スリープからの復帰。ユーザーの手順: 蓋を閉じて復帰したあと、ps で host の有無を見て、変換して LM が効くかを見る。
+   - **確認済み（2026-11-20。ユーザーが実機でスリープ → 復帰）**: スリープの前後で IkariEngine、檻役 `ikari-lm-cage`、`ikari-lm-host` の pid が同じ。復帰後に TextEdit で変換でき、LM が間に合った表示だった（目視）。
 6. 配布の置き場所（ADR 0069 §6、#241 の `/Library/Input Methods`）でも檻役が起動する。**配布の前に必ず確かめる**（同）。
    - **未確認**（sudo が要るため、2026-11-19 は実行していない）。ユーザーの手順: 署名したビルドを `/Library/Input Methods/ikari.app` に置き、`xattr` で quarantine の有無を確かめる。ikari を選んで、`ikari-lm-host` と檻役が起動するかを ps で見る。
 7. （了承が要る）smoke が「檻あり」で通る。
