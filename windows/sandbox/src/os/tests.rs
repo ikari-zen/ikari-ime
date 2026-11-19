@@ -101,6 +101,7 @@ fn probe_middle() {
             output: Some(writer.as_handle()),
             ..Stdio::default()
         },
+        inherit: &[],
     })
     .unwrap();
     drop(writer);
@@ -228,6 +229,7 @@ fn only_stdout_is_inherited_and_the_low_child_runs_in_the_job() {
             output: Some(writer.as_handle()),
             ..Stdio::default()
         },
+        inherit: &[],
     })
     .unwrap();
     // 渡したハンドルの継承の印は、起動のあとに外れている
@@ -256,6 +258,80 @@ fn only_stdout_is_inherited_and_the_low_child_runs_in_the_job() {
 }
 
 #[test]
+fn a_handle_in_inherit_reaches_the_child_together_with_stdout() {
+    // `probe_child` は、`LEAK_ENV` の値のハンドルに書いてみる。`inherit` に入れたので、今度は届く
+    let (mut extra_reader, extra_writer) = io::pipe().unwrap();
+    let extra_writer = OwnedHandle::from(extra_writer);
+    let value = (raw(&extra_writer) as usize).to_string();
+    let env = test_env(&[(LEAK_ENV, &value)]);
+    let (mut reader, writer) = io::pipe().unwrap();
+    let writer = OwnedHandle::from(writer);
+    let child = spawn(&Launch {
+        program: &std::env::current_exe().unwrap(),
+        args: &probe_args(PROBE_TEST),
+        environment: Some(&env),
+        integrity: Integrity::Low,
+        job: JobLimits { max_processes: 1 },
+        stdio: Stdio {
+            output: Some(writer.as_handle()),
+            ..Stdio::default()
+        },
+        inherit: &[extra_writer.as_handle()],
+    })
+    .unwrap();
+    // どちらの継承の印も、起動のあとに外れている
+    assert!(!inherit_flag(raw(&writer)));
+    assert!(!inherit_flag(raw(&extra_writer)));
+    drop(writer);
+    let mut out = String::new();
+    reader.read_to_string(&mut out).unwrap();
+    assert_eq!(child.wait().unwrap(), 0, "{out}");
+    assert!(probe_lines(&out).contains(&"leak=wrote"), "{out}");
+    drop(extra_writer);
+    let mut got = Vec::new();
+    extra_reader.read_to_end(&mut got).unwrap();
+    assert_eq!(got, LEAK_BYTES);
+}
+
+#[test]
+fn repeated_or_overlapping_inherit_handles_are_refused_before_spawning() {
+    let (_reader, writer) = io::pipe().unwrap();
+    let writer = OwnedHandle::from(writer);
+    let (_other_reader, other) = io::pipe().unwrap();
+    let other = OwnedHandle::from(other);
+    let launch = |stdio: Stdio<'_>, inherit: &[BorrowedHandle<'_>]| {
+        spawn(&Launch {
+            program: &std::env::current_exe().unwrap(),
+            args: &probe_args(EXIT_TEST),
+            environment: None,
+            integrity: Integrity::Inherit,
+            job: JobLimits { max_processes: 1 },
+            stdio,
+            inherit,
+        })
+        .err()
+        .map(|e| e.kind())
+    };
+    let with_stdout = Stdio {
+        output: Some(writer.as_handle()),
+        ..Stdio::default()
+    };
+    assert_eq!(
+        launch(with_stdout, &[writer.as_handle()]),
+        Some(io::ErrorKind::InvalidInput),
+        "標準出力と重なる"
+    );
+    assert_eq!(
+        launch(Stdio::default(), &[other.as_handle(), other.as_handle()]),
+        Some(io::ErrorKind::InvalidInput),
+        "同じものが 2 度"
+    );
+    // 断ったときも、印は付けたままにしない
+    assert!(!inherit_flag(raw(&writer)));
+    assert!(!inherit_flag(raw(&other)));
+}
+
+#[test]
 fn two_processes_allow_one_nested_child_and_the_integrity_is_inherited() {
     let (mut reader, writer) = io::pipe().unwrap();
     let writer = OwnedHandle::from(writer);
@@ -269,6 +345,7 @@ fn two_processes_allow_one_nested_child_and_the_integrity_is_inherited() {
             output: Some(writer.as_handle()),
             ..Stdio::default()
         },
+        inherit: &[],
     })
     .unwrap();
     drop(writer);
@@ -304,6 +381,7 @@ fn terminate_ends_the_child() {
             output: Some(writer.as_handle()),
             ..Stdio::default()
         },
+        inherit: &[],
     })
     .unwrap();
     drop(writer);
@@ -372,6 +450,7 @@ fn a_bad_environment_block_is_refused_before_spawning() {
         integrity: Integrity::Inherit,
         job: JobLimits { max_processes: 1 },
         stdio: Stdio::default(),
+        inherit: &[],
     })
     .err()
     .unwrap();
@@ -380,8 +459,8 @@ fn a_bad_environment_block_is_refused_before_spawning() {
 
 /// 入れ子の起動（設定画面の核 → `ikari-data` → `transfer` の形）の、まん中の Job の中で動く側
 const NESTED_MIDDLE_TEST: &str = "os::tests::probe_nested_middle";
-/// 実機で手で流す `transfer_runs_inside_both_jobs` の、`ikari-data.exe` の場所、URL、出力先（低い整合性で書ける
-/// 場所）。`ikari-data.exe` の場所が無ければ、まん中は孫として `probe_child` を起こす
+/// 実機で手で流す `transfer_runs_inside_both_jobs` の、`ikari-data.exe` の場所、URL、出力先（親が追記だけで新しく作り、
+/// ハンドルで渡す）。`ikari-data.exe` の場所が無ければ、まん中は孫として `probe_child` を起こす
 const TRANSFER_EXE_ENV: &str = "IKARI_SANDBOX_TEST_DATA_EXE";
 const TRANSFER_URL_ENV: &str = "IKARI_SANDBOX_TEST_URL";
 const TRANSFER_OUT_ENV: &str = "IKARI_SANDBOX_TEST_OUT";
@@ -397,18 +476,26 @@ fn probe_nested_middle() {
     } else {
         Integrity::Inherit
     };
+    // `transfer` の書く先（追記だけで開いたファイル）。`--out-handle` で知らせる（ADR 0078 §3.1）
+    let mut out_file = None;
     let (program, args) = match std::env::var(TRANSFER_EXE_ENV) {
         Ok(exe) => {
             let var = |name: &str| std::env::var(name).unwrap();
+            let file = std::fs::OpenOptions::new()
+                .append(true)
+                .create_new(true)
+                .open(var(TRANSFER_OUT_ENV))
+                .unwrap();
             let args = [
                 "transfer".to_owned(),
                 "--url".to_owned(),
                 var(TRANSFER_URL_ENV),
-                "--out".to_owned(),
-                var(TRANSFER_OUT_ENV),
                 "--max-size".to_owned(),
                 TRANSFER_MAX_SIZE.to_owned(),
+                "--out-handle".to_owned(),
+                (file.as_raw_handle() as usize).to_string(),
             ];
+            out_file = Some(file);
             (
                 std::path::PathBuf::from(exe),
                 args.into_iter().map(OsString::from).collect(),
@@ -416,6 +503,7 @@ fn probe_nested_middle() {
         }
         Err(_) => (std::env::current_exe().unwrap(), probe_args(PROBE_TEST)),
     };
+    let inherit: Vec<BorrowedHandle<'_>> = out_file.iter().map(|f| f.as_handle()).collect();
     let (mut reader, writer) = io::pipe().unwrap();
     let writer = OwnedHandle::from(writer);
     let spawned = spawn(&Launch {
@@ -428,6 +516,7 @@ fn probe_nested_middle() {
             output: Some(writer.as_handle()),
             ..Stdio::default()
         },
+        inherit: &inherit,
     });
     // 標準エラーは親に渡っていないので、起こせなかった理由は印つきの行で出す
     let child = match spawned {
@@ -466,6 +555,7 @@ fn run_nested(environment: Option<&[u16]>) -> String {
             output: Some(writer.as_handle()),
             ..Stdio::default()
         },
+        inherit: &[],
     })
     .unwrap();
     drop(writer);
@@ -517,6 +607,7 @@ fn spawn_quick(integrity: Integrity) -> Confined {
         integrity,
         job: JobLimits { max_processes: 1 },
         stdio: Stdio::default(),
+        inherit: &[],
     })
     .unwrap()
 }
@@ -540,6 +631,7 @@ fn spawn_long(integrity: Integrity) -> Confined {
         integrity,
         job: JobLimits { max_processes: 1 },
         stdio: Stdio::default(),
+        inherit: &[],
     })
     .unwrap()
 }
