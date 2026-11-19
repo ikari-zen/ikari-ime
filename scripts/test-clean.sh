@@ -149,6 +149,59 @@ run --artifacts --deep --apply >/dev/null
 [[ ! -e "$TMP/repo/target" ]] || fail "--deep: target が残る"
 [[ -e "$TMP/repo/data/raw/keep.txt" ]] || fail "--deep: data が消えた"
 
+# ---- jj の共存の形（jj がなければ飛ばす）
+if command -v jj >/dev/null 2>&1; then
+  jjrepo="$TMP/jjrepo"
+  git init -q --bare -b main "$TMP/jj-origin.git"
+  git init -q -b main "$jjrepo"
+  (
+    cd "$jjrepo"
+    git remote add origin "$TMP/jj-origin.git"
+    commit init
+    git push -q origin main
+    for b in merged open jjcur ws-merged ws-dirty; do
+      git branch "$b" main
+      git checkout -q "$b"
+      commit "$b"
+    done
+    git checkout -q main
+    git push -q origin merged open jjcur ws-merged ws-dirty
+    git fetch -q origin
+    jj git init --colocate >/dev/null 2>&1
+    mkdir -p .claude/worktrees
+    jj workspace add -r ws-merged .claude/worktrees/ws-merged >/dev/null 2>&1
+    jj workspace add -r ws-dirty .claude/worktrees/ws-dirty >/dev/null 2>&1
+    touch .claude/worktrees/ws-dirty/uncommitted.txt
+    (cd .claude/worktrees/ws-dirty && jj st >/dev/null 2>&1)
+    # 作業コピー @ を jjcur の上に置く（git の HEAD は detached になる）
+    jj new jjcur >/dev/null 2>&1
+  )
+  [[ -z "$(git -C "$jjrepo" branch --show-current)" ]] || fail "jj: git の HEAD が detached になっていない（テストの前提）"
+  REPO_DIR="$jjrepo"
+  export FAKE_PR_merged=MERGED FAKE_PR_open=OPEN FAKE_PR_jjcur=MERGED FAKE_PR_ws_merged=MERGED FAKE_PR_ws_dirty=MERGED
+  out="$(run)"
+  expect "$out" '^\[削除予定\] merged — PR は MERGED' "jj dry-run: MERGED のブランチは削除予定"
+  expect "$out" '^\[残す\] +open — 開いている PR' "jj dry-run: OPEN は残す"
+  expect "$out" '^\[残す\] +jjcur — 現在のブランチ（jj の @ か @-）' "jj dry-run: @- の bookmark は残す"
+  expect "$out" 'worktrees/ws-merged — ws-merged: PR は MERGED' "jj dry-run: PR 済みでクリーンな workspace は削除予定"
+  expect "$out" '^\[残す\] +.*ws-dirty — 変更が残っている' "jj dry-run: 変更が残る workspace は残す"
+  expect "$out" '^\[削除予定\] origin/merged — PR は MERGED' "jj dry-run: リモートの MERGED は削除予定"
+  [[ -d "$jjrepo/.claude/worktrees/ws-merged" ]] || fail "jj dry-run: workspace が消えた"
+  run --apply >"$TMP/jj-apply.out" || fail "jj --apply が失敗した: $(cat "$TMP/jj-apply.out")"
+  [[ ! -d "$jjrepo/.claude/worktrees/ws-merged" ]] || fail "jj apply: ws-merged が残っている"
+  [[ -d "$jjrepo/.claude/worktrees/ws-dirty" ]] || fail "jj apply: ws-dirty が消えた"
+  names="$(jj -R "$jjrepo" workspace list -T 'name ++ "\n"' 2>/dev/null)"
+  ! grep -qx ws-merged <<<"$names" || fail "jj apply: jj の workspace ws-merged が残っている"
+  grep -qx ws-dirty <<<"$names" || fail "jj apply: jj の workspace ws-dirty が消えた"
+  ! git -C "$jjrepo" show-ref --verify --quiet refs/heads/merged || fail "jj apply: merged が残っている"
+  for b in open jjcur main ws-dirty; do
+    git -C "$jjrepo" show-ref --verify --quiet "refs/heads/$b" || fail "jj apply: $b が消えた"
+  done
+  ! git -C "$TMP/jj-origin.git" show-ref --verify --quiet refs/heads/merged || fail "jj apply: origin/merged が残っている"
+else
+  log "jj がないので、jj の共存の形のテストは飛ばす"
+fi
+
 # ---- 引数の誤り
 for bad in "--nope" "--include" "--days x" "--include a"; do
   # shellcheck disable=SC2086

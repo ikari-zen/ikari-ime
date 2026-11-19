@@ -113,6 +113,38 @@ got=0; printf 'not json' | PATH="$FAKE_BIN:$PATH" "$GUARD" 2>/dev/null || got=$?
 got=0; printf '{"tool_name":"Bash","tool_input":{}}' | PATH="$FAKE_BIN:$PATH" "$GUARD" 2>/dev/null || got=$?
 [[ "$got" -eq 0 ]] || fail "guard: command のない入力は通す（期待 0、実際 ${got}）"
 
+# ---- jj の共存の形（jj がなければ飛ばす）。記録は @ の親の SHA、@ に変更があれば記録しない
+if command -v jj >/dev/null 2>&1; then
+  JJREPO="$TMP/jjrepo"
+  mkdir -p "$JJREPO"
+  git -C "$JJREPO" init -q
+  git -C "$JJREPO" -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m init
+  jj_run() { (cd "$JJREPO" && jj --config user.name=t --config user.email=t@example.com "$@" >/dev/null 2>&1); }
+  jj_run git init --colocate
+  JJ_PARENT="$(cd "$JJREPO" && jj log --no-graph -r '@-' -T commit_id)"
+  check_record_write "$JJREPO" 0 full 2>/dev/null
+  [[ "$(check_record_read "$JJREPO" "$JJ_PARENT")" == *"CHECK_EXIT=0"* ]] || fail "jj 記録: @ が空のとき @- に 0 が記録されない"
+  touch "$JJREPO/dirty.txt"
+  check_record_write "$JJREPO" 0 full 2>/dev/null
+  check_record_read "$JJREPO" "$JJ_PARENT" >/dev/null && fail "jj 記録: @ に変更があるのに記録された（古い記録も消えるはず）"
+  jj_run commit -m dirty
+  JJ_PARENT2="$(cd "$JJREPO" && jj log --no-graph -r '@-' -T commit_id)"
+  [[ "$JJ_PARENT2" != "$JJ_PARENT" ]] || fail "jj 記録: テストの前提（commit で @- が進む）が崩れた"
+  check_record_write "$JJREPO" 0 full 2>/dev/null
+  [[ "$(check_record_read "$JJREPO" "$JJ_PARENT2")" == *"CHECK_EXIT=0"* ]] || fail "jj 記録: commit のあとの @- に記録されない"
+  # guard: jj の作業コピーで、PR の先頭コミット（@- の SHA）の記録を引く
+  jj_guard() { # jj_guard <SHA>
+    jq -n --arg c "gh pr merge 5 --squash" --arg d "$JJREPO" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}' \
+      | FAKE_GH_SHA="$1" PATH="$FAKE_BIN:$PATH" "$GUARD" 2> "$TMP/guard.err"
+  }
+  got=0; jj_guard "$JJ_PARENT2" || got=$?
+  [[ "$got" -eq 0 ]] || fail "jj guard: @- の記録があるのに止まった: $(cat "$TMP/guard.err")"
+  got=0; jj_guard "$JJ_PARENT" || got=$?
+  [[ "$got" -eq 2 ]] || fail "jj guard: 記録のない SHA を通した（期待 2、実際 ${got}）"
+else
+  log "jj がないので、jj の記録のテストは飛ばす"
+fi
+
 # ---- fmt-rust.sh
 run_fmt() { # run_fmt <file_path>
   jq -n --arg f "$1" '{tool_name:"Edit",tool_input:{file_path:$f}}' | PATH="$FAKE_BIN:$PATH" "$FMT" 2>/dev/null

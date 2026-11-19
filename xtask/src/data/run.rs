@@ -83,6 +83,30 @@ pub fn git(root: &Path) -> Command {
     command
 }
 
+/// `jj`（Jujutsu。root で実行）。
+pub fn jj(root: &Path) -> Command {
+    let mut command = Command::new("jj");
+    command.current_dir(root);
+    command
+}
+
+/// root が jj の作業コピーか（jj があり、jj のルートが git のルートと一致する。git がなければ jj とする）。
+/// jj の共存の形（`jj git init --colocate`）では git の HEAD が `@` の親を指し、`@` に変更があると作業ツリーが汚れる。
+/// jj の作業コピーの中にある git の worktree（`.claude/worktrees/` など）は、jj のルートが違うので false になる。
+pub fn is_jj_workspace(root: &Path) -> bool {
+    let Some(jj_root) = capture(jj(root).arg("root")) else {
+        return false;
+    };
+    let Some(git_top) = capture(git(root).args(["rev-parse", "--show-toplevel"])) else {
+        return true;
+    };
+    let canonical = |text: &str| {
+        let path = Path::new(text.trim_end_matches(['\n', '\r']));
+        path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+    };
+    canonical(&jj_root) == canonical(&git_top)
+}
+
 /// `cargo`（root で実行）。
 pub fn cargo(root: &Path) -> Command {
     let mut command = Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
