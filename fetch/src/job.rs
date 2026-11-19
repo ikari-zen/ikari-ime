@@ -12,7 +12,7 @@ use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::time::{Duration, Instant};
 
-use ikari_resource::fetch_report::{EXIT_ERROR, EXIT_OK, FetchErrorCode, Report};
+use ikari_resource::fetch_report::{ChildBox, EXIT_ERROR, EXIT_OK, FetchErrorCode, Report};
 use ikari_resource::sha256::sha256_reader;
 use ikari_resource::{
     ComponentKind, Created, Expected, ModelPreset, Origin, Source, StagePlan, preset_by_id,
@@ -30,16 +30,25 @@ const USER_NAME_PREFIX: &str = ikari_resource::USER_MODEL_PREFIX;
 const USER_NAME_HEX_DIGITS: usize = ikari_resource::USER_MODEL_HEX_DIGITS;
 const MODEL_FILE_EXTENSION: &str = ikari_resource::MODEL_FILE_EXTENSION;
 
+/// 取得の途中に `Fetcher` が知らせること。行にするのは `try_model_fetch`
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FetchEvent {
+    /// 受けたバイトと全体（間引いて `progress` の行にする）
+    Progress { received: u64, total: Option<u64> },
+    /// 取得の子を起こした檻（Windows だけ。`box` の行にする。ADR 0078 §3.2 の 5）
+    Box(ChildBox),
+}
+
 /// URL の中身を、親が作った作業の場所のファイル（`Dirs::create_download`）に落とす部品。製品は `ProductFetcher`、
 /// テストは差し替える
 pub trait Fetcher {
     /// `out`（空のファイル。読み書きで開いている）の末尾に落とす。終えたら、書いた分がディスクに出ているようにして
-    /// 返す。`progress(受けたバイト, 全体)`。失敗の理由は語で返す
+    /// 返す。途中のことは `events` で知らせる。失敗の理由は語で返す
     fn fetch(
         &self,
         job: &DownloadJob<'_>,
         out: &File,
-        progress: &mut dyn FnMut(u64, Option<u64>),
+        events: &mut dyn FnMut(FetchEvent),
     ) -> Result<(), FetchError>;
 }
 
@@ -178,11 +187,15 @@ fn try_model_fetch(
             .create_download(&lock)
             .map_err(|_| FetchError(FetchErrorCode::Internal))?;
         let mut throttle = Throttle::standard();
-        ctx.fetcher.fetch(&job, &download, &mut |received, total| {
-            if throttle.ready(Instant::now()) {
-                emit(out, &Report::Progress { received, total });
-            }
-        })?;
+        ctx.fetcher
+            .fetch(&job, &download, &mut |event| match event {
+                FetchEvent::Progress { received, total } => {
+                    if throttle.ready(Instant::now()) {
+                        emit(out, &Report::Progress { received, total });
+                    }
+                }
+                FetchEvent::Box(child_box) => emit(out, &Report::Box(child_box)),
+            })?;
         stage_downloaded(source, &resolved, ctx, &download)
         // `download` はここで閉じる（消す前に）
     })();
@@ -337,6 +350,8 @@ mod tests {
     /// 決めたバイト列を、作業の場所に書くだけの `Fetcher`
     struct Fake {
         body: Vec<u8>,
+        /// 書く前に知らせる檻（Windows の製品の形をまねる）
+        child_box: Option<ChildBox>,
         fail: Option<FetchErrorCode>,
         calls: Cell<u32>,
         seen_url: RefCell<String>,
@@ -346,6 +361,7 @@ mod tests {
         fn serving(body: &[u8]) -> Self {
             Self {
                 body: body.to_vec(),
+                child_box: None,
                 fail: None,
                 calls: Cell::new(0),
                 seen_url: RefCell::new(String::new()),
@@ -358,12 +374,19 @@ mod tests {
             &self,
             job: &DownloadJob<'_>,
             mut out: &File,
-            progress: &mut dyn FnMut(u64, Option<u64>),
+            events: &mut dyn FnMut(FetchEvent),
         ) -> Result<(), FetchError> {
             self.calls.set(self.calls.get() + 1);
             *self.seen_url.borrow_mut() = job.url.as_str().to_owned();
+            if let Some(child_box) = self.child_box {
+                events(FetchEvent::Box(child_box));
+            }
             out.write_all(&self.body).unwrap();
-            progress(self.body.len() as u64, Some(self.body.len() as u64));
+            let len = self.body.len() as u64;
+            events(FetchEvent::Progress {
+                received: len,
+                total: Some(len),
+            });
             match self.fail {
                 Some(code) => Err(code.into()),
                 None => Ok(()),
@@ -614,6 +637,22 @@ mod tests {
         ));
         assert!(r.last().unwrap().is_final());
         assert!(r[..r.len() - 1].iter().all(|x| !x.is_final()));
+    }
+
+    #[test]
+    fn the_box_event_becomes_a_line_before_progress_and_does_not_end_the_report() {
+        let (_tmp, dirs) = setup();
+        let mut fake = Fake::serving(b"abc");
+        fake.child_box = Some(ChildBox::Low);
+        let mut out = Vec::new();
+        assert_eq!(
+            model_fetch(&url_source(None), &ctx(&dirs, &fake), &mut out),
+            EXIT_OK
+        );
+        let r = reports(&out);
+        assert_eq!(r.first(), Some(&Report::Box(ChildBox::Low)));
+        assert!(matches!(r.get(1), Some(Report::Progress { .. })));
+        assert!(matches!(r.last(), Some(Report::Done { .. })));
     }
 
     #[test]

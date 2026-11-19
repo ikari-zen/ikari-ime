@@ -8,10 +8,18 @@ use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+use ikari_resource::fetch_report::ChildBox;
+
 use crate::args::TransferArgs;
 
 /// 書く先のハンドルの値を子に知らせる引数（ADR 0078 §3.1 の 4。値は十進）。`spawn_windows` が末尾に足す
 pub const OUT_HANDLE_FLAG: &str = "--out-handle";
+/// どの檻で起こしたかを子に知らせる引数（ADR 0078 §3.2 の 4。子の自己確認）。`spawn_windows` が足す
+pub const BOX_FLAG: &str = "--box";
+
+/// 取得の子（`transfer`）だけの AppContainer のプロファイルの名前（ADR 0078 §3.2 の 1。LM の子と分ける。利用者ごとに
+/// 1 つ。インストーラの helper も同じ名前で消す）
+pub const TRANSFER_PROFILE_NAME: &str = "io.github.ikari-zen.data-transfer";
 
 /// 子に渡す環境変数（ADR 0076 §3.4）。プロキシの変数と、OS が動くのに要るものだけ。ほかは消す。
 /// Windows の環境変数の名前は大文字と小文字を区別しないので、比べるときは大文字にそろえる。
@@ -31,6 +39,29 @@ const MEDIUM_INTEGRITY_RID: u32 = 0x2000;
 /// 子が低い整合性か。取れなかった（`None`）ときは、低いとは言わない（安全な側）
 pub fn is_low_integrity(rid: Option<u32>) -> bool {
     rid.is_some_and(|rid| rid < MEDIUM_INTEGRITY_RID)
+}
+
+/// `transfer` の自己確認（ADR 0076 §3.2、ADR 0078 §3.2 の 4）。どの檻でも整合性は低でなければならない。AppContainer で
+/// 起こされたはずなら、トークンが AppContainer であることも要る。取れなかった値（`None`）は、満たさない側に倒す
+pub fn transfer_allowed(expected: ChildBox, rid: Option<u32>, appcontainer: Option<bool>) -> bool {
+    is_low_integrity(rid)
+        && match expected {
+            ChildBox::Low => true,
+            ChildBox::AppContainer => appcontainer == Some(true),
+        }
+}
+
+/// 子を AppContainer で起こし、起こせなければ（プロファイルが作れない、起動が失敗する）低い整合性で起こし直す
+/// （ADR 0078 §3.2 の 5。2026-11-19 ユーザー決定。取得は止めない）。どちらで起こしたかを返す。低い整合性でも起こせなければ、
+/// その失敗を返す
+pub fn spawn_preferring_container<T>(
+    container: impl FnOnce() -> io::Result<T>,
+    low: impl FnOnce() -> io::Result<T>,
+) -> io::Result<(T, ChildBox)> {
+    match container() {
+        Ok(child) => Ok((child, ChildBox::AppContainer)),
+        Err(_) => low().map(|child| (child, ChildBox::Low)),
+    }
 }
 
 /// 親の環境から、子に渡すものだけを選ぶ。名前は元のまま
@@ -66,6 +97,13 @@ pub fn transfer_args(args: &TransferArgs) -> Vec<String> {
 pub fn with_out_handle(mut args: Vec<String>, handle: u64) -> Vec<String> {
     args.push(OUT_HANDLE_FLAG.to_owned());
     args.push(handle.to_string());
+    args
+}
+
+/// `transfer_args` に、どの檻で起こすかを足す
+pub fn with_box(mut args: Vec<String>, child_box: ChildBox) -> Vec<String> {
+    args.push(BOX_FLAG.to_owned());
+    args.push(child_box.word().to_owned());
     args
 }
 
@@ -163,14 +201,64 @@ mod tests {
         );
         // 書く先が無ければ、子は読まない
         assert!(crate::args::parse(&built).is_err());
-        let parsed = crate::args::parse(&with_out_handle(built, 0x1a4)).unwrap();
+        let parsed = crate::args::parse(&with_out_handle(
+            with_box(built, ChildBox::AppContainer),
+            0x1a4,
+        ))
+        .unwrap();
         assert_eq!(
             parsed,
             crate::args::Command::Transfer(crate::args::TransferCommand {
                 args,
                 out_handle: 0x1a4,
+                child_box: ChildBox::AppContainer,
             })
         );
+    }
+
+    #[test]
+    fn the_transfer_self_check_needs_low_and_the_container_it_was_launched_in() {
+        const LOW: Option<u32> = Some(0x1000);
+        const MEDIUM: Option<u32> = Some(0x2000);
+        assert!(transfer_allowed(ChildBox::Low, LOW, Some(false)));
+        assert!(transfer_allowed(ChildBox::Low, LOW, None));
+        assert!(transfer_allowed(ChildBox::AppContainer, LOW, Some(true)));
+        assert!(!transfer_allowed(ChildBox::AppContainer, LOW, Some(false)));
+        assert!(!transfer_allowed(ChildBox::AppContainer, LOW, None));
+        assert!(!transfer_allowed(ChildBox::Low, MEDIUM, Some(false)));
+        assert!(!transfer_allowed(
+            ChildBox::AppContainer,
+            MEDIUM,
+            Some(true)
+        ));
+        assert!(!transfer_allowed(ChildBox::Low, None, None));
+    }
+
+    #[test]
+    fn the_child_falls_back_to_low_only_when_the_container_cannot_start() {
+        let low_calls = Cell::new(0);
+        let low = || {
+            low_calls.set(low_calls.get() + 1);
+            Ok("low")
+        };
+        let (child, child_box) = spawn_preferring_container(|| Ok("container"), low).unwrap();
+        assert_eq!((child, child_box), ("container", ChildBox::AppContainer));
+        assert_eq!(
+            low_calls.get(),
+            0,
+            "AppContainer で起きたら、低では起こさない"
+        );
+
+        let (child, child_box) =
+            spawn_preferring_container(|| Err(io::Error::other("no profile")), low).unwrap();
+        assert_eq!((child, child_box), ("low", ChildBox::Low));
+        assert_eq!(low_calls.get(), 1);
+
+        let both: io::Result<((), ChildBox)> = spawn_preferring_container(
+            || Err(io::Error::other("no profile")),
+            || Err(io::Error::new(io::ErrorKind::NotFound, "no exe")),
+        );
+        assert_eq!(both.unwrap_err().kind(), io::ErrorKind::NotFound);
     }
 
     #[test]

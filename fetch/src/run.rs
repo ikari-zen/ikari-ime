@@ -13,7 +13,7 @@ use ikari_resource::fetch_report::{EXIT_ERROR, EXIT_USAGE, FetchErrorCode, Repor
 
 use crate::args::{Command, TransferArgs, TransferCommand, Usage, parse};
 use crate::error::FetchError;
-use crate::job::{self, Context, DownloadJob, Fetcher, Throttle};
+use crate::job::{self, Context, DownloadJob, FetchEvent, Fetcher, Throttle};
 use crate::transfer::{DownloadRequest, download};
 use crate::url::HttpsUrl;
 use crate::workspace::Dirs;
@@ -88,11 +88,11 @@ fn now_created() -> Option<Created> {
 }
 
 /// 通信する子の仕事。`url` を、継承した書く先のハンドル（`--out-handle`）に落とし、進み具合を行で出す。
-/// Windows では、低い整合性でなければ `refused` で終わる（人が手で打っても、中の整合性では通信しない）
+/// Windows では、低い整合性でなければ `refused` で終わる（人が手で打っても、中の整合性では通信しない）。AppContainer で
+/// 起こされたはず（`--box appcontainer`）なら、トークンが AppContainer でなければ `refused`
 #[cfg(windows)]
 fn run_transfer(command: &TransferCommand, out: &mut dyn Write) -> i32 {
-    use ikari_pipe::os::windows::current_integrity_rid;
-    if !crate::child::is_low_integrity(current_integrity_rid()) {
+    if !transfer_allowed_here(command.child_box) {
         job::emit(out, &Report::Error(FetchErrorCode::Refused));
         return EXIT_ERROR;
     }
@@ -105,6 +105,17 @@ fn run_transfer(command: &TransferCommand, out: &mut dyn Write) -> i32 {
             EXIT_ERROR
         }
     }
+}
+
+/// `transfer` の自己確認を、自分のトークンで行う（ADR 0078 §3.2 の 4）
+#[cfg(windows)]
+pub(crate) fn transfer_allowed_here(expected: ikari_resource::fetch_report::ChildBox) -> bool {
+    use ikari_pipe::os::windows::current_integrity_rid;
+    crate::child::transfer_allowed(
+        expected,
+        current_integrity_rid(),
+        crate::spawn_windows::current_is_appcontainer(),
+    )
 }
 
 /// macOS は子を作らない（自分で通信する）ので、Windows 以外の `transfer` は使わせない
@@ -186,7 +197,8 @@ fn run_version_probe(_out: &mut dyn Write) -> i32 {
     EXIT_USAGE
 }
 
-/// 製品の取得の部品。Windows は低い整合性の子、macOS は自分で通信する
+/// 製品の取得の部品。Windows は AppContainer の子（起こせなければ低い整合性の子。ADR 0078 §3.2 の 5）、macOS は自分で
+/// 通信する
 pub struct ProductFetcher;
 
 impl Fetcher for ProductFetcher {
@@ -195,10 +207,10 @@ impl Fetcher for ProductFetcher {
         &self,
         job: &DownloadJob<'_>,
         out: &File,
-        progress: &mut dyn FnMut(u64, Option<u64>),
+        events: &mut dyn FnMut(FetchEvent),
     ) -> Result<(), FetchError> {
-        use crate::child::transfer_args;
-        use crate::spawn_windows::{Confine, spawn_transfer, supervise_transfer};
+        use crate::child::{spawn_preferring_container, transfer_args};
+        use crate::spawn_windows::{Confine, TRANSFER_PROFILE, spawn_transfer, supervise_transfer};
 
         let tool = || FetchError(FetchErrorCode::Tool);
         let exe = std::env::current_exe().map_err(|_| tool())?;
@@ -207,8 +219,17 @@ impl Fetcher for ProductFetcher {
             max_size: job.max_size,
             expect_size: job.expect_size,
         });
-        let (child, stdout) = spawn_transfer(&exe, &args, out, Confine::Low).map_err(|_| tool())?;
-        supervise_transfer(&child, stdout, out, job.max_size, progress)
+        // AppContainer で起こせなければ（プロファイルが作れない、起動が失敗する）、低い整合性に落として続け、`box low` の
+        // 行で知らせる（設定画面に印が出る）
+        let ((child, stdout), child_box) = spawn_preferring_container(
+            || spawn_transfer(&exe, &args, out, Confine::AppContainer(&TRANSFER_PROFILE)),
+            || spawn_transfer(&exe, &args, out, Confine::Low),
+        )
+        .map_err(|_| tool())?;
+        events(FetchEvent::Box(child_box));
+        supervise_transfer(&child, stdout, out, job.max_size, &mut |received, total| {
+            events(FetchEvent::Progress { received, total });
+        })
     }
 
     #[cfg(not(windows))]
@@ -216,7 +237,7 @@ impl Fetcher for ProductFetcher {
         &self,
         job: &DownloadJob<'_>,
         out: &File,
-        progress: &mut dyn FnMut(u64, Option<u64>),
+        events: &mut dyn FnMut(FetchEvent),
     ) -> Result<(), FetchError> {
         let request = DownloadRequest {
             url: job.url,
@@ -224,7 +245,9 @@ impl Fetcher for ProductFetcher {
             expect_size: job.expect_size,
         };
         let mut writer = out;
-        download(&request, &mut writer, progress)?;
+        download(&request, &mut writer, &mut |received, total| {
+            events(FetchEvent::Progress { received, total });
+        })?;
         out.sync_all()
             .map_err(|_| FetchError(FetchErrorCode::Internal))
     }
