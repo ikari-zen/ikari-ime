@@ -1,0 +1,192 @@
+##### 署名 = team
+<scratch>/team/data-spike-plain: replacing existing signature
+Identifier=io.github.ikari-zen.inputmethod.ikari.data.spike.team
+CodeDirectory v=20500 size=481 flags=0x10000(runtime) hashes=3+7 location=embedded
+Authority=Apple Development: <redacted>
+Authority=Apple Worldwide Developer Relations Certification Authority
+Authority=Apple Root CA
+Info.plist entries=6
+TeamIdentifier=L9Z8SK775X
+=== (a)(b)(c) Helpers 以外の場所（作業ディレクトリ）から Terminal で起動。最初から (~/Library/Application Support/ikari-ime-spike だけある)
+HOME(env)=~/Library/Containers/io.github.ikari-zen.inputmethod.ikari.data.spike.team/Data
+pw_dir=~
+root=~/Library/Application Support/ikari-ime-spike
+  lstat(root)                        OK   (rc=0 errno=0 )
+  mkdir(root) [create_dir_all 第1段] FAIL (rc=-1 errno=17 File exists)
+-- (a) 例外の中
+  mkdir(fetch)                       OK   (rc=0 errno=0 )
+  open(fetch/.lock, O_CREAT)         OK   (fd=3 errno=0)
+  flock(LOCK_EX|LOCK_NB)             OK   (rc=0 errno=0 )
+  write(fetch/download.bin)          OK   (rc=1 errno=0 )
+  mkdir(inbox)                       OK   (rc=0 errno=0 )
+  mkdir(inbox/x.partial)             OK   (rc=0 errno=0 )
+  write(inbox/x.partial/f)           OK   (rc=1 errno=0 )
+  rename(x.partial -> x)             OK   (rc=0 errno=0 )
+  statvfs(fetch)                     OK   (rc=0 errno=0 )
+  lstat(inbox/x/f)                   OK   (rc=0 errno=0 )
+-- 例外の外（拒まれるべき）
+  mkdir(root/other)                  FAIL (rc=-1 errno=1 Operation not permitted)
+  write(root/other-file)             FAIL (rc=-1 errno=1 Operation not permitted)
+  open(root, O_RDONLY)               FAIL (rc=-1 errno=1 Operation not permitted)
+  lstat(root/other)                  FAIL (rc=-1 errno=2 No such file or directory)
+-- HOME 直下
+  mkdir(pw_dir/spike-outside)        FAIL (rc=-1 errno=1 Operation not permitted)
+exit=0
+--- 作られたもの
+~/Library/Application Support/ikari-ime-spike
+~/Library/Application Support/ikari-ime-spike/inbox
+~/Library/Application Support/ikari-ime-spike/inbox/x
+~/Library/Application Support/ikari-ime-spike/inbox/x/f
+~/Library/Application Support/ikari-ime-spike/fetch
+~/Library/Application Support/ikari-ime-spike/fetch/.lock
+~/Library/Application Support/ikari-ime-spike/fetch/download.bin
+ls: ~/spike-outside: No such file or directory
+--- xattr
+~/Library/Application Support/ikari-ime-spike/inbox/x/f: com.apple.provenance: 
+~/Library/Application Support/ikari-ime-spike/inbox/x/f: com.apple.quarantine: 0086;6aff178e;data-spike-plain;
+~/Library/Application Support/ikari-ime-spike/inbox/x: com.apple.provenance: 
+~/Library/Application Support/ikari-ime-spike/inbox/x: com.apple.quarantine: 0086;00000000;data-spike-plain;
+~/Library/Application Support/ikari-ime-spike/inbox: com.apple.provenance: 
+~/Library/Application Support/ikari-ime-spike/inbox: com.apple.quarantine: 0086;00000000;data-spike-plain;
+~/Library/Application Support/ikari-ime-spike/fetch/.lock: com.apple.provenance: 
+~/Library/Application Support/ikari-ime-spike/fetch/.lock: com.apple.quarantine: 0086;6aff178e;data-spike-plain;
+~/Library/Application Support/ikari-ime-spike/fetch/download.bin: com.apple.provenance: 
+~/Library/Application Support/ikari-ime-spike/fetch/download.bin: com.apple.quarantine: 0086;6aff178e;data-spike-plain;
+(end xattr)
+--- 2 回目（fetch/ inbox/ が既にある。mkdir は EEXIST のはず）
+-- (a) 例外の中
+  mkdir(fetch)                       FAIL (rc=-1 errno=17 File exists)
+  open(fetch/.lock, O_CREAT)         OK   (fd=3 errno=0)
+  flock(LOCK_EX|LOCK_NB)             OK   (rc=0 errno=0 )
+  write(fetch/download.bin)          FAIL (rc=-1 errno=17 File exists)
+  mkdir(inbox)                       FAIL (rc=-1 errno=17 File exists)
+  mkdir(inbox/x.partial)             OK   (rc=0 errno=0 )
+  write(inbox/x.partial/f)           OK   (rc=1 errno=0 )
+  rename(x.partial -> x)             FAIL (rc=-1 errno=66 Directory not empty)
+  statvfs(fetch)                     OK   (rc=0 errno=0 )
+  lstat(inbox/x/f)                   OK   (rc=0 errno=0 )
+-- 例外の外（拒まれるべき）
+--- コンテナ
+Data
+=== (a) 根が無い状態（データの場所そのものが無い）
+HOME(env)=~/Library/Containers/io.github.ikari-zen.inputmethod.ikari.data.spike.team/Data
+pw_dir=~
+root=~/Library/Application Support/ikari-ime-spike
+  lstat(root)                        FAIL (rc=-1 errno=2 No such file or directory)
+  mkdir(root) [create_dir_all 第1段] FAIL (rc=-1 errno=1 Operation not permitted)
+-- (a) 例外の中
+  mkdir(fetch)                       FAIL (rc=-1 errno=2 No such file or directory)
+  open(fetch/.lock, O_CREAT)         FAIL (fd=-1 errno=2)
+=== 通信
+  curl http=200
+HOME(env)=~/Library/Containers/io.github.ikari-zen.inputmethod.ikari.data.spike.team/Data
+pw_dir=~
+root=~/Library/Application Support/ikari-ime-spike
+  getaddrinfo rc=0
+  connect:443 rc=0 errno=0 
+  spawn curl rc=0
+  curl exit=0
+=== (a 代わり) 親が先に fetch/ inbox/ を作った状態
+-- (a) 例外の中
+  mkdir(fetch)                       FAIL (rc=-1 errno=17 File exists)
+  open(fetch/.lock, O_CREAT)         OK   (fd=3 errno=0)
+  flock(LOCK_EX|LOCK_NB)             OK   (rc=0 errno=0 )
+  write(fetch/download.bin)          OK   (rc=1 errno=0 )
+  mkdir(inbox)                       FAIL (rc=-1 errno=17 File exists)
+  mkdir(inbox/x.partial)             OK   (rc=0 errno=0 )
+  write(inbox/x.partial/f)           OK   (rc=1 errno=0 )
+  rename(x.partial -> x)             OK   (rc=0 errno=0 )
+  statvfs(fetch)                     OK   (rc=0 errno=0 )
+  lstat(inbox/x/f)                   OK   (rc=0 errno=0 )
+-- 例外の外（拒まれるべき）
+  mkdir(root/other)                  FAIL (rc=-1 errno=1 Operation not permitted)
+  write(root/other-file)             FAIL (rc=-1 errno=1 Operation not permitted)
+  open(root, O_RDONLY)               FAIL (rc=-1 errno=1 Operation not permitted)
+  lstat(root/other)                  FAIL (rc=-1 errno=2 No such file or directory)
+-- HOME 直下
+=== (d) Info.plist 無し（0076 §16 の再確認）
+<scratch>/team/data-spike-nop: replacing existing signature
+exit=133
+=== (d) Contents/Helpers に置いた束
+<scratch>/team/Spike.app/Contents/Helpers/data-spike: replacing existing signature
+<scratch>/team/Spike.app/Contents/MacOS/spawner: replacing existing signature
+<scratch>/team/Spike.app: replacing existing signature
+束の検証 OK
+CodeResources
+1
+--- Terminal から Helpers の exe を直接
+HOME(env)=~/Library/Containers/io.github.ikari-zen.inputmethod.ikari.data.spike.team/Data
+pw_dir=~
+root=~/Library/Application Support/ikari-ime-spike
+-- (a) 例外の中
+  mkdir(fetch)                       OK   (rc=0 errno=0 )
+  open(fetch/.lock, O_CREAT)         OK   (fd=3 errno=0)
+  flock(LOCK_EX|LOCK_NB)             OK   (rc=0 errno=0 )
+  write(fetch/download.bin)          OK   (rc=1 errno=0 )
+  mkdir(inbox)                       OK   (rc=0 errno=0 )
+  mkdir(inbox/x.partial)             OK   (rc=0 errno=0 )
+  write(inbox/x.partial/f)           OK   (rc=1 errno=0 )
+  rename(x.partial -> x)             OK   (rc=0 errno=0 )
+  statvfs(fetch)                     OK   (rc=0 errno=0 )
+  lstat(inbox/x/f)                   OK   (rc=0 errno=0 )
+-- 例外の外（拒まれるべき）
+  mkdir(root/other)                  FAIL (rc=-1 errno=1 Operation not permitted)
+  write(root/other-file)             FAIL (rc=-1 errno=1 Operation not permitted)
+  open(root, O_RDONLY)               FAIL (rc=-1 errno=1 Operation not permitted)
+  lstat(root/other)                  FAIL (rc=-1 errno=2 No such file or directory)
+-- HOME 直下
+--- 束の中の spawner（Sandbox なし）から posix_spawn
+spawn rc=0
+HOME(env)=~/Library/Containers/io.github.ikari-zen.inputmethod.ikari.data.spike.team/Data
+pw_dir=~
+root=~/Library/Application Support/ikari-ime-spike
+-- (a) 例外の中
+  mkdir(fetch)                       OK   (rc=0 errno=0 )
+  open(fetch/.lock, O_CREAT)         OK   (fd=3 errno=0)
+  flock(LOCK_EX|LOCK_NB)             OK   (rc=0 errno=0 )
+  write(fetch/download.bin)          OK   (rc=1 errno=0 )
+  mkdir(inbox)                       OK   (rc=0 errno=0 )
+  mkdir(inbox/x.partial)             OK   (rc=0 errno=0 )
+  write(inbox/x.partial/f)           OK   (rc=1 errno=0 )
+  rename(x.partial -> x)             OK   (rc=0 errno=0 )
+  statvfs(fetch)                     OK   (rc=0 errno=0 )
+  lstat(inbox/x/f)                   OK   (rc=0 errno=0 )
+-- 例外の外（拒まれるべき）
+  mkdir(root/other)                  FAIL (rc=-1 errno=1 Operation not permitted)
+  write(root/other-file)             FAIL (rc=-1 errno=1 Operation not permitted)
+  open(root, O_RDONLY)               FAIL (rc=-1 errno=1 Operation not permitted)
+  lstat(root/other)                  FAIL (rc=-1 errno=2 No such file or directory)
+-- HOME 直下
+  mkdir(pw_dir/spike-outside)        FAIL (rc=-1 errno=1 Operation not permitted)
+child exit=0 signal=0
+--- spawner から通信
+spawn rc=0
+  curl http=200
+HOME(env)=~/Library/Containers/io.github.ikari-zen.inputmethod.ikari.data.spike.team/Data
+pw_dir=~
+root=~/Library/Application Support/ikari-ime-spike
+  getaddrinfo rc=0
+  connect:443 rc=0 errno=0 
+  spawn curl rc=0
+  curl exit=0
+child exit=0 signal=0
+--- spawner から、環境変数を空にして起こす（HOME なし）
+spawn rc=0
+HOME(env)=~/Library/Containers/io.github.ikari-zen.inputmethod.ikari.data.spike.team/Data
+pw_dir=~
+-- (a) 例外の中
+  mkdir(fetch)                       OK   (rc=0 errno=0 )
+  open(fetch/.lock, O_CREAT)         OK   (fd=3 errno=0)
+  flock(LOCK_EX|LOCK_NB)             OK   (rc=0 errno=0 )
+  write(fetch/download.bin)          OK   (rc=1 errno=0 )
+  mkdir(inbox)                       OK   (rc=0 errno=0 )
+  mkdir(inbox/x.partial)             OK   (rc=0 errno=0 )
+  write(inbox/x.partial/f)           OK   (rc=1 errno=0 )
+  rename(x.partial -> x)             OK   (rc=0 errno=0 )
+  statvfs(fetch)                     OK   (rc=0 errno=0 )
+  lstat(inbox/x/f)                   OK   (rc=0 errno=0 )
+-- 例外の外（拒まれるべき）
+##### 終わり team
+rm: ~/Library/Containers/io.github.ikari-zen.inputmethod.ikari.data.spike.team/.com.apple.containermanagerd.metadata.plist: Operation not permitted
+rm: ~/Library/Containers/io.github.ikari-zen.inputmethod.ikari.data.spike.team/Data: Operation not permitted
+rm: ~/Library/Containers/io.github.ikari-zen.inputmethod.ikari.data.spike.team: Operation not permitted
