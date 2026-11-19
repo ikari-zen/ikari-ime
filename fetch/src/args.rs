@@ -5,12 +5,11 @@
 //! ikari-data model fetch --url <https の URL> --format <形式> [--sha256 <64 桁の 16 進>] [--name <表示名>]
 //! ikari-data version-check
 //! ikari-data cleanup
-//! ikari-data transfer --url <URL> --out <ファイル> --max-size <バイト> [--expect-size <バイト>]   （内部。Windows の子）
+//! ikari-data transfer --url <URL> --max-size <バイト> [--expect-size <バイト>] --out-handle <十進>   （内部。Windows の子）
 //! ```
 //!
 //! 知らない引数、重なった引数、足りない引数は `Usage`（何もしない）。データの場所を変える引数は持たない（ADR 0067）。
-
-use std::path::PathBuf;
+//! `transfer` は書く先の場所を受けない。親が開いて継承させたハンドルの値を受ける（ADR 0078 §3.1 の 4）。
 
 use ikari_resource::sha256::is_sha256_hex;
 
@@ -25,7 +24,7 @@ pub enum Command {
     VersionCheck,
     Cleanup,
     /// 通信する子の仕事（`ikari-data` が自分の子にだけ使う。使い方の表示には出さない）
-    Transfer(TransferArgs),
+    Transfer(TransferCommand),
     /// 版の確認の通信をする子の仕事（`transfer` と同じく、自分の子にだけ使う。引数なし）
     VersionProbe,
 }
@@ -44,12 +43,20 @@ pub enum ModelSource {
     },
 }
 
+/// 子に頼む取得（親が引数に書く分。書く先は含まない）
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransferArgs {
     pub url: String,
-    pub out: PathBuf,
     pub max_size: u64,
     pub expect_size: Option<u64>,
+}
+
+/// 子が読む `transfer` の引数の全体
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TransferCommand {
+    pub args: TransferArgs,
+    /// 書く先の、継承したハンドルの値（`--out-handle`。十進）。開いているか、ディスクのファイルかは、子が確かめる
+    pub out_handle: u64,
 }
 
 /// 引数が読めない
@@ -135,7 +142,7 @@ fn parse_model_fetch(args: &[String]) -> Result<Command, Usage> {
 }
 
 fn parse_transfer(args: &[String]) -> Result<Command, Usage> {
-    let p = pairs(args, &["url", "out", "max-size", "expect-size"])?;
+    let p = pairs(args, &["url", "max-size", "expect-size", "out-handle"])?;
     let number = |key: &str| -> Result<Option<u64>, Usage> {
         get(&p, key)
             .map(|v| {
@@ -146,11 +153,13 @@ fn parse_transfer(args: &[String]) -> Result<Command, Usage> {
             })
             .transpose()
     };
-    Ok(Command::Transfer(TransferArgs {
-        url: get(&p, "url").ok_or(Usage)?.to_owned(),
-        out: PathBuf::from(get(&p, "out").ok_or(Usage)?),
-        max_size: number("max-size")?.ok_or(Usage)?,
-        expect_size: number("expect-size")?,
+    Ok(Command::Transfer(TransferCommand {
+        args: TransferArgs {
+            url: get(&p, "url").ok_or(Usage)?.to_owned(),
+            max_size: number("max-size")?.ok_or(Usage)?,
+            expect_size: number("expect-size")?,
+        },
+        out_handle: number("out-handle")?.ok_or(Usage)?,
     }))
 }
 
@@ -203,12 +212,16 @@ mod tests {
             }))
         );
         assert_eq!(
-            parse_str("transfer --url https://e.com/x --out /tmp/a --max-size 10 --expect-size 7"),
-            Ok(Command::Transfer(TransferArgs {
-                url: "https://e.com/x".into(),
-                out: PathBuf::from("/tmp/a"),
-                max_size: 10,
-                expect_size: Some(7),
+            parse_str(
+                "transfer --url https://e.com/x --max-size 10 --expect-size 7 --out-handle 452"
+            ),
+            Ok(Command::Transfer(TransferCommand {
+                args: TransferArgs {
+                    url: "https://e.com/x".into(),
+                    max_size: 10,
+                    expect_size: Some(7),
+                },
+                out_handle: 452,
             }))
         );
     }
@@ -232,9 +245,16 @@ mod tests {
             "model fetch preset zenz-small",
             "version-check --now",
             "cleanup extra",
-            "transfer --url https://e.com/ --out /x",
-            "transfer --url https://e.com/ --out /x --max-size -1",
-            "transfer --url https://e.com/ --out /x --max-size 1 --expect-size x",
+            "transfer --url https://e.com/ --out-handle 4",
+            "transfer --url https://e.com/ --out-handle 4 --max-size -1",
+            "transfer --url https://e.com/ --out-handle 4 --max-size 1 --expect-size x",
+            // 書く先は場所で受けない（ADR 0078 §3.1 の 4）
+            "transfer --url https://e.com/ --out /x --max-size 1",
+            "transfer --url https://e.com/ --out /x --max-size 1 --out-handle 4",
+            "transfer --url https://e.com/ --max-size 1",
+            "transfer --url https://e.com/ --max-size 1 --out-handle",
+            "transfer --url https://e.com/ --max-size 1 --out-handle 0x10",
+            "transfer --url https://e.com/ --max-size 1 --out-handle -4",
             "unknown",
         ] {
             assert_eq!(parse_str(line), Err(Usage), "{line:?}");

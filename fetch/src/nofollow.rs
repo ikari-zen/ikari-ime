@@ -1,14 +1,15 @@
 //! リンクを辿らずに、作業の場所を開く・確かめる・消す（ADR 0076 §3.2）。
 //!
-//! Windows の作業の場所は、低い整合性の者も書ける。中の整合性の `ikari-data` がパスのまま開いたり消したりすると、
-//! リンク（ジャンクション、シンボリックリンク。reparse point のすべて）を辿って、向けた先に触れてしまう。そのため:
+//! 作業の場所は両 OS でデータの場所の下にある（ADR 0078 §3.1 の 1。低い整合性の者とは共有しない）。それでも、
+//! 同じ利用者の中の整合性の者に対する保険として、パスのまま開いたり消したりしない（リンク（ジャンクション、
+//! シンボリックリンク。Windows は reparse point のすべて）を辿ると、向けた先に触れてしまうため）。Windows では:
 //! - ディレクトリは、リンクを辿らずにハンドルで開き、リンクでないことをハンドルで確かめ、持っている間は
 //!   名前の付け替えと削除をさせない（`FILE_SHARE_DELETE` を渡さない）。
 //! - 消すのは、持っているディレクトリの中の名前だけ。リンクを辿らずに開き、そのハンドルの実際の場所の親が
 //!   持っているディレクトリであることを確かめてから、ハンドルで消す（パスで消さない）。
+//! - 作るのも、持っているディレクトリの中の名前だけ。リンクを辿らずに新しく作り、実際の場所の親を確かめる。
 //!
-//! macOS・その他の OS の作業の場所はデータの場所の下で、低い権限の別の書き手はいない。リンクを辿らずに
-//! 種類を見るだけにする（ハンドルでの確かめは持たない）。
+//! macOS・その他の OS では、リンクを辿らずに種類を見るだけにする（ハンドルでの確かめは持たない）。
 //!
 //! 何を消してよいかの判断は `workspace` の純粋な関数（`NodeKind` を受ける）。ここは OS の呼び出しだけ。
 
@@ -144,6 +145,21 @@ mod os {
             }
         }
 
+        /// 中に `name` のファイルを新しく作って、読み書きで開く（すでにあれば失敗。リンクは辿らない）。作ったものの
+        /// 実際の場所の親が自分でなければ、消して失敗
+        pub(crate) fn create_file(&self, name: &str) -> io::Result<File> {
+            let file = super::open_plain_file(
+                OpenOptions::new().read(true).write(true).create_new(true),
+                &self.path.join(name),
+            )?;
+            if final_path(&file)?.parent() != Some(self.final_path.as_path()) {
+                drop(file);
+                let _ = self.remove_entry(name);
+                return Err(not_plain());
+            }
+            Ok(file)
+        }
+
         /// 中の `name` を、リンクを辿らずに開いて、ハンドルで消す。無ければ何もしない。
         /// ディレクトリは消さない（`removable_kind`）。開いたものの実際の場所の親が自分でなければ、消さずに失敗
         pub(crate) fn remove_entry(&self, name: &str) -> io::Result<()> {
@@ -242,6 +258,18 @@ mod os {
         /// 実際の場所の比べはしない（ハンドルを持たないため）
         pub(crate) fn ensure_child_of(&self, _parent: &HeldDir) -> io::Result<()> {
             Ok(())
+        }
+
+        /// 中に `name` のファイルを新しく作って、読み書きで開く（すでにあれば失敗。リンクは辿らない）。作る前に、
+        /// 自分がまだリンクでないディレクトリであることを見直す
+        pub(crate) fn create_file(&self, name: &str) -> io::Result<File> {
+            if node_kind(&self.path)? != NodeKind::Dir {
+                return Err(not_plain());
+            }
+            super::open_plain_file(
+                OpenOptions::new().read(true).write(true).create_new(true),
+                &self.path.join(name),
+            )
         }
 
         /// 中の `name` を消す。消す前に、自分がまだリンクでないディレクトリであることを見直す。

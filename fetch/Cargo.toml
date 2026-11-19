@@ -28,15 +28,14 @@ ureq = { version = "3.5", default-features = false, features = ["native-tls-no-d
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
-# 低い整合性の子の起動（`src/spawn_windows.rs`。作りは ikari-sandbox）、自分の整合性（ikari-pipe）、空きの確認
+# 低い整合性の子の起動（`src/spawn_windows.rs`。作りは ikari-sandbox。書く先のハンドルの写し）、自分の整合性（ikari-pipe）、空きの確認
 [target.'cfg(windows)'.dependencies]
 ikari-pipe.workspace = true
 ikari-sandbox.workspace = true
 windows-sys = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Storage_FileSystem",
-    "Win32_System_Com",
-    "Win32_UI_Shell",
+    "Win32_System_Threading",
 ] }
 
 [dev-dependencies]

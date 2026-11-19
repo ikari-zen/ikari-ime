@@ -1,9 +1,9 @@
 //! 作業の場所と錠、片づけ、ディスクの見積もり（ADR 0076 §3.1、§3.2、§8.3）。
 //!
-//! - 作業の場所（`fetch/`）: Windows は `<LocalLow>\ikari-ime\fetch\`（`LocalLow` は環境変数でなく OS の関数で取る。
-//!   低い整合性の子が書ける場所。ikari は ACL を変えない）、macOS は `<データの場所>/fetch/`。**ここのファイルは
-//!   信じない**（`stage_model_bundle` が写しながら数え直す）。根から順に、リンクを辿らずに 1 段ずつ作って持つ
-//!   （`nofollow`。D-01）。持っている間、付け替えと削除をさせない。
+//! - 作業の場所（`fetch/`）: 両 OS で `<データの場所>/fetch/`（ADR 0078 §3.1 の 1。Windows の取得の子は、ここに
+//!   場所を持たず、親が作った `download.bin` の追記だけのハンドルに書く）。**ここのファイルは信じない**
+//!   （`stage_model_bundle` が写しながら数え直す）。根から順に、リンクを辿らずに 1 段ずつ作って持つ（`nofollow`。
+//!   D-01。同じ利用者の中の整合性の者に対する保険として残す）。持っている間、付け替えと削除をさせない。
 //! - inbox: `<データの場所>/inbox/`（エンジンが見回る。ADR 0058）。
 //! - 錠（`fetch/.lock`）: 同時に走る取得は 1 つ。OS の排他の錠なので、落ちても残らない。
 
@@ -25,9 +25,6 @@ const WORK_DIR: &str = "fetch";
 const LOCK_FILE: &str = ".lock";
 /// 作業の場所に落とすファイルの名前
 pub const DOWNLOAD_FILE: &str = "download.bin";
-/// Windows の作業の根の下の、ikari の名前
-#[cfg(windows)]
-const LOCAL_LOW_APP_DIR: &str = "ikari-ime";
 
 /// 見た物の種類（リンクは辿らずに見る）。何を消してよいかの判断は `removable_kind`
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,12 +74,16 @@ impl Dirs {
         }
     }
 
-    /// 製品の場所（データの場所は引数で変えられない。ADR 0067）。決められなければ `None`
+    /// 製品の場所（データの場所は引数で変えられない。ADR 0067）。決められなければ `None`。
+    /// 作業の場所は、両 OS でデータの場所の下（ADR 0078 §3.1 の 1）
     pub fn resolve() -> Option<Self> {
         let user = UserDir::resolve(None)?;
-        let base = work_root(user.root())?;
-        let work = base.join(WORK_DIR);
-        Some(Self::with_base(user.root().join(INBOX_DIR), work, base))
+        let base = user.root().to_path_buf();
+        Some(Self::with_base(
+            base.join(INBOX_DIR),
+            base.join(WORK_DIR),
+            base,
+        ))
     }
 
     /// 作業の場所の錠。取れなければ `busy`。根から作業の場所まで、リンクを辿らずに 1 段ずつ「作る → 持つ → 確かめる」。
@@ -140,8 +141,16 @@ impl Dirs {
         remove_partials(&self.inbox)
     }
 
-    /// 作業の場所に落とすファイルの場所
-    pub fn download_path(&self) -> PathBuf {
+    /// 作業の場所に、落とすファイル（`download.bin`）を新しく作って開く（読み書き。すでにあれば失敗）。
+    /// 錠が持つ場所の中に、リンクを辿らずに作る。返すハンドルを最後まで持ち、パスで開き直さない（ADR 0078 §3.1 の 2）。
+    /// 消すのは `cleanup`
+    pub fn create_download(&self, lock: &WorkLock) -> io::Result<File> {
+        lock.work_dir()?.create_file(DOWNLOAD_FILE)
+    }
+
+    /// 作業の場所に落とすファイルの場所（テストで中を見るため。製品はパスで開かない）
+    #[cfg(test)]
+    pub(crate) fn download_path(&self) -> PathBuf {
         self.work.join(DOWNLOAD_FILE)
     }
 
@@ -224,49 +233,6 @@ fn remove_partials(inbox: &Path) -> io::Result<()> {
         }
     }
     Ok(())
-}
-
-/// `<LocalLow>\ikari-ime`。`LocalLow` は環境変数でなく OS の関数で取る（環境変数では根ごと別の場所に向けられる。D-03）
-#[cfg(windows)]
-fn work_root(_data_root: &Path) -> Option<PathBuf> {
-    Some(local_low()?.join(LOCAL_LOW_APP_DIR))
-}
-
-#[cfg(windows)]
-fn local_low() -> Option<PathBuf> {
-    use std::ffi::OsString;
-    use std::os::windows::ffi::OsStringExt;
-    use windows_sys::Win32::System::Com::CoTaskMemFree;
-    use windows_sys::Win32::UI::Shell::{FOLDERID_LocalAppDataLow, SHGetKnownFolderPath};
-
-    let mut raw: *mut u16 = std::ptr::null_mut();
-    // SAFETY: 既知のフォルダの ID と、書き込める出力の置き場所を渡す。トークンは null（今の利用者）
-    let hr = unsafe {
-        SHGetKnownFolderPath(&FOLDERID_LocalAppDataLow, 0, std::ptr::null_mut(), &mut raw)
-    };
-    if hr < 0 || raw.is_null() {
-        if !raw.is_null() {
-            // SAFETY: 失敗でも OS が確保していたら、解放が要る
-            unsafe { CoTaskMemFree(raw.cast()) };
-        }
-        return None;
-    }
-    // SAFETY: 成功のとき `raw` は NUL で終わる文字列。長さを数えて読み、読み終えたら解放する
-    let path = unsafe {
-        let mut len = 0;
-        while *raw.add(len) != 0 {
-            len += 1;
-        }
-        let path = OsString::from_wide(std::slice::from_raw_parts(raw, len));
-        CoTaskMemFree(raw.cast());
-        path
-    };
-    (!path.is_empty()).then(|| PathBuf::from(path))
-}
-
-#[cfg(not(windows))]
-fn work_root(data_root: &Path) -> Option<PathBuf> {
-    Some(data_root.to_path_buf())
 }
 
 #[cfg(unix)]
@@ -352,6 +318,37 @@ mod tests {
         // 完成した束と、エンジンの状態は触らない
         assert!(d.inbox.join("user-bbb").exists());
         assert!(d.inbox.join("status.json").exists());
+    }
+
+    #[test]
+    fn the_download_is_created_once_under_the_held_work_dir_and_cleanup_removes_it() {
+        use std::io::{Read, Seek, SeekFrom, Write};
+        let tmp = tempfile::tempdir().unwrap();
+        let d = dirs(tmp.path());
+        let lock = d.lock().unwrap();
+        let mut file = d.create_download(&lock).unwrap();
+        file.write_all(b"abc").unwrap();
+        file.seek(SeekFrom::Start(0)).unwrap();
+        let mut back = Vec::new();
+        file.read_to_end(&mut back).unwrap();
+        assert_eq!(back, b"abc", "読み書きで開く");
+        assert!(d.create_download(&lock).is_err(), "すでにあれば作らない");
+        drop(file);
+        d.cleanup(&lock).unwrap();
+        assert!(!d.download_path().exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn create_download_refuses_a_planted_link() {
+        let tmp = tempfile::tempdir().unwrap();
+        let d = dirs(tmp.path());
+        let lock = d.lock().unwrap();
+        let target = tmp.path().join("target");
+        fs::write(&target, b"keep").unwrap();
+        std::os::unix::fs::symlink(&target, d.download_path()).unwrap();
+        assert!(d.create_download(&lock).is_err());
+        assert_eq!(fs::read(&target).unwrap(), b"keep");
     }
 
     #[test]
