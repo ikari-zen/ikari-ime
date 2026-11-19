@@ -124,7 +124,7 @@ void    ikari_settings_fetch_free(IkariSettingsFetch *fetch);
 4. **(c) team 署名**: 2・3 を team の署名でも流し、結果が ad-hoc と同じかを見る。
 5. **(d) 置き場所**: 検証用の束（`/tmp` の外。スクラッチの場所に `Spike.app/Contents/Helpers/` を作り、外側を ad-hoc で署名する）の Helpers に置いた exe を、束の外の Terminal から起こす場合と、束の中の別の exe（設定アプリの代わりの最小の exe。Sandbox なし、Hardened Runtime）から `posix_spawn` で起こす場合の 2 通りで、2〜3 が同じかを見る。`/Library/Input Methods` 相当の場所（0077 §8 の 6）は、配布の確認（#241）と一緒に見るので、ここでは見ない。
 6. 通信: 2 の exe で、0076 §16 と同じ公開の小さなファイル（https）を取れることを 1 回だけ見る（`network.client` と一時例外を一緒に付けても通信が通ること）。
-7. 片づけ: `ikari-ime-spike/` とコンテナ（`~/Library/Containers/…ikari.data.spike`）を消す。
+7. 片づけ: `ikari-ime-spike/` とコンテナ（`~/Library/Containers/…ikari.data.spike`）を消す。**コンテナは `rm` では消せない**（`Operation not permitted`。§8 の 9）。消せなかったコンテナは残してよい（中は空に近い）。同じスパイクをまた流すときは、識別子に毎回違う印を付ける（§8 の 7 の止まりも避けられる）。
 
 **結果で変わるもの**（2026-11-20 に閉じた。§8）: (a) は通ったので、§3.5 は既定の形（`ikari-data` が作る）に確定した。代わりの案は記録として残すだけ。(b) は `HOME` がコンテナだったので §3.4 のとおり。(c) は team も同じだった。(d) は置き場所で違いが無かった。
 
@@ -143,7 +143,7 @@ void    ikari_settings_fetch_free(IkariSettingsFetch *fetch);
    - **レーン F（`ikari-data` の macOS の分。Sonnet）**: §3.4 のデータの場所、§3.5 の作り方、親の終わりの見張り。持つのは `fetch/src/workspace.rs` の macOS の分と、新しい小さなモジュール。
 3. **レーン S（`shell-ffi` の起動。Sonnet。C のあと）**: macOS の `Launcher` と §3.6 の ABI。持つのは `shell-ffi/`。
 4. **統合**（リード）: `scripts/check.sh`（フル）、`macos/scripts/build.sh --signing team --release` の `verify_data`。
-5. **実機の確認**（#489 の完了の条件。smoke なし）: ビルドした束の `Contents/Helpers/ikari-data` を、Terminal から `model fetch` のプリセットで 1 回流し、`inbox/<名前>/` ができることと、`fetch/` が片づくことを見る。これは**ユーザーのデータの場所に束を置く**ので、流す前にユーザーに了解を取る（エンジンが取り込み、`models/` に入る。使うモデルは変えない。0060 §2）。
+5. **実機の確認**（#489 の完了の条件。smoke なし）: ビルドした束の `Contents/Helpers/ikari-data` を、Terminal から `model fetch` のプリセットで 1 回流し、`inbox/<名前>/` ができることと、`fetch/` が片づくことを見る。これは**ユーザーのデータの場所に束を置く**ので、流す前にユーザーに了解を取る（エンジンが取り込み、`models/` に入る。使うモデルは変えない。0060 §2）。あわせて、(i) ureq での https の取得が通ること（§3.6。§8 の 8）、(ii) `inbox/<名前>/` に付く `com.apple.quarantine`（§8 の 4）があっても、エンジンが取り込み、`models/` に移せること、を見る。
 - 設定アプリの画面（ボタン、確認の窓、進み具合）は、この issue に入れない（§10 の Q1）。
 
 ## 8. スパイクの結果（2026-11-20。macOS 27.2.1、arm64。PR #501 の `spike/macos-ikari-data-489/`）
@@ -164,6 +164,7 @@ ad-hoc と Apple Development（team）の両方で流し、結果は同じだっ
 - 得るもの: macOS で通信できるのは `ikari-data` 1 つになり、その場所は `fetch/` と `inbox/` だけ、ということを、署名の検査で毎回言える。Windows と macOS の取得の核（行の読み、取り消し、文）が 1 つになる。
 - 失うもの・増えるもの: 束の中の署名が 1 つ増え、`build.sh` の検査が増える。`shell-core` が `ikari-resource` に依存する。手元の `cargo build -p ikari-data` の exe は、Sandbox を付けて動かせない（Info.plist が無い）。
 - 残る限界: 一時例外は、App Store の審査では認められない種類（ikari は App Store で配らない。0069）。将来 Apple が一時例外を外せば、作り直しになる（エンジンも同じ）。
+- 残る限界（§8 の 7）: 同じ識別子のまま署名の方式（ad-hoc と team）を切り替えると、既にあるコンテナで Sandbox の初期化が止まり、`ikari-data` が起動しない。配布の ad-hoc（0069 §6）を入れていた人が team の署名で自分でビルドして入れ替える場合（逆も）に当たる。エンジンなど、ほかの Sandbox の部品にも同じことが起きるかは確かめていない。対策（署名の方式を固定する、識別子に方式を入れる、コンテナを消す手順を書く、など）は #502 で決める。
 
 ## 10. ユーザーの判断（2026-11-19 に、Q1〜Q3 すべて推奨どおりで決定）
 - **Q1. 設定アプリ（macOS）の取得の画面を、この issue に入れるか。** 推奨: 入れない。この issue は「配る `ikari-data` の権限の絞り」（#99 の前の条件）に絞り、確認は Terminal から行う（§7 の 5）。画面は別の issue（Windows の D-2c に当たる macOS の分）にする。理由: 画面は Swift の UI の作業で量が別で、#99 の前に要るかは別の判断のため。
