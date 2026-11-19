@@ -16,6 +16,8 @@ pub enum ScopeOutcome {
     NotSet { vt: u16 },
     /// 読めなかった。`step` は失敗した呼び出しの名前
     Failed { step: &'static str, hr: HRESULT },
+    /// 値（入力スコープの実体）はあるのに、中身が読めなかった（BA-02。secure として扱う）。`step` は失敗した呼び出しの名前
+    PresentUnreadable { step: &'static str, hr: HRESULT },
     /// 先の読み方で読めたので、試していない
     Skipped,
 }
@@ -178,6 +180,9 @@ mod on {
                 Self::Scopes(list) => write!(f, "scopes{list:?}"),
                 Self::NotSet { vt } => write!(f, "not-set(vt={vt})"),
                 Self::Failed { step, hr } => write!(f, "failed({step} hr=0x{:08X})", hr.0 as u32),
+                Self::PresentUnreadable { step, hr } => {
+                    write!(f, "present-unreadable({step} hr=0x{:08X})", hr.0 as u32)
+                }
                 Self::Skipped => f.write_str("skipped"),
             }
         }
