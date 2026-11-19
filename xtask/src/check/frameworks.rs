@@ -11,6 +11,9 @@
 //!   「入ったソース」は、macOS 向けのビルドが残す dep-info（`target/**/<triple>/release/lib<crate>.d`。rustc が実際に読んだ
 //!   ファイルの一覧。cfg で外れた `windows.rs` などは載らない。#476）と、依存する crate の `Cargo.toml`。dep-info が
 //!   無いときは、crate のディレクトリを丸ごと見る（広めに「古い」と言う側に倒す）。
+//!   `Cargo.toml` だけは、staticlib の時刻ではなく「cargo が最後にそのビルドを確かめた時刻」と比べる（#296）。dev-dependencies
+//!   だけを変えると cargo は staticlib を作り直さないので、staticlib の時刻だと、build.sh を流しても古いままになる。
+//!   cargo は、作り直さないとき（fresh）も、`.fingerprint/<crate>-*/invoked.timestamp` を触る。
 //!
 //! XCFramework がなければ、swift test の前に作り方を案内して失敗する（#165。スタブのまま通すと、スタブの設定の検証が
 //! Rust の本物とずれて別のテストが落ち、原因が分かりにくい）。Swift を触らない作業は `--docs-only` か `--no-swift`。
@@ -31,6 +34,9 @@ const MAC_TARGET_MARK: &str = "apple-darwin";
 const LM_TARGET_DIR: &str = "lm";
 const DEP_INFO_EXT: &str = "d";
 const MANIFEST: &str = "Cargo.toml";
+/// cargo が、そのビルドの単位を最後に確かめた（作り直した、または作り直さないと決めた）時刻の印
+const INVOKED_MARK: &str = "invoked.timestamp";
+const FINGERPRINT_DIR: &str = ".fingerprint";
 /// ソースの走査で入らないディレクトリ（成果物と、staticlib に入らないテスト類）
 const SKIPPED_DIRS: [&str; 5] = ["target", "tests", "benches", "examples", ".git"];
 
@@ -79,7 +85,10 @@ pub fn verify(root: &Path) -> Result<(), Failure> {
             ));
         };
         let sources = source_files(root, packages, spec.package);
-        if let Some(reason) = stale_reason(&framework, &root.join(spec.header), &sources)? {
+        let checked_at = last_checked(root, spec.package);
+        if let Some(reason) =
+            stale_reason(&framework, &root.join(spec.header), &sources, checked_at)?
+        {
             stale.push(format!("{}.{XCFRAMEWORK_EXT}: {reason}", spec.name));
         }
     }
@@ -93,10 +102,12 @@ pub fn verify(root: &Path) -> Result<(), Failure> {
 }
 
 /// 古い理由（新しければ None）。`header` は Rust 側のヘッダ、`sources` は staticlib の元になるソースのファイル。
+/// `checked_at` は cargo がそのビルドを最後に確かめた時刻。`Cargo.toml` はこれと staticlib の新しいほうと比べる。
 fn stale_reason(
     framework: &Path,
     header: &Path,
     sources: &[PathBuf],
+    checked_at: Option<SystemTime>,
 ) -> Result<Option<String>, Failure> {
     let header_name = header.file_name().unwrap_or_default();
     let packaged_header = find_file(framework, &|path| path.file_name() == Some(header_name));
@@ -125,13 +136,20 @@ fn stale_reason(
         return Ok(Some("中に staticlib（.a）がありません".to_owned()));
     };
     let lib_time = modified(&lib)?;
+    let manifest_floor = checked_at.map_or(lib_time, |checked| checked.max(lib_time));
     let newest = sources
         .iter()
-        .filter_map(|path| Some((path, modified(path).ok()?)))
+        .filter_map(|path| {
+            let floor = if path.file_name().is_some_and(|n| n == MANIFEST) {
+                manifest_floor
+            } else {
+                lib_time
+            };
+            let time = modified(path).ok()?;
+            (time > floor).then_some((path, time))
+        })
         .max_by_key(|(_, time)| *time);
-    if let Some((path, time)) = newest
-        && time > lib_time
-    {
+    if let Some((path, _)) = newest {
         return Ok(Some(format!(
             "staticlib より新しいソースがある（{}）",
             path.display()
@@ -238,6 +256,40 @@ fn source_files(root: &Path, packages: &[Package], package: &str) -> Vec<PathBuf
         walk(&found.dir, &mut files);
     }
     files
+}
+
+/// macOS 向けの release ビルドで、cargo が `package` を最後に確かめた時刻（`invoked.timestamp` のいちばん新しいもの）。
+fn last_checked(root: &Path, package: &str) -> Option<SystemTime> {
+    let prefix = format!("{package}-");
+    let target = root.join("target");
+    let mut newest: Option<SystemTime> = None;
+    for base in [target.clone(), target.join(LM_TARGET_DIR)] {
+        let Ok(entries) = std::fs::read_dir(&base) else {
+            continue;
+        };
+        for entry in entries.filter_map(Result::ok) {
+            if !entry
+                .file_name()
+                .to_string_lossy()
+                .contains(MAC_TARGET_MARK)
+            {
+                continue;
+            }
+            let fingerprints = entry.path().join("release").join(FINGERPRINT_DIR);
+            let Ok(units) = std::fs::read_dir(fingerprints) else {
+                continue;
+            };
+            for unit in units.filter_map(Result::ok) {
+                if !unit.file_name().to_string_lossy().starts_with(&prefix) {
+                    continue;
+                }
+                if let Ok(time) = modified(&unit.path().join(INVOKED_MARK)) {
+                    newest = Some(newest.map_or(time, |old| old.max(time)));
+                }
+            }
+        }
+    }
+    newest
 }
 
 /// macOS 向けの release ビルドが残した `lib<crate>.d` のうち、いちばん新しいもの。
@@ -374,7 +426,7 @@ mod tests {
         }
         fn reason(&self) -> Option<String> {
             std::fs::create_dir_all(self.header().parent().unwrap()).unwrap();
-            stale_reason(&self.framework(), &self.header(), &[self.source()]).unwrap()
+            stale_reason(&self.framework(), &self.header(), &[self.source()], None).unwrap()
         }
     }
 
@@ -405,6 +457,63 @@ mod tests {
         fx.set_time(&fx.source(), 100);
         let reason = fx.reason().unwrap();
         assert!(reason.contains("新しいソース"), "{reason}");
+    }
+
+    /// Cargo.toml だけが staticlib より新しくても、cargo がそのあとに確かめていれば古くない（#296）。
+    /// 確かめる前に変えた Cargo.toml は、これまでどおり古い。ソースは、確かめた時刻に関係なく staticlib と比べる。
+    #[test]
+    fn manifest_is_judged_by_the_last_cargo_check() {
+        let fx = Fixture::new();
+        let manifest = fx.dir.path().join("Cargo.toml");
+        std::fs::write(&manifest, "").unwrap();
+        fx.set_time(&manifest, 10);
+        let at = |secs: u64| SystemTime::now() + Duration::from_secs(secs);
+        let run = |sources: &[PathBuf], checked| {
+            stale_reason(&fx.framework(), &fx.header(), sources, checked).unwrap()
+        };
+        let sources = [manifest.clone()];
+        assert!(run(&sources, None).unwrap().contains("Cargo.toml"));
+        assert!(run(&sources, Some(at(5))).unwrap().contains("Cargo.toml"));
+        assert_eq!(run(&sources, Some(at(20))), None);
+        fx.set_time(&fx.source(), 30);
+        let both = [manifest, fx.source()];
+        assert!(run(&both, Some(at(40))).unwrap().contains("lib.rs"));
+    }
+
+    #[test]
+    fn last_check_reads_the_newest_invoked_timestamp_of_the_package() {
+        let root = tempfile::tempdir().unwrap();
+        let fingerprints = |triple: &str| {
+            root.path()
+                .join("target/lm")
+                .join(triple)
+                .join("release/.fingerprint")
+        };
+        let mark = |triple: &str, unit: &str| {
+            let dir = fingerprints(triple).join(unit);
+            std::fs::create_dir_all(&dir).unwrap();
+            let file = dir.join(INVOKED_MARK);
+            std::fs::write(&file, "").unwrap();
+            file
+        };
+        assert_eq!(last_checked(root.path(), "ikari-x"), None);
+        let old = mark("aarch64-apple-darwin", "ikari-x-aaa");
+        let other = mark("aarch64-apple-darwin", "ikari-y-bbb");
+        let windows = mark("x86_64-pc-windows-msvc", "ikari-x-ccc");
+        let past = SystemTime::now() - Duration::from_secs(100);
+        let future = SystemTime::now() + Duration::from_secs(100);
+        let set = |path: &Path, time| {
+            File::options()
+                .write(true)
+                .open(path)
+                .unwrap()
+                .set_modified(time)
+                .unwrap();
+        };
+        set(&old, past);
+        set(&other, future);
+        set(&windows, future);
+        assert_eq!(last_checked(root.path(), "ikari-x"), Some(past));
     }
 
     #[test]
