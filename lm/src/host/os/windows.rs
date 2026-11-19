@@ -327,6 +327,8 @@ fn low_integrity_token() -> io::Result<OwnedHandle> {
 struct AttrList {
     // `Vec` と `Box` の中身は動かないので、値ごと動かしてよい
     buf: Vec<usize>,
+    /// `buf` の先頭。作るときに可変の借用から一度だけ取る（共有の参照から可変のポインタを作らない）
+    list: *mut core::ffi::c_void,
     handles: Box<[HANDLE; STD_HANDLE_COUNT]>,
     /// 段 2 のときだけ。中の SID は呼び出し側の `AppContainerSid` が持ち、この一覧より長く生きる
     capabilities: Option<Box<SECURITY_CAPABILITIES>>,
@@ -345,13 +347,13 @@ impl AttrList {
             return Err(io::Error::last_os_error());
         }
         let mut buf = vec![0usize; size.div_ceil(size_of::<usize>())];
+        let list_ptr: *mut core::ffi::c_void = buf.as_mut_ptr().cast();
         // SAFETY: `buf` は `size` バイト以上の、書き込める領域
-        check(unsafe {
-            InitializeProcThreadAttributeList(buf.as_mut_ptr().cast(), count, 0, &mut size)
-        })?;
+        check(unsafe { InitializeProcThreadAttributeList(list_ptr, count, 0, &mut size) })?;
         // 初期化に成功したので、ここから先の失敗では `Drop` が一覧を破棄する
         let list = AttrList {
             buf,
+            list: list_ptr,
             handles: Box::new(handles),
             capabilities: container.map(|sid| {
                 Box::new(SECURITY_CAPABILITIES {
@@ -392,7 +394,7 @@ impl AttrList {
     }
 
     fn as_ptr(&self) -> *mut core::ffi::c_void {
-        self.buf.as_ptr().cast_mut().cast()
+        self.list
     }
 }
 
