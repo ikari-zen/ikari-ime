@@ -1,6 +1,6 @@
 # ADR 0079: macOS の `ikari-data` を App Sandbox で動かす形（置き場所、署名、entitlement は通信と `fetch/`・`inbox/` だけ、検査、設定アプリからの起動）
 
-- 状態: 下書き（2026-11-19。末尾の §10 にユーザーの判断が要る点）
+- 状態: 承認（2026-11-19 ユーザー決定。§10 の Q1〜Q3 はすべて推奨どおり）。スパイク (a)〜(d)（§5）はこれから
 - 日付: 2026-11-19
 - 対象: `macos/scripts/build.sh`・`lib.sh`・`templates/`（`ikari-data` のビルド、Info.plist の埋め込み、署名、`Contents/Helpers/` への配置、検査）、`fetch/`（macOS のデータの場所の決め方、親の終わりの見張り）、`shell-ffi`（設定アプリから起動する C の ABI）、`windows/settings/src/fetch.rs`・`text.rs` の OS に依存しない部分（共有の場所へ移す。§3.6）。この ADR ではコードを変えない
 - 前提: origin/main = fe5f90c。[ADR 0076](0076-ikari-data-contract.md)（取得の契約。§3.1 起動の連鎖、§3.3 macOS の権限、§13 の D-2e、§16 の実測）、[ADR 0078](0078-fetch-child-handle-and-appcontainer.md) §3.4 と Q2（macOS の例外を `fetch/` と `inbox/` だけにし、別の issue にする。2026-11-19 ユーザー決定）、[ADR 0077](0077-macos-lm-cage.md)（檻役の束、署名、`verify_cage` の型）、[ADR 0005](0005-macos-settings-and-indicator.md) §6.2（設定アプリは Sandbox なし）、[ADR 0069](0069-distribution-authenticity.md) §6（ad-hoc の配布）、[ADR 0070](0070-update-and-vulnerability-response.md) §5、#489、#99
@@ -153,7 +153,7 @@ void    ikari_settings_fetch_free(IkariSettingsFetch *fetch);
 - 失うもの・増えるもの: 束の中の署名が 1 つ増え、`build.sh` の検査が増える。`shell-core` が `ikari-resource` に依存する。手元の `cargo build -p ikari-data` の exe は、Sandbox を付けて動かせない（Info.plist が無い）。
 - 残る限界: 一時例外は、App Store の審査では認められない種類（ikari は App Store で配らない。0069）。将来 Apple が一時例外を外せば、作り直しになる（エンジンも同じ）。
 
-## 10. ユーザーの判断が要る点（推奨つき）
+## 10. ユーザーの判断（2026-11-19 に、Q1〜Q3 すべて推奨どおりで決定）
 - **Q1. 設定アプリ（macOS）の取得の画面を、この issue に入れるか。** 推奨: 入れない。この issue は「配る `ikari-data` の権限の絞り」（#99 の前の条件）に絞り、確認は Terminal から行う（§7 の 5）。画面は別の issue（Windows の D-2c に当たる macOS の分）にする。理由: 画面は Swift の UI の作業で量が別で、#99 の前に要るかは別の判断のため。
 - **Q2. 取得の核（行の読み、取り消し、文）を、Windows の設定画面の核から `shell-core` へ移して共有するか。** 推奨: 移す（§3.6、§4 の 4）。Windows のコードを動かすので、Windows のレーンが `windows/settings` を触っている間は待つ（§7 のレーン C）。移さない場合は `shell-ffi` に写しを持ち、同じ直しを 2 か所にすることになる。
 - **Q3（確認だけ）. 実機の確認（§7 の 5）で、プリセットのモデルを 1 つ、ユーザーのデータの場所の `inbox/` に取ってよいか。** 推奨: よい（エンジンが取り込むが、使うモデルは変わらない。不要なら設定画面か手で消せる）。だめなら、検証用のホームで `ikari-data` だけを流し、取り込みは見ない。
