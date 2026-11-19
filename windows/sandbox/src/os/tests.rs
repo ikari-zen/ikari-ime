@@ -8,9 +8,12 @@ use std::os::windows::io::{AsHandle, AsRawHandle, FromRawHandle, OwnedHandle};
 use std::time::{Duration, Instant};
 
 use windows_sys::Win32::Foundation::{GetHandleInformation, HANDLE, WAIT_OBJECT_0};
+use windows_sys::Win32::Security::Authorization::{
+    ConvertSecurityDescriptorToStringSecurityDescriptorW, GetSecurityInfo, SE_KERNEL_OBJECT,
+};
 use windows_sys::Win32::Security::{
-    GetSidSubAuthority, GetSidSubAuthorityCount, GetTokenInformation, TOKEN_MANDATORY_LABEL,
-    TOKEN_QUERY, TokenIntegrityLevel,
+    DACL_SECURITY_INFORMATION, GetSidSubAuthority, GetSidSubAuthorityCount, GetTokenInformation,
+    TOKEN_MANDATORY_LABEL, TOKEN_QUERY, TokenIntegrityLevel,
 };
 use windows_sys::Win32::Storage::FileSystem::{FILE_TYPE_CHAR, GetFileType};
 use windows_sys::Win32::System::Threading::{
@@ -493,4 +496,179 @@ fn transfer_runs_inside_both_jobs() {
     let lines = probe_lines(&out);
     assert!(lines.contains(&"exit=0"), "{out}");
     assert!(lines.iter().any(|l| l.starts_with("progress ")), "{out}");
+}
+
+/// すぐ終わる子の終了コード
+const QUICK_EXIT_CODE: u32 = 7;
+/// 長く動く子を止められなかったときに、勝手に終わるまでの回数（`ping -n`。止められれば使わない）
+const LONG_PING_COUNT: &str = "30";
+
+fn system32(exe: &str) -> std::path::PathBuf {
+    let root = std::env::var_os("SystemRoot").expect("SystemRoot");
+    std::path::Path::new(&root).join("System32").join(exe)
+}
+
+fn spawn_quick(integrity: Integrity) -> Confined {
+    let args = [OsString::from("/c"), OsString::from("exit 7")];
+    spawn(&Launch {
+        program: &system32("cmd.exe"),
+        args: &args,
+        environment: None,
+        integrity,
+        job: JobLimits { max_processes: 1 },
+        stdio: Stdio::default(),
+    })
+    .unwrap()
+}
+
+fn spawn_long(integrity: Integrity) -> Confined {
+    let args: Vec<OsString> = ["-n", LONG_PING_COUNT, "127.0.0.1"]
+        .iter()
+        .map(OsString::from)
+        .collect();
+    spawn(&Launch {
+        program: &system32("PING.EXE"),
+        args: &args,
+        environment: None,
+        integrity,
+        job: JobLimits { max_processes: 1 },
+        stdio: Stdio::default(),
+    })
+    .unwrap()
+}
+
+/// 子のプロセスの DACL を SDDL の文字列で返す
+fn dacl_sddl(process: HANDLE) -> String {
+    let mut descriptor: windows_sys::Win32::Security::PSECURITY_DESCRIPTOR = ptr::null_mut();
+    // SAFETY: 生きているプロセスのハンドル（作成時のもの。READ_CONTROL がある）と、書き込み先
+    let status = unsafe {
+        GetSecurityInfo(
+            process,
+            SE_KERNEL_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            &mut descriptor,
+        )
+    };
+    assert_eq!(status, 0, "GetSecurityInfo");
+    let mut text: *mut u16 = ptr::null_mut();
+    // SAFETY: `GetSecurityInfo` が返した記述子と、書き込み先
+    let ok = unsafe {
+        ConvertSecurityDescriptorToStringSecurityDescriptorW(
+            descriptor,
+            SDDL_REVISION,
+            DACL_SECURITY_INFORMATION,
+            &mut text,
+            ptr::null_mut(),
+        )
+    };
+    assert_ne!(
+        ok, 0,
+        "ConvertSecurityDescriptorToStringSecurityDescriptorW"
+    );
+    // SAFETY: 成功した変換が返した、NUL で終わる文字列
+    let sddl = unsafe {
+        let mut len = 0;
+        while *text.add(len) != 0 {
+            len += 1;
+        }
+        String::from_utf16(std::slice::from_raw_parts(text, len)).unwrap()
+    };
+    // SAFETY: それぞれ OS が `LocalAlloc` で確保したものを 1 回だけ解放する
+    unsafe {
+        LocalFree(text.cast());
+        LocalFree(descriptor);
+    }
+    sddl
+}
+
+/// SDDL の ACE を（種類、権利、SID）に分ける。権利は 16 進（`0x…`）か、`GA`・`RC` の記号
+fn aces(sddl: &str) -> Vec<(String, String, String)> {
+    sddl.split('(')
+        .skip(1)
+        .map(|ace| {
+            let fields: Vec<&str> = ace.trim_end_matches(')').split(';').collect();
+            assert_eq!(fields.len(), 6, "{sddl}");
+            (
+                fields[0].to_owned(),
+                fields[2].to_owned(),
+                fields[5].to_owned(),
+            )
+        })
+        .collect()
+}
+
+/// 権利が、全権（`GA`、または 0x1fffff）か
+fn is_full(rights: &str) -> bool {
+    rights == "GA" || rights.eq_ignore_ascii_case("0x1fffff")
+}
+
+fn check_child_dacl(integrity: Integrity) {
+    let child = spawn_long(integrity);
+    let sddl = dacl_sddl(child.process().as_raw_handle() as HANDLE);
+    child.terminate();
+    child.wait().unwrap();
+    assert!(sddl.starts_with("D:"), "{sddl}");
+    let aces = aces(&sddl);
+    assert_eq!(aces.len(), 3, "{sddl}");
+    for (kind, rights, sid) in &aces {
+        assert_eq!(kind, "A", "{sddl}");
+        match sid.as_str() {
+            "SY" | "BA" => assert!(is_full(rights), "{sddl}"),
+            "OW" => assert!(
+                rights == "RC" || rights.eq_ignore_ascii_case("0x20000"),
+                "{sddl}"
+            ),
+            other => panic!("想定外の SID {other}: {sddl}"),
+        }
+    }
+}
+
+#[test]
+fn a_low_child_with_a_job_returns_its_exit_code() {
+    let child = spawn_quick(Integrity::Low);
+    assert!(child.in_job().unwrap());
+    assert_eq!(child.wait().unwrap(), QUICK_EXIT_CODE);
+}
+
+#[test]
+fn a_normal_child_with_a_job_returns_its_exit_code() {
+    let child = spawn_quick(Integrity::Inherit);
+    assert!(child.in_job().unwrap());
+    assert_eq!(child.wait().unwrap(), QUICK_EXIT_CODE);
+}
+
+#[test]
+fn a_long_running_child_is_stopped_through_the_job() {
+    for integrity in [Integrity::Low, Integrity::Inherit] {
+        let child = spawn_long(integrity);
+        child.terminate();
+        assert_eq!(child.wait().unwrap(), KILLED_EXIT_CODE, "{integrity:?}");
+    }
+}
+
+#[test]
+fn a_long_running_child_is_stopped_through_its_handle() {
+    for integrity in [Integrity::Low, Integrity::Inherit] {
+        let child = spawn_long(integrity);
+        // SAFETY: 親が持つ、生きているプロセスのハンドル（作成時の権利に終了がある）
+        let ok = unsafe {
+            TerminateProcess(child.process().as_raw_handle() as HANDLE, KILLED_EXIT_CODE)
+        };
+        assert_ne!(ok, 0, "{integrity:?}");
+        assert_eq!(child.wait().unwrap(), KILLED_EXIT_CODE, "{integrity:?}");
+    }
+}
+
+#[test]
+fn the_low_child_process_dacl_is_restricted() {
+    check_child_dacl(Integrity::Low);
+}
+
+#[test]
+fn the_normal_child_process_dacl_is_restricted() {
+    check_child_dacl(Integrity::Inherit);
 }
