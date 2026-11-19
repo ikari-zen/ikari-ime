@@ -4,15 +4,19 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "Windows の子の絞った起動（止めた状態で作り、Job Object に入れ、渡すハンドルを限ってから動かす。整合性を低くもできる）。ADR 0072 §3、ADR 0076 §3.2"
+description = "Windows の子の絞った起動（止めた状態で作り、Job Object に入れ、渡すハンドルを限ってから動かす。整合性を低くする、AppContainer に入れることもできる）。ADR 0072 §3、ADR 0076 §3.2、ADR 0078"
 
-# 依存の向き: fetch（ikari-data）、windows/settings → windows/sandbox。通信の手段を持たない。
+# 依存の向き: fetch（ikari-data）、windows/settings、lm（AppContainer の部品だけ）→ windows/sandbox。通信の手段を持たない。
 # コマンドラインの組み立て（`cmdline`）は OS に依存しないので、Mac でもテストする
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Security",
     "Win32_Security_Authorization",
+    # AppContainer のプロファイル（`src/appcontainer.rs`。ADR 0078 §3.2）
+    "Win32_Security_Isolation",
+    # 読み取りの許可の権利（`FILE_GENERIC_READ`）
+    "Win32_Storage_FileSystem",
     "Win32_System_JobObjects",
     "Win32_System_Threading",
 ] }

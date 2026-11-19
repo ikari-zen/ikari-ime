@@ -711,6 +711,7 @@ dependencies = [
  "block2",
  "ikari-core",
  "ikari-resource",
+ "ikari-sandbox",
  "ikari-testtime",
  "libc",
  "llama-cpp-2",

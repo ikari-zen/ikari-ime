@@ -1,6 +1,6 @@
 //! Windows の子の絞りのテスト。テストの実行ファイル自身を子として起動し、子の中から確かめる。
 //! Windows でしか動かない（CI の Windows と VM）。段 2 のテストは、利用者ごとのテスト用のプロファイル
-//! （`appcontainer::PROFILE_NAME`。単体テストでは製品と別の名前）を作り、最後に消す。
+//! （`appcontainer::PROFILE`。単体テストでは製品と別の名前）を作り、最後に消す。
 
 use std::ffi::OsString;
 use std::io::{BufRead, Read, Write};
