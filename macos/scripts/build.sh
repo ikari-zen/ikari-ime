@@ -172,6 +172,8 @@ build_rust() {
     "$IKARI_ROOT/shell-ffi/include" ikari_shell.h IkariShellFFI "$FRAMEWORKS/IkariShellFFI.xcframework"
   make_xcframework "$IKARI_ROOT/target/lm/$RUST_TARGET/release/libikari_engine_ffi.a" \
     "$IKARI_ROOT/engine-ffi/include" ikari_engine.h IkariEngineFFI "$FRAMEWORKS/IkariEngineFFI.xcframework"
+  # 作り終えた印。check の鮮度の検査が、Cargo.toml だけの変更（cargo が作り直さないもの）を誤検知しないために使う（#296）
+  touch "$FRAMEWORKS/.built"
 }
 
 # ---------------------------------------------------------------- Swift とバンドル
