@@ -72,10 +72,11 @@ ikari.app（殻。Swift、InputMethodKit、Sandbox なし。~/Library/Input Meth
 IkariEngine.xpc（同梱の XPC サービス。App Sandbox、ネットワークなし）
   └─ IkariEngineService（Swift は FFI を呼ぶだけ）→ engine-ffi（Rust のエンジン）
         │ 標準入出力のパイプ（枠 + 採点の要求と NLL。lm の host::proto）
-ikari-lm-host（IkariEngine.xpc/Contents/MacOS/ に同梱。LM の推論だけ。llama.cpp、Metal。エンジンが起動し、Sandbox を引き継ぐ。ADR 0060 Q4）
+IkariLMCage.xpc（同梱の XPC サービス。App Sandbox だけ。檻役 `ikari-lm-cage`。殻が仲立ちする匿名の口でエンジンとつながる。ADR 0077）
+  └─ ikari-lm-host（IkariLMCage.xpc/Contents/MacOS/ に同梱。LM の推論だけ。llama.cpp、Metal。檻役が起動し、檻役の Sandbox を引き継ぐ。ADR 0060 Q4）
 ```
 
-- LM の推論は `ikari-lm-host` が持つ。エンジンは、自分の実行ファイルの隣にそれがあれば子として起動し、採点を頼む（`engine` の `LmHostChoice::Beside`）。子が落ちても固まっても、エンジンは LM なしの順位で返し続け、次の要求で起動し直し、続けて失敗したら諦める（エンジンを起動し直すまで）。隣に無ければ、同じプロセスで動かす（llama.cpp を入れたビルドだけ。`--no-lm` のビルドは LM なし）。
+- LM の推論は `ikari-lm-host` が持つ。macOS の製品では、子の起動は檻役が行い、エンジンは自分では起動しない（[ADR 0077](adr/0077-macos-lm-cage.md) §6）。Windows と開発のビルドでは、エンジンは自分の実行ファイルの隣にそれがあれば子として起動し、採点を頼む（`engine` の `LmHostChoice::Beside`）。子が落ちても固まっても、エンジンは LM なしの順位で返し続け、次の要求で起動し直し、続けて失敗したら諦める（エンジンを起動し直すまで）。隣に無ければ、同じプロセスで動かす（llama.cpp を入れたビルドだけ。`--no-lm` のビルドは LM なし）。
 
 - `IkariSettings`（設定アプリ「ikari 設定」。`ikari.app/Contents/Helpers/` に同梱）は、殻の Unix ソケット（`IkariBridge`）だけにつなぐ。検証・整形・変更の組み立ては shell-core（`ikari_settings_app`）に頼み、Swift は画面と小さな画面の型（`ScreenTypes.swift`）だけを持つ。
 - 移行の前の Swift の状態機械（`IkariShellCore`）とその測り手（`IkariShellBench`）、旧い FFI（`ikari_composer_*`、`ikari_convert_script`）は、移行の片付け（M5、#138）で消した。

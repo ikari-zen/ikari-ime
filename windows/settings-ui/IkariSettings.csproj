@@ -22,6 +22,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- .NET の起動のフック（環境変数で別のコードを読み込ませる口）を切る -->
+    <StartupHookSupport>false</StartupHookSupport>
     <!-- LibraryImport（ソースの生成）と、核のバイト列のポインタに要る -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IkariCoreDll Condition="'$(IkariCoreDll)' == ''">$(MSBuildThisFileDirectory)..\..\target\release\ikari_settings_core.dll</IkariCoreDll>

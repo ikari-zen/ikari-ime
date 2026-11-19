@@ -129,6 +129,7 @@ fn steps(root: &Path, plan: &Plan) -> Result<(), Failure> {
     supply::actions_pinned(root)?;
     product::crt_static(root)?;
     product::dev_knobs_wiring(root)?;
+    product::startup_hook_off(root)?;
     product::dev_strings_gated(root)?;
     product::lm_spawn_single(root)?;
     product::mac_direct_spawn_closed(root)?;

@@ -1,7 +1,7 @@
 # ADR 0077: macOS の LM の檻の段 2（専用の Sandbox）の形。檻役の XPC サービスを置き、殻が口を仲立ちする
 
 - 状態: 承認（2026-11-17 ユーザー決定（Fable の指摘つき）。Q1〜Q3 はリードの推奨どおりで、条件が付いた。§11 を見る）
-- 実装: 2026-11-18 に #459（D-3-mac。#460、#462、#463）で main に入った。実機（team 署名）で smoke が全件通り、`ikari-lm-host` が檻役の子で `--model /dev/fd/3` になることを確かめた。§8 の項目 3〜6、8 は未確認（5、6 は配布の前に必須）
+- 実装: 2026-11-18 に #459（D-3-mac。#460、#462、#463）で main に入った。実機（team 署名）で smoke が全件通り、`ikari-lm-host` が檻役の子で `--model /dev/fd/3` になることを確かめた。2026-11-19 の実機の結果を §8 に反映した（項目 3、7、8 は確認済みか記録。4、5 は一部。6 は未確認。5、6 は配布の前に必須のまま）
 - 日付: 2026-11-17
 - 対象: `lm/src/host/`（子の起動の口を 2 つにする。檻役との取り決め）、新しい bin `ikari-lm-cage`（檻役。Rust）、`ikari-lm-host`（親が終わったら自分も終わる）、`engine` / `engine-ffi`（檻役の口を受け取る。モデルを fd で渡す）、`macos/Sources/IkariXPC`・`IkariEngineService`・`IkariSmoke`（口の受け渡し）、`macos/scripts/build.sh` とテンプレート（新しい XPC サービスの束と署名）、`docs/architecture.md` §2 と表。この ADR ではコードを変えない
 - 前提: origin/lane/d3-mac = 7a78dc7。[ADR 0072](0072-lm-cage-levels.md)（段の分け方、§4 の出してよい条件、§13 の実測）、[ADR 0060](0060-user-selectable-lm-model.md) Q4（別プロセス、落ちてもエンジンは生き残る）、[ADR 0004](0004-phase2-macos.md) §5.1（殻とエンジンの XPC）、[ADR 0068](0068-ipc-endpoints.md)（口の一覧と相手の確認）、[ADR 0069](0069-distribution-authenticity.md) §6（ad-hoc の配布）、`docs/architecture.md` §2 と「LM の子」の行
@@ -150,11 +150,19 @@ ikari.app（殻。Sandbox なし）
 1. team と ad-hoc の両方で入れ、ふだんの入力で LM が効く（候補の並び）。入れ替えたあと、開いているアプリを起動し直す。
 2. アクティビティモニタで、`ikari-lm-host` が Sandbox の中で、檻役の識別子の下にいる。データのフォルダ（`~/Library/Application Support/ikari-ime/`）を開いていない。
 3. 入れ替えの直後の最初の 1 回（Ready まで 4〜5 秒）が、締め切り（60 秒）に収まり、入力が止まらない。
+   - **確認済み（2026-11-19）**: 入れ替えたあとの最初の smoke で、hello は `lm=loading` から始まり、`lm-ready` が通った。`ikari-lm-host` の起動から ready まで約 5 秒（ps での概算。厳密な計測ではない。smoke の上限は 30 秒）。
 4. （了承が要る）`ikari-lm-host` を止める → エンジンは生き残り、次の要求で起動し直す。檻役を止める → 同じく戻る。
+   - **一部（2026-11-19）**: `ikari-lm-host` を `kill -9` で 2 回止めたが、IkariEngine は同じ pid で生き残った。
+   - **未確認**: 止めたあとに「次の要求で `ikari-lm-host` が起動し直す」こと。檻役を止めた場合。ユーザーの手順（了承のうえ）: ikari を選んで候補が出るのを確かめ、`pkill -9 -f 'IkariLMCage.xpc.*ikari-lm-host'` のあとすぐ変換する。数秒後に ps で host が再び現れ、IkariEngine の pid が変わらず、候補の並びが LM つきに戻ることを見る。檻役は `pkill -9 -x ikari-lm-cage` で同様に確かめる。
 5. 殻の入れ替え（再インストール）、スリープからの復帰のあとに LM が戻る。**配布の前に必ず確かめる**（2026-11-17 決定）。
+   - **一部（2026-11-19）**: 再インストールの直後の smoke が、LM つきで通った。
+   - **未確認**: スリープからの復帰。ユーザーの手順: 蓋を閉じて復帰したあと、ps で host の有無を見て、変換して LM が効くかを見る。
 6. 配布の置き場所（ADR 0069 §6、#241 の `/Library/Input Methods`）でも檻役が起動する。**配布の前に必ず確かめる**（同）。
+   - **未確認**（sudo が要るため、2026-11-19 は実行していない）。ユーザーの手順: 署名したビルドを `/Library/Input Methods/ikari.app` に置き、`xattr` で quarantine の有無を確かめる。ikari を選んで、`ikari-lm-host` と檻役が起動するかを ps で見る。
 7. （了承が要る）smoke が「檻あり」で通る。
+   - **確認済み（2026-11-19）**: smoke を計 6 回流し、毎回 0 failed（`lm-cage`、`lm-ready`、`convert-with-context`（lm=true）、`kill-9-recovery`）。
 8. 檻役の分のメモリ（常駐の増え方）を記録する。
+   - **記録（2026-11-19。ps の RSS の観測の幅。厳密な計測ではない）**: 檻役 `ikari-lm-cage` は約 7〜10MB。`ikari-lm-host` は約 305〜310MB（`--model /dev/fd/3 --gpu on`。親は檻役）。IkariEngine は、LM の読み込み中に約 510〜535MB、そのあと約 375〜400MB。檻役の分の増え方は、host と cage を合わせて約 320MB。
 
 ## 9. 結果
 
