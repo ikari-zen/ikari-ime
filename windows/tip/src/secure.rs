@@ -15,6 +15,9 @@
 //! - `ITextStoreACP::GetAttrs` の `TS_ATTR_FIND_*` はアプリ側（テキストストア）の API で、TIP からは呼べない。
 //!
 //! # 読めなかったとき
+//! - **値はあるのに中身が読めない欄**（`PresentUnreadable`。入力スコープの実体は返ったが、`ITfInputScope` に
+//!   できない、`GetInputScopes` が失敗する）は secure（BA-02。ユーザー決定 B）。値が付いているのに読めないのは、
+//!   アプリが何かを隠している可能性があるため。ほかの読めない場合（プロパティ自体が取れない、など）は、実機で測ってから決める（#452）。
 //! - 入力スコープが付いていない欄（ふつうの欄の大半）、プロパティが空、読み取りの失敗は**通常として扱う**。
 //!   不明を secure にすると、入力スコープを返さないアプリで変換が全部止まる。一方、パスワード欄が入力スコープを
 //!   付けないとき（独自描画の欄など）は守れない。これは macOS の仕様（NFR-18 の注）と同じ限界で、実機で確かめる。
@@ -49,14 +52,17 @@ pub enum ScopeReading<'a> {
     Scopes(&'a [i32]),
     /// プロパティが空（アプリが入力スコープを付けていない）
     NotSet,
-    /// 読めなかった（TSF がエラーを返した、型が違う、など）
+    /// 読めなかった（プロパティの取得や値の取得が失敗した、など。値があるかどうかも分からない）
     Unreadable,
+    /// 値（入力スコープの実体）はあるのに、中身が読めなかった（BA-02。何の欄か分からないので守る側に倒す）
+    PresentUnreadable,
 }
 
 /// この欄は secure か。
 pub fn is_secure(reading: ScopeReading<'_>) -> bool {
     match reading {
         ScopeReading::Scopes(scopes) => scopes.iter().any(|scope| SECURE_SCOPES.contains(scope)),
+        ScopeReading::PresentUnreadable => true,
         ScopeReading::NotSet | ScopeReading::Unreadable => false,
     }
 }
@@ -142,6 +148,13 @@ mod tests {
     #[test]
     fn empty_list_is_not_secure() {
         assert!(!is_secure(ScopeReading::Scopes(&[])));
+    }
+
+    #[test]
+    fn present_but_unreadable_is_secure() {
+        assert!(is_secure(ScopeReading::PresentUnreadable));
+        assert!(is_secure_field(ScopeReading::PresentUnreadable, None));
+        assert!(is_secure_field(ScopeReading::PresentUnreadable, Some(0)));
     }
 
     #[test]
