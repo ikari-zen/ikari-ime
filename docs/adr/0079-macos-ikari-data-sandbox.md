@@ -54,14 +54,15 @@
 - データの場所が利用者の指定で変わる口は、製品には無い（ADR 0067。`dev-knobs` だけ）。例外は既定の場所だけで足りる。
 
 ### 3.4 データの場所の決め方（macOS の `ikari-data`）
-- **macOS の `ikari-data` は、データの場所を `HOME` から決めない。** `getpwuid_r(getuid())` の `pw_dir` から決める（エンジンの `dataDirectory` と同じ規則）。理由: 一時例外はホームからの相対で、Sandbox の中の `HOME` がコンテナを指すと、ずれて何も書けなくなる（§5 のスパイク (b) で確かめる）。また、製品は環境変数で挙動を変えない（R5）。
+- **macOS の `ikari-data` は、データの場所を `HOME` から決めない。** `getpwuid_r(getuid())` の `pw_dir` から決める（エンジンの `dataDirectory` と同じ規則）。理由: 一時例外はホームからの相対で、Sandbox の中の `HOME` がコンテナを指すと、ずれて何も書けなくなる（根の `lstat` すら ENOENT になる）。**Sandbox は `HOME` を必ずコンテナに設定する**（環境を空にして起こしても同じ。§8 の 3）ので、`HOME` からは本当のホームを得られない。また、製品は環境変数で挙動を変えない（R5）。
 - 置き場所は `fetch/src/workspace.rs` の macOS の分だけ（`Dirs::resolve`）。`core` の `UserDir::resolve` は変えない（ほかの部品の決め方に波及させないため）。`dev-knobs` の上書きの口は今のまま（製品には入らない）。
 
 ### 3.5 ディレクトリの作成の分担
-- **既定（スパイク (a) が通る場合）: `ikari-data` が `fetch/` と `inbox/` を自分で作る。** データの場所そのもの（`…/ikari-ime/`）は作らない。無ければ `internal` で終わる（データの場所はエンジンと `install-data.sh` が作る。データの場所が無いときは取得しても取り込めない）。
+- **決定（スパイク (a) で通った。§8 の 1）: `ikari-data` が `fetch/` と `inbox/` を自分で作る。** データの場所そのもの（`…/ikari-ime/`）は作らない。無ければ `internal` で終わる（データの場所はエンジンと `install-data.sh` が作る。データの場所が無いときは取得しても取り込めない）。
   - そのために `hold_work_chain` の macOS の分を、根に `create_dir_all` をかけず「根があり、ディレクトリで、リンクでないこと」を確かめるだけにする。`inbox/` も同じ規則（根の下に 1 段だけ作る）。
+  - 実装の注意（§8 の 2）: 根に対して Sandbox の中から通るのは `lstat` だけで、`open(根)`（一覧）は EPERM。根が無いときは根の `mkdir` が EPERM になる。根を確かめる段で、無い・`lstat` が通らない・根の操作の EPERM を、`internal` に写す（EPERM をそのまま別の種類の失敗として出さない）。仮に根に `create_dir_all` をかけても、根があれば mkdir が EEXIST で返るので失敗しないが、確かめるだけの形にそろえる。
   - こうすると、人が手で打っても、設定アプリから起こしても同じに動く（0076 §4.1）。
-- **代わり（(a) が通らない場合）: 親（`shell-ffi` の起動の関数。Sandbox なし）が、起動の前に `fetch/` と `inbox/` を作る。** `ikari-data` は、無ければ作ろうとせず `internal` で終わる。作り方は今の `nofollow` の規則（リンクを辿らない、1 段ずつ）を共有して使う。手で打つときは、先に設定アプリかエンジンが作っている前提になる（README の手で打つ説明に書く）。
+- **代わりの案（採らなかった。(a) が通らない場合に備えて書いていたもの。記録として残す）: 親（`shell-ffi` の起動の関数。Sandbox なし）が、起動の前に `fetch/` と `inbox/` を作る。** `ikari-data` は、無ければ作ろうとせず `internal` で終わる。作り方は今の `nofollow` の規則（リンクを辿らない、1 段ずつ）を共有して使う。手で打つときは、先に設定アプリかエンジンが作っている前提になる（README の手で打つ説明に書く）。
 - どちらでも、`fetch/.lock` は `ikari-data` が作る（`fetch/` の中なので例外の範囲）。
 
 ### 3.6 親の起動の契約（`shell-ffi`。実装は §7 のレーン）
@@ -85,7 +86,7 @@ void    ikari_settings_fetch_free(IkariSettingsFetch *fetch);
   - `kind` の値と `IkariSettingsFetchStatus` の形は Windows と同じ（`phase`、`received`、`total`、`has_total`）。`version_check_start` の引数は Windows の `fetch_abi.rs` に合わせる（違えば Windows に合わせる）。
 - macOS の `Launcher`（`shell-ffi` の中。`std::process::Command` で起こす）:
   - exe の場所: 自分の exe（`current_exe` を正規化）が `<X>/ikari.app/Contents/Helpers/IkariSettings.app/Contents/MacOS/` にあることを確かめ、`<X>/ikari.app/Contents/Helpers/ikari-data` を絶対パスで起こす。形が違えば起こさない（`tool`）。PATH を使わない。シェルを通さない。
-  - 標準入力と標準エラーは `/dev/null`、標準出力はパイプ。環境は 0076 §3.4 と同じく、プロキシの変数だけに絞る（`HOME` も渡さない。データの場所は §3.4 で決める）。Security.framework などが動くのにほかの変数が要れば、スパイク (d) で確かめて最小を足す。
+  - 標準入力と標準エラーは `/dev/null`、標準出力はパイプ。環境は 0076 §3.4 と同じく、プロキシの変数だけに絞る（`HOME` も渡さない。データの場所は §3.4 で決める）。`HOME` を渡さなくても、Sandbox の初期化がコンテナを `HOME` に設定し、作成と通信（TCP の接続と https の HEAD）が動くことは確かめた（§8 の 3、8）。ureq（`NativeTls`、証明書の確かめ）での実際の取得は、§7 の 5 の実機の確認で見る。そこでほかの変数が要ると分かれば、最小を足す。
   - 取り消しは、その子に `SIGKILL`（子は孫を作らないので、木はその 1 つ）。待ちは `wait`。
 - `ikari-data`（macOS）は、親が終わったら自分も終わる。`lm/src/host/serve.rs` と同じく `getppid()` の変化を見る（Windows の Job Object の「閉じたら終わる」に当たる）。
 
@@ -128,9 +129,9 @@ void    ikari_settings_fetch_free(IkariSettingsFetch *fetch);
 **結果で変わるもの**（2026-11-20 に閉じた。§8）: (a) は通ったので、§3.5 は既定の形（`ikari-data` が作る）に確定した。代わりの案は記録として残すだけ。(b) は `HOME` がコンテナだったので §3.4 のとおり。(c) は team も同じだった。(d) は置き場所で違いが無かった。
 
 ## 6. 推測（確かめていない）
-- 一時例外のパスに書いたディレクトリそのもの（`fetch/`）を、Sandbox の中から新しく作れる（例外は下の全部に効き、作る操作は作る先のパスで見られると考えている）。→ スパイク (a)。
-- Sandbox の中の `HOME` はコンテナを指す（エンジンの Swift のコメントの理由と同じ）。→ (b)。
-- Sandbox の exe が作ったファイルには隔離の印（`com.apple.quarantine`）が付くことがあるが、エンジンの取り込み（読む、rename、LM の子に fd で渡す）は印に左右されない。→ (b) で印の有無だけ見る。取り込みまでは §8 の実機の確認で見る。
+- （確かめた。§8 の 1）一時例外のパスに書いたディレクトリそのもの（`fetch/`）を、Sandbox の中から新しく作れる。
+- （確かめた。§8 の 3）Sandbox の中の `HOME` はコンテナを指す。
+- Sandbox の exe が作ったファイルには隔離の印（`com.apple.quarantine`）が付くことがあるが、エンジンの取り込み（読む、rename、LM の子に fd で渡す）は印に左右されない。→ (b) で印の有無だけ見る。印が付くことは確かめた（§8 の 4）。取り込みが左右されないかは、§7 の 5 の実機の確認で見る。
 
 ## 7. 実装のレーンと順序（1 タスク 1 ブランチ。#489 の下）
 
