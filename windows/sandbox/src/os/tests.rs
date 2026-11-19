@@ -950,7 +950,10 @@ fn which_environment_an_appcontainer_child_needs() {
     assert!(ok("inherit"), "親の環境でも起きない: {report}");
     assert!(ok("product"), "製品の環境で起きない: {report}");
     // VM の実測（2026-11-20）: LOCALAPPDATA だけで足りる。USERPROFILE だけでは足りない
-    assert!(ok("+localappdata"), "LOCALAPPDATA を足しても起きない: {report}");
+    assert!(
+        ok("+localappdata"),
+        "LOCALAPPDATA を足しても起きない: {report}"
+    );
     assert!(
         !ok("+userprofile"),
         "USERPROFILE だけで起きた（LOCALAPPDATA は要らなくなった？ 製品の環境を見直す）: {report}"
