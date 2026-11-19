@@ -180,6 +180,7 @@ fn spawn_confined(
             ..Stdio::default()
         },
         inherit,
+        container: None,
     })?;
     // 子の側の端は、親では閉じる（閉じないと、子が終わっても読み取りが終わらない）
     drop(child_out);
