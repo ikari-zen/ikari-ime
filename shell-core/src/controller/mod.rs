@@ -222,9 +222,23 @@ impl Shell {
 
     /// OS のイベントを 1 つ処理し、OS 側が順に実行する動作の列を返す。
     /// 周辺テキストと選択は、要るときだけ `text` から同期に取る。
+    ///
+    /// `text` を受け取るのはキーだけ。設定アプリの橋（`BridgeFrame`・`BridgeClosed`）を含むほかの出来事は、
+    /// `dispatch_without_text` に回し、型の上で周辺テキスト・選択に届かない（#474）。
     pub fn dispatch(&mut self, event: ShellEvent, text: &mut dyn TextAccess) -> Vec<ShellAction> {
         let mut actions = match event {
             ShellEvent::Key(input) => self.handle_key(&input, text),
+            other => self.dispatch_without_text(other),
+        };
+        self.finish(&mut actions);
+        actions
+    }
+
+    /// テキストの入口を持たない出来事の処理。`dispatch` の `Key` 以外の腕。
+    fn dispatch_without_text(&mut self, event: ShellEvent) -> Vec<ShellAction> {
+        match event {
+            // Key は `dispatch` が text つきで処理済み（ここには来ない）
+            ShellEvent::Key(_) => Vec::new(),
             ShellEvent::Activate { bundle_id, secure } => self.activate(&bundle_id, secure),
             ShellEvent::Deactivate => self.deactivate(),
             ShellEvent::MenuCommand { command } => self.perform(command),
@@ -253,9 +267,7 @@ impl Shell {
                 self.bridge.closed(conn);
                 Vec::new()
             }
-        };
-        self.finish(&mut actions);
-        actions
+        }
     }
 
     /// エンジンへの口。落ちた通知（`EngineLink::notify_down`）を別のスレッドから呼ぶために、`Arc` を複製して持つ。
