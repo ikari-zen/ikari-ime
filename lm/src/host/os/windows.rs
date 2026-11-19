@@ -22,12 +22,15 @@ use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
 use std::path::Path;
 use std::ptr;
 
-use windows_sys::Win32::Foundation::{HANDLE, HANDLE_FLAG_INHERIT, SetHandleInformation};
+use windows_sys::Win32::Foundation::{
+    HANDLE, HANDLE_FLAG_INHERIT, LocalFree, SetHandleInformation,
+};
+use windows_sys::Win32::Security::Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW;
 use windows_sys::Win32::Security::{
-    CreateWellKnownSid, DuplicateTokenEx, SECURITY_CAPABILITIES, SECURITY_MAX_SID_SIZE,
-    SID_AND_ATTRIBUTES, SecurityImpersonation, SetTokenInformation, TOKEN_ADJUST_DEFAULT,
-    TOKEN_ASSIGN_PRIMARY, TOKEN_DUPLICATE, TOKEN_MANDATORY_LABEL, TOKEN_QUERY, TokenIntegrityLevel,
-    TokenPrimary, WinLowLabelSid,
+    CreateWellKnownSid, DuplicateTokenEx, PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES,
+    SECURITY_CAPABILITIES, SECURITY_MAX_SID_SIZE, SID_AND_ATTRIBUTES, SecurityImpersonation,
+    SetTokenInformation, TOKEN_ADJUST_DEFAULT, TOKEN_ASSIGN_PRIMARY, TOKEN_DUPLICATE,
+    TOKEN_MANDATORY_LABEL, TOKEN_QUERY, TokenIntegrityLevel, TokenPrimary, WinLowLabelSid,
 };
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_ACTIVE_PROCESS,
@@ -81,6 +84,52 @@ const NULL_DEVICE: &str = "NUL";
 const KILLED_EXIT_CODE: u32 = 1;
 /// 子に渡すハンドルの数（標準入力、標準出力、標準エラー）
 const STD_HANDLE_COUNT: usize = 3;
+
+/// 子のプロセスとスレッドの DACL（SDDL）。SYSTEM と管理者だけに全権、持ち主の権利は読むだけ。親は作成時のハンドルを持つので困らない
+const CHILD_SDDL: &str = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;RC;;;OW)";
+/// `SDDL_REVISION_1`
+const SDDL_REVISION: u32 = 1;
+
+/// `CreateProcess*` に渡す、子のプロセスとスレッドのセキュリティ記述子。捨てると解放する
+struct ChildSecurity {
+    descriptor: PSECURITY_DESCRIPTOR,
+    attributes: SECURITY_ATTRIBUTES,
+}
+
+impl ChildSecurity {
+    fn new() -> io::Result<ChildSecurity> {
+        let sddl = wide_nul(OsStr::new(CHILD_SDDL))?;
+        let mut descriptor: PSECURITY_DESCRIPTOR = ptr::null_mut();
+        // SAFETY: NUL で終わる文字列と、書き込める出力先
+        check(unsafe {
+            ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                sddl.as_ptr(),
+                SDDL_REVISION,
+                &mut descriptor,
+                ptr::null_mut(),
+            )
+        })?;
+        Ok(ChildSecurity {
+            descriptor,
+            attributes: SECURITY_ATTRIBUTES {
+                nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
+                lpSecurityDescriptor: descriptor,
+                bInheritHandle: 0,
+            },
+        })
+    }
+
+    fn as_ptr(&self) -> *const SECURITY_ATTRIBUTES {
+        &self.attributes
+    }
+}
+
+impl Drop for ChildSecurity {
+    fn drop(&mut self) {
+        // SAFETY: `ConvertStringSecurityDescriptorToSecurityDescriptorW` が確保したものを 1 回だけ解放する
+        unsafe { LocalFree(self.descriptor) };
+    }
+}
 
 /// 起動した子。Job を閉じると（捨てると）中の子も終わる
 pub(super) struct Proc {
@@ -163,6 +212,7 @@ pub(super) fn spawn(
 
     let flags = CREATE_NO_WINDOW | CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT;
     let cwd_ptr = cwd.as_ref().map_or(ptr::null(), |c| c.as_ptr());
+    let security = ChildSecurity::new()?;
     // SAFETY: すべて 0 の値は、この構造体として正しい（成功したら OS が埋める）
     let mut info: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
     // SAFETY: 文字列は NUL で終わり、この呼び出しの間生きている。`command_line` は書き換えてよい配列。
@@ -173,8 +223,8 @@ pub(super) fn spawn(
                 raw(token),
                 app.as_ptr(),
                 command_line.as_mut_ptr(),
-                ptr::null(),
-                ptr::null(),
+                security.as_ptr(),
+                security.as_ptr(),
                 1,
                 flags,
                 ptr::null(),
@@ -185,8 +235,8 @@ pub(super) fn spawn(
             None => CreateProcessW(
                 app.as_ptr(),
                 command_line.as_mut_ptr(),
-                ptr::null(),
-                ptr::null(),
+                security.as_ptr(),
+                security.as_ptr(),
                 1,
                 flags,
                 ptr::null(),
@@ -326,8 +376,9 @@ fn low_integrity_token() -> io::Result<OwnedHandle> {
 /// （OS は、一覧を捨てるまで値を読む）。捨てると破棄する
 struct AttrList {
     // `Vec` と `Box` の中身は動かないので、値ごと動かしてよい
-    buf: Vec<usize>,
-    /// `buf` の先頭。作るときに可変の借用から一度だけ取る（共有の参照から可変のポインタを作らない）
+    /// 一覧の領域。`list` が指す（読まない。持って生かしておくだけ）
+    _buf: Vec<usize>,
+    /// `_buf` の先頭。作るときに可変の借用から一度だけ取る（共有の参照から可変のポインタを作らない）
     list: *mut core::ffi::c_void,
     handles: Box<[HANDLE; STD_HANDLE_COUNT]>,
     /// 段 2 のときだけ。中の SID は呼び出し側の `AppContainerSid` が持ち、この一覧より長く生きる
@@ -352,7 +403,7 @@ impl AttrList {
         check(unsafe { InitializeProcThreadAttributeList(list_ptr, count, 0, &mut size) })?;
         // 初期化に成功したので、ここから先の失敗では `Drop` が一覧を破棄する
         let list = AttrList {
-            buf,
+            _buf: buf,
             list: list_ptr,
             handles: Box::new(handles),
             capabilities: container.map(|sid| {
