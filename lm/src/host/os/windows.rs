@@ -326,8 +326,8 @@ fn low_integrity_token() -> io::Result<OwnedHandle> {
 /// （OS は、一覧を捨てるまで値を読む）。捨てると破棄する
 struct AttrList {
     // `Vec` と `Box` の中身は動かないので、値ごと動かしてよい
-    buf: Vec<usize>,
-    /// `buf` の先頭。作るときに可変の借用から一度だけ取る（共有の参照から可変のポインタを作らない）
+    _buf: Vec<usize>,
+    /// `_buf` の先頭。作るときに可変の借用から一度だけ取る（共有の参照から可変のポインタを作らない）
     list: *mut core::ffi::c_void,
     handles: Box<[HANDLE; STD_HANDLE_COUNT]>,
     /// 段 2 のときだけ。中の SID は呼び出し側の `AppContainerSid` が持ち、この一覧より長く生きる
@@ -352,7 +352,7 @@ impl AttrList {
         check(unsafe { InitializeProcThreadAttributeList(list_ptr, count, 0, &mut size) })?;
         // 初期化に成功したので、ここから先の失敗では `Drop` が一覧を破棄する
         let list = AttrList {
-            buf,
+            _buf: buf,
             list: list_ptr,
             handles: Box::new(handles),
             capabilities: container.map(|sid| {
