@@ -23,10 +23,10 @@ pub use ikari_resource::fetch_report::TRANSFER_PROFILE_NAME;
 
 /// 子に渡す環境変数（ADR 0076 §3.4）。プロキシの変数と、OS が動くのに要るものだけ。ほかは消す。
 /// Windows の環境変数の名前は大文字と小文字を区別しないので、比べるときは大文字にそろえる。
-/// `LOCALAPPDATA` と `USERPROFILE` は、AppContainer の子を起こすときに OS が要る見込み（CI の windows ジョブで、
-/// これらの無い環境では起動が `ERROR_ENVVAR_NOT_FOUND`（203）で失敗し、親の環境を受け継ぐ LM の子は起きた。どの変数が
-/// 要るかは `ikari-sandbox` の `which_environment_an_appcontainer_child_needs` で確かめる。ADR 0078 §3.2）。どちらも
-/// 場所の名前だけで、AppContainer の子はその場所を読めない
+/// `LOCALAPPDATA` は、AppContainer の子を起こすときに OS が要る（VM の実測、ADR 0078 §11: `SystemRoot` だけ、または
+/// `SystemRoot` と `USERPROFILE` だけでは起動が `ERROR_ENVVAR_NOT_FOUND`（203）で失敗し、`LOCALAPPDATA` を足すと起きる。
+/// `ikari-sandbox` の `which_environment_an_appcontainer_child_needs`）。場所の名前だけで、AppContainer の子は
+/// その場所を読めない。`USERPROFILE` は要らないので渡さない
 const PASS_ENV: &[&str] = &[
     "ALL_PROXY",
     "HTTPS_PROXY",
@@ -36,7 +36,6 @@ const PASS_ENV: &[&str] = &[
     "TEMP",
     "TMP",
     "LOCALAPPDATA",
-    "USERPROFILE",
 ];
 
 /// 整合性のレベル（`SECURITY_MANDATORY_*_RID`）。低は 0x1000、中は 0x2000
@@ -182,7 +181,6 @@ mod tests {
                 "No_Proxy",
                 "SystemRoot",
                 "TEMP",
-                "USERPROFILE",
                 "LocalAppData"
             ]
         );

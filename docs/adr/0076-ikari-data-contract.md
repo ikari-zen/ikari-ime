@@ -74,7 +74,7 @@
 - 設定アプリ（Swift）は、`shell-ffi` の関数を通して `ikari-data` を起動する。起動のコード（引数の組み立て）は Rust。Swift は関数を呼ぶだけ。
 
 ### 3.4 環境変数
-- Windows の `ikari-data` が `transfer` に渡す環境は、プロキシの変数（`ALL_PROXY`、`all_proxy`、`HTTPS_PROXY`、`https_proxy`、`HTTP_PROXY`、`http_proxy`、`NO_PROXY`、`no_proxy`）と、OS が動くのに要るもの（`SystemRoot`、`TEMP`、`TMP`、`LOCALAPPDATA`、`USERPROFILE`）だけ。ほかは消す。`LOCALAPPDATA` と `USERPROFILE` は、AppContainer の子を起こすのに要る見込みで足した（2026-11-20。CI で、これらの無い環境では起動が `ERROR_ENVVAR_NOT_FOUND` で失敗した。どれが要るかは `ikari-sandbox` のテスト `which_environment_an_appcontainer_child_needs` で確かめる）。
+- Windows の `ikari-data` が `transfer` に渡す環境は、プロキシの変数（`ALL_PROXY`、`all_proxy`、`HTTPS_PROXY`、`https_proxy`、`HTTP_PROXY`、`http_proxy`、`NO_PROXY`、`no_proxy`）と、OS が動くのに要るもの（`SystemRoot`、`TEMP`、`TMP`、`LOCALAPPDATA`）だけ。ほかは消す。`LOCALAPPDATA` は、AppContainer の子を起こすのに要る（2026-11-20。CI で、この変数の無い環境では起動が `ERROR_ENVVAR_NOT_FOUND` で失敗した。VM の実測で、`LOCALAPPDATA` だけで足り、`USERPROFILE` だけでは足りないと分かった。`ikari-sandbox` のテスト `which_environment_an_appcontainer_child_needs`。ADR 0078 §11）。
 - 通信の設定で環境変数から読むのは、プロキシだけ。これは R5（製品は環境変数で挙動を変えない）の、文書に書いた例外（0071 §3.4）。`ureq` の既定に任せず、`ikari-data` のコードで `Proxy::try_from_env()` を明示して渡す（読む変数を 1 か所で見えるようにするため）。
 - **Windows の OS のプロキシの登録値（設定アプリの「プロキシ」、レジストリ）は読まない**（`win-system-proxy` を入れない）。プロキシの下の利用者は、環境変数を設定する。この限界は、README と設定画面の取得のところに書く（ユーザー決定。§15）。
 - `ikari-data` 自身は、プロキシのほかに、環境変数で挙動を変えない（R5）。

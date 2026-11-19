@@ -890,7 +890,7 @@ fn an_appcontainer_child_writes_to_the_inherited_handle_and_runs_in_the_job() {
 }
 
 /// AppContainer の子に渡す、親の環境の変数（`ikari-data` の `child::PASS_ENV` の、OS の分と同じ）
-const APPCONTAINER_ENV: &[&str] = &["SystemRoot", "TEMP", "TMP", "LOCALAPPDATA", "USERPROFILE"];
+const APPCONTAINER_ENV: &[&str] = &["SystemRoot", "TEMP", "TMP", "LOCALAPPDATA"];
 
 /// 親の環境から `names` の変数だけを選び、テストの変数を足した環境
 fn env_with(names: &[&str], extra: &[(&str, &str)]) -> Vec<u16> {
@@ -949,6 +949,12 @@ fn which_environment_an_appcontainer_child_needs() {
     let ok = |name: &str| results.iter().any(|(n, r)| *n == name && r.is_ok());
     assert!(ok("inherit"), "親の環境でも起きない: {report}");
     assert!(ok("product"), "製品の環境で起きない: {report}");
+    // VM の実測（2026-11-20）: LOCALAPPDATA だけで足りる。USERPROFILE だけでは足りない
+    assert!(ok("+localappdata"), "LOCALAPPDATA を足しても起きない: {report}");
+    assert!(
+        !ok("+userprofile"),
+        "USERPROFILE だけで起きた（LOCALAPPDATA は要らなくなった？ 製品の環境を見直す）: {report}"
+    );
     drop(container);
     crate::appcontainer::delete_profile(&ENV_TEST_PROFILE).unwrap();
 }
