@@ -30,8 +30,7 @@ pub use error::LmError;
 pub use placement::GPU_ENV;
 pub use placement::{GpuState, devices, gpu_state, log_note};
 pub use profile::{
-    DEFAULT_LIMITS, LmLimits, MODEL_PROFILES, ModelProfile, PromptFormat, ZENZ_V3_2_SMALL,
-    profile_by_id,
+    DEFAULT_LIMITS, LmLimits, ModelProfile, PromptFormat, ZENZ_V3_2_SMALL, profile_by_id,
 };
 pub use prompt::{PromptInput, build_prompt, build_prompt_for, tail_chars};
 pub use ranker::{LmStats, LmTimings, ZenzRanker};

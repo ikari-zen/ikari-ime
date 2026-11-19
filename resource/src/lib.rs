@@ -20,6 +20,7 @@ pub mod journal;
 pub mod manifest;
 pub mod model_list;
 pub mod models;
+pub mod profile;
 pub mod sha256;
 pub mod stage;
 pub mod verify;
@@ -37,6 +38,9 @@ pub use model_list::{
 pub use models::{
     KNOWN_MODELS, KnownModel, MODEL_PRESETS, ModelPreset, ZENZ_SMALL_FILE_NAME, ZENZ_SMALL_SHA256,
     ZENZ_SMALL_SIZE, ZENZ_SMALL_URL, preset_by_id,
+};
+pub use profile::{
+    DEFAULT_LIMITS, LmLimits, ModelProfile, PromptFormat, ZENZ_V3_2_SMALL_PROFILE, profile_by_id,
 };
 pub use sha256::{sha256_file, sha256_reader};
 pub use stage::{

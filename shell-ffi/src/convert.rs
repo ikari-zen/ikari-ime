@@ -11,6 +11,7 @@ use std::collections::BTreeMap;
 
 use ikari_proto::shell::v1 as pb;
 use ikari_shell_core::panel::{AnchorSource, PanelSide};
+use ikari_shell_core::panel_limits::limit_for_display;
 use ikari_shell_core::panel_pb::{PanelConvertError, side_from_pb as core_side_from_pb};
 pub use ikari_shell_core::panel_pb::{
     panel_from_pb, panel_to_pb, rect_from_pb, rect_to_pb, side_to_pb,
@@ -534,8 +535,12 @@ fn action_to_pb(action: &ShellAction) -> pb::ShellAction {
         ShellAction::Consume => Action::Consume(pb::Empty {}),
         ShellAction::SetMarkedText(marked) => Action::SetMarkedText(marked_to_pb(marked)),
         ShellAction::Commit { text } => Action::Commit(pb::Commit { text: text.clone() }),
-        ShellAction::ShowCandidates(panel) => Action::ShowCandidates(panel_to_pb(panel)),
-        ShellAction::MoveSelection(panel) => Action::MoveSelection(panel_to_pb(panel)),
+        ShellAction::ShowCandidates(panel) => {
+            Action::ShowCandidates(panel_to_pb(&limit_for_display(panel.clone())))
+        }
+        ShellAction::MoveSelection(panel) => {
+            Action::MoveSelection(panel_to_pb(&limit_for_display(panel.clone())))
+        }
         ShellAction::HideCandidates => Action::HideCandidates(pb::Empty {}),
         ShellAction::Restore { text, replacing } => Action::Restore(pb::Restore {
             text: text.clone(),
@@ -976,6 +981,36 @@ mod tests {
         let bytes = encode_actions(&actions);
         assert_eq!(decode_actions(&bytes).unwrap(), actions);
         assert_eq!(decode_actions(&encode_actions(&[])).unwrap(), Vec::new());
+    }
+
+    #[test]
+    fn candidate_panel_sent_to_swift_is_limited() {
+        use ikari_shell_core::panel_limits::{MAX_CANDIDATE_ROWS, MAX_TEXT_CHARS};
+        let item = CandidateItem {
+            surface: "あ".repeat(MAX_TEXT_CHARS * 2),
+            annotation: String::new(),
+            kind: CandidateKind::Dictionary,
+            label: String::new(),
+        };
+        let panel = CandidatePanelModel {
+            developer_note: String::new(),
+            candidates: vec![item; MAX_CANDIDATE_ROWS * 2],
+            selected: 0,
+            annotation: String::new(),
+            reserved_rows: 9,
+        };
+        for action in [
+            ShellAction::ShowCandidates(panel.clone()),
+            ShellAction::MoveSelection(panel),
+        ] {
+            let decoded = decode_actions(&encode_actions(&[action])).unwrap();
+            let (ShellAction::ShowCandidates(p) | ShellAction::MoveSelection(p)) = &decoded[0]
+            else {
+                panic!("unexpected action");
+            };
+            assert_eq!(p.candidates.len(), MAX_CANDIDATE_ROWS);
+            assert_eq!(p.candidates[0].surface.chars().count(), MAX_TEXT_CHARS);
+        }
     }
 
     #[test]
