@@ -20,7 +20,7 @@ windows-sys = { workspace = true, features = [
     "Win32_Security",
     # GetNamedSecurityInfoW、ConvertSidToStringSidW
     "Win32_Security_Authorization",
-    # DeleteAppContainerProfile（LM の子の檻のプロファイル。削除のとき）
+    # DeleteAppContainerProfile（LM の子と取得の子の檻のプロファイル。削除のとき）
     "Win32_Security_Isolation",
     # ファイルの属性（リンクの検出）
     "Win32_Storage_FileSystem",
@@ -38,5 +38,6 @@ windows-sys = { workspace = true, features = [
 
 [dev-dependencies]
 tempfile.workspace = true
-# プロファイルの名前が LM の側と同じかを照らすだけ（llama.cpp は入らない）
+# プロファイルの名前が LM の側・取得の子の側と同じかを照らすだけ（llama.cpp は入らない。通信の部品も入らない）
 ikari-lm.workspace = true
+ikari-resource.workspace = true

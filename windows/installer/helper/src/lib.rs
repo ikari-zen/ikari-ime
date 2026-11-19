@@ -40,13 +40,19 @@ pub enum Command {
     WerExclude(Vec<String>),
     /// `wer-include <exe の名前>...`: 外したのを戻す（削除のとき）
     WerInclude(Vec<String>),
-    /// `cage-profile-delete`: LM の子の檻の段 2（AppContainer）のプロファイルを消す（削除のとき。ADR 0072 §12.8）。
-    /// プロファイルは利用者ごとにあり、消えるのは、この道具を動かした利用者のものだけ
+    /// `cage-profile-delete`: 子の AppContainer のプロファイル（LM の子の檻の段 2 と、取得の子。[`CAGE_PROFILES`]）を
+    /// 消す（削除のとき。ADR 0072 §12.8、ADR 0078 §3.2 の 1）。プロファイルは利用者ごとにあり、消えるのは、この道具を
+    /// 動かした利用者のものだけ
     CageProfileDelete,
 }
 
 /// LM の子の AppContainer のプロファイルの名前（`ikari_lm::host::CAGE_PROFILE_NAME` と同じ。テストで照らす）
 pub const LM_CAGE_PROFILE: &str = "io.github.ikari-zen.lm-host";
+/// 取得の子（`ikari-data transfer`）の AppContainer のプロファイルの名前
+/// （`ikari_resource::fetch_report::TRANSFER_PROFILE_NAME` と同じ。テストで照らす）
+pub const DATA_TRANSFER_CAGE_PROFILE: &str = "io.github.ikari-zen.data-transfer";
+/// `cage-profile-delete` が消すプロファイル
+pub const CAGE_PROFILES: [&str; 2] = [LM_CAGE_PROFILE, DATA_TRANSFER_CAGE_PROFILE];
 
 pub const USAGE: &str = "usage: ikari-setup-helper (check-dir <dir> | stop <dir> | wer-exclude <exe>... | wer-include <exe>... | cage-profile-delete)";
 
@@ -115,8 +121,13 @@ mod tests {
     }
 
     #[test]
-    fn the_cage_profile_name_is_the_lm_one() {
+    fn the_cage_profile_names_are_the_ones_the_children_use() {
         assert_eq!(LM_CAGE_PROFILE, ikari_lm::host::CAGE_PROFILE_NAME);
+        assert_eq!(
+            DATA_TRANSFER_CAGE_PROFILE,
+            ikari_resource::fetch_report::TRANSFER_PROFILE_NAME
+        );
+        assert_ne!(LM_CAGE_PROFILE, DATA_TRANSFER_CAGE_PROFILE);
     }
 
     #[test]

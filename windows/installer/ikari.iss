@@ -447,7 +447,7 @@ procedure DeleteCageProfile;
 var
   Code: Integer;
 begin
-  { LM の子の檻（AppContainer）のプロファイルを消す（削除を動かした利用者の分だけ。ADR 0072 §12.5）。失敗しても削除は続ける }
+  { LM の子と取得の子の檻（AppContainer）のプロファイルを消す（削除を動かした利用者の分だけ。ADR 0072 §12.5、ADR 0078 §3.2）。失敗しても削除は続ける }
   RunTrusted(AppHelper, 'cage-profile-delete', Code);
 end;
 

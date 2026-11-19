@@ -800,6 +800,7 @@ version = "0.1.0"
 dependencies = [
  "ikari-lm",
  "ikari-pipe",
+ "ikari-resource",
  "tempfile",
  "windows-sys",
 ]

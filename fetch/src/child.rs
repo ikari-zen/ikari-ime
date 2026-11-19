@@ -17,9 +17,9 @@ pub const OUT_HANDLE_FLAG: &str = "--out-handle";
 /// どの檻で起こしたかを子に知らせる引数（ADR 0078 §3.2 の 4。子の自己確認）。`spawn_windows` が足す
 pub const BOX_FLAG: &str = "--box";
 
-/// 取得の子（`transfer`）だけの AppContainer のプロファイルの名前（ADR 0078 §3.2 の 1。LM の子と分ける。利用者ごとに
-/// 1 つ。インストーラの helper も同じ名前で消す）
-pub const TRANSFER_PROFILE_NAME: &str = "io.github.ikari-zen.data-transfer";
+/// 取得の子（`transfer`）だけの AppContainer のプロファイルの名前（契約は `resource::fetch_report`。インストーラの
+/// helper も同じ名前で消す）
+pub use ikari_resource::fetch_report::TRANSFER_PROFILE_NAME;
 
 /// 子に渡す環境変数（ADR 0076 §3.4）。プロキシの変数と、OS が動くのに要るものだけ。ほかは消す。
 /// Windows の環境変数の名前は大文字と小文字を区別しないので、比べるときは大文字にそろえる。

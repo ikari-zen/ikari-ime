@@ -96,6 +96,10 @@ impl FetchErrorCode {
     }
 }
 
+/// 取得の子（Windows の `transfer`）だけの AppContainer のプロファイルの名前（ADR 0078 §3.2 の 1。LM の子と分ける。
+/// 利用者ごとに 1 つ）。`ikari-data` が作り、インストーラの helper が削除のときに消す（両方がここを見る）
+pub const TRANSFER_PROFILE_NAME: &str = "io.github.ikari-zen.data-transfer";
+
 /// 取得の子（Windows の `transfer`）を起こした檻（ADR 0078 §3.2）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChildBox {
