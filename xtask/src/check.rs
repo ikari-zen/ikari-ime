@@ -134,6 +134,7 @@ fn steps(root: &Path, plan: &Plan) -> Result<(), Failure> {
     product::lm_spawn_single(root)?;
     product::mac_direct_spawn_closed(root)?;
     product::net_call_single(root)?;
+    product::fetch_child_has_no_place(root)?;
     installer::lint(root)?;
     docs::shell_syntax(root)?;
     docs::powershell_syntax(root)?;
