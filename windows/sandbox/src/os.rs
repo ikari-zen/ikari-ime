@@ -7,12 +7,15 @@ use std::os::windows::io::{AsHandle, AsRawHandle, BorrowedHandle, FromRawHandle,
 use std::path::Path;
 use std::ptr;
 
-use windows_sys::Win32::Foundation::{HANDLE, HANDLE_FLAG_INHERIT, SetHandleInformation};
+use windows_sys::Win32::Foundation::{
+    HANDLE, HANDLE_FLAG_INHERIT, LocalFree, SetHandleInformation,
+};
+use windows_sys::Win32::Security::Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW;
 use windows_sys::Win32::Security::{
-    CreateWellKnownSid, DuplicateTokenEx, SECURITY_MAX_SID_SIZE, SID_AND_ATTRIBUTES,
-    SecurityImpersonation, SetTokenInformation, TOKEN_ADJUST_DEFAULT, TOKEN_ASSIGN_PRIMARY,
-    TOKEN_DUPLICATE, TOKEN_MANDATORY_LABEL, TOKEN_QUERY, TokenIntegrityLevel, TokenPrimary,
-    WinLowLabelSid,
+    CreateWellKnownSid, DuplicateTokenEx, PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES,
+    SECURITY_MAX_SID_SIZE, SID_AND_ATTRIBUTES, SecurityImpersonation, SetTokenInformation,
+    TOKEN_ADJUST_DEFAULT, TOKEN_ASSIGN_PRIMARY, TOKEN_DUPLICATE, TOKEN_MANDATORY_LABEL,
+    TOKEN_QUERY, TokenIntegrityLevel, TokenPrimary, WinLowLabelSid,
 };
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, IsProcessInJob, JOB_OBJECT_LIMIT_ACTIVE_PROCESS,
@@ -47,6 +50,52 @@ const UI_RESTRICTIONS: u32 = JOB_OBJECT_UILIMIT_HANDLES
 const SE_GROUP_INTEGRITY: u32 = 0x0000_0020;
 /// 止めた子の終了コード
 const KILLED_EXIT_CODE: u32 = 1;
+
+/// 子のプロセスとスレッドの DACL（SDDL）。SYSTEM と管理者だけに全権、持ち主の権利は読むだけ。親は作成時のハンドルを持つので困らない
+const CHILD_SDDL: &str = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;RC;;;OW)";
+/// `SDDL_REVISION_1`
+const SDDL_REVISION: u32 = 1;
+
+/// `CreateProcess*` に渡す、子のプロセスとスレッドのセキュリティ記述子。捨てると解放する
+struct ChildSecurity {
+    descriptor: PSECURITY_DESCRIPTOR,
+    attributes: SECURITY_ATTRIBUTES,
+}
+
+impl ChildSecurity {
+    fn new() -> io::Result<ChildSecurity> {
+        let sddl = wide_nul(OsStr::new(CHILD_SDDL))?;
+        let mut descriptor: PSECURITY_DESCRIPTOR = ptr::null_mut();
+        // SAFETY: NUL で終わる文字列と、書き込める出力先
+        check(unsafe {
+            ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                sddl.as_ptr(),
+                SDDL_REVISION,
+                &mut descriptor,
+                ptr::null_mut(),
+            )
+        })?;
+        Ok(ChildSecurity {
+            descriptor,
+            attributes: SECURITY_ATTRIBUTES {
+                nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
+                lpSecurityDescriptor: descriptor,
+                bInheritHandle: 0,
+            },
+        })
+    }
+
+    fn as_ptr(&self) -> *const SECURITY_ATTRIBUTES {
+        &self.attributes
+    }
+}
+
+impl Drop for ChildSecurity {
+    fn drop(&mut self) {
+        // SAFETY: `ConvertStringSecurityDescriptorToSecurityDescriptorW` が確保したものを 1 回だけ解放する
+        unsafe { LocalFree(self.descriptor) };
+    }
+}
 
 /// 子に渡す標準入出力。`None` は渡さない（子では null）。どれも、起動の間だけ継承できるようにする
 #[derive(Clone, Copy, Default)]
@@ -190,6 +239,7 @@ pub fn spawn(launch: &Launch<'_>) -> io::Result<Confined> {
         .as_mut()
         .map_or(ptr::null_mut(), |e| e.as_mut_ptr().cast());
     let cwd_ptr = cwd.as_ref().map_or(ptr::null(), |c| c.as_ptr());
+    let security = ChildSecurity::new()?;
     // SAFETY: すべて 0 の値は、この構造体として正しい（成功したら OS が埋める）
     let mut info: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
     // SAFETY: 文字列と環境の領域は NUL で終わり、この呼び出しの間生きている。`command_line` は書き換えてよい配列。
@@ -200,8 +250,8 @@ pub fn spawn(launch: &Launch<'_>) -> io::Result<Confined> {
                 raw(token),
                 app.as_ptr(),
                 command_line.as_mut_ptr(),
-                ptr::null(),
-                ptr::null(),
+                security.as_ptr(),
+                security.as_ptr(),
                 inherit,
                 flags,
                 env_ptr,
@@ -212,8 +262,8 @@ pub fn spawn(launch: &Launch<'_>) -> io::Result<Confined> {
             None => CreateProcessW(
                 app.as_ptr(),
                 command_line.as_mut_ptr(),
-                ptr::null(),
-                ptr::null(),
+                security.as_ptr(),
+                security.as_ptr(),
                 inherit,
                 flags,
                 env_ptr,
