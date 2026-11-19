@@ -186,6 +186,31 @@ impl LoadWatch {
     }
 }
 
+/// ブランチ名。jj の共存の形では git の HEAD が detached（`HEAD` と出る）なので、`@` の親にある bookmark（main 以外の最初のもの）を使う。
+/// 見つからなければ git の答えのまま。
+fn branch_name(root: &str, git_answer: Option<String>) -> Option<String> {
+    if git_answer.as_deref() != Some("HEAD") {
+        return git_answer;
+    }
+    let bookmarks = try_capture(
+        "jj",
+        &[
+            "--ignore-working-copy",
+            "-R",
+            root,
+            "log",
+            "--no-graph",
+            "-r",
+            "@-",
+            "-T",
+            r#"local_bookmarks.map(|b| b.name() ++ "\n").join("")"#,
+        ],
+    );
+    bookmarks
+        .and_then(|text| text.lines().find(|name| *name != "main").map(str::to_owned))
+        .or(git_answer)
+}
+
 /// 今の HEAD の SHA、`origin/main` との共通の祖先、作業ツリーに変更があるか。
 pub fn git_state() -> Value {
     let root = repo_root().to_string_lossy().into_owned();
@@ -197,7 +222,7 @@ pub fn git_state() -> Value {
     json!({
         "sha": git(&["rev-parse", "HEAD"]),
         "base_sha": git(&["merge-base", "HEAD", "origin/main"]),
-        "branch": git(&["rev-parse", "--abbrev-ref", "HEAD"]),
+        "branch": branch_name(&root, git(&["rev-parse", "--abbrev-ref", "HEAD"])),
         "dirty": git(&["status", "--porcelain"]).is_some_and(|text| !text.is_empty()),
     })
 }
