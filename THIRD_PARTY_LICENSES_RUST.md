@@ -543,8 +543,8 @@ limitations under the License.
 - flate2 1.1.11（https://github.com/rust-lang/flate2-rs）
 - itertools 0.13.0（https://github.com/rust-itertools/itertools）
 - once_cell 1.21.4（https://github.com/matklad/once_cell）
-- prost 0.14.4（https://github.com/tokio-rs/prost）
-- prost-derive 0.14.4（https://github.com/tokio-rs/prost）
+- prost 0.14.6（https://github.com/tokio-rs/prost）
+- prost-derive 0.14.6（https://github.com/tokio-rs/prost）
 - unicode-segmentation 1.13.3（https://github.com/unicode-rs/unicode-segmentation）
 
 ````text
@@ -1587,8 +1587,8 @@ DEALINGS IN THE SOFTWARE.
 ## MIT（4 個）
 
 - fst 0.4.7（https://github.com/BurntSushi/fst）
-- jiff 0.2.43（https://github.com/BurntSushi/jiff）
-- jiff-core 0.1.5（https://github.com/BurntSushi/jiff）
+- jiff 0.2.46（https://github.com/BurntSushi/jiff）
+- jiff-core 0.1.8（https://github.com/BurntSushi/jiff）
 - memchr 2.8.3（https://github.com/BurntSushi/memchr）
 
 ````text
