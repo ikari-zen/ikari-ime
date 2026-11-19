@@ -44,6 +44,7 @@ test = false
 
 [dependencies]
 ikari-core.workspace = true
+ikari-resource.workspace = true
 llama-cpp-2 = { workspace = true, optional = true }
 
 # 子の stdin のパイプに SIGPIPE を出させない設定（`src/host/os.rs` だけが使う）
