@@ -500,6 +500,7 @@ fn transfer_runs_inside_both_jobs() {
 
 /// すぐ終わる子の終了コード
 const QUICK_EXIT_CODE: u32 = 7;
+const EXIT_TEST: &str = "os::tests::probe_exit";
 /// 長く動く子を止められなかったときに、勝手に終わるまでの回数（`ping -n`。止められれば使わない）
 const LONG_PING_COUNT: &str = "30";
 
@@ -509,16 +510,22 @@ fn system32(exe: &str) -> std::path::PathBuf {
 }
 
 fn spawn_quick(integrity: Integrity) -> Confined {
-    let args = [OsString::from("/c"), OsString::from("exit 7")];
     spawn(&Launch {
-        program: &system32("cmd.exe"),
-        args: &args,
+        program: &std::env::current_exe().unwrap(),
+        args: &probe_args(EXIT_TEST),
         environment: None,
         integrity,
         job: JobLimits { max_processes: 1 },
         stdio: Stdio::default(),
     })
     .unwrap()
+}
+
+/// 子として起動されたときだけ、決めた終了コードで終わる（cmd.exe は引用符つきの引数を読めないので使わない）
+#[test]
+#[ignore = "ほかのテストが子として起動するときだけ動かす"]
+fn probe_exit() {
+    std::process::exit(QUICK_EXIT_CODE as i32);
 }
 
 fn spawn_long(integrity: Integrity) -> Confined {
