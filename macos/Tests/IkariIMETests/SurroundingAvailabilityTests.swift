@@ -68,3 +68,25 @@ import Testing
         #expect(text?.right == "う")
     }
 }
+
+@Suite struct ClientValueDefenseTests {
+    @Test func aRangeWhoseEndOverflowsIsNotTrusted() {
+        #expect(ClientAccess.end(of: NSRange(location: Int.max, length: 1)) == nil)
+        #expect(ClientAccess.end(of: NSRange(location: 1, length: Int.max)) == nil)
+        #expect(ClientAccess.end(of: NSRange(location: -1, length: 1)) == nil)
+        #expect(ClientAccess.end(of: NSRange(location: 3, length: 4)) == 7)
+    }
+
+    @Test func aHugeSelectionDoesNotCrashAndReadsNothing() {
+        let client = FakeTextClient(document: "あいう")
+        client.selected = NSRange(location: Int.max, length: 1)
+        #expect(ClientAccess(client: client).surroundingText() == nil)
+    }
+
+    @Test func textsLongerThanTheLimitAreCut() {
+        let long = String(repeating: "あ", count: 5000)
+        #expect(ClientAccess.suffix(long, scalars: 2000).unicodeScalars.count == 2000)
+        #expect(ClientAccess.prefix(long, scalars: 200).unicodeScalars.count == 200)
+        #expect(ClientAccess.suffix("ab", scalars: 2000) == "ab")
+    }
+}
