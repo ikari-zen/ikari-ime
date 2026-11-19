@@ -1,6 +1,6 @@
 # ADR 0079: macOS の `ikari-data` を App Sandbox で動かす形（置き場所、署名、entitlement は通信と `fetch/`・`inbox/` だけ、検査、設定アプリからの起動）
 
-- 状態: 承認（2026-11-19 ユーザー決定。§10 の Q1〜Q3 はすべて推奨どおり）。スパイク (a)〜(d)（§5）はこれから
+- 状態: 承認（2026-11-19 ユーザー決定。§10 の Q1〜Q3 はすべて推奨どおり）。スパイク (a)〜(d)（§5）は 2026-11-20 に済み（§8。決定は変えない。§3.5 は既定の形に確定）
 - 日付: 2026-11-19
 - 対象: `macos/scripts/build.sh`・`lib.sh`・`templates/`（`ikari-data` のビルド、Info.plist の埋め込み、署名、`Contents/Helpers/` への配置、検査）、`fetch/`（macOS のデータの場所の決め方、親の終わりの見張り）、`shell-ffi`（設定アプリから起動する C の ABI）、`windows/settings/src/fetch.rs`・`text.rs` の OS に依存しない部分（共有の場所へ移す。§3.6）。この ADR ではコードを変えない
 - 前提: origin/main = fe5f90c。[ADR 0076](0076-ikari-data-contract.md)（取得の契約。§3.1 起動の連鎖、§3.3 macOS の権限、§13 の D-2e、§16 の実測）、[ADR 0078](0078-fetch-child-handle-and-appcontainer.md) §3.4 と Q2（macOS の例外を `fetch/` と `inbox/` だけにし、別の issue にする。2026-11-19 ユーザー決定）、[ADR 0077](0077-macos-lm-cage.md)（檻役の束、署名、`verify_cage` の型）、[ADR 0005](0005-macos-settings-and-indicator.md) §6.2（設定アプリは Sandbox なし）、[ADR 0069](0069-distribution-authenticity.md) §6（ad-hoc の配布）、[ADR 0070](0070-update-and-vulnerability-response.md) §5、#489、#99
@@ -125,7 +125,7 @@ void    ikari_settings_fetch_free(IkariSettingsFetch *fetch);
 6. 通信: 2 の exe で、0076 §16 と同じ公開の小さなファイル（https）を取れることを 1 回だけ見る（`network.client` と一時例外を一緒に付けても通信が通ること）。
 7. 片づけ: `ikari-ime-spike/` とコンテナ（`~/Library/Containers/…ikari.data.spike`）を消す。
 
-**結果で変わるもの**: (a) が通らなければ §3.5 の代わりの案にする。(b) で `HOME` が本当のホームのままでも §3.4 は変えない（R5 のため）。(c) で team だけ違えば、その違いをこの ADR に書き、レーンを止めてリードに返す。(d) で Helpers の中だけ違えば同じ。
+**結果で変わるもの**（2026-11-20 に閉じた。§8）: (a) は通ったので、§3.5 は既定の形（`ikari-data` が作る）に確定した。代わりの案は記録として残すだけ。(b) は `HOME` がコンテナだったので §3.4 のとおり。(c) は team も同じだった。(d) は置き場所で違いが無かった。
 
 ## 6. 推測（確かめていない）
 - 一時例外のパスに書いたディレクトリそのもの（`fetch/`）を、Sandbox の中から新しく作れる（例外は下の全部に効き、作る操作は作る先のパスで見られると考えている）。→ スパイク (a)。
@@ -145,8 +145,19 @@ void    ikari_settings_fetch_free(IkariSettingsFetch *fetch);
 5. **実機の確認**（#489 の完了の条件。smoke なし）: ビルドした束の `Contents/Helpers/ikari-data` を、Terminal から `model fetch` のプリセットで 1 回流し、`inbox/<名前>/` ができることと、`fetch/` が片づくことを見る。これは**ユーザーのデータの場所に束を置く**ので、流す前にユーザーに了解を取る（エンジンが取り込み、`models/` に入る。使うモデルは変えない。0060 §2）。
 - 設定アプリの画面（ボタン、確認の窓、進み具合）は、この issue に入れない（§10 の Q1）。
 
-## 8. スパイクの結果
-（スパイクのあとに書く）
+## 8. スパイクの結果（2026-11-20。macOS 27.2.1、arm64。PR #501 の `spike/macos-ikari-data-489/`）
+
+ad-hoc と Apple Development（team）の両方で流し、結果は同じだった（ただし同じ識別子で方式を切り替えた場合を除く。下の 7）。
+
+1. **(a) 作成: 通った。** `ikari-ime-spike/` だけがある状態から、`fetch/` の作成、`.lock` の作成と flock、`download.bin` の書き込み、`inbox/` の作成、`inbox/x.partial/` の作成と書き込み、rename、`statvfs` がすべて通った。親が先に `fetch/`・`inbox/` を作った形でも通る（`mkdir` は EEXIST）。例外の外（`ikari-ime-spike/other` の mkdir、根の直下のファイルの書き込み、根の open、ホームの直下の mkdir）はすべて EPERM（絞りが効いている）。→ §3.5 は既定の形に確定。
+2. **(a) 根の扱い:** `lstat(根)` は通る（根があり、ディレクトリで、リンクでないことは確かめられる）。`open(根, O_RDONLY)`（根の一覧）は EPERM。根の `mkdir` は、根があれば EEXIST（EPERM ではない）、根が無ければ EPERM で、続く `fetch/` の作成は ENOENT。→ §3.5 に注意を足した。
+3. **(b) ホーム:** Sandbox の中の `HOME` はコンテナ（`~/Library/Containers/<識別子>/Data`）。`pw_dir` は本当のホーム。環境変数を空にして起こしても（`env -i`）、`HOME` はコンテナになる（Sandbox の初期化が設定する）。→ §3.4 のとおり。§3.6 の「`HOME` を渡さない」でも動く。
+4. **(b) 隔離の印:** Sandbox の exe が作ったファイルとディレクトリ（`inbox/`、`inbox/x/` を含む）に `com.apple.quarantine` と `com.apple.provenance` が付く。エンジンの取り込みが印に左右されないかは見ていない（§6 の推測のまま。§7 の 5 で見る）。
+5. **(c) team 署名:** 例外のパスの効き方を含め、ad-hoc と同じ。
+6. **(d) 置き場所:** Info.plist を `-sectcreate` で埋めてあれば、`Spike.app/Contents/Helpers/` でもその外でも、Terminal からでも束の中の Sandbox なしの exe の `posix_spawn` からでも、同じに動く。埋めなければどこでも exit 133（SIGTRAP。0076 §16 と同じ）。外側の束の `codesign --verify --deep --strict` が通り、`CodeResources` に Helpers の exe の名前がある（§3.7 の 7 の検査は変えなくてよい）。`/Library/Input Methods` の下は見ていない（#241）。
+7. **想定外: 同じ識別子のまま署名の方式（ad-hoc と team）を切り替えると、既にあるコンテナで Sandbox の初期化が止まり、起動が返らない。** 逆向きも同じで、止まったあとは元の方式に戻しても動かなかった。識別子を替えれば動く。原因は確かめていない。→ §9 の限界と #502。
+8. **通信:** `network.client` と一時例外を一緒に付けて、`connect(:443)` が通り、子の `curl` の HEAD が 200 を返した。`ikari-data` が使う ureq（`NativeTls` と証明書の確かめ）の通信そのものは見ていない（§7 の 5 で見る）。
+9. **片づけ:** スパイクのコンテナ（`~/Library/Containers/` の下）は、`rm -rf` が `Operation not permitted` で消せなかった（データの場所の側の `ikari-ime-spike/` は消した）。→ §5 の手順 7 に足した。
 
 ## 9. 結果
 - 得るもの: macOS で通信できるのは `ikari-data` 1 つになり、その場所は `fetch/` と `inbox/` だけ、ということを、署名の検査で毎回言える。Windows と macOS の取得の核（行の読み、取り消し、文）が 1 つになる。
