@@ -153,7 +153,8 @@ ikari.app（殻。Sandbox なし）
    - **確認済み（2026-11-19）**: 入れ替えたあとの最初の smoke で、hello は `lm=loading` から始まり、`lm-ready` が通った。`ikari-lm-host` の起動から ready まで約 5 秒（ps での概算。厳密な計測ではない。smoke の上限は 30 秒）。
 4. （了承が要る）`ikari-lm-host` を止める → エンジンは生き残り、次の要求で起動し直す。檻役を止める → 同じく戻る。
    - **一部（2026-11-19）**: `ikari-lm-host` を `kill -9` で 2 回止めたが、IkariEngine は同じ pid で生き残った。
-   - **未確認**: 止めたあとに「次の要求で `ikari-lm-host` が起動し直す」こと。檻役を止めた場合。ユーザーの手順（了承のうえ）: ikari を選んで候補が出るのを確かめ、`pkill -9 -f 'IkariLMCage.xpc.*ikari-lm-host'` のあとすぐ変換する。数秒後に ps で host が再び現れ、IkariEngine の pid が変わらず、候補の並びが LM つきに戻ることを見る。檻役は `pkill -9 -x ikari-lm-cage` で同様に確かめる。
+   - **確認済み（2026-11-20。ユーザーの了承のうえ、実機）**: `ikari-lm-host` を `pkill -9` で止めると、IkariEngine は同じ pid で生き残り、次の変換の要求で約 5 秒後に host が起動し直した。続けて檻役 `ikari-lm-cage` を `pkill -9 -x` で止めても、IkariEngine は生き残り、次の変換の要求で約 4 秒後に檻役と host が起動し直した。どちらもユーザーが TextEdit で変換でき、候補の並びは LM つきに戻っていた（目視）。
+   - 手順の記録（参考）: ユーザーの手順（了承のうえ）: ikari を選んで候補が出るのを確かめ、`pkill -9 -f 'IkariLMCage.xpc.*ikari-lm-host'` のあとすぐ変換する。数秒後に ps で host が再び現れ、IkariEngine の pid が変わらず、候補の並びが LM つきに戻ることを見る。檻役は `pkill -9 -x ikari-lm-cage` で同様に確かめる。
 5. 殻の入れ替え（再インストール）、スリープからの復帰のあとに LM が戻る。**配布の前に必ず確かめる**（2026-11-17 決定）。
    - **一部（2026-11-19）**: 再インストールの直後の smoke が、LM つきで通った。
    - **未確認**: スリープからの復帰。ユーザーの手順: 蓋を閉じて復帰したあと、ps で host の有無を見て、変換して LM が効くかを見る。
