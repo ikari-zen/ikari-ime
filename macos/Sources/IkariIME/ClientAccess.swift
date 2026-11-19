@@ -27,24 +27,42 @@ struct ClientAccess: @unchecked Sendable {
         let marked = client.markedRange()
         let hasMarked = marked.location != NSNotFound && marked.length > 0
         let leftEnd = hasMarked ? marked.location : selected.location
-        let rightStart = hasMarked ? marked.location + marked.length : selected.location + selected.length
+        // クライアントが返す値は信じない（足し算の桁あふれで落とさない）
+        guard let rightStart = Self.end(of: hasMarked ? marked : selected) else { return nil }
 
         var text = Ikari_Shell_V1_SurroundingText()
         if leftEnd > 0 {
             let start = max(0, leftEnd - Self.leftContextLimit)
             guard let left = string(NSRange(location: start, length: leftEnd - start)) else { return nil }
-            text.left = left
+            text.left = Self.suffix(left, scalars: Self.leftContextLimit)
         }
         let total = client.length()
         if total > rightStart {
             let length = min(Self.rightContextLimit, total - rightStart)
-            text.right = string(NSRange(location: rightStart, length: length)) ?? ""
+            text.right = Self.prefix(
+                string(NSRange(location: rightStart, length: length)) ?? "", scalars: Self.rightContextLimit)
         }
         text.documentLength = UInt32(clamping: max(0, total))
         // キャレット（選択）の範囲。文節ごとの削除の範囲づくりに shell-core が使う（ADR 0050 §5.2）
         text.caret.location = UInt32(clamping: selected.location)
         text.caret.length = UInt32(clamping: max(0, selected.length))
         return text
+    }
+
+    /// 範囲の終わり（`location + length`）。桁あふれ、または負なら nil（クライアントの値は信じない）
+    static func end(of range: NSRange) -> Int? {
+        guard range.location >= 0, range.length >= 0 else { return nil }
+        let (sum, overflow) = range.location.addingReportingOverflow(range.length)
+        return overflow ? nil : sum
+    }
+
+    /// クライアントが上限より長い文字列を返しても、エンジンに渡すのは上限まで（Unicode のスカラー値の数）
+    static func suffix(_ text: String, scalars limit: Int) -> String {
+        String(String.UnicodeScalarView(text.unicodeScalars.suffix(limit)))
+    }
+
+    static func prefix(_ text: String, scalars limit: Int) -> String {
+        String(String.UnicodeScalarView(text.unicodeScalars.prefix(limit)))
     }
 
     private func string(_ range: NSRange) -> String? {

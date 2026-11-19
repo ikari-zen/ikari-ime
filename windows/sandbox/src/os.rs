@@ -398,7 +398,9 @@ fn low_integrity_token() -> io::Result<OwnedHandle> {
 /// （OS は、一覧を捨てるまで配列を読む）。捨てると破棄する
 struct HandleList {
     // `Vec` と `Box` の中身は動かないので、値ごと動かしてよい
-    buf: Vec<usize>,
+    _buf: Vec<usize>,
+    /// `_buf` の先頭。作るときに可変の借用から一度だけ取る（共有の参照から可変のポインタを作らない）
+    list: *mut core::ffi::c_void,
     handles: Box<[HANDLE]>,
 }
 
@@ -411,13 +413,13 @@ impl HandleList {
             return Err(io::Error::last_os_error());
         }
         let mut buf = vec![0usize; size.div_ceil(size_of::<usize>())];
+        let list_ptr: *mut core::ffi::c_void = buf.as_mut_ptr().cast();
         // SAFETY: `buf` は `size` バイト以上の、書き込める領域
-        check(unsafe {
-            InitializeProcThreadAttributeList(buf.as_mut_ptr().cast(), 1, 0, &mut size)
-        })?;
+        check(unsafe { InitializeProcThreadAttributeList(list_ptr, 1, 0, &mut size) })?;
         // 初期化に成功したので、ここから先の失敗では `Drop` が一覧を破棄する
         let list = HandleList {
-            buf,
+            _buf: buf,
+            list: list_ptr,
             handles: handles.into_boxed_slice(),
         };
         // SAFETY: 初期化した一覧に、属性を 1 つ足す。配列は `list` が持ち、一覧より長く生きる
@@ -436,7 +438,7 @@ impl HandleList {
     }
 
     fn as_ptr(&self) -> *mut core::ffi::c_void {
-        self.buf.as_ptr().cast_mut().cast()
+        self.list
     }
 }
 

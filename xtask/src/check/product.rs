@@ -55,6 +55,25 @@ pub fn crt_static(root: &Path) -> Result<(), Failure> {
     finish(problems)
 }
 
+/// C# の製品（.csproj）の一覧と、どれにも要る指定
+const CSPROJ_FILES: &[&str] = &[
+    "windows/candidate-ui/IkariCandidate.csproj",
+    "windows/settings-ui/IkariSettings.csproj",
+];
+const STARTUP_HOOK_OFF: &str = "<StartupHookSupport>false</StartupHookSupport>";
+
+/// C# の製品の csproj に、.NET の起動のフックを切る指定があること
+pub fn startup_hook_off(root: &Path) -> Result<(), Failure> {
+    log(".NET の起動のフックを切る指定（StartupHookSupport=false）");
+    let mut problems = Vec::new();
+    for file in CSPROJ_FILES {
+        if !read(root, file)?.contains(STARTUP_HOOK_OFF) {
+            problems.push(format!("{file} に {STARTUP_HOOK_OFF} がありません"));
+        }
+    }
+    finish(problems)
+}
+
 /// `dev-knobs` の付け方（依存の feature と既定の feature）が、製品のビルドに入らない形であること
 pub fn dev_knobs_wiring(root: &Path) -> Result<(), Failure> {
     log("dev-knobs が製品の依存と既定の feature に入っていないこと（ADR 0067 §6）");
@@ -420,6 +439,12 @@ mod tests {
         let bad = workflow_rustflags_without_crt_static(text);
         assert_eq!(bad.len(), 1);
         assert!(bad[0].contains("USERPROFILE") && !bad[0].contains("crt-static"));
+    }
+
+    #[test]
+    fn csproj_files_turn_startup_hooks_off() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        assert!(startup_hook_off(&root).is_ok());
     }
 
     #[test]
