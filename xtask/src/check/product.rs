@@ -15,8 +15,9 @@ const CARGO_CONFIG: &str = ".cargo/config.toml";
 const WORKFLOW_DIR: &str = ".github/workflows";
 const CRT_STATIC: &str = "target-feature=+crt-static";
 const FEATURE_NAME: &str = "dev-knobs";
-/// `dev-knobs` を依存の feature に付けてよい `Cargo.toml`（開発の道具。製品に入らない）
-const KNOB_USERS: &[&str] = &["cli/Cargo.toml", "eval/Cargo.toml"];
+/// `dev-knobs` を依存の feature に付けてよい `Cargo.toml`（開発の道具。製品に入らない）。
+/// `engine/Cargo.toml` は `[dev-dependencies]`（テストだけ。単体の `cargo test -p ikari-engine` で lm_host のテストが要る。#491）に限る
+const KNOB_USERS: &[&str] = &["cli/Cargo.toml", "eval/Cargo.toml", "engine/Cargo.toml"];
 /// 開発用の文字列を調べるソースの置き場（先頭のディレクトリ）。xtask、CLI、評価、macOS の殻は対象外
 const SOURCE_ROOTS: &[&str] = &[
     "core/",
