@@ -1,6 +1,6 @@
 # ADR 0079: macOS の `ikari-data` を App Sandbox で動かす形（置き場所、署名、entitlement は通信と `fetch/`・`inbox/` だけ、検査、設定アプリからの起動）
 
-- 状態: 承認（2026-11-19 ユーザー決定。§10 の Q1〜Q3 はすべて推奨どおり）。スパイク (a)〜(d)（§5）はこれから
+- 状態: 承認（2026-11-19 ユーザー決定。§10 の Q1〜Q3 はすべて推奨どおり）。スパイク (a)〜(d)（§5）は 2026-11-20 に済み（§8。決定は変えない。§3.5 は既定の形に確定）
 - 日付: 2026-11-19
 - 対象: `macos/scripts/build.sh`・`lib.sh`・`templates/`（`ikari-data` のビルド、Info.plist の埋め込み、署名、`Contents/Helpers/` への配置、検査）、`fetch/`（macOS のデータの場所の決め方、親の終わりの見張り）、`shell-ffi`（設定アプリから起動する C の ABI）、`windows/settings/src/fetch.rs`・`text.rs` の OS に依存しない部分（共有の場所へ移す。§3.6）。この ADR ではコードを変えない
 - 前提: origin/main = fe5f90c。[ADR 0076](0076-ikari-data-contract.md)（取得の契約。§3.1 起動の連鎖、§3.3 macOS の権限、§13 の D-2e、§16 の実測）、[ADR 0078](0078-fetch-child-handle-and-appcontainer.md) §3.4 と Q2（macOS の例外を `fetch/` と `inbox/` だけにし、別の issue にする。2026-11-19 ユーザー決定）、[ADR 0077](0077-macos-lm-cage.md)（檻役の束、署名、`verify_cage` の型）、[ADR 0005](0005-macos-settings-and-indicator.md) §6.2（設定アプリは Sandbox なし）、[ADR 0069](0069-distribution-authenticity.md) §6（ad-hoc の配布）、[ADR 0070](0070-update-and-vulnerability-response.md) §5、#489、#99
@@ -54,14 +54,15 @@
 - データの場所が利用者の指定で変わる口は、製品には無い（ADR 0067。`dev-knobs` だけ）。例外は既定の場所だけで足りる。
 
 ### 3.4 データの場所の決め方（macOS の `ikari-data`）
-- **macOS の `ikari-data` は、データの場所を `HOME` から決めない。** `getpwuid_r(getuid())` の `pw_dir` から決める（エンジンの `dataDirectory` と同じ規則）。理由: 一時例外はホームからの相対で、Sandbox の中の `HOME` がコンテナを指すと、ずれて何も書けなくなる（§5 のスパイク (b) で確かめる）。また、製品は環境変数で挙動を変えない（R5）。
+- **macOS の `ikari-data` は、データの場所を `HOME` から決めない。** `getpwuid_r(getuid())` の `pw_dir` から決める（エンジンの `dataDirectory` と同じ規則）。理由: 一時例外はホームからの相対で、Sandbox の中の `HOME` がコンテナを指すと、ずれて何も書けなくなる（根の `lstat` すら ENOENT になる）。**Sandbox は `HOME` を必ずコンテナに設定する**（環境を空にして起こしても同じ。§8 の 3）ので、`HOME` からは本当のホームを得られない。また、製品は環境変数で挙動を変えない（R5）。
 - 置き場所は `fetch/src/workspace.rs` の macOS の分だけ（`Dirs::resolve`）。`core` の `UserDir::resolve` は変えない（ほかの部品の決め方に波及させないため）。`dev-knobs` の上書きの口は今のまま（製品には入らない）。
 
 ### 3.5 ディレクトリの作成の分担
-- **既定（スパイク (a) が通る場合）: `ikari-data` が `fetch/` と `inbox/` を自分で作る。** データの場所そのもの（`…/ikari-ime/`）は作らない。無ければ `internal` で終わる（データの場所はエンジンと `install-data.sh` が作る。データの場所が無いときは取得しても取り込めない）。
+- **決定（スパイク (a) で通った。§8 の 1）: `ikari-data` が `fetch/` と `inbox/` を自分で作る。** データの場所そのもの（`…/ikari-ime/`）は作らない。無ければ `internal` で終わる（データの場所はエンジンと `install-data.sh` が作る。データの場所が無いときは取得しても取り込めない）。
   - そのために `hold_work_chain` の macOS の分を、根に `create_dir_all` をかけず「根があり、ディレクトリで、リンクでないこと」を確かめるだけにする。`inbox/` も同じ規則（根の下に 1 段だけ作る）。
+  - 実装の注意（§8 の 2）: 根に対して Sandbox の中から通るのは `lstat` だけで、`open(根)`（一覧）は EPERM。根が無いときは根の `mkdir` が EPERM になる。根を確かめる段で、無い・`lstat` が通らない・根の操作の EPERM を、`internal` に写す（EPERM をそのまま別の種類の失敗として出さない）。仮に根に `create_dir_all` をかけても、根があれば mkdir が EEXIST で返るので失敗しないが、確かめるだけの形にそろえる。
   - こうすると、人が手で打っても、設定アプリから起こしても同じに動く（0076 §4.1）。
-- **代わり（(a) が通らない場合）: 親（`shell-ffi` の起動の関数。Sandbox なし）が、起動の前に `fetch/` と `inbox/` を作る。** `ikari-data` は、無ければ作ろうとせず `internal` で終わる。作り方は今の `nofollow` の規則（リンクを辿らない、1 段ずつ）を共有して使う。手で打つときは、先に設定アプリかエンジンが作っている前提になる（README の手で打つ説明に書く）。
+- **代わりの案（採らなかった。(a) が通らない場合に備えて書いていたもの。記録として残す）: 親（`shell-ffi` の起動の関数。Sandbox なし）が、起動の前に `fetch/` と `inbox/` を作る。** `ikari-data` は、無ければ作ろうとせず `internal` で終わる。作り方は今の `nofollow` の規則（リンクを辿らない、1 段ずつ）を共有して使う。手で打つときは、先に設定アプリかエンジンが作っている前提になる（README の手で打つ説明に書く）。
 - どちらでも、`fetch/.lock` は `ikari-data` が作る（`fetch/` の中なので例外の範囲）。
 
 ### 3.6 親の起動の契約（`shell-ffi`。実装は §7 のレーン）
@@ -85,7 +86,7 @@ void    ikari_settings_fetch_free(IkariSettingsFetch *fetch);
   - `kind` の値と `IkariSettingsFetchStatus` の形は Windows と同じ（`phase`、`received`、`total`、`has_total`）。`version_check_start` の引数は Windows の `fetch_abi.rs` に合わせる（違えば Windows に合わせる）。
 - macOS の `Launcher`（`shell-ffi` の中。`std::process::Command` で起こす）:
   - exe の場所: 自分の exe（`current_exe` を正規化）が `<X>/ikari.app/Contents/Helpers/IkariSettings.app/Contents/MacOS/` にあることを確かめ、`<X>/ikari.app/Contents/Helpers/ikari-data` を絶対パスで起こす。形が違えば起こさない（`tool`）。PATH を使わない。シェルを通さない。
-  - 標準入力と標準エラーは `/dev/null`、標準出力はパイプ。環境は 0076 §3.4 と同じく、プロキシの変数だけに絞る（`HOME` も渡さない。データの場所は §3.4 で決める）。Security.framework などが動くのにほかの変数が要れば、スパイク (d) で確かめて最小を足す。
+  - 標準入力と標準エラーは `/dev/null`、標準出力はパイプ。環境は 0076 §3.4 と同じく、プロキシの変数だけに絞る（`HOME` も渡さない。データの場所は §3.4 で決める）。`HOME` を渡さなくても、Sandbox の初期化がコンテナを `HOME` に設定し、作成と通信（TCP の接続と https の HEAD）が動くことは確かめた（§8 の 3、8）。ureq（`NativeTls`、証明書の確かめ）での実際の取得は、§7 の 5 の実機の確認で見る。そこでほかの変数が要ると分かれば、最小を足す。
   - 取り消しは、その子に `SIGKILL`（子は孫を作らないので、木はその 1 つ）。待ちは `wait`。
 - `ikari-data`（macOS）は、親が終わったら自分も終わる。`lm/src/host/serve.rs` と同じく `getppid()` の変化を見る（Windows の Job Object の「閉じたら終わる」に当たる）。
 
@@ -123,14 +124,14 @@ void    ikari_settings_fetch_free(IkariSettingsFetch *fetch);
 4. **(c) team 署名**: 2・3 を team の署名でも流し、結果が ad-hoc と同じかを見る。
 5. **(d) 置き場所**: 検証用の束（`/tmp` の外。スクラッチの場所に `Spike.app/Contents/Helpers/` を作り、外側を ad-hoc で署名する）の Helpers に置いた exe を、束の外の Terminal から起こす場合と、束の中の別の exe（設定アプリの代わりの最小の exe。Sandbox なし、Hardened Runtime）から `posix_spawn` で起こす場合の 2 通りで、2〜3 が同じかを見る。`/Library/Input Methods` 相当の場所（0077 §8 の 6）は、配布の確認（#241）と一緒に見るので、ここでは見ない。
 6. 通信: 2 の exe で、0076 §16 と同じ公開の小さなファイル（https）を取れることを 1 回だけ見る（`network.client` と一時例外を一緒に付けても通信が通ること）。
-7. 片づけ: `ikari-ime-spike/` とコンテナ（`~/Library/Containers/…ikari.data.spike`）を消す。
+7. 片づけ: `ikari-ime-spike/` とコンテナ（`~/Library/Containers/…ikari.data.spike`）を消す。**コンテナは `rm` では消せない**（`Operation not permitted`。§8 の 9）。消せなかったコンテナは残してよい（中は空に近い）。同じスパイクをまた流すときは、識別子に毎回違う印を付ける（§8 の 7 の止まりも避けられる）。
 
-**結果で変わるもの**: (a) が通らなければ §3.5 の代わりの案にする。(b) で `HOME` が本当のホームのままでも §3.4 は変えない（R5 のため）。(c) で team だけ違えば、その違いをこの ADR に書き、レーンを止めてリードに返す。(d) で Helpers の中だけ違えば同じ。
+**結果で変わるもの**（2026-11-20 に閉じた。§8）: (a) は通ったので、§3.5 は既定の形（`ikari-data` が作る）に確定した。代わりの案は記録として残すだけ。(b) は `HOME` がコンテナだったので §3.4 のとおり。(c) は team も同じだった。(d) は置き場所で違いが無かった。
 
 ## 6. 推測（確かめていない）
-- 一時例外のパスに書いたディレクトリそのもの（`fetch/`）を、Sandbox の中から新しく作れる（例外は下の全部に効き、作る操作は作る先のパスで見られると考えている）。→ スパイク (a)。
-- Sandbox の中の `HOME` はコンテナを指す（エンジンの Swift のコメントの理由と同じ）。→ (b)。
-- Sandbox の exe が作ったファイルには隔離の印（`com.apple.quarantine`）が付くことがあるが、エンジンの取り込み（読む、rename、LM の子に fd で渡す）は印に左右されない。→ (b) で印の有無だけ見る。取り込みまでは §8 の実機の確認で見る。
+- （確かめた。§8 の 1）一時例外のパスに書いたディレクトリそのもの（`fetch/`）を、Sandbox の中から新しく作れる。
+- （確かめた。§8 の 3）Sandbox の中の `HOME` はコンテナを指す。
+- Sandbox の exe が作ったファイルには隔離の印（`com.apple.quarantine`）が付くことがあるが、エンジンの取り込み（読む、rename、LM の子に fd で渡す）は印に左右されない。→ (b) で印の有無だけ見る。印が付くことは確かめた（§8 の 4）。取り込みが左右されないかは、§7 の 5 の実機の確認で見る。
 
 ## 7. 実装のレーンと順序（1 タスク 1 ブランチ。#489 の下）
 
@@ -142,16 +143,28 @@ void    ikari_settings_fetch_free(IkariSettingsFetch *fetch);
    - **レーン F（`ikari-data` の macOS の分。Sonnet）**: §3.4 のデータの場所、§3.5 の作り方、親の終わりの見張り。持つのは `fetch/src/workspace.rs` の macOS の分と、新しい小さなモジュール。
 3. **レーン S（`shell-ffi` の起動。Sonnet。C のあと）**: macOS の `Launcher` と §3.6 の ABI。持つのは `shell-ffi/`。
 4. **統合**（リード）: `scripts/check.sh`（フル）、`macos/scripts/build.sh --signing team --release` の `verify_data`。
-5. **実機の確認**（#489 の完了の条件。smoke なし）: ビルドした束の `Contents/Helpers/ikari-data` を、Terminal から `model fetch` のプリセットで 1 回流し、`inbox/<名前>/` ができることと、`fetch/` が片づくことを見る。これは**ユーザーのデータの場所に束を置く**ので、流す前にユーザーに了解を取る（エンジンが取り込み、`models/` に入る。使うモデルは変えない。0060 §2）。
+5. **実機の確認**（#489 の完了の条件。smoke なし）: ビルドした束の `Contents/Helpers/ikari-data` を、Terminal から `model fetch` のプリセットで 1 回流し、`inbox/<名前>/` ができることと、`fetch/` が片づくことを見る。これは**ユーザーのデータの場所に束を置く**ので、流す前にユーザーに了解を取る（エンジンが取り込み、`models/` に入る。使うモデルは変えない。0060 §2）。あわせて、(i) ureq での https の取得が通ること（§3.6。§8 の 8）、(ii) `inbox/<名前>/` に付く `com.apple.quarantine`（§8 の 4）があっても、エンジンが取り込み、`models/` に移せること、を見る。
 - 設定アプリの画面（ボタン、確認の窓、進み具合）は、この issue に入れない（§10 の Q1）。
 
-## 8. スパイクの結果
-（スパイクのあとに書く）
+## 8. スパイクの結果（2026-11-20。macOS 27.2.1、arm64。PR #501 の `spike/macos-ikari-data-489/`）
+
+ad-hoc と Apple Development（team）の両方で流し、結果は同じだった（ただし同じ識別子で方式を切り替えた場合を除く。下の 7）。
+
+1. **(a) 作成: 通った。** `ikari-ime-spike/` だけがある状態から、`fetch/` の作成、`.lock` の作成と flock、`download.bin` の書き込み、`inbox/` の作成、`inbox/x.partial/` の作成と書き込み、rename、`statvfs` がすべて通った。親が先に `fetch/`・`inbox/` を作った形でも通る（`mkdir` は EEXIST）。例外の外（`ikari-ime-spike/other` の mkdir、根の直下のファイルの書き込み、根の open、ホームの直下の mkdir）はすべて EPERM（絞りが効いている）。→ §3.5 は既定の形に確定。
+2. **(a) 根の扱い:** `lstat(根)` は通る（根があり、ディレクトリで、リンクでないことは確かめられる）。`open(根, O_RDONLY)`（根の一覧）は EPERM。根の `mkdir` は、根があれば EEXIST（EPERM ではない）、根が無ければ EPERM で、続く `fetch/` の作成は ENOENT。→ §3.5 に注意を足した。
+3. **(b) ホーム:** Sandbox の中の `HOME` はコンテナ（`~/Library/Containers/<識別子>/Data`）。`pw_dir` は本当のホーム。環境変数を空にして起こしても（`env -i`）、`HOME` はコンテナになる（Sandbox の初期化が設定する）。→ §3.4 のとおり。§3.6 の「`HOME` を渡さない」でも動く。
+4. **(b) 隔離の印:** Sandbox の exe が作ったファイルとディレクトリ（`inbox/`、`inbox/x/` を含む）に `com.apple.quarantine` と `com.apple.provenance` が付く。エンジンの取り込みが印に左右されないかは見ていない（§6 の推測のまま。§7 の 5 で見る）。
+5. **(c) team 署名:** 例外のパスの効き方を含め、ad-hoc と同じ。
+6. **(d) 置き場所:** Info.plist を `-sectcreate` で埋めてあれば、`Spike.app/Contents/Helpers/` でもその外でも、Terminal からでも束の中の Sandbox なしの exe の `posix_spawn` からでも、同じに動く。埋めなければどこでも exit 133（SIGTRAP。0076 §16 と同じ）。外側の束の `codesign --verify --deep --strict` が通り、`CodeResources` に Helpers の exe の名前がある（§3.7 の 7 の検査は変えなくてよい）。`/Library/Input Methods` の下は見ていない（#241）。
+7. **想定外: 同じ識別子のまま署名の方式（ad-hoc と team）を切り替えると、既にあるコンテナで Sandbox の初期化が止まり、起動が返らない。** 逆向きも同じで、止まったあとは元の方式に戻しても動かなかった。識別子を替えれば動く。原因は確かめていない。→ §9 の限界と #502。
+8. **通信:** `network.client` と一時例外を一緒に付けて、`connect(:443)` が通り、子の `curl` の HEAD が 200 を返した。`ikari-data` が使う ureq（`NativeTls` と証明書の確かめ）の通信そのものは見ていない（§7 の 5 で見る）。
+9. **片づけ:** スパイクのコンテナ（`~/Library/Containers/` の下）は、`rm -rf` が `Operation not permitted` で消せなかった（データの場所の側の `ikari-ime-spike/` は消した）。→ §5 の手順 7 に足した。
 
 ## 9. 結果
 - 得るもの: macOS で通信できるのは `ikari-data` 1 つになり、その場所は `fetch/` と `inbox/` だけ、ということを、署名の検査で毎回言える。Windows と macOS の取得の核（行の読み、取り消し、文）が 1 つになる。
 - 失うもの・増えるもの: 束の中の署名が 1 つ増え、`build.sh` の検査が増える。`shell-core` が `ikari-resource` に依存する。手元の `cargo build -p ikari-data` の exe は、Sandbox を付けて動かせない（Info.plist が無い）。
 - 残る限界: 一時例外は、App Store の審査では認められない種類（ikari は App Store で配らない。0069）。将来 Apple が一時例外を外せば、作り直しになる（エンジンも同じ）。
+- 残る限界（§8 の 7）: 同じ識別子のまま署名の方式（ad-hoc と team）を切り替えると、既にあるコンテナで Sandbox の初期化が止まり、`ikari-data` が起動しない。配布の ad-hoc（0069 §6）を入れていた人が team の署名で自分でビルドして入れ替える場合（逆も）に当たる。エンジンなど、ほかの Sandbox の部品にも同じことが起きるかは確かめていない。対策（署名の方式を固定する、識別子に方式を入れる、コンテナを消す手順を書く、など）は #502 で決める。
 
 ## 10. ユーザーの判断（2026-11-19 に、Q1〜Q3 すべて推奨どおりで決定）
 - **Q1. 設定アプリ（macOS）の取得の画面を、この issue に入れるか。** 推奨: 入れない。この issue は「配る `ikari-data` の権限の絞り」（#99 の前の条件）に絞り、確認は Terminal から行う（§7 の 5）。画面は別の issue（Windows の D-2c に当たる macOS の分）にする。理由: 画面は Swift の UI の作業で量が別で、#99 の前に要るかは別の判断のため。
