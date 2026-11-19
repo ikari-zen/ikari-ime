@@ -134,8 +134,15 @@ worktree_rows() {
     END { flush() }'
 }
 
-branch_in_worktree() { # 名前 → いずれかの worktree で使用中か
-  worktree_rows | cut -d'|' -f2 | grep -qxF "$1"
+branch_in_worktree() { # 名前 → いずれかの worktree で使用中か（jj の workspace は @ の親の bookmark）
+  worktree_rows | cut -d'|' -f2 | grep -qxF "$1" && return 0
+  is_jj_repo || return 1
+  local path
+  while IFS= read -r path; do
+    is_jj_repo "$path" || continue
+    jj_bookmarks "$path" '@ | @-' | grep -qxF "$1" && return 0
+  done < <(worktree_rows | cut -d'|' -f1)
+  return 1
 }
 
 # ---- ローカルのブランチ ----
