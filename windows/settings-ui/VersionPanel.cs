@@ -27,7 +27,9 @@ internal sealed class VersionPanel
     private readonly Button _check = new() { Content = CheckLabel };
     private readonly TextBlock _result = new() { TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(PollIntervalMs) };
+    private readonly object _lock = new();
     private IntPtr _fetch;
+    private bool _disposed;
 
     public VersionPanel()
     {
@@ -44,10 +46,14 @@ internal sealed class VersionPanel
     public void Dispose()
     {
         _timer.Stop();
-        if (_fetch != IntPtr.Zero)
+        lock (_lock)
         {
-            VersionNative.Free(_fetch);
-            _fetch = IntPtr.Zero;
+            _disposed = true;
+            if (_fetch != IntPtr.Zero)
+            {
+                VersionNative.Free(_fetch);
+                _fetch = IntPtr.Zero;
+            }
         }
     }
 
@@ -66,7 +72,16 @@ internal sealed class VersionPanel
             _check.IsEnabled = true;
             return;
         }
-        _fetch = handle;
+        lock (_lock)
+        {
+            if (_disposed)
+            {
+                // await の間に窓が閉じた。戻ったハンドルはその場で核に返し、タイマーは始めない
+                VersionNative.Free(handle);
+                return;
+            }
+            _fetch = handle;
+        }
         _timer.Start();
     }
 
