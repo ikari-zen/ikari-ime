@@ -4,6 +4,7 @@
 //!
 //! ```text
 //! progress <受けたバイト> <全体のバイト|->
+//! box <appcontainer|low>
 //! done <束の名前> <sha256>
 //! latest <版>
 //! error <理由の語>
@@ -11,6 +12,10 @@
 //!
 //! 1 行は [`MAX_LINE_BYTES`] まで。読む側（[`ReportReader`]）は、知らない行、長すぎる行、終わりの行
 //! （`done`・`latest`・`error`）のあとの行を捨てる。
+//!
+//! `box` は、Windows の `ikari-data` が取得の子（`transfer`）をどの檻で起こしたか（ADR 0078 §3.2 の 5）。`low` は、
+//! AppContainer で起こせず、低い整合性だけに落としたことを表す（設定画面に印を出す）。子を起こしたあと、
+//! 進み具合の行より前に 1 回だけ出す。macOS（子を作らない）は出さない。終わりの行ではない。
 
 use std::io::{self, BufRead, Read};
 
@@ -91,19 +96,54 @@ impl FetchErrorCode {
     }
 }
 
+/// 取得の子（Windows の `transfer`）を起こした檻（ADR 0078 §3.2）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChildBox {
+    /// AppContainer（能力は `internetClient` だけ）
+    AppContainer,
+    /// 低い整合性だけ（AppContainer で起こせなかった。ADR 0078 §3.2 の 5。利用者のファイルを読める）
+    Low,
+}
+
+impl ChildBox {
+    pub const ALL: [ChildBox; 2] = [Self::AppContainer, Self::Low];
+
+    /// 行と引数に書く語（LM の子のログの `box=` と同じ語）
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::AppContainer => "appcontainer",
+            Self::Low => "low",
+        }
+    }
+
+    pub fn from_word(word: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|b| b.word() == word)
+    }
+}
+
 /// 報告の 1 行
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Report {
-    Progress { received: u64, total: Option<u64> },
-    Done { name: String, sha256: String },
-    Latest { version: String },
+    Progress {
+        received: u64,
+        total: Option<u64>,
+    },
+    /// 取得の子の檻（Windows だけ。終わりの行ではない）
+    Box(ChildBox),
+    Done {
+        name: String,
+        sha256: String,
+    },
+    Latest {
+        version: String,
+    },
     Error(FetchErrorCode),
 }
 
 impl Report {
     /// 終わりの行か（これのあとの行は読まない）
     pub fn is_final(&self) -> bool {
-        !matches!(self, Self::Progress { .. })
+        !matches!(self, Self::Progress { .. } | Self::Box(_))
     }
 
     /// 行（改行なし）。`Done` の名前、`Latest` の版は、読み戻せる形のものだけが来る前提（`parse_line` が同じ検査をする）
@@ -113,6 +153,7 @@ impl Report {
                 Some(total) => format!("progress {received} {total}"),
                 None => format!("progress {received} {UNKNOWN_TOTAL}"),
             },
+            Self::Box(child_box) => format!("box {}", child_box.word()),
             Self::Done { name, sha256 } => format!("done {name} {sha256}"),
             Self::Latest { version } => format!("latest {version}"),
             Self::Error(code) => format!("error {}", code.word()),
@@ -136,6 +177,7 @@ pub fn parse_line(line: &str) -> Option<Report> {
             };
             Report::Progress { received, total }
         }
+        "box" => Report::Box(ChildBox::from_word(parts.next()?)?),
         "done" => {
             let name = parts.next()?;
             let sha256 = parts.next()?;
@@ -268,6 +310,7 @@ mod tests {
             },
         ];
         reports.extend(FetchErrorCode::ALL.map(Report::Error));
+        reports.extend(ChildBox::ALL.map(Report::Box));
         for r in reports {
             assert_eq!(parse_line(&r.to_line()), Some(r.clone()), "{r:?}");
         }
@@ -293,6 +336,10 @@ mod tests {
             "error unknown-word",
             "error",
             "error network extra",
+            "box",
+            "box none",
+            "box AppContainer",
+            "box low extra",
             "unknown 1 2",
             " progress 1 2",
         ] {
@@ -313,7 +360,8 @@ mod tests {
         let mut r = ReportReader::new();
         assert!(r.feed("garbage").is_none());
         assert!(r.feed("progress 1 2\n").is_some());
-        assert!(!r.is_finished());
+        assert_eq!(r.feed("box low"), Some(Report::Box(ChildBox::Low)));
+        assert!(!r.is_finished(), "box は終わりの行ではない");
         assert_eq!(
             r.feed("error network\r\n"),
             Some(Report::Error(FetchErrorCode::Network))

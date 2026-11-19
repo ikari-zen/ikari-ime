@@ -4,7 +4,7 @@
 
 use ikari_proto::v1::{DataCounts, DataIssue, DataIssueKind, ErrorCode, ExportReply, ImportReply};
 use ikari_resource::app_version::{AppVersion, VersionVerdict, verdict};
-use ikari_resource::fetch_report::FetchErrorCode;
+use ikari_resource::fetch_report::{ChildBox, FetchErrorCode};
 use ikari_shell_core::bridge::proto::BridgeErrorCode;
 
 use crate::edit::EditError;
@@ -60,8 +60,21 @@ pub fn fetch_error(code: FetchErrorCode) -> &'static str {
 
 const MEGABYTE: u64 = 1024 * 1024;
 
-/// 取得の今の様子の文
+/// 取得の子を AppContainer に入れられず、低い整合性だけで動かしたときの印（ADR 0078 §3.2 の 5。2026-11-19 ユーザー決定の
+/// 「檻なし」に当たる）。取得の様子の文の後ろに付ける
+pub const FETCH_UNBOXED: &str =
+    "（隔離なし: 通信する部品を AppContainer に入れられず、低い権限だけで動かしています）";
+
+/// 取得の今の様子の文。取得の子が低い整合性だけで動いたときは、どの段階でも印を付ける
 pub fn fetch_snapshot(s: &crate::fetch::Snapshot) -> String {
+    let text = fetch_phase(s);
+    match s.child_box {
+        Some(ChildBox::Low) => format!("{text}{FETCH_UNBOXED}"),
+        Some(ChildBox::AppContainer) | None => text,
+    }
+}
+
+fn fetch_phase(s: &crate::fetch::Snapshot) -> String {
     use crate::fetch::Phase;
     match s.phase {
         Phase::Running => match s.total {
@@ -228,6 +241,33 @@ mod tests {
         assert_eq!(
             link_error(&LinkError::Refused("reserved-name")),
             "このファイルの場所は使えません"
+        );
+    }
+
+    #[test]
+    fn the_unboxed_mark_is_added_only_for_a_low_child() {
+        use crate::fetch::{Phase, Snapshot};
+        let mut s = Snapshot {
+            phase: Phase::Running,
+            received: 0,
+            total: None,
+            error: None,
+            bundle: None,
+            sha256: None,
+            latest: None,
+            child_box: None,
+        };
+        let plain = fetch_snapshot(&s);
+        assert!(!plain.contains(FETCH_UNBOXED));
+        s.child_box = Some(ChildBox::AppContainer);
+        assert_eq!(fetch_snapshot(&s), plain);
+        s.child_box = Some(ChildBox::Low);
+        assert_eq!(fetch_snapshot(&s), format!("{plain}{FETCH_UNBOXED}"));
+        s.phase = Phase::Failed;
+        s.error = Some(FetchErrorCode::Network);
+        assert!(
+            fetch_snapshot(&s).ends_with(FETCH_UNBOXED),
+            "失敗でも印を残す"
         );
     }
 
