@@ -2,7 +2,7 @@
 //!
 //! 終了コード: 0（成功）、1（`error` の行を出した）、2（`usage`。行は出さない）。
 
-use std::fs::OpenOptions;
+use std::fs::File;
 use std::io::Write;
 use std::time::Instant;
 
@@ -11,10 +11,9 @@ use ikari_resource::Created;
 use ikari_resource::fetch_report::EXIT_OK;
 use ikari_resource::fetch_report::{EXIT_ERROR, EXIT_USAGE, FetchErrorCode, Report};
 
-use crate::args::{Command, TransferArgs, Usage, parse};
+use crate::args::{Command, TransferArgs, TransferCommand, Usage, parse};
 use crate::error::FetchError;
 use crate::job::{self, Context, DownloadJob, Fetcher, Throttle};
-use crate::nofollow;
 use crate::transfer::{DownloadRequest, download};
 use crate::url::HttpsUrl;
 use crate::workspace::Dirs;
@@ -88,16 +87,18 @@ fn now_created() -> Option<Created> {
     Created::parse(&text).ok()
 }
 
-/// 通信する子の仕事。`url` を `out` のファイルに落とし、進み具合を行で出す。
+/// 通信する子の仕事。`url` を、継承した書く先のハンドル（`--out-handle`）に落とし、進み具合を行で出す。
 /// Windows では、低い整合性でなければ `refused` で終わる（人が手で打っても、中の整合性では通信しない）
 #[cfg(windows)]
-fn run_transfer(args: &TransferArgs, out: &mut dyn Write) -> i32 {
+fn run_transfer(command: &TransferCommand, out: &mut dyn Write) -> i32 {
     use ikari_pipe::os::windows::current_integrity_rid;
     if !crate::child::is_low_integrity(current_integrity_rid()) {
         job::emit(out, &Report::Error(FetchErrorCode::Refused));
         return EXIT_ERROR;
     }
-    match transfer_to_file(args, out) {
+    let result = take_out_handle(command.out_handle)
+        .and_then(|file| transfer_into(&command.args, file, out));
+    match result {
         Ok(()) => EXIT_OK,
         Err(e) => {
             job::emit(out, &Report::Error(e.code()));
@@ -108,8 +109,64 @@ fn run_transfer(args: &TransferArgs, out: &mut dyn Write) -> i32 {
 
 /// macOS は子を作らない（自分で通信する）ので、Windows 以外の `transfer` は使わせない
 #[cfg(not(windows))]
-fn run_transfer(_args: &TransferArgs, _out: &mut dyn Write) -> i32 {
+fn run_transfer(_command: &TransferCommand, _out: &mut dyn Write) -> i32 {
     EXIT_USAGE
+}
+
+/// 継承した書く先のハンドルの値を、持ち主として受け取る（ADR 0078 §4.2）。ディスクのファイルでなければ（開いていない
+/// 値、パイプ、コンソールなど）`internal`。そのときは閉じない（自分のものと言えないため）
+#[cfg(windows)]
+pub(crate) fn take_out_handle(value: u64) -> Result<std::fs::File, FetchError> {
+    use std::os::windows::io::FromRawHandle;
+    use windows_sys::Win32::Foundation::HANDLE;
+    use windows_sys::Win32::Storage::FileSystem::{FILE_TYPE_DISK, GetFileType};
+
+    let internal = || FetchError(FetchErrorCode::Internal);
+    let raw = usize::try_from(value)
+        .ok()
+        .filter(|&v| v != 0)
+        .ok_or_else(internal)? as HANDLE;
+    // SAFETY: 種類を聞くだけ（開いていない値なら FILE_TYPE_UNKNOWN が返る）
+    if unsafe { GetFileType(raw) } != FILE_TYPE_DISK {
+        return Err(internal());
+    }
+    // SAFETY: 親が、この値のハンドルを子にだけ継承させた（ADR 0078 §3.1 の 3）。ほかに持ち主はいない
+    Ok(unsafe { std::fs::File::from_raw_handle(raw) })
+}
+
+/// `url` を `file` の末尾に落とす。進み具合の行は間引いて出し、最後の 1 行は必ず出す。`sync_all` は呼ばない（追記だけの
+/// 権利では失敗する見込み。ディスクに出すのは、子が終わったあとの親。ADR 0078 §3.1 の 7）
+#[cfg_attr(not(windows), allow(dead_code))]
+fn transfer_into(
+    args: &TransferArgs,
+    mut file: impl Write,
+    out: &mut dyn Write,
+) -> Result<(), FetchError> {
+    let url = HttpsUrl::parse(&args.url)?;
+    let request = DownloadRequest {
+        url: &url,
+        max_size: args.max_size,
+        expect_size: args.expect_size,
+    };
+    let mut throttle = Throttle::standard();
+    let mut last = None;
+    let received = download(&request, &mut file, &mut |received, total| {
+        last = Some((received, total));
+        if throttle.ready(Instant::now()) {
+            job::emit(out, &Report::Progress { received, total });
+        }
+    })?;
+    file.flush()
+        .map_err(|_| FetchError(FetchErrorCode::Internal))?;
+    let total = last.and_then(|(_, total)| total);
+    job::emit(
+        out,
+        &Report::Progress {
+            received,
+            total: total.or(Some(received)),
+        },
+    );
+    Ok(())
 }
 
 /// 版の確認の通信をする子の仕事。`transfer` と同じく、Windows では低い整合性でなければ `refused`
@@ -129,39 +186,6 @@ fn run_version_probe(_out: &mut dyn Write) -> i32 {
     EXIT_USAGE
 }
 
-/// `url` を `args.out` に落とす（新しく作る。すでにあれば失敗）。進み具合の行は間引いて出し、最後の 1 行は必ず出す
-#[cfg_attr(not(windows), allow(dead_code))]
-fn transfer_to_file(args: &TransferArgs, out: &mut dyn Write) -> Result<(), FetchError> {
-    let url = HttpsUrl::parse(&args.url)?;
-    let mut file =
-        nofollow::open_plain_file(OpenOptions::new().write(true).create_new(true), &args.out)
-            .map_err(|_| FetchError(FetchErrorCode::Internal))?;
-    let request = DownloadRequest {
-        url: &url,
-        max_size: args.max_size,
-        expect_size: args.expect_size,
-    };
-    let mut throttle = Throttle::standard();
-    let mut last = None;
-    let received = download(&request, &mut file, &mut |received, total| {
-        last = Some((received, total));
-        if throttle.ready(Instant::now()) {
-            job::emit(out, &Report::Progress { received, total });
-        }
-    })?;
-    file.sync_all()
-        .map_err(|_| FetchError(FetchErrorCode::Internal))?;
-    let total = last.and_then(|(_, total)| total);
-    job::emit(
-        out,
-        &Report::Progress {
-            received,
-            total: total.or(Some(received)),
-        },
-    );
-    Ok(())
-}
-
 /// 製品の取得の部品。Windows は低い整合性の子、macOS は自分で通信する
 pub struct ProductFetcher;
 
@@ -170,68 +194,38 @@ impl Fetcher for ProductFetcher {
     fn fetch(
         &self,
         job: &DownloadJob<'_>,
-        dirs: &Dirs,
+        out: &File,
         progress: &mut dyn FnMut(u64, Option<u64>),
     ) -> Result<(), FetchError> {
-        use std::io::BufReader;
-
-        use ikari_resource::fetch_report::{Line, ReportReader, read_line_capped};
-
         use crate::child::transfer_args;
-        use crate::spawn_windows::spawn_low;
+        use crate::spawn_windows::{Confine, spawn_transfer, supervise_transfer};
 
         let tool = || FetchError(FetchErrorCode::Tool);
         let exe = std::env::current_exe().map_err(|_| tool())?;
         let args = transfer_args(&TransferArgs {
             url: job.url.as_str().to_owned(),
-            out: dirs.download_path(),
             max_size: job.max_size,
             expect_size: job.expect_size,
         });
-        let (child, stdout) = spawn_low(&exe, &args).map_err(|_| tool())?;
-
-        // 子の行は信じない。進み具合は表示にだけ使い、受けた大きさは写すときに数え直す
-        let mut reader = BufReader::new(stdout);
-        let mut reports = ReportReader::new();
-        let mut failure = None;
-        loop {
-            match read_line_capped(&mut reader) {
-                Ok(Line::Text(line)) => match reports.feed(&line) {
-                    Some(Report::Progress { received, total }) => progress(received, total),
-                    Some(Report::Error(code)) => failure = Some(code),
-                    Some(_) | None => {}
-                },
-                Ok(Line::Dropped) => {}
-                Ok(Line::Eof) | Err(_) => break,
-            }
-        }
-        let exit = child.wait().map_err(|_| tool())?;
-        match (failure, exit) {
-            (Some(code), _) => Err(FetchError(code)),
-            (None, 0) => Ok(()),
-            (None, _) => Err(FetchError(FetchErrorCode::Internal)),
-        }
+        let (child, stdout) = spawn_transfer(&exe, &args, out, Confine::Low).map_err(|_| tool())?;
+        supervise_transfer(&child, stdout, out, job.max_size, progress)
     }
 
     #[cfg(not(windows))]
     fn fetch(
         &self,
         job: &DownloadJob<'_>,
-        dirs: &Dirs,
+        out: &File,
         progress: &mut dyn FnMut(u64, Option<u64>),
     ) -> Result<(), FetchError> {
-        let mut file = nofollow::open_plain_file(
-            OpenOptions::new().write(true).create_new(true),
-            &dirs.download_path(),
-        )
-        .map_err(|_| FetchError(FetchErrorCode::Internal))?;
         let request = DownloadRequest {
             url: job.url,
             max_size: job.max_size,
             expect_size: job.expect_size,
         };
-        download(&request, &mut file, progress)?;
-        file.sync_all()
+        let mut writer = out;
+        download(&request, &mut writer, progress)?;
+        out.sync_all()
             .map_err(|_| FetchError(FetchErrorCode::Internal))
     }
 }
@@ -279,37 +273,69 @@ mod tests {
     #[test]
     fn transfer_is_not_a_public_command_outside_windows() {
         assert_eq!(
-            run_str("transfer --url https://example.com/ --out /tmp/x --max-size 1"),
+            run_str("transfer --url https://example.com/ --max-size 1 --out-handle 4"),
             (EXIT_USAGE, String::new())
         );
     }
 
     #[test]
-    fn transfer_to_file_refuses_bad_urls_and_existing_files() {
-        let tmp = tempfile::tempdir().unwrap();
-        let out_path = tmp.path().join("d.bin");
-        let mut args = TransferArgs {
+    fn transfer_into_refuses_bad_urls_before_writing() {
+        let args = TransferArgs {
             url: "http://example.com/x".into(),
-            out: out_path.clone(),
             max_size: 10,
             expect_size: None,
         };
+        let mut written = Vec::new();
         let mut sink = Vec::new();
         assert_eq!(
-            transfer_to_file(&args, &mut sink).unwrap_err().code(),
+            transfer_into(&args, &mut written, &mut sink)
+                .unwrap_err()
+                .code(),
             FetchErrorCode::BadUrl
         );
-        assert!(!out_path.exists(), "URL が悪ければ、ファイルも作らない");
-        std::fs::write(&out_path, b"x").unwrap();
-        args.url = "https://example.com/x".into();
+        assert!(written.is_empty(), "URL が悪ければ、何も書かない");
+        assert!(sink.is_empty());
+    }
+
+    #[test]
+    fn transfer_refuses_a_path_for_the_output() {
+        // 書く先は場所で受けない（ADR 0078 §3.1 の 4）。どの OS でも、行を出さずに使い方の誤り
         assert_eq!(
-            transfer_to_file(&args, &mut sink).unwrap_err().code(),
+            run_str("transfer --url https://example.com/ --out /tmp/x --max-size 1"),
+            (EXIT_USAGE, String::new())
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn transfer_refuses_unless_low_integrity_even_with_a_handle() {
+        // Windows のテストは中の整合性で動くので、ハンドルを受け取る前に `refused` で終わる
+        assert_eq!(
+            run_str("transfer --url https://example.com/ --max-size 1 --out-handle 4"),
+            (EXIT_ERROR, "error refused\n".to_owned())
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_handle_that_is_not_a_disk_file_is_internal() {
+        use std::os::windows::io::AsRawHandle;
+        // パイプ（ディスクのファイルでない）。受け取らないので、閉じられない
+        let (_reader, writer) = std::io::pipe().unwrap();
+        let value = writer.as_raw_handle() as usize as u64;
+        assert_eq!(
+            take_out_handle(value).unwrap_err().code(),
             FetchErrorCode::Internal
         );
         assert_eq!(
-            std::fs::read(&out_path).unwrap(),
-            b"x",
-            "既存のファイルを上書きしない"
+            take_out_handle(0).unwrap_err().code(),
+            FetchErrorCode::Internal
         );
+        // 開いていない値
+        assert_eq!(
+            take_out_handle(0x7fff_fff0).unwrap_err().code(),
+            FetchErrorCode::Internal
+        );
+        drop(writer);
     }
 }

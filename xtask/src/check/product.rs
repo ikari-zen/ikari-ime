@@ -256,6 +256,11 @@ pub fn net_call_single(root: &Path) -> Result<(), Failure> {
 
 /// テストの前で、コメントでない行にある通信の語（行番号と語）
 fn net_words_outside_tests(text: &str) -> Vec<(usize, &'static str)> {
+    words_outside_tests(text, NET_WORDS)
+}
+
+/// テストの前（`#[cfg(test)]` より前）で、コメントでない行にある `words` の語（行番号と語）
+fn words_outside_tests(text: &str, words: &[&'static str]) -> Vec<(usize, &'static str)> {
     let mut found = Vec::new();
     for (index, line) in text.lines().enumerate() {
         let trimmed = line.trim();
@@ -265,11 +270,39 @@ fn net_words_outside_tests(text: &str) -> Vec<(usize, &'static str)> {
         if trimmed.starts_with("//") {
             continue;
         }
-        if let Some(word) = NET_WORDS.iter().find(|w| trimmed.contains(**w)) {
+        if let Some(word) = words.iter().find(|w| trimmed.contains(**w)) {
             found.push((index + 1, *word));
         }
     }
     found
+}
+
+/// 取得の部品のソース（ADR 0078 §6 の段 1 のソースの検査）
+const FETCH_SOURCE_ROOT: &str = "fetch/src/";
+/// 取得の部品のソースに書かない語。作業の場所を低い整合性の場所（`LocalLow`）に置かない、`transfer` に書く先の
+/// 場所（`--out`）を渡さない（書く先は、親が作ったファイルのハンドルだけ。ADR 0078 §3.1 の 1・4）
+const FETCH_PLACE_WORDS: &[&str] = &["LocalLow", "FOLDERID_LocalAppDataLow", "\"--out\""];
+
+/// 取得の子が場所を持たないこと: `fetch/src/` に `LocalLow` と、`transfer` の `--out` が無い（ADR 0078 §6）
+pub fn fetch_child_has_no_place(root: &Path) -> Result<(), Failure> {
+    log("取得の子が場所を持たないこと（LocalLow と --out が無い。ADR 0078 §6）");
+    let mut problems = Vec::new();
+    for file in tracked(root, FETCH_SOURCE_ROOT)? {
+        let is_source = file.ends_with(".rs")
+            && !file.contains("/tests/")
+            && !file.ends_with("/tests.rs")
+            && !file.ends_with("_tests.rs");
+        if !is_source {
+            continue;
+        }
+        let text = read(root, &file)?;
+        for (line_no, word) in words_outside_tests(&text, FETCH_PLACE_WORDS) {
+            problems.push(format!(
+                "{file}:{line_no}: `{word}` を書いています（作業の場所はデータの場所の下、子には書く先のハンドルだけを渡す）"
+            ));
+        }
+    }
+    finish(problems)
 }
 
 fn finish(problems: Vec<String>) -> Result<(), Failure> {
@@ -421,6 +454,15 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn fetch_place_words_are_found_outside_tests_only() {
+        let text = "// LocalLow の話\nlet a = \"--out\";\nlet b = \"--out-handle\";\nlet c = FOLDERID_LocalAppDataLow;\n#[cfg(test)]\nmod t { const X: &str = \"--out\"; }\n";
+        assert_eq!(
+            words_outside_tests(text, FETCH_PLACE_WORDS),
+            [(2, "\"--out\""), (4, "FOLDERID_LocalAppDataLow")]
+        );
+    }
 
     #[test]
     fn config_needs_crt_static_in_the_windows_section() {
