@@ -31,7 +31,8 @@
 - 作業は必ずブランチで行う（`feat/…`、`fix/…`、`docs/…`）。main への反映は GitHub の PR を通してだけ行う。
 - 手元でもフックで止めている（`.githooks/`。`git config core.hooksPath .githooks` で有効）。フックを外したり `--no-verify` で回避したりしない。
 - Claude Code のフック（`.claude/settings.json`。`.claude/hooks/`）: `gh pr merge` は、PR の先頭コミットで `scripts/check.sh` が `CHECK_EXIT=0` だった記録がないと止まる。`.rs` の編集のあとは `cargo fmt` を流す。回避は、Claude Code の起動前に `IKARI_ALLOW_UNCHECKED_MERGE=1` を設定する（ユーザーだけ）。
-- レーンの worktree のブランチは、リードが統合用のブランチにまとめ、そこから PR を作る。
+- **git でも jj（Jujutsu。共存の形 `jj git init --colocate`）でも使える**（2026-11-19 ユーザー決定。リードは jj を使ってよい）。main への直接 push の禁止は、GitHub の ruleset「protect main」が本命（`.githooks/` は jj の操作では動かない。git で使う人のために残す）。jj の作者は、`~/github.com/ikari-zen/` の下では ikari-zen（利用者の jj の設定の `--scope`）。jj の注意: `scripts/check.sh` の合格の記録は `@-`（PR に載るコミット）に付く。`@` に変更があると記録されないので、`jj commit` してから流す。`gh pr merge` は、番号を付けて打つ（jj の detached HEAD では番号なしだと決められない）。サブエージェントの `isolation: worktree` は git の worktree のまま使う。同じ作業コピーで jj の操作を並行させない（同じ変更が二重になる）。
+- レーンの worktree のブランチは、リードが統合用のブランチにまとめ、そこから PR を作る。衝突しない変更は、1 本の統合ブランチ・1 回の CI にまとめてよい（2026-11-14 ユーザー決定）。
 - コミットの末尾には、システムが指定する Co-Authored-By の行を付ける。
 - **こまめにコミットする**。意味のある小さな単位ごとにコミットし、作業の終わりにまとめない。
 - **ブランチを切ったら、すぐにリモートにも作り（`git push -u origin <branch>`）、コミットのたびに push する**。リモートから進捗が分かるようにする。作業中の PR は draft にしてよい。
