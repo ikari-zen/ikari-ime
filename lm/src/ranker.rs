@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 use ikari_core::{Candidate, CandidateOrigin, RankInput, Ranker};
 
 use crate::cancel::{self, CancelToken};
-use crate::config::{COST_PER_NAT, ModelKind, ZenzConfig};
+use crate::config::{COST_PER_NAT, ZenzConfig};
 use crate::error::LmError;
 use crate::prompt::{
     PromptInput, build_prompt_for, head_chars, join_topic, tail_chars, topic_words,
@@ -278,7 +278,7 @@ impl ZenzRanker {
     fn build_request_parts(&self, input: &RankInput<'_>) -> (RequestKey, String) {
         let tail = tail_chars(&input.context.left_text, self.cfg.context_chars);
         // edge は話題とプロフィールを学習していないので、作らない
-        let uses_conditions = self.cfg.model_kind == ModelKind::ZenzV3;
+        let uses_conditions = self.cfg.format.uses_conditions();
         let topic = if uses_conditions {
             join_topic(&topic_words(&input.analysis.tokens, self.cfg.topic_words))
         } else {
@@ -298,7 +298,7 @@ impl ZenzRanker {
             });
         let right = head_chars(&input.context.right_text, self.cfg.right_context_chars);
         let prompt = build_prompt_for(
-            self.cfg.model_kind,
+            self.cfg.format,
             &PromptInput {
                 profile: profile.as_deref(),
                 topic: Some(topic.as_str()),
@@ -367,7 +367,7 @@ impl ZenzRanker {
     /// 読み込みに失敗した、またはワーカーがいないときは何もしない。
     pub fn warm_up(&self) {
         let prompt = build_prompt_for(
-            self.cfg.model_kind,
+            self.cfg.format,
             &PromptInput {
                 profile: None,
                 topic: Some(""),

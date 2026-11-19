@@ -11,9 +11,12 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::error::ResourceError;
+use crate::manifest::check_file_name;
 
 pub const JOURNAL_FILE_NAME: &str = ".journal.json";
 const JOURNAL_SCHEMA: u32 = 1;
+/// 入れ替えの記録が名指せる部品（`dict/`、`postal.tsv` などの置き場所に対応する、決まった名前だけ。FE-4）
+pub const COMPONENT_NAMES: [&str; 4] = ["dict", "postal", "emoji", "model"];
 
 /// 何の入れ替えか
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -79,12 +82,14 @@ impl Journal {
 
     /// 読む。なければ `None`（入れ替え中ではない）。読めない・知らない版はエラー
     /// （エンジンは、壊れた journal を勝手に捨てず、状態に出す）。
+    /// 読む量には上限を置き、名前はパスに使える形かを確かめる（FE-4）: `component` は決まった部品の名前だけ、
+    /// `bundle` は `check_file_name` を通るものだけ
     pub fn load(inbox: &Path) -> Result<Option<Self>, ResourceError> {
         let path = Self::path_in(inbox);
-        let text = match fs::read_to_string(&path) {
+        let text = match crate::manifest::read_limited(&path) {
             Ok(t) => t,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(e) => return Err(ResourceError::io(&path, e)),
+            Err(ResourceError::ManifestMissing) => return Ok(None),
+            Err(e) => return Err(e),
         };
         let journal: Self = serde_json::from_str(&text)
             .map_err(|e| ResourceError::ManifestMalformed(format!("journal: {e}")))?;
@@ -93,6 +98,14 @@ impl Journal {
                 found: u64::from(journal.schema),
                 supported: JOURNAL_SCHEMA,
             });
+        }
+        if !COMPONENT_NAMES.contains(&journal.component.as_str()) {
+            return Err(ResourceError::UnsafePath {
+                name: journal.component,
+            });
+        }
+        if let Some(bundle) = &journal.bundle {
+            check_file_name(bundle)?;
         }
         Ok(Some(journal))
     }
@@ -187,5 +200,28 @@ mod tests {
             Journal::load(dir.path()),
             Err(ResourceError::UnknownSchema { found: 9, .. })
         ));
+    }
+
+    #[test]
+    fn names_that_cannot_be_paths_are_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        for (component, bundle) in [
+            ("dict", r#""../dict""#),
+            ("dict", r#""CON""#),
+            ("learning", "null"),
+            ("../dict", "null"),
+        ] {
+            let text = format!(
+                r#"{{"schema":1,"component":"{component}","op":"install","stage":"swapping","bundle":{bundle}}}"#
+            );
+            fs::write(Journal::path_in(dir.path()), text).unwrap();
+            assert!(
+                matches!(
+                    Journal::load(dir.path()),
+                    Err(ResourceError::UnsafePath { .. })
+                ),
+                "{component} {bundle}"
+            );
+        }
     }
 }

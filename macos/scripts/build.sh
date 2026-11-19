@@ -134,17 +134,12 @@ make_xcframework() { # <.a> <ヘッダのディレクトリ> <ヘッダ名> <モ
   xcodebuild -create-xcframework -library "$1" -headers "$staged" -output "$5" >/dev/null
 }
 
-# 檻役の bin。まだ無い（レーン 1a の前）ときは、--allow-stub なら空のスタブで進む
+# 檻役の bin（llama.cpp なし。ADR 0077 §3.4）。LM の子と feature が違うので、target のディレクトリを分ける
 build_cage() {
-  log "cargo build: $LM_CAGE_NAME"
-  if (cd "$IKARI_ROOT" && CARGO_TARGET_DIR="$IKARI_ROOT/target/lm-cage" cargo build --release \
-    --target "$RUST_TARGET" -p ikari-lm --bin "$LM_CAGE_NAME") && [[ -x "$LM_CAGE_BUILT" ]]; then
-    return
-  fi
-  [[ "$ALLOW_STUB" -eq 1 ]] || die "$LM_CAGE_NAME をビルドできません（--no-lm を付けるか、スタブでよければ --allow-stub を付ける）"
-  warn "$LM_CAGE_NAME をビルドできません（--allow-stub: 何もしないスタブを入れる。インストールしないこと）"
-  mkdir -p "$(dirname "$LM_CAGE_BUILT")"
-  printf 'int main(void) { return 0; }\n' | clang -x c -o "$LM_CAGE_BUILT" -
+  log "cargo build: ${LM_CAGE_NAME}（llama.cpp なし）"
+  (cd "$IKARI_ROOT" && CARGO_TARGET_DIR="$IKARI_ROOT/target/lm-cage" cargo build --release \
+    --target "$RUST_TARGET" -p ikari-lm --bin "$LM_CAGE_NAME") || die "$LM_CAGE_NAME をビルドできません"
+  [[ -x "$LM_CAGE_BUILT" ]] || die "$LM_CAGE_BUILT がありません"
 }
 
 build_rust() {
@@ -258,7 +253,7 @@ assemble_bundle() {
   plist_set_string "$XPC/Contents/Info.plist" CFBundleVersion "$VERSION"
   plist_set_string "$XPC/Contents/Info.plist" IkariSigningMode "$SIGNING"
   plist_set_string "$XPC/Contents/Info.plist" IkariPeerRequirement "$peer"
-  plist_set_string "$XPC/Contents/Info.plist" IkariLMCageRequirement "$("$BIN_DIR/ikari-smoke" --print-requirement lm-cage "$SIGNING")"
+  plist_set_string "$XPC/Contents/Info.plist" IkariCagePeerRequirement "$("$BIN_DIR/ikari-smoke" --print-requirement lm-cage "$SIGNING")"
 
   if [[ "$WITH_LM" == 1 ]]; then
     # 檻役の名前の口は殻（開発では smoke も）、匿名の口はエンジンだけ。要件の出どころは SigningRequirements
@@ -268,7 +263,7 @@ assemble_bundle() {
     plist_set_string "$CAGE/Contents/Info.plist" CFBundleVersion "$VERSION"
     plist_set_string "$CAGE/Contents/Info.plist" IkariSigningMode "$SIGNING"
     plist_set_string "$CAGE/Contents/Info.plist" IkariPeerRequirement "$peer"
-    plist_set_string "$CAGE/Contents/Info.plist" IkariEnginePeerRequirement "$("$BIN_DIR/ikari-smoke" --print-requirement engine "$SIGNING")"
+    plist_set_string "$CAGE/Contents/Info.plist" IkariCageEnginePeerRequirement "$("$BIN_DIR/ikari-smoke" --print-requirement engine "$SIGNING")"
   fi
 
   assemble_settings_app
@@ -359,9 +354,11 @@ verify_bundle() {
   codesign --verify -R="$engine_req" "$XPC" || die "エンジンが署名要件を満たしません: $engine_req"
   codesign --verify -R="$shell_req" "$APP" || die "殻が署名要件を満たしません: $shell_req"
   if [[ "$DISTRIBUTION" -eq 1 ]]; then
-    # 配布用: Smoke が無く、エンジンの許可リスト（IkariPeerRequirement）にも smoke の識別子が無い
+    # 配布用: Smoke が無く、エンジンと檻役の許可リスト（IkariPeerRequirement）にも smoke の識別子が無い
     [[ ! -e "$APP/Contents/MacOS/ikari-smoke" ]] || die "配布用のバンドルに ikari-smoke があります"
-    ! grep -rqF "$SMOKE_ID" "$APP/Contents/Info.plist" "$XPC/Contents/Info.plist" \
+    local plists=("$APP/Contents/Info.plist" "$XPC/Contents/Info.plist")
+    [[ ! -d "$CAGE" ]] || plists+=("$CAGE/Contents/Info.plist")
+    ! grep -qF "$SMOKE_ID" "${plists[@]}" \
       || die "配布用のバンドルの Info.plist に smoke の識別子があります"
     ! printf '%s' "$shell_req" | grep -qF smoke || die "配布用の署名要件に smoke があります: $shell_req"
     echo "signing requirements satisfied (engine, shell); distribution: no smoke in bundle or allow-list"
@@ -384,8 +381,8 @@ verify_bundle() {
 # 署名要件が殻（名前の口）とエンジン（匿名の口）を指す
 verify_cage() {
   local lm_host="$CAGE/Contents/MacOS/$LM_HOST_NAME" cage_exe="$CAGE/Contents/MacOS/$LM_CAGE_NAME"
-  [[ -x "$cage_exe" ]] || die "檻役（$LM_CAGE_NAME）が $CAGE にありません"
-  [[ -x "$lm_host" ]] || die "LM の子（$LM_HOST_NAME）が檻役の束にありません"
+  [[ -x "$cage_exe" ]] || die "檻役（${LM_CAGE_NAME}）が $CAGE にありません"
+  [[ -x "$lm_host" ]] || die "LM の子（${LM_HOST_NAME}）が檻役の束にありません"
   codesign --verify --deep --strict "$CAGE" || die "檻役の署名を検証できません"
 
   local info identifier host_info
@@ -412,7 +409,7 @@ verify_cage() {
   grep -q "MacOS/$LM_HOST_NAME" "$CAGE/Contents/_CodeSignature/CodeResources" || die "檻役の署名が $LM_HOST_NAME を封印していません"
   grep -q "XPCServices/IkariLMCage.xpc" "$APP/Contents/_CodeSignature/CodeResources" || die "ikari.app の署名が IkariLMCage.xpc を封印していません"
   # 檻役は llama.cpp を持たない（LM は子だけが持つ）
-  if grep -aqE 'llama_model_load|ggml_backend' "$cage_exe"; then die "檻役（$LM_CAGE_NAME）に llama.cpp が入っています"; fi
+  if grep -aqE 'llama_model_load|ggml_backend' "$cage_exe"; then die "檻役（${LM_CAGE_NAME}）に llama.cpp が入っています"; fi
   echo "lm host: no entitlements (inherits the cage sandbox), sealed by the cage; cage: no llama.cpp"
 
   # 署名要件: 檻役が、自分の名前の口（殻）と匿名の口（エンジン）の要件を持ち、相手が檻役の要件を満たす
@@ -422,10 +419,16 @@ verify_cage() {
   codesign --verify -R="$cage_req" "$CAGE" || die "檻役が署名要件を満たしません: $cage_req"
   [[ "$(plutil -extract IkariPeerRequirement raw "$CAGE/Contents/Info.plist")" == "$("$BIN_DIR/ikari-smoke" --print-requirement "$SHELL_REQ_TARGET" "$SIGNING")" ]] \
     || die "檻役の IkariPeerRequirement（名前の口の相手 = 殻）が署名要件と違います"
-  [[ "$(plutil -extract IkariEnginePeerRequirement raw "$CAGE/Contents/Info.plist")" == "$engine_req" ]] \
-    || die "檻役の IkariEnginePeerRequirement（匿名の口の相手 = エンジン）が署名要件と違います"
-  [[ "$(plutil -extract IkariLMCageRequirement raw "$XPC/Contents/Info.plist")" == "$cage_req" ]] \
-    || die "エンジンの IkariLMCageRequirement（口の先 = 檻役）が署名要件と違います"
+  [[ "$(plutil -extract IkariCageEnginePeerRequirement raw "$CAGE/Contents/Info.plist")" == "$engine_req" ]] \
+    || die "檻役の IkariCageEnginePeerRequirement（匿名の口の相手 = エンジン）が署名要件と違います"
+  [[ "$(plutil -extract IkariCagePeerRequirement raw "$XPC/Contents/Info.plist")" == "$cage_req" ]] \
+    || die "エンジンの IkariCagePeerRequirement（口の先 = 檻役）が署名要件と違います"
+  # 読む側（檻役の bin、エンジンの殻）が、ここで埋めたキーと同じ名前を読む（キーの名前の食い違いを防ぐ）
+  local key
+  for key in IkariPeerRequirement IkariCageEnginePeerRequirement; do
+    grep -aqF "$key" "$cage_exe" || die "檻役（${LM_CAGE_NAME}）が Info.plist のキー $key を読みません"
+  done
+  grep -aqF IkariCagePeerRequirement "$XPC/Contents/MacOS/IkariEngine" || die "エンジンが Info.plist のキー IkariCagePeerRequirement を読みません"
   echo "signing requirements satisfied (lm cage); cage allow-lists: shell (named), engine (anonymous)"
 
   if [[ "$SIGNING" == team ]]; then

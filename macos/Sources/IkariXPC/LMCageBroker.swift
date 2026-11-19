@@ -14,6 +14,10 @@ public enum LMCageNamedWire {
     public static let opEndpoint = "endpoint"
     /// 返事に入る匿名の口（`xpc_endpoint`）のキー
     public static let keyEndpoint = "endpoint"
+    /// 取り決めの版を入れるキー（`lm::host::cage::wire::KEY_VERSION`）。檻役は、版が合わない要求に口を返さない
+    public static let keyVersion = "v"
+    /// 取り決めの版（`lm::host::cage::CAGE_PROTOCOL_VERSION`。判断は Rust 側。ここは同じ値を送るだけ）
+    public static let protocolVersion: UInt64 = 1
 }
 
 /// 檻役の匿名の口の持ち主。どのスレッドからでも呼べる。
@@ -145,6 +149,7 @@ public final class LMCageBroker: @unchecked Sendable {
 
         let request = xpc_dictionary_create(nil, nil, 0)
         xpc_dictionary_set_string(request, LMCageNamedWire.keyOp, LMCageNamedWire.opEndpoint)
+        xpc_dictionary_set_uint64(request, LMCageNamedWire.keyVersion, LMCageNamedWire.protocolVersion)
 
         let box = EndpointBox()
         xpc_connection_send_message_with_reply(connection, request, queue) { reply in

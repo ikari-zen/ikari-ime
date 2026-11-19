@@ -243,3 +243,74 @@ fn open_with_a_directory_in_place_of_the_model_logs_unreadable() {
     drop(e);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+// ---- 自由指定のモデル（D-4）: 取り込みと、段 2 の無い構成 ----
+
+/// 同じプロセスで動かす構成（段 2 が無い）で開くと、inbox の束は取り込むが、自由指定のモデルは読まず LM なし
+#[test]
+fn open_imports_a_user_bundle_but_does_not_read_it_without_level_2() {
+    use ikari_resource::{ComponentKind, Created, Origin, StagePlan, UserModelId};
+
+    let dir = temp_dir("open-user-model");
+    let dict = UserDir::new(&dir).dict_dir();
+    std::fs::create_dir_all(&dict).unwrap();
+    for entry in std::fs::read_dir(fixture_dict_dir()).unwrap() {
+        let entry = entry.unwrap();
+        std::fs::copy(entry.path(), dict.join(entry.file_name())).unwrap();
+    }
+    let id = UserModelId::from_sha256(&sha256_reader(GOOD).unwrap()).unwrap();
+    let inbox = dir.join(crate::model_import::INBOX_DIR_NAME);
+    std::fs::create_dir_all(&inbox).unwrap();
+    let plan = StagePlan {
+        name: id.to_string(),
+        file_name: id.file_name(),
+        kind: ComponentKind::Model,
+        origin: Origin::User,
+        created: Created::parse("2026-11-18T00:00:00Z").unwrap(),
+        expected: None,
+        profile_format: Some("zenz-v3".into()),
+        display_name: None,
+        source: None,
+        max_size: 1024,
+    };
+    ikari_resource::stage_model_bundle(&mut &GOOD[..], &inbox, &plan).unwrap();
+    std::fs::write(
+        dir.join(crate::settings::SETTINGS_FILE_NAME),
+        format!("lm.model\t{id}\n"),
+    )
+    .unwrap();
+
+    let e = Engine::open_with(
+        &EngineConfig {
+            data_dir: dir.to_string_lossy().into_owned(),
+            enable_lm: true,
+            idle_unload_secs: 300,
+        },
+        &LmHostChoice::InProcess,
+    )
+    .expect("open");
+    // 取り込んだ（束は消え、models/ に入った）
+    assert!(!inbox.join(id.to_string()).exists());
+    assert!(dir.join(MODELS_DIR_NAME).join(id.file_name()).is_file());
+    // 読まない（段 2 が無い）。印も書かない
+    let lines = reject_lines(&e, &dir);
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert!(
+        lines[0].contains(&format!("file={} reason=no_cage", id.file_name())),
+        "{}",
+        lines[0]
+    );
+    assert!(!dir.join(MODELS_DIR_NAME).join(".loading").exists());
+    begin(&e, 1, false);
+    assert!(!convert(&e, 1, "この", 1).candidates.is_empty());
+    e.inner.log.flush_for_test();
+    let log = std::fs::read_to_string(dir.join("logs").join("engine.log")).unwrap_or_default();
+    assert!(
+        log.lines()
+            .any(|l| l.split_whitespace().nth(1) == Some("model_import")
+                && l.contains(&format!("name={id} result=installed"))),
+        "{log}"
+    );
+    drop(e);
+    let _ = std::fs::remove_dir_all(dir);
+}

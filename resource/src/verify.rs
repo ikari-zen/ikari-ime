@@ -16,6 +16,7 @@ use crate::error::ResourceError;
 use crate::manifest::{
     Component, ComponentKind, Freshness, MANIFEST_FILE_NAME, Manifest, check_file_name,
 };
+use crate::model_list::{UserModelId, profile_format};
 use crate::models::{KNOWN_MODELS, KnownModel};
 use crate::sha256::{sha256_file, sha256_reader};
 
@@ -57,6 +58,10 @@ pub struct VerifyOptions<'a> {
     pub formats: SupportedFormats,
     /// 受けるモデル。普段は `KNOWN_MODELS`
     pub known_models: &'a [KnownModel],
+    /// 表に無いモデル（自由指定）を受ける形式の語（`PromptFormat` の語）。空なら受けない（既定）。
+    /// 受けるのは、manifest の `profile.format` がこの語のどれかで、ファイル名が sha256 から作った
+    /// `user-<12 桁>.gguf` のものだけ。manifest の `origin` は見ない（信用しない。D-4 の条件 2）
+    pub user_model_formats: &'a [&'a str],
     /// 今入っている版（`dict/MANIFEST.json` などを束ねたもの）。なければ（`install-data.sh` で入れた、初めて）比べない
     pub installed: Option<&'a Manifest>,
 }
@@ -66,6 +71,7 @@ impl Default for VerifyOptions<'_> {
         Self {
             formats: SupportedFormats::current(),
             known_models: KNOWN_MODELS,
+            user_model_formats: &[],
             installed: None,
         }
     }
@@ -135,7 +141,11 @@ fn check_component(
                     .known_models
                     .iter()
                     .any(|m| m.file_name == f.name && m.sha256 == f.sha256);
-                if !known {
+                let user = profile_format(component)
+                    .is_some_and(|w| opts.user_model_formats.contains(&w))
+                    && UserModelId::from_sha256(&f.sha256)
+                        .is_some_and(|id| id.file_name() == f.name);
+                if !known && !user {
                     return Err(ResourceError::UnknownModel {
                         name: f.name.clone(),
                         sha256: f.sha256.clone(),
@@ -284,6 +294,18 @@ pub fn verify_model_open(
     known: &[KnownModel],
 ) -> Result<(), ResourceError> {
     let model = known_model(file_name, known)?;
+    verify_open_expected(file, path, file_name, model.size, model.sha256)
+}
+
+/// 開いたハンドルを、期待する大きさと sha256 で照合する（自由指定のモデルは、取り込みのときに数えて一覧に書いた値。
+/// D-4 の条件 7）。読み方は [`verify_model_open`] と同じ（位置を動かさない）
+pub fn verify_open_expected(
+    file: &File,
+    path: &Path,
+    file_name: &str,
+    size: u64,
+    sha256: &str,
+) -> Result<(), ResourceError> {
     let meta = file.metadata().map_err(|e| ResourceError::io(path, e))?;
     if !meta.is_file() {
         return Err(ResourceError::NotRegularFile {
@@ -291,26 +313,26 @@ pub fn verify_model_open(
         });
     }
     let actual = meta.len();
-    if actual < model.size {
+    if actual < size {
         return Err(ResourceError::Truncated {
             name: file_name.to_owned(),
-            expected: model.size,
+            expected: size,
             actual,
         });
     }
-    if actual > model.size {
+    if actual > size {
         return Err(ResourceError::SizeMismatch {
             name: file_name.to_owned(),
-            expected: model.size,
+            expected: size,
             actual,
         });
     }
     let digest = sha256_reader(PositionalReader { file, offset: 0 })
         .map_err(|e| ResourceError::io(path, e))?;
-    if digest != model.sha256 {
+    if digest != sha256 {
         return Err(ResourceError::Sha256Mismatch {
             name: file_name.to_owned(),
-            expected: model.sha256.to_owned(),
+            expected: sha256.to_owned(),
             actual: digest,
         });
     }

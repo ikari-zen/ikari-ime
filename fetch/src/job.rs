@@ -26,10 +26,10 @@ use crate::nofollow;
 use crate::url::HttpsUrl;
 use crate::workspace::{Dirs, required_space, required_space_to_copy};
 
-/// 自由指定の束の名前の前につける語と、sha256 から取る桁数（ADR 0076 §5.1）
-const USER_NAME_PREFIX: &str = "user-";
-const USER_NAME_HEX_DIGITS: usize = 12;
-const MODEL_FILE_EXTENSION: &str = ".gguf";
+/// 自由指定の束の名前の前につける語と、sha256 から取る桁数（ADR 0076 §5.1）。エンジンの取り込みと同じ値
+const USER_NAME_PREFIX: &str = ikari_resource::USER_MODEL_PREFIX;
+const USER_NAME_HEX_DIGITS: usize = ikari_resource::USER_MODEL_HEX_DIGITS;
+const MODEL_FILE_EXTENSION: &str = ikari_resource::MODEL_FILE_EXTENSION;
 
 /// 作業の場所（`Dirs::download_path`）に URL の中身を落とす部品。製品は `ProductFetcher`、テストは差し替える
 pub trait Fetcher {

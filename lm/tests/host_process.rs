@@ -1,6 +1,11 @@
 //! 別プロセスの LM（ADR 0060 Q4）: 子が落ちる・固まる・壊れた返事をしても、`ZenzRanker` は辞書だけの順位で
 //! 返し続け、子は回収され、起動し直され、連続失敗で諦める。偽の子（`ikari-lm-host-fake`。モデルなし）を使う。
 //! 時間は、テストが揺れない長さ（`ikari_testtime` で伸ばせる）。製品の既定値とは別。
+//!
+//! macOS の製品のビルド（dev-knobs なし）は、エンジンが自分で子を起こす道を閉じている（ADR 0077 §6）ので、
+//! このテストは流さない（`cargo test --workspace` は dev-knobs が有効になるので流れる）。
+
+#![cfg(any(not(target_vendor = "apple"), feature = "dev-knobs"))]
 
 use std::cell::Cell;
 use std::path::{Path, PathBuf};

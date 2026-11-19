@@ -6,7 +6,7 @@ use std::io::{self, Read, Write};
 use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -23,9 +23,9 @@ const PROBE_FD: i32 = 201;
 const SETTLE: Duration = Duration::from_secs(5);
 const REPLY: Duration = Duration::from_secs(5);
 
-/// 0 から 4 と PROBE_FD のうち、開いている fd を 1 行に出す
-const FDS_SCRIPT: &str =
-    "for n in 0 1 2 3 4 201; do if [ -e /dev/fd/$n ]; then printf '%s ' $n; fi; done; echo";
+/// 0 から 4 と PROBE_FD のうち、開いている fd を 1 行に出す。fd 2 が /dev/null なら `2null` と出す
+const FDS_SCRIPT: &str = "for n in 0 1 2 3 4 201; do if [ -e /dev/fd/$n ]; then \
+     if [ $n = 2 ] && [ /dev/fd/2 -ef /dev/null ]; then printf '2null '; else printf '%s ' $n; fi; fi; done; echo";
 /// 環境変数をそのまま出す
 const ENV_SCRIPT: &str = "exec /usr/bin/env";
 /// 標準入力が閉じるまで生きる
@@ -33,15 +33,22 @@ const CAT_SCRIPT: &str = "exec /bin/cat";
 /// シェルが自分で足す環境変数（子に渡したものではない）
 const SHELL_OWN_VARS: [&str; 4] = ["PWD", "SHLVL", "_", "OLDPWD"];
 
+/// このファイルのテストは、プロセスの fd の番号（`PROBE_FD`）と子の起動をプロセス全体で使うので、1 つずつ流す。
+/// 並列に流すと、コアの多い機械（既定のスレッド数が多い）で、檻役の返事が時間内に来ずに落ちる
+static SERIAL: Mutex<()> = Mutex::new(());
+
 struct Rig {
+    /// 先に宣言したものから落ちるので、ほかの持ち物より最後まで持つよう、最後に置く（下の `_serial`）
     _dir: tempfile::TempDir,
     core: Arc<CageCore>,
     listener: CageListener,
     model: PathBuf,
+    _serial: MutexGuard<'static, ()>,
 }
 
 impl Rig {
     fn new(body: &str) -> Rig {
+        let serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let program = dir.path().join("child.sh");
         std::fs::write(&program, format!("#!/bin/sh\n{body}\n")).unwrap();
@@ -55,6 +62,7 @@ impl Rig {
             core,
             listener,
             model,
+            _serial: serial,
         }
     }
 
@@ -145,7 +153,7 @@ fn gone(pid: u32) -> bool {
 }
 
 #[test]
-fn caged_child_gets_only_fds_0_1_3() {
+fn caged_child_gets_only_fds_0_1_3_and_a_null_stderr() {
     let file = tempfile::tempfile().unwrap();
     // SAFETY: 開いた fd を、使われていない番号に複製するだけ（`dup2` の結果には close-on-exec が付かない）
     let fd = unsafe { libc::dup2(file.as_raw_fd(), PROBE_FD) };
@@ -156,7 +164,7 @@ fn caged_child_gets_only_fds_0_1_3() {
     let rig = Rig::new(FDS_SCRIPT);
     let (_child, to_child, from_child) = rig.launch(&rig.client()).unwrap();
     drop(to_child);
-    assert_eq!(read_all(from_child), "0 1 3 \n");
+    assert_eq!(read_all(from_child), "0 1 2null 3 \n");
 }
 
 #[test]

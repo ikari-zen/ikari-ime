@@ -5,6 +5,7 @@ use ikari_core::{AnalyzedContext, Context, DenseGrammar, InMemoryDictionary, Unk
 
 use super::*;
 use crate::error::LmError;
+use crate::profile::PromptFormat;
 
 /// モックの挙動と観測
 #[derive(Default)]
@@ -241,7 +242,7 @@ fn edge_prompt_is_sent_with_the_context_tag_and_without_conditions() {
     let r = ZenzRanker::new(
         loader(&state),
         ZenzConfig {
-            model_kind: ModelKind::KanakanjiEdge,
+            format: PromptFormat::KanakanjiEdge,
             ..cfg(2000, 60_000)
         },
     );

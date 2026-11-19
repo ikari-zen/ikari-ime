@@ -198,16 +198,10 @@ impl Manifest {
             .map_err(|e| ResourceError::ManifestMalformed(e.to_string()))
     }
 
-    /// ファイルから読む（なければ `ManifestMissing`）
+    /// ファイルから読む（なければ `ManifestMissing`）。利用者が書ける場所のファイルなので、読む量に上限を置く
+    /// （[`MAX_MANIFEST_BYTES`]。超えたら `ManifestMalformed`。D-4 の条件 3、FE-4）
     pub fn read(path: &Path) -> Result<Self, ResourceError> {
-        let text = match std::fs::read_to_string(path) {
-            Ok(t) => t,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                return Err(ResourceError::ManifestMissing);
-            }
-            Err(e) => return Err(ResourceError::io(path, e)),
-        };
-        Self::from_json(&text)
+        Self::from_json(&read_limited(path)?)
     }
 
     /// 一時ファイルに書いてから rename する（読む側が書きかけを見ない）
@@ -271,12 +265,60 @@ impl Manifest {
     }
 }
 
-/// 名前が束の直下の 1 ファイルを指すか。空、`.`、`..`、区切り（`/`、`\`）、絶対パス（`:` を含む Windows のドライブ）、NUL を拒む。
+/// 利用者が書ける場所の、束の記録（manifest、入れ替えの記録）を読む。上限を超えたもの、ふつうのファイルでないもの、
+/// UTF-8 でないものは `ManifestMalformed`（なければ `ManifestMissing`）
+pub(crate) fn read_limited(path: &Path) -> Result<String, ResourceError> {
+    match ikari_textfile::read_to_string_limited(path, MAX_MANIFEST_BYTES) {
+        Ok(text) => Ok(text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(ResourceError::ManifestMissing),
+        Err(e)
+            if matches!(
+                e.kind(),
+                std::io::ErrorKind::FileTooLarge
+                    | std::io::ErrorKind::InvalidInput
+                    | std::io::ErrorKind::InvalidData
+            ) =>
+        {
+            Err(ResourceError::ManifestMalformed(e.to_string()))
+        }
+        Err(e) => Err(ResourceError::io(path, e)),
+    }
+}
+
+/// 束の記録を読む量の上限（バイト）。仮置き（計測なし。ふつうは 1KiB 前後。モデルの一覧でも数十件で足りる大きさ）
+pub const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
+
+/// Windows が特別に扱う名前（拡張子が付いていても同じ。大文字・小文字を区別しない）
+const WINDOWS_RESERVED_NAMES: [&str; 4] = ["CON", "PRN", "AUX", "NUL"];
+/// 数字が 1〜9 付く Windows の予約の名前（`COM1`、`LPT9` など）
+const WINDOWS_RESERVED_NUMBERED: [&str; 2] = ["COM", "LPT"];
+/// Windows のファイル名に使えない文字（区切りと `:` は別に見る）
+const WINDOWS_FORBIDDEN_CHARS: [char; 6] = ['*', '?', '"', '<', '>', '|'];
+
+/// Windows の予約の名前か（`CON`、`nul.txt`、`COM1` など）
+fn is_windows_reserved(name: &str) -> bool {
+    let stem = name.split('.').next().unwrap_or(name).trim_end();
+    let upper = stem.to_ascii_uppercase();
+    WINDOWS_RESERVED_NAMES.contains(&upper.as_str())
+        || WINDOWS_RESERVED_NUMBERED.iter().any(|p| {
+            upper
+                .strip_prefix(p)
+                .is_some_and(|d| d.len() == 1 && matches!(d.as_bytes()[0], b'1'..=b'9'))
+        })
+}
+
+/// 名前が束の直下の 1 ファイルを指すか。空、`.`、`..`、区切り（`/`、`\`）、絶対パス（`:` を含む Windows のドライブ）、
+/// 制御文字（NUL を含む）を拒む。束は OS をまたいで作られるので、どの OS でも Windows の規則も当てる:
+/// 予約の名前（`CON`、`COM1` など）、末尾の点と空白、Windows で使えない文字（FE-4）
 pub fn check_file_name(name: &str) -> Result<(), ResourceError> {
     let bad = name.is_empty()
         || name == "."
         || name == ".."
-        || name.contains(['/', '\\', ':', '\0'])
+        || name.contains(['/', '\\', ':'])
+        || name.contains(WINDOWS_FORBIDDEN_CHARS)
+        || name.chars().any(char::is_control)
+        || name.ends_with(['.', ' '])
+        || is_windows_reserved(name)
         || Path::new(name).is_absolute();
     if bad {
         Err(ResourceError::UnsafePath {
@@ -401,13 +443,40 @@ mod tests {
             "/etc/passwd",
             "C:x",
             "a\0b",
+            "a\nb",
+            // FE-4: Windows の規則もどの OS でも当てる
+            "CON",
+            "con.gguf",
+            "Nul",
+            "COM1",
+            "lpt9.txt",
+            "aux .txt",
+            "model.",
+            "model ",
+            "a*b",
+            "a?b",
+            "a\"b",
+            "a<b",
+            "a>b",
+            "a|b",
         ] {
             assert!(
                 matches!(check_file_name(bad), Err(ResourceError::UnsafePath { .. })),
                 "{bad:?}"
             );
         }
-        assert!(check_file_name("system.dict").is_ok());
+        for good in [
+            "system.dict",
+            "user-ba7816bf8f01.gguf",
+            "zenz-v3.2-small-Q5_K_M.gguf",
+            "COM0",
+            "COM10",
+            "console.txt",
+            "lpt.txt",
+            ".journal.json",
+        ] {
+            assert!(check_file_name(good).is_ok(), "{good:?}");
+        }
         let json = sample()
             .to_json()
             .unwrap()
@@ -415,6 +484,30 @@ mod tests {
         assert!(matches!(
             Manifest::from_json(&json),
             Err(ResourceError::UnsafePath { .. })
+        ));
+    }
+
+    #[test]
+    fn reading_has_a_size_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(MANIFEST_FILE_NAME);
+        assert!(matches!(
+            Manifest::read(&path),
+            Err(ResourceError::ManifestMissing)
+        ));
+        std::fs::write(&path, sample().to_json().unwrap()).unwrap();
+        assert_eq!(Manifest::read(&path).unwrap(), sample());
+        // 上限を超えたら、中身を読まずに壊れたものとして扱う
+        let big = " ".repeat(usize::try_from(MAX_MANIFEST_BYTES).unwrap() + 1);
+        std::fs::write(&path, big).unwrap();
+        assert!(matches!(
+            Manifest::read(&path),
+            Err(ResourceError::ManifestMalformed(_))
+        ));
+        // ふつうのファイルでない（フォルダ）
+        assert!(matches!(
+            Manifest::read(dir.path()),
+            Err(ResourceError::ManifestMalformed(_))
         ));
     }
 

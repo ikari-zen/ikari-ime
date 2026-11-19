@@ -27,7 +27,7 @@
 ### トークン化
 
 - 製品の `LlamaScorer` と同じ: llama.cpp の vocab で `tokenize(text, add_bos = false, parse_special = true)`（GGUF の `tokenizer.ggml.add_bos_token` が false なので **BOS は付けない**）。
-- プロンプトは `lm::prompt::build_prompt_for(ModelKind::ZenzV3, …)` の文字列（`EE03 プロフィール EE04 話題 EE02 左文脈 EE07 右文脈 EE00 読み(カタカナ) EE01`）。
+- プロンプトは `lm::prompt::build_prompt_for(PromptFormat::ZenzV3, …)` の文字列（`EE03 プロフィール EE04 話題 EE02 左文脈 EE07 右文脈 EE00 読み(カタカナ) EE01`）。
 - 終わりのトークンは `</s>`（id 3）。GGUF の `eos_token_id`（2 = `<s>`）では**ない**（`find_end_token` が `</s>` を探す）。
 - スパイクでは、トークン列は `fixtures/` に入れたもの（llama.cpp で作ったもの）をそのまま使ってよい。自前でトークン化するなら、`fixtures/` の列と全件一致することを先に確かめる。
 

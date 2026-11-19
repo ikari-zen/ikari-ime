@@ -3,7 +3,7 @@
 <!-- IkariEngine.xpc の Info.plist のテンプレート（ADR 0004 §2）。
      版、IkariSigningMode、IkariPeerRequirement は build.sh が PlistBuddy で埋める。
      IkariPeerRequirement は ikari-smoke --print-requirement shell <方式> の出力（SigningRequirements が唯一の出どころ）。
-     IkariLMCageRequirement は ikari-smoke --print-requirement lm-cage <方式> の出力（エンジンが、もらった檻役の口の先を確かめる。ADR 0077 §3.2）。 -->
+     IkariCagePeerRequirement は ikari-smoke --print-requirement lm-cage <方式> の出力（エンジンが、もらった檻役の口の先を確かめる。ADR 0077 §3.2）。 -->
 <plist version="1.0">
 <dict>
     <key>CFBundleDevelopmentRegion</key>
@@ -33,7 +33,7 @@
     <string>team</string>
     <key>IkariPeerRequirement</key>
     <string></string>
-    <key>IkariLMCageRequirement</key>
+    <key>IkariCagePeerRequirement</key>
     <string></string>
 </dict>
 </plist>

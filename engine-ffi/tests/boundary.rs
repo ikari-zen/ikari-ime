@@ -248,3 +248,54 @@ fn buf_free_accepts_empty_and_zero_length_buffers() {
     assert!(unsafe { ikari_engine_open(ptr::null(), 0, &mut err) }.is_null());
     unsafe { ikari_buf_free(err) };
 }
+
+/// 檻役の口を渡す入口（macOS。ADR 0077 §3.5）。使えない引数は受け取らず、口が無い製品のエンジンは「檻なし」を知らせる
+#[cfg(target_vendor = "apple")]
+#[test]
+fn attach_lm_cage_refuses_unusable_arguments_and_reports_no_cage() {
+    use std::ffi::c_void;
+
+    use ikari_engine_ffi::ikari_engine_attach_lm_cage;
+    use ikari_proto::v1::LmCage;
+
+    unsafe extern "C" {
+        fn xpc_dictionary_create(
+            keys: *const *const std::ffi::c_char,
+            values: *const *mut c_void,
+            count: usize,
+        ) -> *mut c_void;
+        fn xpc_release(object: *mut c_void);
+    }
+
+    let dir = data_dir();
+    let e = open_in(dir.path());
+    let requirement = c"anchor apple";
+    // SAFETY: 空の辞書を作るだけ（下で解放する）
+    let not_an_endpoint = unsafe { xpc_dictionary_create(ptr::null(), ptr::null(), 0) };
+    assert!(!not_an_endpoint.is_null());
+    unsafe {
+        assert!(!ikari_engine_attach_lm_cage(
+            e,
+            ptr::null_mut(),
+            requirement.as_ptr()
+        ));
+        assert!(!ikari_engine_attach_lm_cage(
+            e,
+            not_an_endpoint,
+            ptr::null()
+        ));
+        assert!(!ikari_engine_attach_lm_cage(
+            e,
+            not_an_endpoint,
+            requirement.as_ptr()
+        ));
+        xpc_release(not_an_endpoint);
+    }
+    // 製品の macOS のエンジン（dev-knobs なし）は檻役だけを使い、口が無ければ「檻なし」
+    let good = hello();
+    match handle(e, good.as_ptr(), good.len()).body {
+        Some(envelope::Body::HelloReply(reply)) => assert_eq!(reply.lm_cage(), LmCage::None),
+        other => panic!("not a HelloReply: {other:?}"),
+    }
+    unsafe { ikari_engine_close(e) };
+}
