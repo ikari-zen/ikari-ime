@@ -25,7 +25,7 @@ pub const ZENZ_SMALL_SHA256: &str =
 pub const ZENZ_SMALL_SIZE: u64 = 73_871_936;
 
 /// 取得できるプリセットのモデル 1 件（ADR 0076 §4.2。表はアプリに埋め、遠くから取らない）
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ModelPreset {
     /// `ikari-data model fetch --preset <id>` の ID
     pub id: &'static str,

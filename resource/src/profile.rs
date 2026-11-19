@@ -92,6 +92,9 @@ pub struct ModelProfile {
     pub adapter_base: Option<&'static str>,
 }
 
+// 表の定数だけが作る。`alpha` は NaN にならない（表の定数）ので、Eq とみなす
+impl Eq for ModelProfile {}
+
 /// zenz-v3.2 small の profile（今の既定。値は今までの `ZenzConfig` の既定と同じ）
 pub const ZENZ_V3_2_SMALL_PROFILE: ModelProfile = ModelProfile {
     format: PromptFormat::ZenzV3,
