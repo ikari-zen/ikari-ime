@@ -275,6 +275,9 @@ jobs:
       # 以降は開発用のビルド（実機の確認に持ち込む artifact。windows/dev のスクリプトが dev-knobs の口を使う）
       - name: release ビルド（開発用の口つき。LM なしのエンジンと TIP）
         run: cargo build --release -p ikari-engine-host -p ikari-tip --features ikari-engine-host/dev-knobs,ikari-tip/dev-knobs
+      # 取得の子（ADR 0076。#449 の VM の確認に要る）。製品と同じビルド（dev-knobs なし）
+      - name: release ビルド（取得の子 ikari-data）
+        run: cargo build --release -p ikari-data
       # `-nolm` の名前の exe を取っておく（エンジンの exe はもう LM つきと LM なしで変わらない。名前は互換のために残す）
       - name: LM なしのエンジンを取っておく
         shell: bash
@@ -376,7 +379,7 @@ jobs:
           rel="$(cygpath -u "$CARGO_TARGET_DIR")/release"
           out=dist/target/release
           mkdir -p "$out/backends" dist/windows dist/shell-core/resources dist/eval
-          cp "$rel/ikari-engine-host.exe" "$rel/ikari-engine-host-nolm.exe" "$rel/ikari-engine-host-hidden.exe" "$rel/ikari_tip.dll" "$rel/ikari-eval.exe" "$rel/ikari-lm-host.exe" "$out/"
+          cp "$rel/ikari-engine-host.exe" "$rel/ikari-engine-host-nolm.exe" "$rel/ikari-engine-host-hidden.exe" "$rel/ikari_tip.dll" "$rel/ikari-eval.exe" "$rel/ikari-lm-host.exe" "$rel/ikari-data.exe" "$out/"
           cp "$rel/examples/devices.exe" "$out/ikari-lm-devices.exe"
           cp "$rel/examples/candidate-send.exe" "$out/ikari-candidate-send.exe"
           # 使う OUT_DIR: feature の組み合わせで build のフォルダが複数ありうるので、backends に ggml-vulkan を含むもの
