@@ -1,10 +1,10 @@
-//! アプリに埋めた既知のモデルの表（ADR 0058 §5.2、§6.1）。
+//! アプリに埋めたモデルの表（ADR 0058 §5.2、§6.1、ADR 0060 §5）。表は `MODEL_PRESETS` の 1 つだけ。
 //!
 //! inbox が受けるモデルは、この表にあるものだけ（gguf の中身は llama.cpp のパーサに渡り、こちらは検査していない）。
 //! 取得元の URL と元データの sha256 は `xtask/src/data/fetch.rs` に残る。モデルの値は同じなので、
 //! このファイルのテストが fetch.rs の定数と一致することを確かめる。
 
-/// 既知のモデル 1 件（入れるファイルの名前と sha256）
+/// 受けるモデル 1 件（`MODEL_PRESETS` から作る。入れるファイルの名前と sha256）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KnownModel {
     pub file_name: &'static str,
@@ -12,6 +12,8 @@ pub struct KnownModel {
     /// ファイルの大きさ（バイト）。sha256 を取る前に、安く弾くために使う
     pub size: u64,
 }
+
+use crate::profile::{ModelProfile, ZENZ_V3_2_SMALL_PROFILE};
 
 /// zenz-v3.2 small の入れる名前（`engine` の `MODEL_FILE_NAME` と同じ）
 pub const ZENZ_SMALL_FILE_NAME: &str = "zenz-v3.2-small-Q5_K_M.gguf";
@@ -22,15 +24,8 @@ pub const ZENZ_SMALL_SHA256: &str =
 /// 配布元のファイルの大きさ（バイト）
 pub const ZENZ_SMALL_SIZE: u64 = 73_871_936;
 
-/// 今アプリが受けるモデル。モデルを足す・替えるときは ADR で実測してから（CLAUDE.md）
-pub const KNOWN_MODELS: &[KnownModel] = &[KnownModel {
-    file_name: ZENZ_SMALL_FILE_NAME,
-    sha256: ZENZ_SMALL_SHA256,
-    size: ZENZ_SMALL_SIZE,
-}];
-
 /// 取得できるプリセットのモデル 1 件（ADR 0076 §4.2。表はアプリに埋め、遠くから取らない）
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ModelPreset {
     /// `ikari-data model fetch --preset <id>` の ID
     pub id: &'static str,
@@ -41,13 +36,16 @@ pub struct ModelPreset {
     pub url: &'static str,
     /// `url` のホスト（小文字。表の書き損じで別のホストに行かないよう、`ikari-data` が要求の前に照らす）
     pub host: &'static str,
+    /// モデルの記述（プロンプトの形式、加点の重み、上限。ADR 0060 §3）。`profile_by_id` が引く
+    pub profile: ModelProfile,
 }
 
 /// zenz-v3.2 small の取得元（`xtask/src/data/fetch.rs` の `ZENZ_URL` と同じ）
 pub const ZENZ_SMALL_URL: &str =
     "https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf/resolve/main/ggml-model-Q5_K_M.gguf";
 
-/// 取得できるプリセット。`KNOWN_MODELS` の値と同じものから作る
+/// アプリに埋めたモデルの表（唯一。ADR 0060 §5）。取得元（`ikari-data`、xtask）、受けるファイル（`KNOWN_MODELS`）、
+/// profile（lm）は、すべてこの表から読む。足すときは評価してユーザーに聞く（CLAUDE.md）
 pub const MODEL_PRESETS: &[ModelPreset] = &[ModelPreset {
     id: "zenz-small",
     file_name: ZENZ_SMALL_FILE_NAME,
@@ -55,7 +53,30 @@ pub const MODEL_PRESETS: &[ModelPreset] = &[ModelPreset {
     size: ZENZ_SMALL_SIZE,
     url: ZENZ_SMALL_URL,
     host: "huggingface.co",
+    profile: ZENZ_V3_2_SMALL_PROFILE,
 }];
+
+/// 受けるモデル 1 件を、表の行から作る
+const fn known_of(p: &ModelPreset) -> KnownModel {
+    KnownModel {
+        file_name: p.file_name,
+        sha256: p.sha256,
+        size: p.size,
+    }
+}
+
+const KNOWN_COUNT: usize = MODEL_PRESETS.len();
+
+/// 今アプリが受けるモデル。`MODEL_PRESETS` から作る（別の表ではない）
+pub const KNOWN_MODELS: &[KnownModel] = &{
+    let mut out = [known_of(&MODEL_PRESETS[0]); KNOWN_COUNT];
+    let mut i = 0;
+    while i < KNOWN_COUNT {
+        out[i] = known_of(&MODEL_PRESETS[i]);
+        i += 1;
+    }
+    out
+};
 
 /// ID からプリセットを引く
 pub fn preset_by_id(id: &str) -> Option<&'static ModelPreset> {
@@ -112,6 +133,26 @@ mod tests {
             engine.contains(&want),
             "engine の MODEL_FILE_NAME と食い違っています"
         );
+    }
+
+    /// 受けるモデルは表の行から作る。行の数と ID の重なりを見つける（足すときの取り違え）
+    #[test]
+    fn known_models_follow_the_table_and_ids_are_unique() {
+        assert_eq!(KNOWN_MODELS.len(), MODEL_PRESETS.len());
+        for (k, p) in KNOWN_MODELS.iter().zip(MODEL_PRESETS) {
+            assert_eq!(
+                (k.file_name, k.sha256, k.size),
+                (p.file_name, p.sha256, p.size)
+            );
+        }
+        for (i, p) in MODEL_PRESETS.iter().enumerate() {
+            assert!(MODEL_PRESETS[..i].iter().all(|q| q.id != p.id), "{}", p.id);
+            assert!(
+                MODEL_PRESETS[..i]
+                    .iter()
+                    .all(|q| q.file_name != p.file_name)
+            );
+        }
     }
 
     #[test]

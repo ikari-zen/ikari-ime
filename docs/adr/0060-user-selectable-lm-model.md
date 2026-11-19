@@ -55,7 +55,7 @@
 
 ## 5. 候補（プリセット）の表
 
-- `ikari-resource` の `KNOWN_MODELS` を `MODEL_PRESETS: &[ModelPreset { id, file_name, sha256, size, url, model_card_url, license_seen: (SPDX, 確かめた日), profile_id }]` に広げる。xtask の `fetch.rs` も、この表を読む（0058 §5.2 の 1 か所に集める方針の続き）。
+- `ikari-resource` の `KNOWN_MODELS` を `MODEL_PRESETS: &[ModelPreset { id, file_name, sha256, size, url, model_card_url, license_seen: (SPDX, 確かめた日), profile_id }]` に広げる。（#469 で実装: 表は `MODEL_PRESETS` の 1 つだけ。profile は `profile_id` で別の表を引かず、行の `profile` に埋める。`KNOWN_MODELS` はこの表から const で作る。profile の型 `PromptFormat`・`ModelProfile`・`LmLimits` は lm を持たない側も表を読むため `ikari-resource` に置き、lm は再公開する。lm は resource に依る向きが足された。）xtask の `fetch.rs` も、この表を読む（0058 §5.2 の 1 か所に集める方針の続き）。
 - ライセンスは「記録した日の表示」として出し、配布元のページへのリンクを添える。ikari はライセンスを保証しない（表示が変わりうるため）。
 - 表は、アプリを更新しない限り変わらない（遠くから表を取らない）。理由: profile の `alpha` は実測とコードの変更を伴う。遠くから取る表は、新しい通信と、信じる根拠の置き場所を増やす（NFR-17）。アプリの更新より先に新しいモデルを使いたいときは、自由指定で足りる。
 - プリセットを足すのは、全セットの評価で 1 位が悪化しないことを確かめ、ユーザーに聞いてから（CLAUDE.md の「モデルを足す・替える」）。

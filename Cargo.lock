@@ -710,6 +710,7 @@ version = "0.1.0"
 dependencies = [
  "block2",
  "ikari-core",
+ "ikari-resource",
  "ikari-testtime",
  "libc",
  "llama-cpp-2",
