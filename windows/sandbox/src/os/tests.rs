@@ -789,12 +789,19 @@ const TEST_PROFILE: crate::appcontainer::ContainerProfile = crate::appcontainer:
     display_name: "ikari sandbox test",
 };
 
+/// 環境の切り分けのテストのプロファイル（並べて流れるほかのテストの削除とぶつからないように分ける）
+const ENV_TEST_PROFILE: crate::appcontainer::ContainerProfile =
+    crate::appcontainer::ContainerProfile {
+        name: "io.github.ikari-zen.sandbox-env-test",
+        display_name: "ikari sandbox test",
+    };
+
 /// GitHub Actions の runner では、AppContainer のプロファイルが作れない（`CreateAppContainerProfile` が一定しない
 /// エラーで失敗する。VM と実機では動く。ADR 0072 §12、`lm` の段 2 のテストと同じ扱い）。CI（`GITHUB_ACTIONS` が
 /// 立っている）で作れないときだけ `None`（テストを飛ばす）。手元・VM・実機では、作れなければ落とす
-fn test_container() -> Option<Container> {
+fn test_container(profile: &crate::appcontainer::ContainerProfile) -> Option<Container> {
     use crate::appcontainer::Capability;
-    match Container::ensure(&TEST_PROFILE, &[Capability::InternetClient]) {
+    match Container::ensure(profile, &[Capability::InternetClient]) {
         Ok(container) => Some(container),
         Err(e) if std::env::var_os("GITHUB_ACTIONS").is_some() => {
             eprintln!("skip: CI の runner では AppContainer のプロファイルが作れない（{e}）");
@@ -835,13 +842,13 @@ fn is_appcontainer(process: HANDLE) -> bool {
 
 #[test]
 fn an_appcontainer_child_writes_to_the_inherited_handle_and_runs_in_the_job() {
-    let Some(container) = test_container() else {
+    let Some(container) = test_container(&TEST_PROFILE) else {
         return;
     };
     let (mut extra_reader, extra_writer) = io::pipe().unwrap();
     let extra_writer = OwnedHandle::from(extra_writer);
     let value = (raw(&extra_writer) as usize).to_string();
-    let env = test_env(&[(LEAK_ENV, &value)]);
+    let env = env_with(APPCONTAINER_ENV, &[(LEAK_ENV, &value)]);
     let (mut reader, writer) = io::pipe().unwrap();
     let writer = OwnedHandle::from(writer);
     let child = spawn(&Launch {
@@ -882,9 +889,73 @@ fn an_appcontainer_child_writes_to_the_inherited_handle_and_runs_in_the_job() {
     crate::appcontainer::delete_profile(&TEST_PROFILE).unwrap();
 }
 
+/// AppContainer の子に渡す、親の環境の変数（`ikari-data` の `child::PASS_ENV` の、OS の分と同じ）
+const APPCONTAINER_ENV: &[&str] = &["SystemRoot", "TEMP", "TMP", "LOCALAPPDATA", "USERPROFILE"];
+
+/// 親の環境から `names` の変数だけを選び、テストの変数を足した環境
+fn env_with(names: &[&str], extra: &[(&str, &str)]) -> Vec<u16> {
+    let mut vars: Vec<(OsString, OsString)> = std::env::vars_os()
+        .filter(|(k, _)| names.iter().any(|n| k.eq_ignore_ascii_case(n)))
+        .collect();
+    vars.extend(
+        extra
+            .iter()
+            .map(|(k, v)| (OsString::from(k), OsString::from(v))),
+    );
+    environment_block(vars).unwrap()
+}
+
+/// どの環境なら AppContainer の子が起きるか（CI の windows ジョブで、`SystemRoot` だけの環境では `spawn` が
+/// `ERROR_ENVVAR_NOT_FOUND`（203）で失敗した。親の環境を受け継ぐ LM の子は起きた）。環境だけを替えて同じ起動をし、
+/// どれかの形が期待と違えば、全部の結果をつけて落とす
+#[test]
+fn which_environment_an_appcontainer_child_needs() {
+    let Some(container) = test_container(&ENV_TEST_PROFILE) else {
+        return;
+    };
+    let launch = |environment: Option<&[u16]>| {
+        spawn(&Launch {
+            program: &std::env::current_exe().unwrap(),
+            args: &probe_args(EXIT_TEST),
+            environment,
+            integrity: Integrity::Low,
+            job: JobLimits { max_processes: 1 },
+            stdio: Stdio::default(),
+            inherit: &[],
+            container: Some(&container),
+        })
+        .and_then(|child| child.wait())
+        .map_err(|e| e.raw_os_error().unwrap_or(-1))
+    };
+    let cases: [(&str, Option<Vec<u16>>); 5] = [
+        ("inherit", None),
+        ("systemroot", Some(env_with(&["SystemRoot"], &[]))),
+        (
+            "+localappdata",
+            Some(env_with(&["SystemRoot", "LOCALAPPDATA"], &[])),
+        ),
+        (
+            "+userprofile",
+            Some(env_with(&["SystemRoot", "USERPROFILE"], &[])),
+        ),
+        ("product", Some(env_with(APPCONTAINER_ENV, &[]))),
+    ];
+    let results: Vec<(&str, Result<u32, i32>)> = cases
+        .iter()
+        .map(|(name, env)| (*name, launch(env.as_deref())))
+        .collect();
+    let report = format!("{results:?}");
+    eprintln!("appcontainer environments: {report}");
+    let ok = |name: &str| results.iter().any(|(n, r)| *n == name && r.is_ok());
+    assert!(ok("inherit"), "親の環境でも起きない: {report}");
+    assert!(ok("product"), "製品の環境で起きない: {report}");
+    drop(container);
+    crate::appcontainer::delete_profile(&ENV_TEST_PROFILE).unwrap();
+}
+
 #[test]
 fn an_appcontainer_child_must_be_low_integrity() {
-    let Some(container) = test_container() else {
+    let Some(container) = test_container(&TEST_PROFILE) else {
         return;
     };
     let err = spawn(&Launch {

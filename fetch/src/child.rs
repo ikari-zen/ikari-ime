@@ -23,6 +23,10 @@ pub use ikari_resource::fetch_report::TRANSFER_PROFILE_NAME;
 
 /// 子に渡す環境変数（ADR 0076 §3.4）。プロキシの変数と、OS が動くのに要るものだけ。ほかは消す。
 /// Windows の環境変数の名前は大文字と小文字を区別しないので、比べるときは大文字にそろえる。
+/// `LOCALAPPDATA` と `USERPROFILE` は、AppContainer の子を起こすときに OS が要る見込み（CI の windows ジョブで、
+/// これらの無い環境では起動が `ERROR_ENVVAR_NOT_FOUND`（203）で失敗し、親の環境を受け継ぐ LM の子は起きた。どの変数が
+/// 要るかは `ikari-sandbox` の `which_environment_an_appcontainer_child_needs` で確かめる。ADR 0078 §3.2）。どちらも
+/// 場所の名前だけで、AppContainer の子はその場所を読めない
 const PASS_ENV: &[&str] = &[
     "ALL_PROXY",
     "HTTPS_PROXY",
@@ -31,6 +35,8 @@ const PASS_ENV: &[&str] = &[
     "SYSTEMROOT",
     "TEMP",
     "TMP",
+    "LOCALAPPDATA",
+    "USERPROFILE",
 ];
 
 /// 整合性のレベル（`SECURITY_MANDATORY_*_RID`）。低は 0x1000、中は 0x2000
@@ -160,7 +166,9 @@ mod tests {
             (os("PATH"), os("x")),
             (os("CURL_CA_BUNDLE"), os("x")),
             (os("SSLKEYLOGFILE"), os("x")),
-            (os("USERPROFILE"), os("x")),
+            (os("APPDATA"), os("x")),
+            (os("USERPROFILE"), os(r"C:\Users\u")),
+            (os("LocalAppData"), os(r"C:\Users\u\AppData\Local")),
         ];
         let kept: Vec<String> = filter_env(env)
             .into_iter()
@@ -173,7 +181,9 @@ mod tests {
                 "https_proxy",
                 "No_Proxy",
                 "SystemRoot",
-                "TEMP"
+                "TEMP",
+                "USERPROFILE",
+                "LocalAppData"
             ]
         );
     }
@@ -253,6 +263,16 @@ mod tests {
             spawn_preferring_container(|| Err(io::Error::other("no profile")), low).unwrap();
         assert_eq!((child, child_box), ("low", ChildBox::Low));
         assert_eq!(low_calls.get(), 1);
+
+        // CI の windows ジョブで見た起動の失敗（`ERROR_ENVVAR_NOT_FOUND`）でも落とす
+        const ERROR_ENVVAR_NOT_FOUND: i32 = 203;
+        let (child, child_box) = spawn_preferring_container(
+            || Err(io::Error::from_raw_os_error(ERROR_ENVVAR_NOT_FOUND)),
+            low,
+        )
+        .unwrap();
+        assert_eq!((child, child_box), ("low", ChildBox::Low));
+        assert_eq!(low_calls.get(), 2);
 
         let both: io::Result<((), ChildBox)> = spawn_preferring_container(
             || Err(io::Error::other("no profile")),
