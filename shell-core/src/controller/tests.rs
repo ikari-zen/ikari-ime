@@ -667,6 +667,37 @@ mod lane_e {
         assert!(replies(&open(&mut shell)).is_empty());
     }
 
+    /// 呼ばれたら落ちる `TextAccess`（橋の処理がテキストに触れないことの確認。#474）
+    struct ForbiddenText;
+
+    impl TextAccess for ForbiddenText {
+        fn surrounding(&mut self) -> Option<SurroundingText> {
+            panic!("橋の処理が周辺テキストを読んだ");
+        }
+        fn selection(&mut self) -> Option<SelectedText> {
+            panic!("橋の処理が選択を読んだ");
+        }
+    }
+
+    #[test]
+    fn bridge_events_never_touch_the_text_access() {
+        let mut shell = shell(SettingsSource::Inline(String::new()), resources());
+        activate(&mut shell);
+        for event in [
+            ShellEvent::BridgeFrame {
+                conn: ConnId(7),
+                frame: hello(1),
+            },
+            ShellEvent::BridgeFrame {
+                conn: ConnId(7),
+                frame: vec![0xff, 0x00, 0x13],
+            },
+            ShellEvent::BridgeClosed { conn: ConnId(7) },
+        ] {
+            shell.dispatch(event, &mut ForbiddenText);
+        }
+    }
+
     #[test]
     fn eisu_and_kana_keys_are_absorbed_in_any_mode() {
         let mut shell = shell(SettingsSource::Inline(String::new()), resources());
