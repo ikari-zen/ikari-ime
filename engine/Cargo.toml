@@ -30,6 +30,9 @@ jiff.workspace = true
 libc = "0.2"
 
 [dev-dependencies]
+# lm_host のテストが要る開発用の口。単体（-p ikari-engine）でも、--workspace と同じく付ける（#491）
+ikari-core = { workspace = true, features = ["dev-knobs"] }
+ikari-stack = { workspace = true, features = ["dev-knobs"] }
 ikari-testtime.workspace = true
 ikari-dict-builder.workspace = true
 tempfile.workspace = true
