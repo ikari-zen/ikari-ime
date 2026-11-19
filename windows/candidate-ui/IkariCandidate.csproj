@@ -21,6 +21,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- .NET の起動のフック（環境変数で別のコードを読み込ませる口）を切る -->
+    <StartupHookSupport>false</StartupHookSupport>
     <!-- LibraryImport（ソースの生成）と、核の知らせ（関数ポインタ）に要る -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- NuGet の依存を packages.lock.json で固定する（間接の依存と中身のハッシュまで）。CI（CI=true）と build.ps1 は
