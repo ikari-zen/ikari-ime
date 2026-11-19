@@ -7,7 +7,10 @@
 //!
 //! 古さの判定（どちらかに当たれば古い）:
 //! - XCFramework の中のヘッダが、Rust 側のヘッダ（`shell-ffi/include/*.h` など）と内容が違う
-//! - XCFramework の中の staticlib（`.a`）より、その crate と依存する crate（workspace の中のもの）のソースのほうが新しい
+//! - XCFramework の中の staticlib（`.a`）より、その staticlib のビルドに入ったソースのほうが新しい。
+//!   「入ったソース」は、macOS 向けのビルドが残す dep-info（`target/**/<triple>/release/lib<crate>.d`。rustc が実際に読んだ
+//!   ファイルの一覧。cfg で外れた `windows.rs` などは載らない。#476）と、依存する crate の `Cargo.toml`。dep-info が
+//!   無いときは、crate のディレクトリを丸ごと見る（広めに「古い」と言う側に倒す）。
 //!
 //! XCFramework がなければ、swift test の前に作り方を案内して失敗する（#165。スタブのまま通すと、スタブの設定の検証が
 //! Rust の本物とずれて別のテストが落ち、原因が分かりにくい）。Swift を触らない作業は `--docs-only` か `--no-swift`。
@@ -21,6 +24,13 @@ const FRAMEWORKS_DIR: &str = "macos/Frameworks";
 const BUILD_SCRIPT: &str = "macos/scripts/build.sh --signing team --release";
 const XCFRAMEWORK_EXT: &str = "xcframework";
 const STATICLIB_EXT: &str = "a";
+/// macOS 向けのビルドの成果物のディレクトリを見分ける印。`macos/scripts/build.sh` は `--target <triple>` 付きで作るので、
+/// `target/<triple>/release/` に dep-info が残る。ほかの OS 向けのビルドの dep-info は読まない。
+const MAC_TARGET_MARK: &str = "apple-darwin";
+/// `build.sh` が engine-ffi を作る別の target（feature を混ぜないため。`CARGO_TARGET_DIR`）
+const LM_TARGET_DIR: &str = "lm";
+const DEP_INFO_EXT: &str = "d";
+const MANIFEST: &str = "Cargo.toml";
 /// ソースの走査で入らないディレクトリ（成果物と、staticlib に入らないテスト類）
 const SKIPPED_DIRS: [&str; 5] = ["target", "tests", "benches", "examples", ".git"];
 
@@ -68,7 +78,7 @@ pub fn verify(root: &Path) -> Result<(), Failure> {
                 "cargo metadata を読めないので、XCFramework の鮮度を確かめられません",
             ));
         };
-        let sources = source_files(packages, spec.package);
+        let sources = source_files(root, packages, spec.package);
         if let Some(reason) = stale_reason(&framework, &root.join(spec.header), &sources)? {
             stale.push(format!("{}.{XCFRAMEWORK_EXT}: {reason}", spec.name));
         }
@@ -211,13 +221,80 @@ fn closure<'a>(packages: &'a [Package], package: &str) -> Vec<&'a Package> {
     found
 }
 
-/// `package` と、それが依存する workspace の crate のソースのファイル。
-fn source_files(packages: &[Package], package: &str) -> Vec<PathBuf> {
+/// staticlib の元になるファイル。dep-info があれば、実際に読まれたファイル（と依存する crate の `Cargo.toml`）だけ。
+/// 無ければ、`package` と依存する workspace の crate のディレクトリの全ファイル。
+fn source_files(root: &Path, packages: &[Package], package: &str) -> Vec<PathBuf> {
+    let closure = closure(packages, package);
+    if let Some(mut files) = dep_info_path(root, package)
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .map(|text| parse_dep_info(&text, root))
+        .filter(|files| !files.is_empty())
+    {
+        files.extend(closure.iter().map(|found| found.dir.join(MANIFEST)));
+        return files;
+    }
     let mut files = Vec::new();
-    for found in closure(packages, package) {
+    for found in closure {
         walk(&found.dir, &mut files);
     }
     files
+}
+
+/// macOS 向けの release ビルドが残した `lib<crate>.d` のうち、いちばん新しいもの。
+fn dep_info_path(root: &Path, package: &str) -> Option<PathBuf> {
+    let file_name = format!("lib{}.{DEP_INFO_EXT}", package.replace('-', "_"));
+    let target = root.join("target");
+    let mut candidates = Vec::new();
+    for base in [target.clone(), target.join(LM_TARGET_DIR)] {
+        let Ok(entries) = std::fs::read_dir(&base) else {
+            continue;
+        };
+        for entry in entries.filter_map(Result::ok) {
+            let is_mac = entry
+                .file_name()
+                .to_string_lossy()
+                .contains(MAC_TARGET_MARK);
+            let path = entry.path().join("release").join(&file_name);
+            if is_mac && path.is_file() {
+                candidates.push(path);
+            }
+        }
+    }
+    candidates
+        .into_iter()
+        .filter_map(|path| Some((modified(&path).ok()?, path)))
+        .max()
+        .map(|(_, path)| path)
+}
+
+/// dep-info（Makefile 形式。`<成果物>: <依存>...`。空白は `\ ` で逃がす）の、最初の規則の依存を取り出す。
+/// 相対パスは `root` からとみなす。
+fn parse_dep_info(text: &str, root: &Path) -> Vec<PathBuf> {
+    let Some(rule) = text.lines().find(|line| line.contains(": ")) else {
+        return Vec::new();
+    };
+    let deps = rule.split_once(": ").map_or("", |(_, deps)| deps);
+    let mut paths = Vec::new();
+    let mut current = String::new();
+    let mut chars = deps.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' if chars.peek() == Some(&' ') => {
+                current.push(' ');
+                chars.next();
+            }
+            ' ' => {
+                if !current.is_empty() {
+                    paths.push(root.join(std::mem::take(&mut current)));
+                }
+            }
+            _ => current.push(c),
+        }
+    }
+    if !current.is_empty() {
+        paths.push(root.join(current));
+    }
+    paths
 }
 
 fn walk(dir: &Path, files: &mut Vec<PathBuf>) {
@@ -357,6 +434,61 @@ mod tests {
     }
 
     #[test]
+    fn dep_info_lists_only_files_the_build_read() {
+        let root = Path::new("/w");
+        let text = "/w/target/x/libx.rlib: /w/a/src/lib.rs /w/a/src/with\\ space.rs b/src/rel.rs\n/w/a/src/lib.rs:\n";
+        let files = parse_dep_info(text, root);
+        assert_eq!(
+            files,
+            [
+                PathBuf::from("/w/a/src/lib.rs"),
+                PathBuf::from("/w/a/src/with space.rs"),
+                PathBuf::from("/w/b/src/rel.rs"),
+            ]
+        );
+        assert!(parse_dep_info("", root).is_empty());
+    }
+
+    /// dep-info から外れた（Windows 専用の）ファイルは対象に入らず、載っているファイルは入る（#476）。
+    #[test]
+    fn windows_only_file_is_excluded_but_built_file_is_not() {
+        let root = tempfile::tempdir().unwrap();
+        let pkg = "ikari-demo";
+        let lib = root.path().join("demo/src/lib.rs");
+        let windows = root.path().join("demo/src/os/windows.rs");
+        let manifest = root.path().join("demo/Cargo.toml");
+        for path in [&lib, &windows, &manifest] {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, "").unwrap();
+        }
+        let dep_dir = root.path().join("target/aarch64-apple-darwin/release");
+        std::fs::create_dir_all(&dep_dir).unwrap();
+        std::fs::write(
+            dep_dir.join("libikari_demo.d"),
+            format!(
+                "{}: {}\n",
+                dep_dir.join("libikari_demo.rlib").display(),
+                lib.display()
+            ),
+        )
+        .unwrap();
+        let packages = vec![Package {
+            name: pkg.to_owned(),
+            dir: root.path().join("demo"),
+            deps: Vec::new(),
+        }];
+        let files = source_files(root.path(), &packages, pkg);
+        assert!(files.contains(&lib), "{files:?}");
+        assert!(files.contains(&manifest), "{files:?}");
+        assert!(!files.contains(&windows), "{files:?}");
+
+        // dep-info が無ければ、従来どおり crate の全ファイル（Windows 専用も含む）
+        std::fs::remove_dir_all(root.path().join("target")).unwrap();
+        let files = source_files(root.path(), &packages, pkg);
+        assert!(files.contains(&windows), "{files:?}");
+    }
+
+    #[test]
     fn walk_skips_target_and_tests() {
         let dir = tempfile::tempdir().unwrap();
         for path in ["src/lib.rs", "target/x.rs", "tests/t.rs", "Cargo.toml"] {
@@ -385,5 +517,22 @@ mod tests {
     #[ignore = "macos/Frameworks が要る"]
     fn real_frameworks_are_fresh_after_build() {
         verify(&crate::data::run::repo_root()).unwrap();
+    }
+
+    /// 実物の dep-info: Mac の staticlib に入るファイルは載り、Windows 専用のファイルは載らない（#476）。
+    #[test]
+    #[ignore = "macos/Frameworks を作った target が要る"]
+    fn real_dep_info_excludes_windows_only_files() {
+        let root = crate::data::run::repo_root();
+        let packages = workspace_packages(&root).unwrap();
+        let check = |spec: &Spec, rel: &str, expected: bool| {
+            let files = source_files(&root, &packages, spec.package);
+            assert_eq!(files.contains(&root.join(rel)), expected, "{rel}");
+        };
+        check(&SPECS[0], "shell-core/src/machine/mod.rs", true);
+        check(&SPECS[0], "shell-ffi/src/lib.rs", true);
+        check(&SPECS[0], "runmark/src/signal_win.rs", false);
+        check(&SPECS[1], "engine-ffi/src/lib.rs", true);
+        check(&SPECS[1], "lm/src/host/os/windows.rs", false);
     }
 }
