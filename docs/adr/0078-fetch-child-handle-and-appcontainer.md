@@ -1,6 +1,6 @@
 # ADR 0078: 取得の子（Windows の `ikari-data transfer`）に書く先のハンドルを渡し、そのあと AppContainer に入れる（2 段）
 
-- 状態: 提案（2026-11-19。案 B（段階）はユーザー決定（2026-11-19）。この ADR は、その中身と順序と契約。末尾の「ユーザーの判断が要る点」が残る）
+- 状態: 承認（2026-11-19 ユーザー決定。案 B（段階）と、§10 の Q1〜Q3 はすべて推奨どおり）。仮置きのまま残るもの: 大きさの見張りの間隔（§3.1 の 6。契約のレーンで値を置き、PR でユーザーに確かめる）、`privateNetworkClientServer` を足すか（段 2 の VM の確認 3 の結果を見て聞く）
 - 日付: 2026-11-19
 - 対象: `fetch/`（`ikari-data`。`run.rs`、`child.rs`、`spawn_windows.rs`、`workspace.rs`、`job.rs`）、`windows/sandbox`（`ikari-sandbox`）、`lm/src/host/os/appcontainer.rs`（段 2 で移す。中身は変えない）、[ADR 0076](0076-ikari-data-contract.md) §3.2・§5.1・§11・§17、[security-design.md](../security-design.md) §4。この ADR ではコードを変えない
 - 前提: origin/main = ef3befd。[ADR 0076](0076-ikari-data-contract.md)（取得の契約）、[ADR 0072](0072-lm-cage-levels.md) §3・§12（AppContainer の実測）、[ADR 0067](0067-windows-install-layout-and-launch-chain.md)（Program Files の ACL）、[ADR 0070](0070-update-and-vulnerability-response.md) §5（弱い点の詳細を公開の場所に書かない）、#449、#99
@@ -51,17 +51,17 @@
 2. 能力は `internetClient` の 1 つだけ（`WinCapabilityInternetClientSid`）。`privateNetworkClientServer` は付けない（LAN の中のプロキシが使えなくなる見込み。§6 と VM の確認 3）。読み取りの許可（`grant_read`）は 1 つも付けない。書く先は §3.1 の継承したハンドルだけ。
 3. 部品の置き場所: `lm/src/host/os/appcontainer.rs` を `ikari-sandbox` に移し（`ikari_sandbox::appcontainer`。プロファイルの名前を引数にする）、`lm` はそれを呼ぶ形に `use` を替えるだけにする。**LM の子の起動の本体（`lm/src/host/os/windows.rs` の `SECURITY_CAPABILITIES` の組み立て）には触らない。** `ikari-sandbox` にも同じ属性の組み立てを書くので、LM の起動を `ikari-sandbox` に移す（0076 §17）までは、属性の組み立てが 2 か所になる。§17 の移行は別の issue のまま。
 4. `transfer` の自己確認: AppContainer で起こしたときは、`TokenIsAppContainer` が真であることも確かめる（偽なら `refused`）。AppContainer のトークンの整合性は低なので、低の確かめはそのまま通る。
-5. AppContainer で起こせないとき（プロファイルが作れない、`CreateProcess` が失敗する）のふるまいは、ユーザーの判断（Q3）。推奨は「段 1（低）に落として取得を続け、報告の行と設定画面に『檻なし』に相当する印を出す」。
+5. AppContainer で起こせないとき（プロファイルが作れない、`CreateProcess` が失敗する）は、**段 1（低い整合性）に落として取得を続け、報告の行と設定画面に『檻なし』に相当する印を出す**（2026-11-19 ユーザー決定。Q3）。印の語と文は契約のレーンで決める（報告の行は `resource::fetch_report`、文は核）。
 6. 段 2 が済んだら、security-design §4 の「取得の子が利用者のファイルを読める」の限界を消し、「AppContainer がすべてのアプリのパッケージに開いている場所（Program Files、HKCU\Software の一部など）は読める」に替える（0072 §12.4 の LM の段 2 と同じ書き方）。
 
 ### 3.3 順序と、#99 に間に合わないとき
 
 - 順序: **FP-6（`fix/low-security-450-fp6`）→ 段 1 → 段 2**。段 1 は段 2 を待たずに main に入れる。段 1 だけでも配れる形にする（段 2 は上に足すだけで、段 1 の形を変えない）。
-- 段 2 が #99 の前に VM の確認を通らなければ、段 1 の形で配り、security-design §4 の「約束しないこと」の行（低い整合性の取得の子は利用者のファイルを読める）を残したまま出す。書き方は今の行を使い、「#449 の段 2 で狭める予定」の括弧を残す。出すかどうかはユーザーの判断（Q1）。
+- 段 2 が #99 の前に VM の確認を通らなければ、段 1 の形で配り、security-design §4 の「約束しないこと」の行（低い整合性の取得の子は利用者のファイルを読める）を残したまま出す。書き方は今の行を使い、「#449 の段 2 で狭める予定」の括弧を残す（2026-11-19 ユーザー決定。Q1）。
 
 ### 3.4 macOS の分
 
-0076 §3.3 の `ikari-data` の「データの場所の例外」を `fetch/` と `inbox/` の 2 つだけにし（学習、ユーザー辞書、設定、`models/` を入れない）、`build.sh` の検査で守る。置き方は 2 案（§5 の 4）。推奨は別の issue（Q2）。
+0076 §3.3 の `ikari-data` の「データの場所の例外」を `fetch/` と `inbox/` の 2 つだけにし（学習、ユーザー辞書、設定、`models/` を入れない）、`build.sh` の検査で守る。**この件（#449）には入れず、別の issue にして D-2e（`ikari-data` の App Sandbox 版を作るところ）に付け、#99 の前の条件にする**（2026-11-19 ユーザー決定。Q2。比べた案は §5 の 4）。#449 の完了の条件から macOS の行を外す。
 
 ## 4. 契約（段 1 の最初のコミットで入れる。シグネチャとスタブ）
 
@@ -133,8 +133,8 @@ fn take_out_handle(value: &str) -> Result<File, FetchError>;
 4. **macOS の例外の絞りを、この件に入れる / 別の issue にする**:
    - この件に入れる: 利点は #449 の完了の条件（例外が `fetch/` と `inbox/` だけ）をそのまま満たせること、Fable の指摘が 1 つの issue で閉じること。欠点は、`ikari-data` の App Sandbox 版（entitlement、Info.plist の埋め込み、Helpers への配置）がまだ無く（D-2e）、それを丸ごと作ることになること。Windows 最優先の中で、別の OS・別のファイル（`macos/`）のレーンが #449 の完了を待たせる。
    - 別の issue: 利点は、entitlement を作る D-2e と同じ時に、最初から 2 つの例外で書けること（今は直すものが無い）。#449 は Windows だけで閉じられる。欠点は、#449 の完了の条件を書き換えることと、忘れないように #99 の前の条件として結び付ける手間。
-   - 推奨: 別の issue（D-2e に付け、#99 を待たせる側に置く）。
-5. **AppContainer で起こせないとき、取得を止める**（段 1 に落とさない）: いちばん守りが固い。欠点は、その機械ではモデルを取れず、LM が使えない（LM は入る前提）。Q3 で聞く。
+   - 決定: 別の issue（D-2e に付け、#99 を待たせる側に置く。2026-11-19）。
+5. **AppContainer で起こせないとき、取得を止める**（段 1 に落とさない）: いちばん守りが固い。欠点は、その機械ではモデルを取れず、LM が使えない（LM は入る前提）。採らない（Q3）。
 
 ## 6. 推測と、確かめること
 
@@ -161,6 +161,9 @@ fn take_out_handle(value: &str) -> Result<File, FetchError>;
 7. ファイアウォール: 規則のない `ikari-data.exe` の AppContainer の子が送信でき、設定画面の exe の送信の禁止は変わらない。送信の記録（0076 §11 の 4）で、行き先が表のホストと転送先だけ。
 8. プロファイルの作成（中の整合性の `ikari-data` から）と、アンインストールでの削除。
 9. Program Files に置いた `ikari-data.exe` が AppContainer の子として起動できる。
+10. プロファイルを作れない状態で、段 1 に落ちて取得が続き、報告の行と設定画面に印が出る（Q3）。
+
+**この件の完了の条件に入れないもの**: macOS の `ikari-data` の例外（`fetch/` と `inbox/` だけ）と `build.sh` の検査は、別の issue（D-2e に付ける。#99 の前の条件）で行う（Q2）。
 
 ## 7. 実装の進め方（1 タスク 1 ブランチ。レーンと持つファイル）
 
@@ -170,7 +173,7 @@ fn take_out_handle(value: &str) -> Result<File, FetchError>;
 | 1a 契約 | §4 のシグネチャとスタブ（`Launch::inherit`、`spawn_transfer`、`TransferArgs`、`Dirs::create_download`、`watch_size`） | `windows/sandbox/src/os.rs`、`fetch/src/{spawn_windows,child,workspace,run}.rs` | リード（architect の契約どおり） |
 | 1b 実装 | ハンドルの継承、子の受け取り、見張り、作業の場所の移動、テスト、0076 の改め | `windows/sandbox/src/`、`fetch/src/`、`xtask/src/check/product.rs`、`docs/adr/0076-*.md` | Opus（ハンドルの継承とスレッドの見張り） |
 | 2a 部品の移動 | `appcontainer.rs` を `ikari-sandbox` に移し、`lm` は `use` だけ替える（中身とテストはそのまま） | `windows/sandbox/src/appcontainer.rs`、`windows/sandbox/Cargo.toml`、`lm/src/host/os/appcontainer.rs`（消す）、`lm/src/host/os/windows.rs` の `use` の行だけ、`lm/Cargo.toml` | Sonnet |
-| 2b 実装 | `Launch::container`、能力の SID、`SECURITY_CAPABILITIES`、`Confine::AppContainer`、自己確認、落とし方（Q3）、プロファイルの削除の口 | `windows/sandbox/src/os.rs`、`fetch/src/`、アンインストールの helper | Opus |
+| 2b 実装 | `Launch::container`、能力の SID、`SECURITY_CAPABILITIES`、`Confine::AppContainer`、自己確認、段 1 への落とし方と印（Q3）、プロファイルの削除の口 | `windows/sandbox/src/os.rs`、`fetch/src/`、アンインストールの helper | Opus |
 | 2c 確認 | §6 の段 2 の 1〜9（`docs/windows-real-device-check.md` に足し、`user-needed` の issue） | 文書だけ | リード |
 
 - 衝突の注意: `windows/sandbox/src/os.rs` は 0・1b・2b が、`lm/src/host/os/windows.rs` は 0・2a が触る。**この順で 1 本ずつマージし、次のレーンは main を取り込んでから始める**（並行にしない）。2a は `lane/d3-win` の残り（`HostCage`）が入るなら、その後にする（`lm/src/host/os/` が重なる）。
@@ -180,7 +183,7 @@ fn take_out_handle(value: &str) -> Result<File, FetchError>;
 ## 8. リスクと戻し方
 
 - 段 2 が VM で通らない（AppContainer の中で TLS かプロキシが動かない）: 段 2 のブランチを入れず、段 1 で配る（§3.3）。段 1 は段 2 に依存しないので、戻すものは無い。2a（部品の移動）だけ入っても害は無い（LM のふるまいは変わらない）。
-- 段 2 を入れたあとに、特定の機械で動かないと分かった: Q3 の決定に従い、段 1 に落とすか取得を止める。どちらでも `transfer` の中身（`--out-handle` で書く）は同じ。
+- 段 2 を入れたあとに、特定の機械で動かないと分かった: Q3 の決定のとおり段 1 に落とし、印を出す。 `transfer` の中身（`--out-handle` で書く）は同じなので、落としても書き方は変わらない。
 - LM への影響: 2a は `use` の付け替えと関数の置き場所だけ。LM の起動の本体、整合性の決め方、`lm_spawn_single` の検査は変えない。2a で LM のテスト（Windows の CI。段 2 のテストを含む）が通ることを条件にする。
 - 見張りの間隔の分だけ、上限を超えて書かれうる（ディスクの見積もり §8.3 の余裕の中に収まるかは、値を置くときに確かめる）。
 - 親のハンドルは取得の間ずっと開いている。取り消し（核が `ikari-data` の Job を閉じる）では、親も子も OS が閉じる。残った `download.bin` は次の起動の `cleanup` で消える（今と同じ）。
@@ -192,8 +195,13 @@ fn take_out_handle(value: &str) -> Result<File, FetchError>;
 - `ikari-sandbox` に AppContainer が入り、LM の起動を移す（0076 §17）ときの土台になる。それまで属性の組み立ては 2 か所。
 - 失うもの: `ikari-sandbox` と `fetch/` の Windows のコードが増える（見張りのスレッド、ハンドルの写し）。段 2 では、LAN の中と同じ機械のプロキシが使えない見込み（推測。VM で確かめる）。
 
-## 10. ユーザーの判断が要る点
+## 10. 決定（2026-11-19。ユーザー。すべて推奨どおり）
 
-- **Q1. 段 2 が #99 の前に VM を通らなければ、段 1 の形で配り、security-design §4 の「取得の子は利用者のファイルを読める」の行を残して出すか。** 推奨: 出す。段 1 で作業の場所を共有する筋は消え、残るのは文書に書いた限界だけ。段 2 は配布のあとの版で足す。
-- **Q2. macOS の `ikari-data` の例外を `fetch/` と `inbox/` だけにする件を、この issue に入れるか、別の issue にするか。** 推奨: 別の issue にし、D-2e（`ikari-data` の App Sandbox 版を作るところ）に付けて #99 を待たせる側に置く。#449 の完了の条件から macOS の行を外す。今は entitlement そのものが無く、直すものが無いため。
-- **Q3. 段 2 のあと、AppContainer で起こせない機械では、段 1（低い整合性）に落として取得を続けるか、取得を止めるか。** 推奨: 落として続け、報告の行と設定画面に印を出す（LM は入る前提で、モデルを取れないと使えないため。LM の子の Windows の扱い（0072 §12.8 の 1）とも同じ）。
+- **Q1**: 段 2 が #99 の前に VM を通らなければ、段 1 の形で配り、security-design §4 の「約束しないこと」に「低い整合性の取得の子は利用者のファイルを読める」を残して出す（§3.3）。
+- **Q2**: macOS の `ikari-data` の App Sandbox 版（例外は `fetch/` と `inbox/` だけ。`build.sh` で検査）は別の issue にし、D-2e に付け、#99 の前の条件にする。#449 の完了の条件から macOS の行を外す（§3.4）。
+- **Q3**: 段 2 のあと、AppContainer で起こせない機械では、段 1（低い整合性）に落として取得を続け、報告の行と設定画面に印を出す（§3.2 の 5）。
+
+### （記録）決定の前の問い
+- Q1. 段 2 が #99 に間に合わなければ、段 1 で配り、限界を書いて出すか。推奨: 出す。
+- Q2. macOS の例外の絞りを、この issue に入れるか、別の issue にするか。推奨: 別の issue（今は entitlement そのものが無く、直すものが無いため）。
+- Q3. AppContainer で起こせない機械で、段 1 に落とすか、取得を止めるか。推奨: 落として印を出す（LM は入る前提。0072 §12.8 の 1 と同じ）。
