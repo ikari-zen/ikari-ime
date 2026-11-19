@@ -14,6 +14,7 @@
 # 触らないもの: ユーザーデータ（~/Library/Application Support/ikari-ime/）、data/、macos/Frameworks、
 #   ~/Library/Input Methods/、実機のプロセス。main、現在のブランチ、開いている PR のブランチ。
 #   履歴の書き換えと force push はしない。リモートの削除は `git push origin --delete` だけ。
+# jj（Jujutsu）の共存の形（jj git init --colocate）でも動く。一覧の内容は git と同じ。削除は git の操作で行い、workspace だけ jj で外す。
 # PR の状態は gh で調べる（スカッシュマージは merge-base では分からない）。gh が失敗したものは「不明」として消さない。
 set -euo pipefail
 
@@ -42,6 +43,31 @@ usage() {
 }
 
 g() { git -C "$REPO_DIR" "$@"; }
+
+# ---- jj（Jujutsu）の共存の形（jj git init --colocate）----
+# 共存の形では git の HEAD が detached になり、ブランチは jj の bookmark と同じもの（git のブランチとして見える）。
+# git worktree は jj の workspace も一覧に出す。ブランチと worktree の判定は git のまま行い、jj の分だけを足す:
+#   - detached の worktree は、その @-（作業コピーの親）の bookmark をブランチとみなす
+#   - @ と @- にある bookmark は「現在のブランチ」と同じく消さない
+#   - worktree を消したあとは jj の workspace からも外す（jj workspace forget）
+# jj がない、または .jj がないときは、ここは何もしない（git だけの環境の挙動は変わらない）。
+is_jj_repo() { # [パス]（既定は REPO_DIR）。jj があって、そのパスが jj のリポジトリか
+  [[ -d "${1:-$REPO_DIR}/.jj" ]] && command -v jj >/dev/null 2>&1
+}
+jj_bookmarks() { # パス リビジョン → ローカルの bookmark 名を 1 行ずつ（作業コピーは更新しない）
+  jj -R "$1" --ignore-working-copy log --no-graph -r "$2" \
+    -T 'local_bookmarks.map(|b| b.name() ++ "\n").join("")' 2>/dev/null || true
+}
+jj_workspace_name() { # worktree のパス → jj の workspace 名（なければ空）
+  local name root want
+  want="$(cd "$1" 2>/dev/null && pwd -P)" || return 0
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
+    root="$(jj -R "$REPO_DIR" --ignore-working-copy workspace root --name "$name" 2>/dev/null)" || continue
+    root="$(cd "$root" 2>/dev/null && pwd -P)" || continue
+    if [[ "$root" == "$want" ]]; then printf '%s\n' "$name"; return 0; fi
+  done < <(jj -R "$REPO_DIR" --ignore-working-copy workspace list -T 'name ++ "\n"' 2>/dev/null)
+}
 
 # ---- gh（テストでは差し替える） ----
 # ブランチ名の PR の状態（OPEN / MERGED / CLOSED）を 1 行ずつ出す。PR がなければ何も出さない。失敗したら非 0。
@@ -108,19 +134,28 @@ worktree_rows() {
     END { flush() }'
 }
 
-branch_in_worktree() { # 名前 → いずれかの worktree で使用中か
-  worktree_rows | cut -d'|' -f2 | grep -qxF "$1"
+branch_in_worktree() { # 名前 → いずれかの worktree で使用中か（jj の workspace は @ の親の bookmark）
+  worktree_rows | cut -d'|' -f2 | grep -qxF "$1" && return 0
+  is_jj_repo || return 1
+  local path
+  while IFS= read -r path; do
+    is_jj_repo "$path" || continue
+    jj_bookmarks "$path" '@ | @-' | grep -qxF "$1" && return 0
+  done < <(worktree_rows | cut -d'|' -f1)
+  return 1
 }
 
 # ---- ローカルのブランチ ----
 do_branches() {
   section "ローカルのブランチ"
-  local current b
+  local current b jj_current=""
   current="$(g branch --show-current)"
+  if is_jj_repo; then jj_current="$(jj_bookmarks "$REPO_DIR" '@ | @-')"; fi
   while IFS= read -r b; do
     [[ -n "$b" ]] || continue
     if [[ "$b" == "$MAIN_BRANCH" ]]; then emit keep "$b" "main"; continue; fi
     if [[ "$b" == "$current" ]]; then emit keep "$b" "現在のブランチ"; continue; fi
+    if [[ -n "$jj_current" ]] && grep -qxF "$b" <<<"$jj_current"; then emit keep "$b" "現在のブランチ（jj の @ か @-）"; continue; fi
     if branch_in_worktree "$b"; then emit keep "$b" "worktree で使用中"; continue; fi
     decide_local "$b"
     case "$DECISION" in
@@ -167,7 +202,7 @@ do_remote() {
 # ---- worktree ----
 do_worktrees() {
   section "worktree"
-  local first=1 row path branch flags top parent root_wt
+  local first=1 row path branch flags top parent root_wt ws_name
   top="$(g rev-parse --show-toplevel)"
   parent="$(dirname "$(worktree_rows | head -n1 | cut -d'|' -f1)")"
   root_wt="$(worktree_rows | head -n1 | cut -d'|' -f1)"
@@ -183,13 +218,24 @@ do_worktrees() {
     if [[ "$path" == "$top" ]]; then emit keep "$path" "いま作業している worktree"; continue; fi
     if [[ "$flags" == *L* ]]; then emit keep "$path" "ロックされている"; continue; fi
     if [[ "$flags" == *P* ]]; then emit keep "$path" "場所がない（git worktree prune で消える）"; continue; fi
+    if [[ -z "$branch" ]] && is_jj_repo "$path"; then
+      # jj の workspace は detached。@- の bookmark（main 以外の最初のもの）をブランチとみなす
+      branch="$(jj_bookmarks "$path" '@-' | grep -vxF "$MAIN_BRANCH" | head -n1 || true)"
+    fi
     if [[ -z "$branch" ]]; then emit keep "$path" "ブランチがない（detached）"; continue; fi
     if [[ -n "$(git -C "$path" status --porcelain 2>/dev/null)" ]]; then emit keep "$path" "変更が残っている（${branch}）"; continue; fi
     decide_local "$branch"
     if [[ "$DECISION" == delete ]]; then
       emit delete "$path" "$branch: ${REASON}、作業ツリーはきれい（$(human_size "$path")）"
       if [[ "$APPLY" -eq 1 ]]; then
-        if g worktree remove "$path" >/dev/null 2>&1; then DELETED=$((DELETED + 1)); else FAILED=$((FAILED + 1)); warn "$path を消せなかった"; fi
+        ws_name=""
+        if is_jj_repo "$path"; then ws_name="$(jj_workspace_name "$path")"; fi
+        if g worktree remove "$path" >/dev/null 2>&1; then
+          DELETED=$((DELETED + 1))
+          if [[ -n "$ws_name" ]]; then
+            jj -R "$REPO_DIR" workspace forget "$ws_name" >/dev/null 2>&1 || warn "jj の workspace $ws_name を外せなかった（jj workspace forget $ws_name で外す）"
+          fi
+        else FAILED=$((FAILED + 1)); warn "$path を消せなかった"; fi
       fi
     else
       emit keep "$path" "$branch: $REASON"

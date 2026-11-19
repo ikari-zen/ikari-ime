@@ -1,15 +1,15 @@
 //! 取得の仕事の流れ（ADR 0076 §5.1、§8）。
 //!
-//! 錠を取る → 前の残りを消す → ディスクの見積もり → 作業の場所に落とす（`Fetcher`。Windows は低い整合性の子、
-//! macOS は自分）→ **作業の場所のファイルは信じず**、`inbox/<名前>.partial/` に写しながら sha256 を数え直す
+//! 錠を取る → 前の残りを消す → ディスクの見積もり → 作業の場所に `download.bin` を作り、そのハンドルを最後まで持つ
+//! （パスで開き直さない。ADR 0078 §3.1 の 2）→ そこに落とす（`Fetcher`。Windows は低い整合性の子が、追記だけの写しに
+//! 書く。macOS は自分）→ **落としたファイルは信じず**、`inbox/<名前>.partial/` に写しながら sha256 を数え直す
 //! （`stage_model_bundle`）→ rename → 作業の場所を消す → `done`。どの失敗でも、作業の場所と `.partial` を消し、
 //! 理由の語を 1 つ出して終わる（自動では取り直さない）。
 //!
 //! 取り込みの判断（束の検証、試しの採点、入れ替え）はエンジン。ここは束を inbox に置くまで。
 
-use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write};
-use std::path::Path;
+use std::fs::{self, File};
+use std::io::{self, Read, Write};
 use std::time::{Duration, Instant};
 
 use ikari_resource::fetch_report::{EXIT_ERROR, EXIT_OK, FetchErrorCode, Report};
@@ -22,7 +22,6 @@ use ikari_resource::{
 use crate::args::ModelSource;
 use crate::error::FetchError;
 use crate::limits::{MODEL_MAX_SIZE, PROGRESS_INTERVAL};
-use crate::nofollow;
 use crate::url::HttpsUrl;
 use crate::workspace::{Dirs, required_space, required_space_to_copy};
 
@@ -31,13 +30,15 @@ const USER_NAME_PREFIX: &str = ikari_resource::USER_MODEL_PREFIX;
 const USER_NAME_HEX_DIGITS: usize = ikari_resource::USER_MODEL_HEX_DIGITS;
 const MODEL_FILE_EXTENSION: &str = ikari_resource::MODEL_FILE_EXTENSION;
 
-/// 作業の場所（`Dirs::download_path`）に URL の中身を落とす部品。製品は `ProductFetcher`、テストは差し替える
+/// URL の中身を、親が作った作業の場所のファイル（`Dirs::create_download`）に落とす部品。製品は `ProductFetcher`、
+/// テストは差し替える
 pub trait Fetcher {
-    /// 落とす。`progress(受けたバイト, 全体)`。失敗の理由は語で返す
+    /// `out`（空のファイル。読み書きで開いている）の末尾に落とす。終えたら、書いた分がディスクに出ているようにして
+    /// 返す。`progress(受けたバイト, 全体)`。失敗の理由は語で返す
     fn fetch(
         &self,
         job: &DownloadJob<'_>,
-        dirs: &Dirs,
+        out: &File,
         progress: &mut dyn FnMut(u64, Option<u64>),
     ) -> Result<(), FetchError>;
 }
@@ -173,30 +174,34 @@ fn try_model_fetch(
             max_size: resolved.max_size,
             expect_size: resolved.expect_size,
         };
+        let download = dirs
+            .create_download(&lock)
+            .map_err(|_| FetchError(FetchErrorCode::Internal))?;
         let mut throttle = Throttle::standard();
-        ctx.fetcher.fetch(&job, dirs, &mut |received, total| {
+        ctx.fetcher.fetch(&job, &download, &mut |received, total| {
             if throttle.ready(Instant::now()) {
                 emit(out, &Report::Progress { received, total });
             }
         })?;
-        stage_downloaded(source, &resolved, ctx)
+        stage_downloaded(source, &resolved, ctx, &download)
+        // `download` はここで閉じる（消す前に）
     })();
     // 成功でも失敗でも、作業の場所と `.partial` は残さない（消せなくても、元の結果を返す）
     let _ = dirs.cleanup(&lock);
     result
 }
 
-/// 落としたファイルを、信じずに inbox の束へ写す
+/// 落としたファイル（親が作って持っているハンドル）を、信じずに inbox の束へ写す
 fn stage_downloaded(
     source: &ModelSource,
     resolved: &Resolved<'_>,
     ctx: &Context<'_>,
+    download: &File,
 ) -> Result<Report, FetchError> {
     let dirs = ctx.dirs;
-    let path = dirs.download_path();
-    // リンクを辿らずに開いたものの大きさを見る（パスでは見ない。D-01）
-    let received = open_download(&path)
-        .and_then(|f| f.metadata())
+    // 大きさは、持っているハンドルで見る（パスでは見ない）
+    let received = download
+        .metadata()
         .map_err(|_| FetchError(FetchErrorCode::Internal))?
         .len();
     if received > resolved.max_size {
@@ -217,8 +222,7 @@ fn stage_downloaded(
                 name,
             },
         ) => {
-            let hash = open_download(&path)
-                .and_then(sha256_reader)
+            let hash = sha256_reader(ReadFromStart::new(download))
                 .map_err(|_| FetchError(FetchErrorCode::Internal))?;
             let plan = user_plan(&hash, url, format, sha256.as_deref(), name.as_deref(), ctx);
             (plan, Some(hash))
@@ -226,8 +230,7 @@ fn stage_downloaded(
         (None, ModelSource::Preset { .. }) => return Err(FetchErrorCode::Internal.into()),
     };
 
-    let mut file = open_download(&path).map_err(|_| FetchError(FetchErrorCode::Internal))?;
-    let staged = stage_model_bundle(&mut file, &dirs.inbox, &plan)?;
+    let staged = stage_model_bundle(&mut ReadFromStart::new(download), &dirs.inbox, &plan)?;
     if pre_hash.is_some_and(|h| h != staged.sha256) {
         let _ = fs::remove_dir_all(&staged.path);
         return Err(FetchErrorCode::Checksum.into());
@@ -238,9 +241,36 @@ fn stage_downloaded(
     })
 }
 
-/// 作業の場所の落としたファイルを、リンクを辿らずに読み取りで開く（ふつうのファイルでなければ失敗）
-fn open_download(path: &Path) -> io::Result<File> {
-    nofollow::open_plain_file(OpenOptions::new().read(true), path)
+/// ファイルを先頭から読む。ファイルの位置は使わない（読む場所を自分で数え、その場所を指定して読む）。
+/// Windows では子に渡した写しとファイルの位置を分け合うので、位置に頼らない（ADR 0078 §3.1 の 7）
+struct ReadFromStart<'a> {
+    file: &'a File,
+    offset: u64,
+}
+
+impl<'a> ReadFromStart<'a> {
+    fn new(file: &'a File) -> Self {
+        Self { file, offset: 0 }
+    }
+}
+
+impl Read for ReadFromStart<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        #[cfg(unix)]
+        let n = std::os::unix::fs::FileExt::read_at(self.file, buf, self.offset)?;
+        #[cfg(windows)]
+        let n = std::os::windows::fs::FileExt::seek_read(self.file, buf, self.offset)?;
+        #[cfg(not(any(unix, windows)))]
+        let n: usize = {
+            let _ = buf;
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "positional read",
+            ));
+        };
+        self.offset = self.offset.saturating_add(n as u64);
+        Ok(n)
+    }
 }
 
 fn preset_plan(preset: &ModelPreset, ctx: &Context<'_>) -> StagePlan {
@@ -296,7 +326,6 @@ fn user_plan(
 #[cfg(test)]
 mod tests {
     use std::cell::{Cell, RefCell};
-    use std::path::Path;
 
     use ikari_resource::fetch_report::parse_line;
     use ikari_resource::{MANIFEST_FILE_NAME, Manifest};
@@ -328,12 +357,12 @@ mod tests {
         fn fetch(
             &self,
             job: &DownloadJob<'_>,
-            dirs: &Dirs,
+            mut out: &File,
             progress: &mut dyn FnMut(u64, Option<u64>),
         ) -> Result<(), FetchError> {
             self.calls.set(self.calls.get() + 1);
             *self.seen_url.borrow_mut() = job.url.as_str().to_owned();
-            fs::write(dirs.download_path(), &self.body).unwrap();
+            out.write_all(&self.body).unwrap();
             progress(self.body.len() as u64, Some(self.body.len() as u64));
             match self.fail {
                 Some(code) => Err(code.into()),
@@ -627,11 +656,60 @@ mod tests {
             expect_size: None,
             preset: None,
         };
-        fs::create_dir_all(&dirs.work).unwrap();
+        let lock = dirs.lock().unwrap();
         fs::create_dir_all(&dirs.inbox).unwrap();
-        fs::write(dirs.download_path(), [0u8; 8]).unwrap();
-        let err = stage_downloaded(&source, &resolved, &ctx).unwrap_err();
+        let mut download = dirs.create_download(&lock).unwrap();
+        download.write_all(&[0u8; 8]).unwrap();
+        let err = stage_downloaded(&source, &resolved, &ctx, &download).unwrap_err();
         assert_eq!(err.code(), FetchErrorCode::TooLarge);
-        let _ = Path::new("");
+    }
+
+    #[test]
+    fn reading_from_the_start_ignores_the_file_position() {
+        use std::io::{Seek, SeekFrom};
+        let tmp = tempfile::tempdir().unwrap();
+        let mut file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(tmp.path().join("f"))
+            .unwrap();
+        file.write_all(b"abcdef").unwrap();
+        file.seek(SeekFrom::Start(4)).unwrap();
+        let mut got = Vec::new();
+        ReadFromStart::new(&file).read_to_end(&mut got).unwrap();
+        assert_eq!(got, b"abcdef");
+    }
+
+    #[test]
+    fn appending_after_staging_does_not_change_the_bundle() {
+        // 写したあとに、子に渡した写しの残りから追記されても、束は写した時点のまま（ADR 0078 §6 の (e)）
+        let (_tmp, dirs) = setup();
+        let lock = dirs.lock().unwrap();
+        fs::create_dir_all(&dirs.inbox).unwrap();
+        let mut download = dirs.create_download(&lock).unwrap();
+        download.write_all(b"abc").unwrap();
+        let fake = Fake::serving(b"");
+        let ctx = ctx(&dirs, &fake);
+        let source = url_source(Some(ABC_SHA));
+        let resolved = resolve(&source).unwrap();
+        let done = stage_downloaded(&source, &resolved, &ctx, &download).unwrap();
+        download.write_all(b"more").unwrap();
+        assert_eq!(
+            done,
+            Report::Done {
+                name: "user-ba7816bf8f01".into(),
+                sha256: ABC_SHA.into()
+            }
+        );
+        assert_eq!(
+            fs::read(
+                dirs.inbox
+                    .join("user-ba7816bf8f01")
+                    .join("user-ba7816bf8f01.gguf")
+            )
+            .unwrap(),
+            b"abc"
+        );
     }
 }

@@ -22,5 +22,9 @@ pub const DISK_MARGIN: u64 = 256 * 1024 * 1024;
 pub const MODEL_MAX_SIZE: u64 = ikari_resource::MODEL_MAX_SIZE;
 /// 進み具合の行を出す最小の間隔（行が多すぎて核が詰まらないように。計測なし）
 pub const PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
+/// Windows の親が、子に渡した書く先の大きさを見る間隔（ADR 0078 §3.1 の 6）。**仮置き。計測なし。ユーザーに確かめる**。
+/// この間隔の分だけ上限を超えて書かれうる（10 Gbps で約 62 MB。`DISK_MARGIN` の 1/4 に収まる。2026-11-19 に 200 ms から 50 ms へ。
+/// 200 ms だと 10 Gbps で約 250 MB になり、`DISK_MARGIN` を使い切る寸前になるため）
+pub const SIZE_WATCH_INTERVAL: Duration = Duration::from_millis(50);
 /// 要求の User-Agent（版を付けない。ADR 0076 §4.4）
 pub const USER_AGENT: &str = "ikari-data";

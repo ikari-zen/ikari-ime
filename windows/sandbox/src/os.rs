@@ -115,6 +115,10 @@ pub struct Launch<'a> {
     pub integrity: Integrity,
     pub job: JobLimits,
     pub stdio: Stdio<'a>,
+    /// 標準入出力のほかに、子に継承させるハンドル（ADR 0078 §4.1）。`PROC_THREAD_ATTRIBUTE_HANDLE_LIST` に標準入出力と
+    /// 合わせて入れる。継承の印は起動の直前に付け、起動のあと（失敗でも）に外す。値は子でも同じなので、呼ぶ側が
+    /// 引数で知らせる（ここは引数を作らない）。同じハンドルが 2 度ある、標準入出力と重なる → `InvalidInput`
+    pub inherit: &'a [BorrowedHandle<'a>],
 }
 
 /// 起動した子。捨てると（Job を閉じると）中のプロセスが終わる。`Send` と `Sync`（別のスレッドから止めてよい）
@@ -171,7 +175,7 @@ impl Confined {
     }
 }
 
-/// 子を、止めた状態で作り → Job に入れ → 動かす。継承するのは `launch.stdio` のハンドルだけ
+/// 子を、止めた状態で作り → Job に入れ → 動かす。継承するのは `launch.stdio` と `launch.inherit` のハンドルだけ
 pub fn spawn(launch: &Launch<'_>) -> io::Result<Confined> {
     let program = launch.program.as_os_str();
     let app = wide_nul(program)?;
@@ -190,12 +194,6 @@ pub fn spawn(launch: &Launch<'_>) -> io::Result<Confined> {
         return Err(invalid("environment block must end with two NULs"));
     }
 
-    let job = Job::confined(&launch.job)?;
-    let token = match launch.integrity {
-        Integrity::Low => Some(low_integrity_token()?),
-        Integrity::Inherit => None,
-    };
-
     let stdio = launch.stdio;
     let std_handle =
         |h: Option<BorrowedHandle<'_>>| h.map_or(ptr::null_mut(), |h| h.as_raw_handle() as HANDLE);
@@ -204,13 +202,19 @@ pub fn spawn(launch: &Launch<'_>) -> io::Result<Confined> {
         std_handle(stdio.output),
         std_handle(stdio.error),
     );
-    // 一覧には同じハンドルを 2 度入れない（OS が拒む）
-    let mut inherited: Vec<HANDLE> = Vec::new();
-    for handle in [input, output, error] {
-        if !handle.is_null() && !inherited.contains(&handle) {
-            inherited.push(handle);
-        }
-    }
+    let extra: Vec<HANDLE> = launch
+        .inherit
+        .iter()
+        .map(|h| h.as_raw_handle() as HANDLE)
+        .collect();
+    let inherited = inherited_handles([input, output, error], &extra)?;
+
+    let job = Job::confined(&launch.job)?;
+    let token = match launch.integrity {
+        Integrity::Low => Some(low_integrity_token()?),
+        Integrity::Inherit => None,
+    };
+
     let marks = InheritMarks::set(&inherited)?;
     let attrs = if inherited.is_empty() {
         None
@@ -303,6 +307,28 @@ pub fn spawn(launch: &Launch<'_>) -> io::Result<Confined> {
         return Err(e);
     }
     Ok(child)
+}
+
+/// 継承させるハンドルの一覧。標準入出力どうしの重なりは 1 つにまとめる（同じパイプを標準出力と標準エラーに渡す形）。
+/// `extra` に同じものが 2 度ある、`extra` が標準入出力と重なる、null がある → `InvalidInput`（一覧に同じハンドルを
+/// 2 度入れると OS が拒むので、先に断る）
+fn inherited_handles(stdio: [HANDLE; 3], extra: &[HANDLE]) -> io::Result<Vec<HANDLE>> {
+    let mut inherited: Vec<HANDLE> = Vec::new();
+    for handle in stdio {
+        if !handle.is_null() && !inherited.contains(&handle) {
+            inherited.push(handle);
+        }
+    }
+    for &handle in extra {
+        if handle.is_null() {
+            return Err(invalid("null handle to inherit"));
+        }
+        if inherited.contains(&handle) {
+            return Err(invalid("handle to inherit is repeated or overlaps stdio"));
+        }
+        inherited.push(handle);
+    }
+    Ok(inherited)
 }
 
 /// `name=value\0…\0\0` の UTF-16 の環境。空でも、終わりの NUL を 2 つ置く。名前か値に NUL があれば失敗

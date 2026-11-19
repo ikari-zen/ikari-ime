@@ -75,6 +75,7 @@ impl Launcher for ProductLauncher {
                 output: Some(child_out.as_handle()),
                 ..Stdio::default()
             },
+            inherit: &[],
         })?;
         // 子の側の端は、親では閉じる（閉じないと、子が終わっても読み取りが終わらない）
         drop(child_out);

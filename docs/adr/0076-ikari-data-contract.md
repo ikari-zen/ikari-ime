@@ -1,7 +1,7 @@
 # ADR 0076: 取得する部品 `ikari-data` の契約（プロセスの形、権限、入力と出力、版の確認、失敗、設定画面との口）
 
 - 状態: 承認（2026-11-17 ユーザー決定。質問はすべて推奨どおり。Q2 は「OS の curl をやめ、`ureq` と OS の TLS にする」。§15 を見る。同じ日の 2 回目の決定（失効した証明書の扱い、版の確認とデータの Release）は §18）
-- 日付: 2026-11-16（2026-11-17 に決定と実測を反映）
+- 日付: 2026-11-16（2026-11-17 に決定と実測を反映。2026-11-19 に [ADR 0078](0078-fetch-child-handle-and-appcontainer.md) の段 1（書く先のハンドル渡し。#449）で §3.2・§5.1・§11 の 2・§17 を改めた）
 - 対象: 新しい crate `ikari-data`（置き場所 `fetch/`。lib と bin `ikari-data`）、`resource`（束を作る関数と取得の報告の型）、`windows/settings`（設定画面の核。起動と進み具合）、`windows/settings-ui`（ボタンと表示だけ）、`engine`（ファイルからのモデルの取り込み。Windows）、`shell-ffi`（同。macOS の設定アプリ）、`xtask`（検査）、`deny.toml`、インストーラ。この ADR ではコードを変えない
 - 前提: origin/feat/security-impl2 = 0bd7822。[ADR 0071](0071-settings-ui-and-fetcher.md) §3（`ikari-data` の範囲。Q3 で 1.0.0 まではモデルだけ。Q2 の「OS の curl」はこの ADR の §9 で改める）、[ADR 0070](0070-update-and-vulnerability-response.md) §3 の 3 と Q3（「新しい版を確認」のボタン）、[ADR 0066](0066-security-premises.md) §6（通信しないの定義と L1〜L3）、[ADR 0058](0058-offline-resource-install.md)（inbox と束、検証、入れ替え）、[ADR 0060](0060-user-selectable-lm-model.md)（自由指定のモデル、sha256 なしは警告で許可、試しの採点、`.loading`）、[ADR 0068](0068-ipc-endpoints.md) §4（設定の口、パスだけを流す）、[ADR 0072](0072-lm-cage-levels.md)（檻）、[security-design.md](../security-design.md) §8.5 の D-2
 - 判断の置き場所: すべて Rust。取得の判断（どこから、何を、どの設定で、何を確かめるか）は `ikari-data`、束の形と sha256 は `resource`、取り込みの判断はエンジン。設定画面（C#、Swift）は、ボタン、ファイルを選ぶ窓、核が作った文の表示だけ（UI であるため）
@@ -53,15 +53,18 @@
 | プロセス | 整合性 | ほかの絞り | 理由 |
 | --- | --- | --- | --- |
 | `ikari-data` | 中（設定画面と同じ。`asInvoker`） | 高い権限で起動されたら何もせずに終わる（A-3 と同じ規則）。設定画面の核が Job Object に入れる（止めた状態で作り、入れてから動かす。閉じたら終わる。子の数の上限は、`ikari-data` と `transfer` の 2。UI の制限は `transfer` と同じ）。渡すハンドルは標準出力のパイプだけ（`PROC_THREAD_ATTRIBUTE_HANDLE_LIST`。S5）。起動の作りは `transfer` と同じ `ikari-sandbox`（§17） | `inbox` に書くため。受け取ったバイト列の解釈（TLS、HTTP）をしないので、中の整合性で動かしても、外から来たものを読むのは自分の作業の場所のファイルを写すところだけ |
-| `ikari-data transfer` | **低**（`lm/src/host/os/windows.rs` と同じ作り） | `ikari-data` が作る Job Object の中（`ikari-data` が終われば終わる。子の数の上限 1、UI の制限は LM の子と同じ）。継承するハンドルは標準出力のパイプだけ（`PROC_THREAD_ATTRIBUTE_HANDLE_LIST`。標準入力と標準エラーは渡さない） | ネットワークから来たものを解釈するのはこの子。利用者のファイルに書けないようにする。**書けなくするだけで、読めなくはならない**（低い整合性は読み取りを止めない。残る限界として security-design §4 に書く。ハンドル渡しと AppContainer への移行で狭める。#449） |
+| `ikari-data transfer` | **低**（`lm/src/host/os/windows.rs` と同じ作り） | `ikari-data` が作る Job Object の中（`ikari-data` が終われば終わる。子の数の上限 1、UI の制限は LM の子と同じ）。継承するハンドルは、標準出力のパイプと、書く先の追記だけの写しの 2 つだけ（`PROC_THREAD_ATTRIBUTE_HANDLE_LIST`。標準入力と標準エラーは渡さない。0078 §3.1） | ネットワークから来たものを解釈するのはこの子。利用者のファイルに書けないようにする。**書けなくするだけで、読めなくはならない**（低い整合性は読み取りを止めない。残る限界として security-design §4 に書く。AppContainer への移行で狭める。#449 の段 2） |
 
 - **Job の UI の制限**（2026-11-17 リード決定）: `ikari-data` の Job にも、`transfer` の Job と同じ UI の制限（クリップボードの読み書き、ほかのプロセスの窓、デスクトップの切り替え、画面とシステムの設定の変更、グローバルなアトム、サインアウト）をかける。理由: `ikari-data` に画面は無く、失うものが無い。中の整合性で動く分、ほかのアプリの窓や設定に触れられないようにしておく。`ikari-sandbox` はどの子にも必ずかける（選べる形にしない）。
 - `transfer` は、自分の整合性が低でなければ、何もせずに `refused` で終わる（人が手で打っても、中の整合性では通信しない。検査は §10）。
-- 低い整合性の子が書けるのは、低い整合性の場所だけ。作業の場所は `%USERPROFILE%\AppData\LocalLow\ikari-ime\fetch\`（OS が低い整合性に用意している場所。ikari が ACL を変えない）。
-- **作業の場所のファイルは信じない**（低い権限のほかのプログラムも書けるため）。`ikari-data` は、作業の場所のファイルを rename せず、`inbox/<名前>.partial/` に**写しながら sha256 を数える**。確かめるのは、写した先のバイト列の sha256。rename にしない理由は、低い整合性の印がファイルについたまま `models/` まで移ってしまうため。
+- **子は場所を一つも持たない**（2026-11-19 改め。[ADR 0078](0078-fetch-child-handle-and-appcontainer.md) §3.1）。作業の場所は、両 OS で `<データの場所>\fetch\`（中の整合性。macOS と同じ）。`LocalLow` は使わない。
+  - `download.bin` は親（`ikari-data`）が、作業の場所を持ったあとに新しく作り（読み書き）、そのハンドルを最後まで持つ。パスで開き直さない。
+  - 子に渡すのは、そのハンドルから `DuplicateHandle` で作った `FILE_APPEND_DATA | SYNCHRONIZE` だけの写し。値は引数 `--out-handle <十進>` で知らせる（`transfer` は `--out` を受けない）。子は読めず、切り詰められず、位置を選べない。子は `sync_all` を呼ばない。
+  - 親は子の行とは別に、自分のハンドルでファイルの大きさを一定の間隔（仮置き。`limits::SIZE_WATCH_INTERVAL`）で読み、上限を超えたら Job を閉じて `too-large` で終わる。子が終わったら、親が自分のハンドルで `FlushFileBuffers` してから、先頭から読んで写す。最後に `download.bin` は親が消す（`cleanup`）。
+- **子が書いたファイルは信じない**。`ikari-data` は、それを rename せず、`inbox/<名前>.partial/` に**写しながら sha256 を数える**。確かめるのは、写した先のバイト列の sha256。rename にしない理由は、子に渡した写しが子の終了のあとも残りうる（推測）ので、数え終わるまで動かないとは言えないため（0078 §3.1 の 5）。親は読むときにファイルの位置を使わない（写しと位置を分け合うため）。
 - 写す分だけ、ディスクを一時に 2 倍使う（§8.3）。
 - ファイアウォールの送信ブロックの規則は、`ikari-data.exe` にはかけない（0071 §3.1。`transfer` は同じ exe なので、同じ扱い）。設定画面の exe にはかける（0066 §6.2 の L2）ので、設定画面のプロセス自体は通信できないまま。
-- 低い整合性で、OS の証明書の確かめ（SChannel）と、`LocalLow` への書き込みが動くことは、VM で確かめた（§16）。
+- 低い整合性で、OS の証明書の確かめ（SChannel）が動くことは、VM で確かめた（§16。そのときの書く先は `LocalLow` だった）。継承した追記だけのハンドルに低い整合性の子が書けること、読めないこと、切り詰められないこと、位置を選べないことは、Windows の CI のテスト（`fetch/src/spawn_windows/tests.rs`）で確かめる。ふだんのログオンでの確かめは 0078 §6 の段 1 の VM の項目。
 
 ### 3.3 macOS の権限
 - `ikari-data` は App Sandbox に入れ、`network.client` と、データの場所の例外だけを付ける（0071 §3.5）。作業の場所は `<データの場所>/fetch/`。
@@ -117,8 +120,8 @@ ikari-data cleanup          # 落ちたあとに残った作業の場所と .par
 ## 5. 出力（どこに置き、だれが取り込むか）
 
 ### 5.1 流れ（モデル）
-1. 通信するプロセス（Windows は `transfer`、macOS は `ikari-data`）が、作業の場所に落とす（§4.4）。進み具合は、読んだバイト数を標準出力の行で知らせる（§8.1。Windows は `ikari-data` が子の行を読み、確かめてから核に流す）。
-2. 落とし終えたら、`ikari-data`（Windows は中の整合性の親）が、作業の場所のファイルを `inbox/<名前>.partial/<ファイル名>` に写しながら sha256 と大きさを数える。プリセットは表と、自由指定は `--sha256` があれば照らす。合わなければ消して終わる。
+1. `ikari-data` が作業の場所に `download.bin` を作ってハンドルを持ち、通信するプロセスがそこに落とす（§4.4）。Windows は `transfer` が、継承した追記だけの写しに書く。macOS は `ikari-data` が自分のハンドルに書く（§3.2。0078 §3.1）。進み具合は、読んだバイト数を標準出力の行で知らせる（§8.1。Windows は `ikari-data` が子の行を読み、確かめてから核に流す。大きさの上限は、親が自分のハンドルでも見張る）。
+2. 落とし終えたら、`ikari-data`（Windows は中の整合性の親）が、持っているハンドルで先頭から読み（パスで開き直さない）、`inbox/<名前>.partial/<ファイル名>` に写しながら sha256 と大きさを数える。プリセットは表と、自由指定は `--sha256` があれば照らす。合わなければ消して終わる。
 3. `resource` の関数で、束の `manifest.json` を書く（`kind = model`。プリセットは `origin = preset`、自由指定は `origin = user` と `profile { format }` と `source { url, sha256_given }`）。
 4. `inbox/<名前>.partial/` を `inbox/<名前>/` に rename する。作業の場所を消す。`done` の行を出して終わる。
 5. **ここから先はエンジン**（0058 §8.1 の見回り）。束の検証（0058 §6.1）→ モデルの検査（0060 §4。語彙の検査と試しの採点は、llama を持つ檻の中の子 `ikari-lm-host` に頼む。製品のエンジンには llama.cpp が無いため。0072 §5）→ `models/` への入れ替え（0058 §7.2）→ `models/MANIFEST.json`。結果は `inbox/status.json`。
@@ -221,7 +224,7 @@ error <理由の語>
 ## 11. 推測と、確かめること（VM・実機。`docs/windows-real-device-check.md` に足す）
 
 1. 低い整合性の `transfer` が、プロキシの環境変数（認証のないプロキシ、`NO_PROXY`）で動くこと。プロキシの URL が `http://` でも、`https_only` が要求を止めないこと（スパイクではプロキシを試していない）。
-2. ふだんの中の整合性のログオン（デスクトップの設定画面から起こす形）で、`LocalLow` への書き込みと、Job Object を重ねた形（設定画面の Job の中で、`ikari-data` が `transfer` の Job を作る）が動くこと。スパイクは管理者の SSH（高い整合性）から起こした（§16）。
+2. ふだんの中の整合性のログオン（デスクトップの設定画面から起こす形）で、継承した書く先のハンドルへの書き込み（2026-11-19 までは `LocalLow` への書き込み。0078 §6）と、Job Object を重ねた形（設定画面の Job の中で、`ikari-data` が `transfer` の Job を作る）が動くこと。スパイクは管理者の SSH（高い整合性）から起こした（§16）。
 3. Hugging Face のプリセットの URL が、転送の回数の上限の中で、最後まで取れること（スパイクは先頭の 8MiB まで）。
 4. 取得の間の送信の記録（L3）: 送信するのは `ikari-data.exe` だけで、行き先は表のホストと転送先だけ。設定画面、エンジンは送信しない。
 5. 取り消し（Job Object を閉じる）で、`transfer` も終わり、作業の場所が次の起動で消えること。ディスクが足りないとき、途中で回線を切ったときの表示。
@@ -292,10 +295,11 @@ error <理由の語>
 
 ## 17. 子の絞った起動の共通化（`ikari-sandbox`。2026-11-17）
 
-- **今**: `windows/sandbox`（`ikari-sandbox`）に、止めた状態で作り → Job Object に入れ → 渡すハンドルを限って動かす起動を置いた。使うのは `transfer` の起動（`fetch/src/spawn_windows.rs`。低、子 1、環境はプロキシと OS の分だけ）と、設定画面の核の `ikari-data` の起動（`windows/settings/src/fetch_os.rs`。中、子 2、環境は受け継ぐ）。どちらも UI の制限をかけ、標準出力のパイプだけを渡す。取り消しは Job の中をすべて止める（`TerminateJobObject`）。
+- **今**: `windows/sandbox`（`ikari-sandbox`）に、止めた状態で作り → Job Object に入れ → 渡すハンドルを限って動かす起動を置いた。使うのは `transfer` の起動（`fetch/src/spawn_windows.rs`。低、子 1、環境はプロキシと OS の分だけ）と、設定画面の核の `ikari-data` の起動（`windows/settings/src/fetch_os.rs`。中、子 2、環境は受け継ぐ）。どちらも UI の制限をかけ、標準出力のパイプを渡す。ほかに渡すハンドルは、呼ぶ側が `Launch::inherit` で明示したものだけ（2026-11-19。0078 §4.1。今は `transfer` の書く先の追記だけの写しだけ）。取り消しは Job の中をすべて止める（`TerminateJobObject`）。
 - 確かめたこと（VM、管理者の SSH。`ikari-sandbox` のテスト）: 子が Job に入っている、低の子の整合性が 0x1000、渡さない標準入力と標準エラーは null か子の新しいコンソール、親が継承の印を付けたままの別のハンドルは子に届かない、子 1 の Job では子がさらにプロセスを作れない（子 2 では作れる）、Job を持つ親が終わると子も終わる、渡したハンドルの継承の印は起動のあとに外れる。
 - **入れ子の Job と UI の制限**（VM で見つけた）: UI の制限つきの Job の中のプロセスは、UI の制限つきの別の Job に子を入れられない（`AssignProcessToJobObject` が `ERROR_NOT_SUPPORTED`。外と内のどちらにも、どの 1 つの制限をかけても同じ。外だけ、内だけなら入れられる）。そのため `ikari-sandbox` は、自分の Job がすでに UI の制限を全部かけていれば、新しい Job にはかけない（外の Job の制限が入れ子の中にもかかる前提）。一部だけなら、かけて、入れるところで失敗にする（起動しない側に倒す）。この形で、設定画面の核 → `ikari-data`（子 2、UI の制限）→ `transfer`（子 1、低）の入れ子から、`transfer` が https のファイル（11,358 バイト）を最後まで取れた（`transfer_runs_inside_both_jobs`、手で流すテスト）。
   - **推測（確かめていない）**: 外の Job の UI の制限が、入れ子の内の Job の孫にもかかること（Microsoft の入れ子の Job の説明による）。管理者の SSH（セッション 0）では、確かめの手段にしたクリップボード（整合性でも拒まれ、区別できない）とグローバルなアトム（親が足せない）が使えなかった。ふだんのログオンで確かめる（§11 の 2 と一緒に）。
+- **共通化の順の改め（2026-11-19。0078 §3.2 の 3）**: 取得の子の段 2（AppContainer）では、AppContainer の部品（プロファイル、SID、読み取りの許可）を `lm` から `ikari-sandbox` に移し、`lm` は `use` を替えるだけにする。LM の子の起動の本体は触らないので、下の移行を済ませるまで、属性の組み立ては 2 か所になる。この移動のあとは、下の「`lm` の `appcontainer` に残す」を `ikari_sandbox::appcontainer` と読む。
 - **LM の子（`lm/src/host/os/windows.rs`）はまだ移していない**。段 2（AppContainer。`lane/d3-win`）が同じ関数（起動の本体と属性の一覧）を書き換えていて、先に移すと衝突するため。段 2 を統合したあとで、次の形で移す:
   - `ikari-sandbox` の `Integrity` に、段 2 の値（AppContainer の SID を借りる形。SID の作成と許可は `lm` の `appcontainer` に残す）を足し、属性の一覧に `PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES` を足す（今の `AttrList` の中身）。
   - `lm` の `spawn` は、整合性の決め方（`low_integrity_enabled`、`Cage`、`CageState`）と、渡す 3 つのハンドル（標準エラーは `NUL`）を決めて `ikari_sandbox::spawn` を呼ぶだけにする。`Proc` は `Confined` を包む（`id`、`reap`）。`cmdline.rs` は `ikari_sandbox::cmdline` に替える。
