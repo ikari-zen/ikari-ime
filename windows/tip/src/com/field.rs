@@ -88,12 +88,16 @@ pub fn is_secure(ec: u32, context: &ITfContext) -> bool {
     let chosen = match (&app, &tip) {
         (ScopeOutcome::Scopes(_), _) => &app,
         (_, ScopeOutcome::Scopes(_)) => &tip,
+        // 値はあるのに読めない方があれば、それを使う（BA-02。secure）
+        (ScopeOutcome::PresentUnreadable { .. }, _) => &app,
+        (_, ScopeOutcome::PresentUnreadable { .. }) => &tip,
         _ => &app,
     };
     secure::is_secure_field(
         match chosen {
             ScopeOutcome::Scopes(list) => ScopeReading::Scopes(list),
             ScopeOutcome::NotSet { .. } => ScopeReading::NotSet,
+            ScopeOutcome::PresentUnreadable { .. } => ScopeReading::PresentUnreadable,
             ScopeOutcome::Failed { .. } | ScopeOutcome::Skipped => ScopeReading::Unreadable,
         },
         disabled,
@@ -149,7 +153,7 @@ fn scopes_in(variant: &VARIANT) -> ScopeOutcome {
         match unknown {
             Some(unknown) => match unknown.cast::<ITfInputScope>() {
                 Ok(scope) => scopes_of(&scope),
-                Err(e) => ScopeOutcome::Failed {
+                Err(e) => ScopeOutcome::PresentUnreadable {
                     step: "QueryInterface(ITfInputScope)",
                     hr: e.code(),
                 },
@@ -166,7 +170,7 @@ unsafe fn scopes_of(scope: &ITfInputScope) -> ScopeOutcome {
     let mut count = 0u32;
     // SAFETY: `list` と `count` は書ける場所。成功すると、`list` は `count` 個の要素（CoTaskMemAlloc）を指す
     if let Err(e) = unsafe { scope.GetInputScopes(&mut list, &mut count) } {
-        return ScopeOutcome::Failed {
+        return ScopeOutcome::PresentUnreadable {
             step: "GetInputScopes",
             hr: e.code(),
         };
