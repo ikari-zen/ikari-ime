@@ -812,6 +812,7 @@ dependencies = [
  "dhat",
  "ikari-input",
  "ikari-proto",
+ "ikari-resource",
  "ikari-runmark",
  "ikari-textfile",
  "prost",

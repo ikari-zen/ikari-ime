@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- ikari-data（Contents/Helpers/ikari-data。取得の部品）の entitlement（ADR 0079 §3.3）。
+     キーはちょうど 3 つ: App Sandbox、通信（client）、一時例外（fetch/ と inbox/ の 2 つだけ。この順）。
+     network.server、files.user-selected.*、inherit、読み取りだけの例外、ほかの一時例外は付けない。
+     エンジンの entitlement（engine.entitlements）とは共有しない（片方を広げても、もう片方が広がらないように）。
+     build.sh は署名のあとに、キーの数と、例外の配列が 2 つの文字列に厳密に一致することを検査する（§3.7）。 -->
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.temporary-exception.files.home-relative-path.read-write</key>
+    <array>
+        <string>/Library/Application Support/ikari-ime/fetch/</string>
+        <string>/Library/Application Support/ikari-ime/inbox/</string>
+    </array>
+</dict>
+</plist>

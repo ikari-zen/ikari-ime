@@ -22,8 +22,8 @@ pub use dictionary::{
 #[cfg(feature = "dev-knobs")]
 pub use dir::USER_DIR_ENV;
 pub use dir::{
-    INGEST_CANDIDATES_FILE_NAME, INGEST_SOURCES_FILE_NAME, LEARNING_FILE_NAME, PROFILE_FILE_NAME,
-    USER_DICT_FILE_NAME, UserDir, UserDirEnv,
+    HostOs, INGEST_CANDIDATES_FILE_NAME, INGEST_SOURCES_FILE_NAME, LEARNING_FILE_NAME,
+    PROFILE_FILE_NAME, USER_DICT_FILE_NAME, UserDir, UserDirEnv,
 };
 pub use error::UserDataError;
 pub use features::{ContextFeatures, Feature, FeatureKind, extract, extract_named};

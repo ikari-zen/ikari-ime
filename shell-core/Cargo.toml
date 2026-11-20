@@ -10,6 +10,7 @@ ikari-input.workspace = true
 ikari-textfile.workspace = true
 ikari-proto.workspace = true
 ikari-runmark.workspace = true
+ikari-resource.workspace = true
 prost.workspace = true
 serde.workspace = true
 serde_json.workspace = true
