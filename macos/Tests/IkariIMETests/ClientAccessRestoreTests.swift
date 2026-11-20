@@ -102,3 +102,22 @@ private func range(_ location: UInt32, _ length: UInt32) -> Ikari_Shell_V1_Utf16
         #expect(client.insertCalls.map(\.range) == [NSRange(location: 1, length: 2)])
     }
 }
+
+@Suite struct ClientAccessSelectionLimitTests {
+    @Test func selectedTextReadsAShortSelection() {
+        let client = FakeTextClient(document: "あ品詞い")
+        client.selected = NSRange(location: 1, length: 2)
+        #expect(ClientAccess(client: client).selectedText()?.text == "品詞")
+    }
+
+    @Test func selectedTextRefusesAnOversizedSelection() {
+        let client = FakeTextClient(document: String(repeating: "あ", count: ClientAccess.selectionReadLimit + 1))
+        client.selected = NSRange(location: 0, length: ClientAccess.selectionReadLimit + 1)
+        #expect(ClientAccess(client: client).selectedText() == nil)
+    }
+
+    @Test func rangesThatOverflowAreInvalid() {
+        #expect(!ClientAccess.isValid(NSRange(location: Int.max, length: 2)))
+        #expect(ClientAccess.isValid(NSRange(location: 1, length: 2)))
+    }
+}
