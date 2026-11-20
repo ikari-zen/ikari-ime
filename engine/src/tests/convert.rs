@@ -16,7 +16,13 @@ fn prefetch_then_convert_hits_the_cache() {
         "the LM result computed ahead is used"
     );
     assert!(r.lm_applied);
-    assert!(r.engine_micros < 5_000, "{}us", r.engine_micros);
+    assert!(
+        r.engine_micros < 5_000,
+        "engine_micros={} expected=< 5000 {}={}",
+        r.engine_micros,
+        ikari_testtime::TIME_SCALE_ENV,
+        ikari_testtime::scale()
+    );
     assert!(matches!(
         r.candidates[0].kind,
         k if k == pb::CandidateKind::Dictionary as i32
@@ -50,7 +56,13 @@ fn convert_waits_for_a_running_prefetch_until_the_budget() {
     let r = convert(&e, 1, READING, 0);
     assert_eq!(surfaces(&r)[0], BOOSTED);
     assert!(r.lm_applied);
-    assert!(started.elapsed() < ikari_testtime::ms(200));
+    let waited = started.elapsed();
+    let limit = ikari_testtime::ms(200);
+    assert!(
+        waited < limit,
+        "{}",
+        ikari_testtime::report(waited, format_args!("< {limit:?}"))
+    );
 }
 
 #[test]
@@ -64,10 +76,16 @@ fn convert_falls_back_without_the_lm_when_the_prefetch_is_too_slow() {
     let waited = started.elapsed();
     assert_eq!(surfaces(&r)[0], BASE_TOP);
     assert!(!r.lm_applied);
-    assert!(waited < ikari_testtime::ms(150), "{waited:?}");
+    let (upper, lower) = (ikari_testtime::ms(150), ikari_testtime::ms(20));
     assert!(
-        waited >= ikari_testtime::ms(20),
-        "waits for the budget: {waited:?}"
+        waited < upper,
+        "{}",
+        ikari_testtime::report(waited, format_args!("< {upper:?}"))
+    );
+    assert!(
+        waited >= lower,
+        "waits for the budget: {}",
+        ikari_testtime::report(waited, format_args!(">= {lower:?}"))
     );
 }
 
@@ -576,9 +594,18 @@ fn convert_never_waits_more_than_30ms() {
     let waited = started.elapsed();
     assert!(!r.lm_applied);
     assert_eq!(surfaces(&r)[0], BASE_TOP);
-    assert!(waited >= test_wait(), "{waited:?}");
+    assert!(
+        waited >= test_wait(),
+        "{}",
+        ikari_testtime::report(waited, format_args!(">= {:?}", test_wait()))
+    );
     // 30ms の待ちとその場の変換。余裕を見ても、計算の 300ms には届かない
-    assert!(waited < ikari_testtime::ms(150), "{waited:?}");
+    let upper = ikari_testtime::ms(150);
+    assert!(
+        waited < upper,
+        "{}",
+        ikari_testtime::report(waited, format_args!("< {upper:?}"))
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 

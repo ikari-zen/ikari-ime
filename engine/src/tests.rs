@@ -314,9 +314,14 @@ fn page(e: &Engine, conversion_id: u64, index: u32) -> envelope::Body {
 }
 
 fn wait_until(mut cond: impl FnMut() -> bool) {
-    let give_up = Instant::now() + Duration::from_secs(5);
+    let limit = Duration::from_secs(5);
+    let started = Instant::now();
     while !cond() {
-        assert!(Instant::now() < give_up, "condition not met in time");
+        assert!(
+            started.elapsed() < limit,
+            "condition not met in time: {}",
+            ikari_testtime::report(started.elapsed(), format_args!("< {limit:?}"))
+        );
         std::thread::sleep(Duration::from_millis(2));
     }
 }
