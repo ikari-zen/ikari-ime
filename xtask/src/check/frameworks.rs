@@ -11,6 +11,10 @@
 //!   「入ったソース」は、macOS 向けのビルドが残す dep-info（`target/**/<triple>/release/lib<crate>.d`。rustc が実際に読んだ
 //!   ファイルの一覧。cfg で外れた `windows.rs` などは載らない。#476）と、依存する crate の `Cargo.toml`。dep-info が
 //!   無いときは、crate のディレクトリを丸ごと見る（広めに「古い」と言う側に倒す）。
+//!   `Cargo.toml` だけは、staticlib の時刻ではなく「`build.sh` が最後に XCFramework を作り終えた時刻」（`macos/Frameworks/.built`）と
+//!   比べる（#296）。dev-dependencies だけを変えると cargo は staticlib を作り直さない（cargo は manifest の変更を時刻ではなく
+//!   ハッシュで見る）ので、staticlib の時刻と比べると、build.sh を流しても古いままになる。build.sh を流したあとなら、
+//!   cargo が必要な作り直しを済ませているので、Cargo.toml はそれより古ければよい。
 //!
 //! XCFramework がなければ、swift test の前に作り方を案内して失敗する（#165。スタブのまま通すと、スタブの設定の検証が
 //! Rust の本物とずれて別のテストが落ち、原因が分かりにくい）。Swift を触らない作業は `--docs-only` か `--no-swift`。
@@ -31,6 +35,8 @@ const MAC_TARGET_MARK: &str = "apple-darwin";
 const LM_TARGET_DIR: &str = "lm";
 const DEP_INFO_EXT: &str = "d";
 const MANIFEST: &str = "Cargo.toml";
+/// `build.sh` が XCFramework を作り終えたときに触る印（`macos/Frameworks/` の下。gitignore）
+const BUILT_MARK: &str = ".built";
 /// ソースの走査で入らないディレクトリ（成果物と、staticlib に入らないテスト類）
 const SKIPPED_DIRS: [&str; 5] = ["target", "tests", "benches", "examples", ".git"];
 
@@ -79,7 +85,12 @@ pub fn verify(root: &Path) -> Result<(), Failure> {
             ));
         };
         let sources = source_files(root, packages, spec.package);
-        if let Some(reason) = stale_reason(&framework, &root.join(spec.header), &sources)? {
+        let checked_at = std::fs::metadata(root.join(FRAMEWORKS_DIR).join(BUILT_MARK))
+            .and_then(|m| m.modified())
+            .ok();
+        if let Some(reason) =
+            stale_reason(&framework, &root.join(spec.header), &sources, checked_at)?
+        {
             stale.push(format!("{}.{XCFRAMEWORK_EXT}: {reason}", spec.name));
         }
     }
@@ -93,10 +104,12 @@ pub fn verify(root: &Path) -> Result<(), Failure> {
 }
 
 /// 古い理由（新しければ None）。`header` は Rust 側のヘッダ、`sources` は staticlib の元になるソースのファイル。
+/// `checked_at` は `build.sh` が XCFramework を作り終えた時刻（印が無ければ None）。`Cargo.toml` はこれと staticlib の新しいほうと比べる。
 fn stale_reason(
     framework: &Path,
     header: &Path,
     sources: &[PathBuf],
+    checked_at: Option<SystemTime>,
 ) -> Result<Option<String>, Failure> {
     let header_name = header.file_name().unwrap_or_default();
     let packaged_header = find_file(framework, &|path| path.file_name() == Some(header_name));
@@ -125,13 +138,20 @@ fn stale_reason(
         return Ok(Some("中に staticlib（.a）がありません".to_owned()));
     };
     let lib_time = modified(&lib)?;
+    let manifest_floor = checked_at.map_or(lib_time, |checked| checked.max(lib_time));
     let newest = sources
         .iter()
-        .filter_map(|path| Some((path, modified(path).ok()?)))
+        .filter_map(|path| {
+            let floor = if path.file_name().is_some_and(|n| n == MANIFEST) {
+                manifest_floor
+            } else {
+                lib_time
+            };
+            let time = modified(path).ok()?;
+            (time > floor).then_some((path, time))
+        })
         .max_by_key(|(_, time)| *time);
-    if let Some((path, time)) = newest
-        && time > lib_time
-    {
+    if let Some((path, _)) = newest {
         return Ok(Some(format!(
             "staticlib より新しいソースがある（{}）",
             path.display()
@@ -374,7 +394,7 @@ mod tests {
         }
         fn reason(&self) -> Option<String> {
             std::fs::create_dir_all(self.header().parent().unwrap()).unwrap();
-            stale_reason(&self.framework(), &self.header(), &[self.source()]).unwrap()
+            stale_reason(&self.framework(), &self.header(), &[self.source()], None).unwrap()
         }
     }
 
@@ -405,6 +425,27 @@ mod tests {
         fx.set_time(&fx.source(), 100);
         let reason = fx.reason().unwrap();
         assert!(reason.contains("新しいソース"), "{reason}");
+    }
+
+    /// Cargo.toml だけが staticlib より新しくても、build.sh がそのあとに流れていれば古くない（#296）。
+    /// build.sh の前に変えた Cargo.toml は、これまでどおり古い。ソースは、build.sh の時刻に関係なく staticlib と比べる。
+    #[test]
+    fn manifest_is_judged_by_the_last_build() {
+        let fx = Fixture::new();
+        let manifest = fx.dir.path().join("Cargo.toml");
+        std::fs::write(&manifest, "").unwrap();
+        fx.set_time(&manifest, 10);
+        let at = |secs: u64| SystemTime::now() + Duration::from_secs(secs);
+        let run = |sources: &[PathBuf], checked| {
+            stale_reason(&fx.framework(), &fx.header(), sources, checked).unwrap()
+        };
+        let sources = [manifest.clone()];
+        assert!(run(&sources, None).unwrap().contains("Cargo.toml"));
+        assert!(run(&sources, Some(at(5))).unwrap().contains("Cargo.toml"));
+        assert_eq!(run(&sources, Some(at(20))), None);
+        fx.set_time(&fx.source(), 30);
+        let both = [manifest, fx.source()];
+        assert!(run(&both, Some(at(40))).unwrap().contains("lib.rs"));
     }
 
     #[test]
