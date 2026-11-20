@@ -12,6 +12,7 @@ use std::io;
 use std::path::Component;
 use std::path::{Path, PathBuf};
 
+#[cfg(not(target_os = "macos"))]
 use ikari_core::user::UserDir;
 use ikari_resource::PARTIAL_SUFFIX;
 use ikari_resource::fetch_report::FetchErrorCode;
@@ -77,6 +78,10 @@ impl Dirs {
     /// 製品の場所（データの場所は引数で変えられない。ADR 0067）。決められなければ `None`。
     /// 作業の場所は、両 OS でデータの場所の下（ADR 0078 §3.1 の 1）
     pub fn resolve() -> Option<Self> {
+        // macOS は `HOME` から決めない（ADR 0079 §3.4。Sandbox は `HOME` をコンテナにする）
+        #[cfg(target_os = "macos")]
+        let user = crate::macos::resolve_user_dir()?;
+        #[cfg(not(target_os = "macos"))]
         let user = UserDir::resolve(None)?;
         let base = user.root().to_path_buf();
         Some(Self::with_base(
@@ -109,6 +114,8 @@ impl Dirs {
             .work
             .strip_prefix(&self.base)
             .map_err(|_| nofollow::not_plain())?;
+        // macOS（Sandbox）は根を作らず、あってリンクでないことだけを確かめる（ADR 0079 §3.5。`hold_dir` が `lstat` で見る）
+        #[cfg(not(target_os = "macos"))]
         fs::create_dir_all(&self.base)?;
         let mut held = vec![nofollow::hold_dir(&self.base)?];
         let mut path = self.base.clone();
@@ -125,6 +132,13 @@ impl Dirs {
             let dir = nofollow::hold_dir(&path)?;
             dir.ensure_child_of(held.last().ok_or_else(nofollow::not_plain)?)?;
             held.push(dir);
+        }
+        // inbox も根の下に 1 段だけ自分で作る（ADR 0079 §3.5）
+        #[cfg(target_os = "macos")]
+        if let Some(name) = self.inbox.file_name().and_then(|n| n.to_str())
+            && self.inbox.parent() == Some(self.base.as_path())
+        {
+            crate::macos::ensure_child_dir(&self.base, name)?;
         }
         Ok(held)
     }
@@ -387,6 +401,20 @@ mod tests {
         let tmp2 = tempfile::tempdir().unwrap();
         fs::write(tmp2.path().join("fetch"), b"x").unwrap();
         assert!(dirs(tmp2.path()).lock().is_err(), "ファイルがあれば失敗");
+    }
+
+    /// macOS（ADR 0079 §3.5）: 根は作らず（無ければ失敗）、根があれば `fetch/` と `inbox/` を作る
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_lock_does_not_create_the_root_but_creates_fetch_and_inbox() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("ikari-ime");
+        assert!(dirs(&root).lock().is_err(), "根が無ければ作らずに失敗");
+        assert!(!root.exists());
+        fs::create_dir(&root).unwrap();
+        let _lock = dirs(&root).lock().unwrap();
+        assert!(root.join("fetch").is_dir());
+        assert!(root.join("inbox").is_dir());
     }
 
     #[cfg(unix)]
