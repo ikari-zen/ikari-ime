@@ -124,7 +124,7 @@ impl Launcher for ProductLauncher {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use std::io::Read;
 

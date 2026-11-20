@@ -262,6 +262,7 @@ pub unsafe extern "C" fn ikari_settings_fetch_free(fetch: *mut IkariSettingsFetc
 #[cfg(test)]
 mod tests {
     use std::io::{self, Cursor};
+    #[cfg(unix)]
     use std::path::Path;
     use std::ptr;
     use std::thread;
@@ -271,6 +272,7 @@ mod tests {
     use ikari_shell_core::settings::fetch::{Phase, Running};
 
     use super::*;
+    #[cfg(unix)]
     use crate::fetch_launcher::spawn_running;
 
     /// 固定の行を返す偽の子
@@ -286,9 +288,11 @@ mod tests {
         }
     }
 
-    /// 本物の子（`sh -c`）を起こす偽の ikari-data
+    /// 本物の子（`sh -c`）を起こす偽の ikari-data（Unix だけ）
+    #[cfg(unix)]
     struct Shell(&'static str);
 
+    #[cfg(unix)]
     impl Launcher for Shell {
         fn launch(&self, _args: &[String]) -> io::Result<Running> {
             spawn_running(
@@ -462,6 +466,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn sha256_fails_until_done_and_free_cancels_a_running_child() {
         let raw = open(&Shell("echo progress 1 2; exec sleep 60"));
         let mut out = IkariShellBuf::EMPTY;
@@ -490,6 +495,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn child_dying_without_a_final_line_is_a_failure() {
         let raw = open(&Shell("echo progress 1 2; exit 9"));
         let (status, _) = poll_until_finished(raw);
@@ -499,6 +505,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn cancel_kills_a_running_child() {
         let raw = open(&Shell("echo progress 1 2; exec sleep 60"));
         // SAFETY: `raw` は開いたもの
