@@ -9,6 +9,8 @@
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
+use ikari_shell_core::settings::fetch::text::{FetchErrorCode, fetch_error};
+
 use crate::IkariShellBuf;
 use crate::shell::{
     IKARI_SHELL_ERR_ARG, IKARI_SHELL_ERR_FAILED, IKARI_SHELL_ERR_NULL, IKARI_SHELL_ERR_PANIC,
@@ -20,8 +22,8 @@ pub const IKARI_SETTINGS_FETCH_PRESET: i32 = 1;
 /// 自由指定の URL（`a` が URL。`format` が必要。`sha256` と `name` は空でよい）
 pub const IKARI_SETTINGS_FETCH_URL: i32 = 2;
 
-/// 起こせないときの文（Windows の `text::fetch_error(Tool)` と同じ。共有の核へ移すときに一本化する）
-const TOOL_MESSAGE: &str = "取得の部品を起動できませんでした";
+/// 起こせないときの文（共有の核の `text::fetch_error(Tool)`。Windows と同じ。ADR 0079 §3.6）
+const TOOL_MESSAGE: &str = fetch_error(FetchErrorCode::Tool);
 
 /// 走っている取得の不透明な値（スタブでは作らない）
 pub struct IkariSettingsFetch {
