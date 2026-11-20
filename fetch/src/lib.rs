@@ -7,6 +7,7 @@
 //! - `transfer`: 通信（`ureq`。設定は 1 か所）。`child`、`spawn_windows`: Windows の低い整合性の子
 //! - `workspace`: 作業の場所、錠、片づけ、ディスクの見積もり
 //! - `job`: 流れ（落とす → 信じずに数え直して写す → rename）。`run`: 入口
+//! - `macos`: macOS だけ（Sandbox の中のデータの場所、`fetch/`・`inbox/` の作成、親の終わりの見張り。ADR 0079）
 //! - `version`: 版の確認（`version-check`。ADR 0076 §6）
 //!
 //! 判断の置き場所: すべて Rust（UI の C#・Swift には判断を置かない）。
@@ -16,6 +17,8 @@ pub mod child;
 pub mod error;
 pub mod job;
 pub mod limits;
+#[cfg(target_os = "macos")]
+pub mod macos;
 mod nofollow;
 pub mod run;
 #[cfg(windows)]
