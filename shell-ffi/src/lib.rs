@@ -3,6 +3,7 @@
 //! - このファイル: 共通の型（`IkariStr`、`IkariShellBuf`）と解放（`ikari_shell_buf_free`）
 //! - `shell`: 殻の 1 本の口（`ikari_shell_*`。ADR 0041 §4.4）
 //! - `settings`: 設定アプリ用（`ikari_settings_validate`・`rewrite`。ADR 0041 §2.3）
+//! - `settings_fetch`: 取得（`ikari-data`）の起動（`ikari_settings_fetch_*`。ADR 0079 §3.6。今は契約のスタブ）
 //! - `settings_app`: 設定アプリの Model 用（`ikari_settings_app`。入出力は `ikari.settings.v1`）
 //! - `panel`: 候補ウィンドウの配置（`ikari_panel_*`）
 //! - `convert`: `shell-core` の型と proto（`ikari.shell.v1`）の写し
@@ -14,10 +15,12 @@ pub mod convert;
 mod panel;
 mod settings;
 mod settings_app;
+mod settings_fetch;
 mod shell;
 
 pub use settings::{ikari_settings_rewrite, ikari_settings_validate};
 pub use settings_app::ikari_settings_app;
+pub use settings_fetch::*;
 pub use shell::*;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
