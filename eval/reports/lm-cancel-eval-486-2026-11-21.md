@@ -29,7 +29,7 @@ ADR 0065 §8 の表の「1a 検証の口」（遅延の包み `DelayedScorer`、
 
 - `scripts/check.sh --real --perf --no-swift`（`66072dc`）: **CHECK_EXIT=0**。実データのテスト（`--ignored`）は全部通った（失敗 0）。性能のテストも通った（perf_smoke p50 0.33ms / p99 0.44ms、segment_perf の first / resize / reconvert は p99 0.13 / 0.33 / 0.12ms）。
 - `--no-swift` なので swift test は含まない。swift test はフルの `scripts/check.sh`（PR の確認）で流す。
-- モデルは `data/raw/zenz/`・`data/raw/kanakanji-edge/` の既定の場所（メインのリポジトリの `data/` へのシンボリックリンク）。#491（単体の `cargo test -p ikari-engine` で落ちるテスト）は、今回の流し方（workspace、LM つき）では再現しなかった。
+- モデルは `data/raw/zenz/`・`data/raw/kanakanji-edge/` の既定の場所（メインのリポジトリの `data/` へのシンボリックリンク）。#491（単体の `cargo test -p ikari-engine` で落ちるテスト）は、単体では流していない（未確認）。この流し方（workspace、LM つき）では落ちなかった。
 
 ## 4. 分かったこと／推測／ユーザーの決定
 
