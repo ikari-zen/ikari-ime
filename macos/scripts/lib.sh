@@ -20,6 +20,7 @@ readonly SMOKE_ID="$BUNDLE_ID.smoke"
 readonly SETTINGS_ID="$BUNDLE_ID.settings"
 readonly LM_HOST_ID="$BUNDLE_ID.lm-host"
 readonly LM_CAGE_ID="$BUNDLE_ID.lm-cage"
+readonly DATA_ID="$BUNDLE_ID.data"  # ikari-data（取得の部品。ADR 0079 §3.2）。署名の identifier と Info.plist の CFBundleIdentifier
 readonly INPUT_SOURCE_JAPANESE="$BUNDLE_ID.Japanese"
 readonly APP_NAME="ikari.app"
 readonly SETTINGS_APP_NAME="IkariSettings.app"

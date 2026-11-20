@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- ikari-data の Info.plist のテンプレート（ADR 0079 §3.2）。
+     build.sh が @IKARI_ID_PREFIX@ と版を埋めたものを作り、リンクのときに
+     -Wl,-sectcreate,__TEXT,__info_plist,<埋めた plist> で exe に埋め込む（埋めない Sandbox の exe は起動の直後に落ちる。ADR 0076 §16）。
+     CFBundleIdentifier は署名の identifier（lib.sh の DATA_ID）と同じにする。検査（verify_data）で一致を見る。 -->
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>ja</string>
+    <key>CFBundleExecutable</key>
+    <string>ikari-data</string>
+    <key>CFBundleIdentifier</key>
+    <string>@IKARI_ID_PREFIX@.inputmethod.ikari.data</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>ikari-data</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.0.0</string>
+    <key>CFBundleVersion</key>
+    <string>0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>26.0</string>
+</dict>
+</plist>

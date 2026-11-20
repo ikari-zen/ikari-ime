@@ -35,6 +35,10 @@ pub const IKARI_SHELL_ERR_DECODE: i32 = 3;
 pub const IKARI_SHELL_ERR_BUSY: i32 = 4;
 pub const IKARI_SHELL_ERR_PANIC: i32 = 5;
 pub const IKARI_SHELL_ERR_UNIMPLEMENTED: i32 = 6;
+/// 引数が使えない（`ikari_settings_fetch_start` の `kind` や文字列。ADR 0079 §3.6）
+pub const IKARI_SHELL_ERR_ARG: i32 = 7;
+/// 始められない・できない（`ikari_settings_fetch_start` の起こせない失敗など。文は `msg` に書く）
+pub const IKARI_SHELL_ERR_FAILED: i32 = 8;
 
 /// ヘッダの `IkariShellTransportResult`
 pub const IKARI_SHELL_TRANSPORT_OK: i32 = 0;

@@ -58,6 +58,8 @@ typedef enum {
     IKARI_SHELL_ERR_BUSY = 4,            // 同じ shell の dispatch の途中（コールバックの中からの呼び直しなど）
     IKARI_SHELL_ERR_PANIC = 5,           // Rust の中で panic した。shell を作り直す
     IKARI_SHELL_ERR_UNIMPLEMENTED = 6,   // まだ実装していない（契約の stub）
+    IKARI_SHELL_ERR_ARG = 7,             // 引数が使えない（ikari_settings_fetch_start の kind や文字列。ADR 0079 §3.6）
+    IKARI_SHELL_ERR_FAILED = 8,          // 始められない・できない（起こせない失敗など。文は msg に入る）
 } IkariShellStatus;
 
 // ホストの engine_request の戻り値（トランスポートの誤り。中身の誤りは Rust が返事を読んで決める。§4.3）。
@@ -146,6 +148,54 @@ int32_t ikari_settings_rewrite(IkariStr file, IkariStr changes, IkariShellBuf *o
 // proto/ikari/settings/v1/settings.proto）を処理し、*out に AppReply を入れる。要求の欄が足りない・範囲外なら
 // IKARI_SHELL_ERR_DECODE。
 int32_t ikari_settings_app(IkariStr request, IkariShellBuf *out);
+
+// ---------------------------------------------------------------- 取得（ikari-data）の起動（ADR 0079 §3.6。契約 #489）
+// 設定アプリ（別のプロセス）用。同じ IkariSettingsFetch を複数のスレッドから同時に呼ばない。
+// 画面は、ボタンから start、タイマーで poll、取り消しで cancel、終わったら free を呼ぶだけ。文は Rust が作る。
+// 文字列の引数は、NULL（長さ 0）か読める UTF-8（呼び出しの間だけ借りる）。使えなければ IKARI_SHELL_ERR_ARG。
+// msg と text は NULL なら書かない。書いたものは ikari_shell_buf_free で 1 回だけ解放する。
+// 注意: 今は契約の stub。start は起こせない失敗（IKARI_SHELL_ERR_FAILED と「取得の部品を起動できませんでした」）を返し、
+//   ハンドルは作らない。中身は ADR 0079 §7 のレーン S。
+
+// 走っている取得の不透明なハンドル。ikari_settings_fetch_free で必ず解放する。
+typedef struct IkariSettingsFetch IkariSettingsFetch;
+
+// ikari_settings_fetch_start の kind（値は Windows の ikari_settings_core.h と同じ）。
+typedef enum {
+    IKARI_SETTINGS_FETCH_PRESET = 1,  // 表のモデル（a が ID）
+    IKARI_SETTINGS_FETCH_URL = 2,     // 自由指定の URL（a が URL。format が要る。sha256 と name は空でよい）
+} IkariSettingsFetchKind;
+
+// ikari_settings_fetch_poll が書く様子（Windows と同じ形）。
+typedef struct {
+    int32_t phase;      // 0 取得中、1 取得できた、2 失敗、3 取り消した
+    uint64_t received;  // 受けたバイト
+    uint64_t total;     // 全体のバイト（has_total が 0 なら使わない）
+    uint8_t has_total;
+} IkariSettingsFetchStatus;
+
+// 取得を始める。IKARI_SHELL_OK なら *out に値を書く。失敗（IKARI_SHELL_ERR_FAILED）は *msg に文を書く。
+// out が NULL なら IKARI_SHELL_ERR_NULL、引数が使えなければ IKARI_SHELL_ERR_ARG。
+int32_t ikari_settings_fetch_start(int32_t kind,
+    const uint8_t *a, size_t a_len, const uint8_t *format, size_t format_len,
+    const uint8_t *sha256, size_t sha256_len, const uint8_t *name, size_t name_len,
+    IkariSettingsFetch **out, IkariShellBuf *msg);
+
+// 版の確認（ikari-data version-check。ADR 0076 §6）を始める。様子と文は poll、解放は free（取得と同じ）。
+int32_t ikari_settings_version_check_start(IkariSettingsFetch **out, IkariShellBuf *msg);
+
+// 様子を読む。status に数、text に文。fetch が NULL なら IKARI_SHELL_ERR_NULL。
+int32_t ikari_settings_fetch_poll(const IkariSettingsFetch *fetch,
+    IkariSettingsFetchStatus *status, IkariShellBuf *text);
+
+// 取得が終わったときの sha256（64 桁の 16 進）を *out に書く。まだ終わっていなければ IKARI_SHELL_ERR_FAILED。
+int32_t ikari_settings_fetch_sha256(const IkariSettingsFetch *fetch, IkariShellBuf *out);
+
+// 取り消す（子に SIGKILL）。終わっていれば何も変えない。
+int32_t ikari_settings_fetch_cancel(const IkariSettingsFetch *fetch);
+
+// 解放する（走っていれば取り消す）。NULL は何もしない。同じ値を 2 回渡さない。
+void ikari_settings_fetch_free(IkariSettingsFetch *fetch);
 
 // ---------------------------------------------------------------- 候補ウィンドウの配置（L-E で追加）
 // 状態を持たない純関数。どのスレッドからでも呼べる。入出力は protobuf。IKARI_SHELL_OK 以外では *out は空。
