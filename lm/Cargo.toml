@@ -57,6 +57,8 @@ block2 = "0.6"
 
 # Job Object、低い整合性、AppContainer（子の檻。`src/host/os.rs` の下だけが使う）。Win32 の宣言だけ
 [target.'cfg(windows)'.dependencies]
+# AppContainer のプロファイル、SID、読み取りの許可（`src/host/os.rs` の `appcontainer`。ADR 0078 §3.2 の 3）
+ikari-sandbox.workspace = true
 windows-sys = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Security",

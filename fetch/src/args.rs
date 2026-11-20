@@ -5,12 +5,15 @@
 //! ikari-data model fetch --url <https の URL> --format <形式> [--sha256 <64 桁の 16 進>] [--name <表示名>]
 //! ikari-data version-check
 //! ikari-data cleanup
-//! ikari-data transfer --url <URL> --max-size <バイト> [--expect-size <バイト>] --out-handle <十進>   （内部。Windows の子）
+//! ikari-data transfer --url <URL> --max-size <バイト> [--expect-size <バイト>] [--box appcontainer|low] --out-handle <十進>
+//!                                                                         （内部。Windows の子）
 //! ```
 //!
 //! 知らない引数、重なった引数、足りない引数は `Usage`（何もしない）。データの場所を変える引数は持たない（ADR 0067）。
 //! `transfer` は書く先の場所を受けない。親が開いて継承させたハンドルの値を受ける（ADR 0078 §3.1 の 4）。
+//! `--box` は、親がどの檻で起こしたか（子の自己確認に使う。ADR 0078 §3.2 の 4）。無ければ `low`。
 
+use ikari_resource::fetch_report::ChildBox;
 use ikari_resource::sha256::is_sha256_hex;
 
 /// 表示名の長さの上限（文字数）
@@ -57,6 +60,8 @@ pub struct TransferCommand {
     pub args: TransferArgs,
     /// 書く先の、継承したハンドルの値（`--out-handle`。十進）。開いているか、ディスクのファイルかは、子が確かめる
     pub out_handle: u64,
+    /// 親が起こした檻（`--box`。無ければ `Low`）。子は、自分のトークンがこれに合わなければ `refused`
+    pub child_box: ChildBox,
 }
 
 /// 引数が読めない
@@ -142,7 +147,10 @@ fn parse_model_fetch(args: &[String]) -> Result<Command, Usage> {
 }
 
 fn parse_transfer(args: &[String]) -> Result<Command, Usage> {
-    let p = pairs(args, &["url", "max-size", "expect-size", "out-handle"])?;
+    let p = pairs(
+        args,
+        &["url", "max-size", "expect-size", "box", "out-handle"],
+    )?;
     let number = |key: &str| -> Result<Option<u64>, Usage> {
         get(&p, key)
             .map(|v| {
@@ -160,6 +168,10 @@ fn parse_transfer(args: &[String]) -> Result<Command, Usage> {
             expect_size: number("expect-size")?,
         },
         out_handle: number("out-handle")?.ok_or(Usage)?,
+        child_box: match get(&p, "box") {
+            None => ChildBox::Low,
+            Some(word) => ChildBox::from_word(word).ok_or(Usage)?,
+        },
     }))
 }
 
@@ -222,6 +234,21 @@ mod tests {
                     expect_size: Some(7),
                 },
                 out_handle: 452,
+                child_box: ChildBox::Low,
+            }))
+        );
+        assert_eq!(
+            parse_str(
+                "transfer --url https://e.com/x --max-size 10 --box appcontainer --out-handle 4"
+            ),
+            Ok(Command::Transfer(TransferCommand {
+                args: TransferArgs {
+                    url: "https://e.com/x".into(),
+                    max_size: 10,
+                    expect_size: None,
+                },
+                out_handle: 4,
+                child_box: ChildBox::AppContainer,
             }))
         );
     }
@@ -255,6 +282,9 @@ mod tests {
             "transfer --url https://e.com/ --max-size 1 --out-handle",
             "transfer --url https://e.com/ --max-size 1 --out-handle 0x10",
             "transfer --url https://e.com/ --max-size 1 --out-handle -4",
+            "transfer --url https://e.com/ --max-size 1 --out-handle 4 --box none",
+            "transfer --url https://e.com/ --max-size 1 --out-handle 4 --box",
+            "transfer --url https://e.com/ --max-size 1 --out-handle 4 --box low --box low",
             "unknown",
         ] {
             assert_eq!(parse_str(line), Err(Usage), "{line:?}");

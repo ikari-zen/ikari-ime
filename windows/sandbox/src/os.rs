@@ -31,10 +31,14 @@ use windows_sys::Win32::System::Threading::{
     CREATE_NO_WINDOW, CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT, CreateProcessAsUserW,
     CreateProcessW, DeleteProcThreadAttributeList, EXTENDED_STARTUPINFO_PRESENT, GetCurrentProcess,
     GetExitCodeProcess, INFINITE, InitializeProcThreadAttributeList, OpenProcessToken,
-    PROC_THREAD_ATTRIBUTE_HANDLE_LIST, PROCESS_INFORMATION, ResumeThread, STARTF_USESTDHANDLES,
-    STARTUPINFOEXW, TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject,
+    PROC_THREAD_ATTRIBUTE_HANDLE_LIST, PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
+    PROCESS_INFORMATION, ResumeThread, STARTF_USESTDHANDLES, STARTUPINFOEXW, TerminateProcess,
+    UpdateProcThreadAttribute, WaitForSingleObject,
 };
 
+use windows_sys::Win32::Security::SECURITY_CAPABILITIES;
+
+use crate::appcontainer::Container;
 use crate::{Integrity, JobLimits, cmdline};
 
 /// Job の UI の制限（ADR 0072 §3。子は窓を持たない）
@@ -119,6 +123,9 @@ pub struct Launch<'a> {
     /// 合わせて入れる。継承の印は起動の直前に付け、起動のあと（失敗でも）に外す。値は子でも同じなので、呼ぶ側が
     /// 引数で知らせる（ここは引数を作らない）。同じハンドルが 2 度ある、標準入出力と重なる → `InvalidInput`
     pub inherit: &'a [BorrowedHandle<'a>],
+    /// AppContainer（ADR 0078 §3.2、§4.1）。`Some` のときは、`integrity` が `Low` でなければ `InvalidInput`（AppContainer の
+    /// トークンは OS が作り、整合性は低になる。低い整合性のトークンは作らない）。プロファイルと能力は `Container` が持つ
+    pub container: Option<&'a Container>,
 }
 
 /// 起動した子。捨てると（Job を閉じると）中のプロセスが終わる。`Send` と `Sync`（別のスレッドから止めてよい）
@@ -208,18 +215,23 @@ pub fn spawn(launch: &Launch<'_>) -> io::Result<Confined> {
         .map(|h| h.as_raw_handle() as HANDLE)
         .collect();
     let inherited = inherited_handles([input, output, error], &extra)?;
+    if launch.container.is_some() && launch.integrity != Integrity::Low {
+        return Err(invalid("an appcontainer child must be low integrity"));
+    }
 
     let job = Job::confined(&launch.job)?;
-    let token = match launch.integrity {
-        Integrity::Low => Some(low_integrity_token()?),
-        Integrity::Inherit => None,
+    // AppContainer はトークンを OS が作る（`CreateProcessW` に属性を渡す）。ほかの低は、自分で作ったトークン
+    let token = match (launch.integrity, launch.container) {
+        (Integrity::Low, None) => Some(low_integrity_token()?),
+        (Integrity::Low, Some(_)) | (Integrity::Inherit, _) => None,
     };
 
     let marks = InheritMarks::set(&inherited)?;
-    let attrs = if inherited.is_empty() {
+    let capabilities = launch.container.map(Container::security_capabilities);
+    let attrs = if inherited.is_empty() && capabilities.is_none() {
         None
     } else {
-        Some(HandleList::new(inherited.clone())?)
+        Some(AttrList::new(inherited.clone(), capabilities)?)
     };
 
     // SAFETY: すべて 0 の値は、この構造体として正しい（使う欄はこのあと埋める）
@@ -237,8 +249,8 @@ pub fn spawn(launch: &Launch<'_>) -> io::Result<Confined> {
     if environment.is_some() {
         flags |= CREATE_UNICODE_ENVIRONMENT;
     }
-    // 一覧があるときだけ継承を有効にする（一覧のハンドルだけが渡る）
-    let inherit = i32::from(attrs.is_some());
+    // 渡すハンドルがあるときだけ継承を有効にする（一覧のハンドルだけが渡る）
+    let inherit = i32::from(!inherited.is_empty());
     let env_ptr = environment
         .as_mut()
         .map_or(ptr::null_mut(), |e| e.as_mut_ptr().cast());
@@ -470,46 +482,70 @@ fn low_integrity_token() -> io::Result<OwnedHandle> {
     Ok(token)
 }
 
-/// `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` だけを持つ属性の一覧。一覧が指すハンドルの配列も持つ
-/// （OS は、一覧を捨てるまで配列を読む）。捨てると破棄する
-struct HandleList {
+/// 起動の属性の一覧。`PROC_THREAD_ATTRIBUTE_HANDLE_LIST`（渡すハンドルがあるとき）と
+/// `PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES`（AppContainer のとき）。一覧が指す値（ハンドルの配列、能力の構造体）も
+/// 持つ（OS は、一覧を捨てるまで値を読む）。能力の構造体が指す SID は、呼ぶ側の `Container` が持ち、この一覧より長く
+/// 生きる（`spawn` の中だけで使う）。捨てると破棄する
+struct AttrList {
     // `Vec` と `Box` の中身は動かないので、値ごと動かしてよい
     _buf: Vec<usize>,
     /// `_buf` の先頭。作るときに可変の借用から一度だけ取る（共有の参照から可変のポインタを作らない）
     list: *mut core::ffi::c_void,
     handles: Box<[HANDLE]>,
+    capabilities: Option<Box<SECURITY_CAPABILITIES>>,
 }
 
-impl HandleList {
-    fn new(handles: Vec<HANDLE>) -> io::Result<HandleList> {
+impl AttrList {
+    fn new(
+        handles: Vec<HANDLE>,
+        capabilities: Option<SECURITY_CAPABILITIES>,
+    ) -> io::Result<AttrList> {
+        let count = u32::from(!handles.is_empty()) + u32::from(capabilities.is_some());
         let mut size = 0usize;
         // SAFETY: 大きさを聞くだけの呼び出し（失敗が返るのは決まっていて、`size` だけを使う）
-        unsafe { InitializeProcThreadAttributeList(ptr::null_mut(), 1, 0, &mut size) };
+        unsafe { InitializeProcThreadAttributeList(ptr::null_mut(), count, 0, &mut size) };
         if size == 0 {
             return Err(io::Error::last_os_error());
         }
         let mut buf = vec![0usize; size.div_ceil(size_of::<usize>())];
         let list_ptr: *mut core::ffi::c_void = buf.as_mut_ptr().cast();
         // SAFETY: `buf` は `size` バイト以上の、書き込める領域
-        check(unsafe { InitializeProcThreadAttributeList(list_ptr, 1, 0, &mut size) })?;
+        check(unsafe { InitializeProcThreadAttributeList(list_ptr, count, 0, &mut size) })?;
         // 初期化に成功したので、ここから先の失敗では `Drop` が一覧を破棄する
-        let list = HandleList {
+        let list = AttrList {
             _buf: buf,
             list: list_ptr,
             handles: handles.into_boxed_slice(),
+            capabilities: capabilities.map(Box::new),
         };
-        // SAFETY: 初期化した一覧に、属性を 1 つ足す。配列は `list` が持ち、一覧より長く生きる
-        check(unsafe {
-            UpdateProcThreadAttribute(
-                list.as_ptr(),
-                0,
-                PROC_THREAD_ATTRIBUTE_HANDLE_LIST as usize,
-                list.handles.as_ptr().cast(),
-                size_of_val::<[HANDLE]>(&list.handles),
-                ptr::null_mut(),
-                ptr::null(),
-            )
-        })?;
+        if !list.handles.is_empty() {
+            // SAFETY: 初期化した一覧に、属性を 1 つ足す。配列は `list` が持ち、一覧より長く生きる
+            check(unsafe {
+                UpdateProcThreadAttribute(
+                    list.as_ptr(),
+                    0,
+                    PROC_THREAD_ATTRIBUTE_HANDLE_LIST as usize,
+                    list.handles.as_ptr().cast(),
+                    size_of_val::<[HANDLE]>(&list.handles),
+                    ptr::null_mut(),
+                    ptr::null(),
+                )
+            })?;
+        }
+        if let Some(capabilities) = &list.capabilities {
+            // SAFETY: 同上。構造体は `list` が持ち、一覧より長く生きる。中の SID は呼ぶ側の `Container` が持つ
+            check(unsafe {
+                UpdateProcThreadAttribute(
+                    list.as_ptr(),
+                    0,
+                    PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES as usize,
+                    ptr::from_ref::<SECURITY_CAPABILITIES>(capabilities).cast(),
+                    size_of::<SECURITY_CAPABILITIES>(),
+                    ptr::null_mut(),
+                    ptr::null(),
+                )
+            })?;
+        }
         Ok(list)
     }
 
@@ -518,7 +554,7 @@ impl HandleList {
     }
 }
 
-impl Drop for HandleList {
+impl Drop for AttrList {
     fn drop(&mut self) {
         // SAFETY: `new` で初期化した一覧を 1 回だけ破棄する
         unsafe { DeleteProcThreadAttributeList(self.as_ptr()) };

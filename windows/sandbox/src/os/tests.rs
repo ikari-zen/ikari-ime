@@ -102,6 +102,7 @@ fn probe_middle() {
             ..Stdio::default()
         },
         inherit: &[],
+        container: None,
     })
     .unwrap();
     drop(writer);
@@ -230,6 +231,7 @@ fn only_stdout_is_inherited_and_the_low_child_runs_in_the_job() {
             ..Stdio::default()
         },
         inherit: &[],
+        container: None,
     })
     .unwrap();
     // 渡したハンドルの継承の印は、起動のあとに外れている
@@ -277,6 +279,7 @@ fn a_handle_in_inherit_reaches_the_child_together_with_stdout() {
             ..Stdio::default()
         },
         inherit: &[extra_writer.as_handle()],
+        container: None,
     })
     .unwrap();
     // どちらの継承の印も、起動のあとに外れている
@@ -308,6 +311,7 @@ fn repeated_or_overlapping_inherit_handles_are_refused_before_spawning() {
             job: JobLimits { max_processes: 1 },
             stdio,
             inherit,
+            container: None,
         })
         .err()
         .map(|e| e.kind())
@@ -346,6 +350,7 @@ fn two_processes_allow_one_nested_child_and_the_integrity_is_inherited() {
             ..Stdio::default()
         },
         inherit: &[],
+        container: None,
     })
     .unwrap();
     drop(writer);
@@ -382,6 +387,7 @@ fn terminate_ends_the_child() {
             ..Stdio::default()
         },
         inherit: &[],
+        container: None,
     })
     .unwrap();
     drop(writer);
@@ -451,6 +457,7 @@ fn a_bad_environment_block_is_refused_before_spawning() {
         job: JobLimits { max_processes: 1 },
         stdio: Stdio::default(),
         inherit: &[],
+        container: None,
     })
     .err()
     .unwrap();
@@ -517,6 +524,7 @@ fn probe_nested_middle() {
             ..Stdio::default()
         },
         inherit: &inherit,
+        container: None,
     });
     // 標準エラーは親に渡っていないので、起こせなかった理由は印つきの行で出す
     let child = match spawned {
@@ -556,6 +564,7 @@ fn run_nested(environment: Option<&[u16]>) -> String {
             ..Stdio::default()
         },
         inherit: &[],
+        container: None,
     })
     .unwrap();
     drop(writer);
@@ -608,6 +617,7 @@ fn spawn_quick(integrity: Integrity) -> Confined {
         job: JobLimits { max_processes: 1 },
         stdio: Stdio::default(),
         inherit: &[],
+        container: None,
     })
     .unwrap()
 }
@@ -632,6 +642,7 @@ fn spawn_long(integrity: Integrity) -> Confined {
         job: JobLimits { max_processes: 1 },
         stdio: Stdio::default(),
         inherit: &[],
+        container: None,
     })
     .unwrap()
 }
@@ -770,4 +781,203 @@ fn the_low_child_process_dacl_is_restricted() {
 #[test]
 fn the_normal_child_process_dacl_is_restricted() {
     check_child_dacl(Integrity::Inherit);
+}
+
+/// AppContainer のテストのプロファイル（製品のプロファイルに触れない。最後に消す）
+const TEST_PROFILE: crate::appcontainer::ContainerProfile = crate::appcontainer::ContainerProfile {
+    name: "io.github.ikari-zen.sandbox-test",
+    display_name: "ikari sandbox test",
+};
+
+/// 環境の切り分けのテストのプロファイル（並べて流れるほかのテストの削除とぶつからないように分ける）
+const ENV_TEST_PROFILE: crate::appcontainer::ContainerProfile =
+    crate::appcontainer::ContainerProfile {
+        name: "io.github.ikari-zen.sandbox-env-test",
+        display_name: "ikari sandbox test",
+    };
+
+/// GitHub Actions の runner では、AppContainer のプロファイルが作れない（`CreateAppContainerProfile` が一定しない
+/// エラーで失敗する。VM と実機では動く。ADR 0072 §12、`lm` の段 2 のテストと同じ扱い）。CI（`GITHUB_ACTIONS` が
+/// 立っている）で作れないときだけ `None`（テストを飛ばす）。手元・VM・実機では、作れなければ落とす
+fn test_container(profile: &crate::appcontainer::ContainerProfile) -> Option<Container> {
+    use crate::appcontainer::Capability;
+    match Container::ensure(profile, &[Capability::InternetClient]) {
+        Ok(container) => Some(container),
+        Err(e) if std::env::var_os("GITHUB_ACTIONS").is_some() => {
+            eprintln!("skip: CI の runner では AppContainer のプロファイルが作れない（{e}）");
+            None
+        }
+        Err(e) => panic!("AppContainer のプロファイルが作れない: {e}"),
+    }
+}
+
+/// プロセスのトークンが AppContainer か
+fn is_appcontainer(process: HANDLE) -> bool {
+    use windows_sys::Win32::Security::TokenIsAppContainer;
+    let mut token: HANDLE = ptr::null_mut();
+    // SAFETY: 生きているプロセスのハンドルと、書き込み先を渡すだけ
+    assert_ne!(
+        unsafe { OpenProcessToken(process, TOKEN_QUERY, &mut token) },
+        0
+    );
+    // SAFETY: 成功した `OpenProcessToken` が返したハンドル
+    let token = unsafe { OwnedHandle::from_raw_handle(token) };
+    let mut value = 0u32;
+    let mut len = 0u32;
+    // SAFETY: `value` は渡す大きさの、書き込める領域
+    assert_ne!(
+        unsafe {
+            GetTokenInformation(
+                raw(&token),
+                TokenIsAppContainer,
+                ptr::from_mut(&mut value).cast(),
+                size_of::<u32>() as u32,
+                &mut len,
+            )
+        },
+        0
+    );
+    value != 0
+}
+
+#[test]
+fn an_appcontainer_child_writes_to_the_inherited_handle_and_runs_in_the_job() {
+    let Some(container) = test_container(&TEST_PROFILE) else {
+        return;
+    };
+    let (mut extra_reader, extra_writer) = io::pipe().unwrap();
+    let extra_writer = OwnedHandle::from(extra_writer);
+    let value = (raw(&extra_writer) as usize).to_string();
+    let env = env_with(APPCONTAINER_ENV, &[(LEAK_ENV, &value)]);
+    let (mut reader, writer) = io::pipe().unwrap();
+    let writer = OwnedHandle::from(writer);
+    let child = spawn(&Launch {
+        program: &std::env::current_exe().unwrap(),
+        args: &probe_args(PROBE_TEST),
+        environment: Some(&env),
+        integrity: Integrity::Low,
+        job: JobLimits { max_processes: 1 },
+        stdio: Stdio {
+            output: Some(writer.as_handle()),
+            ..Stdio::default()
+        },
+        inherit: &[extra_writer.as_handle()],
+        container: Some(&container),
+    })
+    .unwrap();
+    assert!(!inherit_flag(raw(&writer)));
+    assert!(!inherit_flag(raw(&extra_writer)));
+    drop(writer);
+    let process = child.process().as_raw_handle() as HANDLE;
+    assert!(child.in_job().unwrap(), "子が Job に入っていない");
+    assert!(is_appcontainer(process), "子が AppContainer でない");
+    assert_eq!(integrity_rid(process), LOW_RID);
+    let mut out = String::new();
+    reader.read_to_string(&mut out).unwrap();
+    assert_eq!(child.wait().unwrap(), 0, "{out}");
+    assert_eq!(
+        probe_lines(&out),
+        ["stdin=none", "stderr=none", "leak=wrote", "nested=blocked"],
+        "{out}"
+    );
+    drop(extra_writer);
+    let mut got = Vec::new();
+    extra_reader.read_to_end(&mut got).unwrap();
+    assert_eq!(got, LEAK_BYTES);
+    drop(child);
+    drop(container);
+    crate::appcontainer::delete_profile(&TEST_PROFILE).unwrap();
+}
+
+/// AppContainer の子に渡す、親の環境の変数（`ikari-data` の `child::PASS_ENV` の、OS の分と同じ）
+const APPCONTAINER_ENV: &[&str] = &["SystemRoot", "TEMP", "TMP", "LOCALAPPDATA"];
+
+/// 親の環境から `names` の変数だけを選び、テストの変数を足した環境
+fn env_with(names: &[&str], extra: &[(&str, &str)]) -> Vec<u16> {
+    let mut vars: Vec<(OsString, OsString)> = std::env::vars_os()
+        .filter(|(k, _)| names.iter().any(|n| k.eq_ignore_ascii_case(n)))
+        .collect();
+    vars.extend(
+        extra
+            .iter()
+            .map(|(k, v)| (OsString::from(k), OsString::from(v))),
+    );
+    environment_block(vars).unwrap()
+}
+
+/// どの環境なら AppContainer の子が起きるか（CI の windows ジョブで、`SystemRoot` だけの環境では `spawn` が
+/// `ERROR_ENVVAR_NOT_FOUND`（203）で失敗した。親の環境を受け継ぐ LM の子は起きた）。環境だけを替えて同じ起動をし、
+/// どれかの形が期待と違えば、全部の結果をつけて落とす
+#[test]
+fn which_environment_an_appcontainer_child_needs() {
+    let Some(container) = test_container(&ENV_TEST_PROFILE) else {
+        return;
+    };
+    let launch = |environment: Option<&[u16]>| {
+        spawn(&Launch {
+            program: &std::env::current_exe().unwrap(),
+            args: &probe_args(EXIT_TEST),
+            environment,
+            integrity: Integrity::Low,
+            job: JobLimits { max_processes: 1 },
+            stdio: Stdio::default(),
+            inherit: &[],
+            container: Some(&container),
+        })
+        .and_then(|child| child.wait())
+        .map_err(|e| e.raw_os_error().unwrap_or(-1))
+    };
+    let cases: [(&str, Option<Vec<u16>>); 5] = [
+        ("inherit", None),
+        ("systemroot", Some(env_with(&["SystemRoot"], &[]))),
+        (
+            "+localappdata",
+            Some(env_with(&["SystemRoot", "LOCALAPPDATA"], &[])),
+        ),
+        (
+            "+userprofile",
+            Some(env_with(&["SystemRoot", "USERPROFILE"], &[])),
+        ),
+        ("product", Some(env_with(APPCONTAINER_ENV, &[]))),
+    ];
+    let results: Vec<(&str, Result<u32, i32>)> = cases
+        .iter()
+        .map(|(name, env)| (*name, launch(env.as_deref())))
+        .collect();
+    let report = format!("{results:?}");
+    eprintln!("appcontainer environments: {report}");
+    let ok = |name: &str| results.iter().any(|(n, r)| *n == name && r.is_ok());
+    assert!(ok("inherit"), "親の環境でも起きない: {report}");
+    assert!(ok("product"), "製品の環境で起きない: {report}");
+    // VM の実測（2026-11-20）: LOCALAPPDATA だけで足りる。USERPROFILE だけでは足りない
+    assert!(
+        ok("+localappdata"),
+        "LOCALAPPDATA を足しても起きない: {report}"
+    );
+    assert!(
+        !ok("+userprofile"),
+        "USERPROFILE だけで起きた（LOCALAPPDATA は要らなくなった？ 製品の環境を見直す）: {report}"
+    );
+    drop(container);
+    crate::appcontainer::delete_profile(&ENV_TEST_PROFILE).unwrap();
+}
+
+#[test]
+fn an_appcontainer_child_must_be_low_integrity() {
+    let Some(container) = test_container(&TEST_PROFILE) else {
+        return;
+    };
+    let err = spawn(&Launch {
+        program: &std::env::current_exe().unwrap(),
+        args: &probe_args(EXIT_TEST),
+        environment: None,
+        integrity: Integrity::Inherit,
+        job: JobLimits { max_processes: 1 },
+        stdio: Stdio::default(),
+        inherit: &[],
+        container: Some(&container),
+    })
+    .err()
+    .map(|e| e.kind());
+    assert_eq!(err, Some(io::ErrorKind::InvalidInput));
 }

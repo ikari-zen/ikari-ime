@@ -11,7 +11,9 @@ use std::io::{self, BufReader, Read};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::{self, JoinHandle};
 
-use ikari_resource::fetch_report::{FetchErrorCode, Line, Report, ReportReader, read_line_capped};
+use ikari_resource::fetch_report::{
+    ChildBox, FetchErrorCode, Line, Report, ReportReader, read_line_capped,
+};
 
 /// 取得の頼み。値は画面が集める（確認の窓のあと）
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,6 +98,8 @@ pub struct Snapshot {
     pub sha256: Option<String>,
     /// `latest` の版（版の確認。`数.数.数`）
     pub latest: Option<String>,
+    /// 取得の子の檻（`box` の行。Windows だけ）。`Low` なら、文に「隔離なし」の印を出す（ADR 0078 §3.2 の 5）
+    pub child_box: Option<ChildBox>,
 }
 
 impl Snapshot {
@@ -108,6 +112,7 @@ impl Snapshot {
             bundle: None,
             sha256: None,
             latest: None,
+            child_box: None,
         }
     }
 }
@@ -223,6 +228,7 @@ fn apply(s: &mut Snapshot, report: Report) {
             s.received = received;
             s.total = total;
         }
+        Report::Box(child_box) => s.child_box = Some(child_box),
         Report::Done { name, sha256 } => {
             s.phase = Phase::Done;
             s.bundle = Some(name);
@@ -350,6 +356,17 @@ mod tests {
         assert_eq!(s.phase, Phase::Done);
         assert_eq!(s.latest.as_deref(), Some("0.3.1"));
         assert_eq!(s.bundle, None);
+    }
+
+    #[test]
+    fn the_box_line_is_kept_and_does_not_end_the_fetch() {
+        let out = format!("box low\nprogress 5 10\ndone zenz-small {SHA}\n");
+        let s = finish(&Fake::new(&out), &preset());
+        assert_eq!(s.phase, Phase::Done);
+        assert_eq!(s.child_box, Some(ChildBox::Low));
+        let s = finish(&Fake::new("box appcontainer\nprogress 1 -\n"), &preset());
+        assert_eq!(s.child_box, Some(ChildBox::AppContainer));
+        assert_eq!(s.phase, Phase::Failed, "終わりの行がないまま終わった");
     }
 
     #[test]
