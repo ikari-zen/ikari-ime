@@ -250,5 +250,9 @@ fn a_running_stale_inference_does_not_delay_the_newest_reading() {
     // 止まらなければ、古い推論の残りを待って、ほぼ 2 回分になる
     let limit =
         ikari_testtime::ms(SLOW_INFER_MS + SLOW_INFER_MS / SLOW_INFER_STEPS + SLOW_INFER_MS / 4);
-    assert!(elapsed < limit, "{elapsed:?} >= {limit:?}");
+    assert!(
+        elapsed < limit,
+        "{}",
+        ikari_testtime::report(elapsed, format_args!("< {limit:?}"))
+    );
 }

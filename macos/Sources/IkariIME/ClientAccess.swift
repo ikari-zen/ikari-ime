@@ -12,6 +12,10 @@ struct ClientAccess: @unchecked Sendable {
     /// 変換文字列のあとの文脈として取る長さ。左を主、右は補助（spec の「文脈の取得元」）
     static let rightContextLimit = 200
 
+    /// 再変換のために読む選択範囲の上限（UTF-16 の単位）。shell-core の上限（64 書記素）より十分大きく、
+    /// 巨大な選択を持つクライアントから全部を読み込まないための歯止め。超えたら取れない扱い（shell-core はどのみち断る）
+    static let selectionReadLimit = 2000
+
     let client: any IMKTextInput
 
     private static let notFound = NSRange(location: NSNotFound, length: NSNotFound)
@@ -151,7 +155,7 @@ struct ClientAccess: @unchecked Sendable {
     /// （長さなどの断りは shell-core が判断する。ADR 0006 §9.2）
     func selectedText() -> Ikari_Shell_V1_SelectedText? {
         let selected = client.selectedRange()
-        guard Self.isValid(selected) else { return nil }
+        guard Self.isValid(selected), selected.length <= Self.selectionReadLimit else { return nil }
         var actual = NSRange(location: 0, length: 0)
         guard let text = client.string(from: selected, actualRange: &actual), !text.isEmpty, actual == selected else {
             return nil
@@ -177,8 +181,9 @@ struct ClientAccess: @unchecked Sendable {
         client.insertText(text, replacementRange: Self.isValid(marked) ? marked : Self.notFound)
     }
 
-    private static func isValid(_ range: NSRange) -> Bool {
-        range.location != NSNotFound && range.length != NSNotFound && range.length > 0
+    /// クライアントの値は信じない: 取れていて、空でなく、負や桁あふれがない
+    static func isValid(_ range: NSRange) -> Bool {
+        range.location != NSNotFound && range.length != NSNotFound && range.length > 0 && end(of: range) != nil
     }
 }
 

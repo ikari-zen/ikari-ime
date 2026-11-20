@@ -21,7 +21,15 @@ fn a_word_added_to_the_user_dictionary_shows_up_in_the_very_next_convert() {
     // 自分が書いたファイルで、もう一度組み立て直さない（確認の間隔を過ぎても）
     std::thread::sleep(DATA_CHECK_INTERVAL + Duration::from_millis(200));
     convert(t.e(), 1, "いかり", 1);
-    assert_eq!(count_lines(&t.log(), " reload "), 1, "{}", t.log());
+    assert_eq!(
+        count_lines(&t.log(), " reload "),
+        1,
+        "sleep={:?} {}={}\n{}",
+        DATA_CHECK_INTERVAL + Duration::from_millis(200),
+        ikari_testtime::TIME_SCALE_ENV,
+        ikari_testtime::scale(),
+        t.log()
+    );
 
     let removed = dict_remove(t.e(), "いかり", "ikari-ime");
     assert_eq!(
