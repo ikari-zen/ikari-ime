@@ -10,7 +10,7 @@
 
 ## 役割: リードは Claude Code、Antigravity（Gemini）はレーン（2026-11-22 ユーザー決定）
 - 開発の主導権は Claude Code（リード）が持つ。Antigravity には、`antigravity` ラベルの issue を割り当てる。Antigravity の指示は [docs/antigravity.md](docs/antigravity.md)（入口は `GEMINI.md`）。
-- **この CLAUDE.md の「リード」「サブエージェント」の記述は、Claude Code への指示。** Antigravity は `docs/antigravity.md` の読み替えに従う（自分でマージしない、リードの作業コピーに触らない、専用の git worktree で作業する、Mac の測定・smoke・VM は依頼する）。
+- **この CLAUDE.md の「リード」「サブエージェント」の記述は、Claude Code への指示。** Antigravity は `docs/antigravity.md` の読み替えに従う（自分でマージしない、リードの作業コピーに触らない、専用の worktree（git の worktree か jj の workspace。どちらも git が使える）で作業する、Mac の測定・smoke・VM は依頼する）。
 - すり合わせは GitHub の issue と PR のコメントで行う（形式は `docs/antigravity.md` §5）。リードは、マージ、`scripts/check.sh`、共有資源（Mac の CPU、VM、smoke）の順番、ユーザーへの確認を持つ。割り当ての単位は issue。
 
 ## 進め方: 必ずエージェントチームで動く

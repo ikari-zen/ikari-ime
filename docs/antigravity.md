@@ -15,13 +15,17 @@ ikari-ime は、Claude Code が**リード**、Antigravity が**レーン**と�
 ## 2. 作業場所（リードの作業コピーに触らない）
 
 - リードは `~/github.com/ikari-zen/ikari-ime` で jj を使っている。**そこでは作業しない**（同じ作業コピーでの並行は、変更が二重になる）。
-- 作業は、専用の **git の worktree** で行う（git だけを使う。jj は使わない）:
+- 作業は、専用の作業場所（worktree）で行う。issue ごとに作り、終わったら消す。**あなたは git だけを使う**（jj は使わなくてよい）。次のどちらで作ってもよい:
   ```sh
+  # (a) git の worktree
   git -C ~/github.com/ikari-zen/ikari-ime fetch origin
   git -C ~/github.com/ikari-zen/ikari-ime worktree add ~/github.com/ikari-zen/ikari-ime-ag/<ブランチ名> -b <ブランチ名> origin/main
+  # (b) jj の workspace（リードが作る場合）。中身は同じく git の worktree になり、git がそのまま使える
+  jj workspace add ~/github.com/ikari-zen/ikari-ime-ag/<ブランチ名>
   ```
-  終わったら `git worktree remove`。issue ごとに作る。
-- jj の workspace は使わない。共存（colocate）のリポジトリで足した jj の workspace には `.git` が付かず、git のコマンドとフック（`.githooks/`）が動かない。
+  終わったら、(a) は `git worktree remove`、(b) は `jj workspace forget <名前>` と、フォルダの削除。
+- 確かめたこと（2026-11-22。jj 0.47.1、共存のリポジトリを使い捨てで作って試した）: (b) で作った workspace にも `.git`（`.git/worktrees/…` を指すファイル）が付き、`git switch`、`git commit` が通る。git で作ったコミットとブランチは、リード側の `jj log` にも出る。フック（`.githooks/`）は未確認。
+- 注意: リードの jj の操作（`jj abandon`、`jj rebase` など）は、同じリポジトリの全コミットに及ぶ。あなたのブランチは、push するまではローカルにしかないので、こまめに push する（§3）。
 
 ## 3. 進め方
 
