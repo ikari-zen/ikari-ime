@@ -3,9 +3,54 @@
 //! （`docs/windows-real-device-check.md` の候補窓の項目）。
 //!
 //! 使い方（Windows。候補窓と同じユーザーとセッションで流す）:
-//!   candidate-send.exe <x> <y> [above|below] [scale] [seconds] [long]
+//!   candidate-send.exe <x> <y> [above|below] [scale] [seconds] [long|invisible]
 //! `long` は、上限（行の数、1 行の長さ。`limits`）を超える候補を送る（切り詰めた見た目を見る）。
+//! `invisible` は、見えない文字と表示の向きを変える文字を混ぜた候補、注釈、モデルの注釈を送る（`limits` が除くことを見る。
+//! #450 FP-5）。送った内容（コードポイントを `U+XXXX` で書いたもの）を標準出力に出す。
+//! 候補窓は別のものが動いているとパイプ名が衝突する（名前は SID とセッションで決まり、変えられない）ので、
+//! engine-host を止めて、手で起動した窓を相手にする（項目 59、61）。
 //! x と y はアンカー（物理のピクセル、左上が原点）。作業領域は主画面の 1920x1040 とみなす（確認用の固定の値）。
+
+/// `invisible` のモードで送る文字列（`limits::sanitize_text` が除く文字を混ぜる）。純粋なので Mac でテストが回る。
+#[cfg_attr(not(windows), allow(dead_code))]
+mod invisible {
+    /// 行ごとの (見出し、除くはずの文字を混ぜた文字列、除かれたあとの見込み)。
+    /// 見出しと前後は、除かれたあとも見える文字にする（窓の上で何が起きたか読める）
+    pub const ROWS: &[(&str, &str, &str)] = &[
+        ("zero-width", "ab\u{200B}cd\u{2060}ef\u{FEFF}gh", "abcdefgh"),
+        // 除かれなければ、RLO のあとが逆順に見える（abc の次に fed）
+        ("bidi-override", "abc\u{202E}def\u{202C}ghi", "abcdefghi"),
+        ("bidi-isolate", "ab\u{2066}cd\u{2069}ef", "abcdef"),
+        ("line-separator", "ab\u{2028}cd\u{2029}ef", "abcdef"),
+        // 改行・タブ・NUL・C1 などの制御文字
+        ("control", "ab\ncd\te\u{0}f\u{85}g", "abcdefg"),
+        // 「A」「B」のタグ文字（除かれなければ、環境によって豆腐や空白で見える）
+        ("tag", "ab\u{E0041}\u{E0042}cd", "abcd"),
+        // ZWJ は残す（絵文字の綴りに要る）: 家族の絵文字が 1 つに見える
+        (
+            "zwj-kept",
+            "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}",
+            "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}",
+        ),
+    ];
+    /// 注釈とモデルの注釈に混ぜる文字列（先頭の候補にだけ付ける）
+    pub const ANNOTATION: &str = "note\u{200B}\u{202E}-x";
+    #[cfg(test)]
+    pub const ANNOTATION_EXPECTED: &str = "note-x";
+
+    /// コードポイントを `U+XXXX` で書き出す（ASCII の文字はそのまま）。標準出力に何を送ったかを残す
+    pub fn escape(text: &str) -> String {
+        text.chars()
+            .map(|c| {
+                if c.is_ascii_graphic() {
+                    c.to_string()
+                } else {
+                    format!("<U+{:04X}>", c as u32)
+                }
+            })
+            .collect()
+    }
+}
 
 #[cfg(windows)]
 fn main() {
@@ -24,6 +69,8 @@ fn main() {
 #[cfg(windows)]
 mod windows_main {
     use std::time::Duration;
+
+    use crate::invisible;
 
     use ikari_candidate::command::{
         CANDIDATE_SCHEMA_VERSION, CandidateCommand, Hello, Hide, Show, candidate_command,
@@ -78,25 +125,46 @@ mod windows_main {
                 pid: std::process::id(),
             }),
         )?;
-        let surfaces: Vec<String> = if args.get(5).map(String::as_str) == Some("long") {
-            (0..LONG_ROWS)
-                .map(|i| format!("{i}{}", "長".repeat(LONG_CHARS)))
-                .collect()
-        } else {
-            SAMPLE.iter().map(|s| (*s).to_owned()).collect()
+        let mode = args.get(5).map(String::as_str);
+        let mut model = CandidatePanelModel {
+            selected: 0,
+            reserved_rows: 9,
+            ..Default::default()
         };
-        let model = CandidatePanelModel {
-            candidates: surfaces
+        if mode == Some("invisible") {
+            model.candidates = invisible::ROWS
+                .iter()
+                .enumerate()
+                .map(|(i, (name, sent, _))| {
+                    println!("sent {name}: {}", invisible::escape(sent));
+                    CandidateItem {
+                        surface: (*sent).to_owned(),
+                        annotation: if i == 0 {
+                            invisible::ANNOTATION.to_owned()
+                        } else {
+                            String::new()
+                        },
+                        ..Default::default()
+                    }
+                })
+                .collect();
+            model.annotation = invisible::ANNOTATION.to_owned();
+        } else {
+            let surfaces: Vec<String> = if mode == Some("long") {
+                (0..LONG_ROWS)
+                    .map(|i| format!("{i}{}", "長".repeat(LONG_CHARS)))
+                    .collect()
+            } else {
+                SAMPLE.iter().map(|s| (*s).to_owned()).collect()
+            };
+            model.candidates = surfaces
                 .into_iter()
                 .map(|surface| CandidateItem {
                     surface,
                     ..Default::default()
                 })
-                .collect(),
-            selected: 0,
-            reserved_rows: 9,
-            ..Default::default()
-        };
+                .collect();
+        }
         post(
             2,
             candidate_command::Op::Show(Show {
@@ -118,5 +186,31 @@ mod windows_main {
         post(3, candidate_command::Op::Hide(Hide { generation: 1 }))?;
         println!("hidden");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::invisible::{ANNOTATION, ANNOTATION_EXPECTED, ROWS, escape};
+    use ikari_candidate::limits::sanitize_text;
+
+    #[test]
+    fn every_row_is_sanitized_to_its_expectation() {
+        for (name, sent, expected) in ROWS {
+            assert_eq!(sanitize_text(sent), *expected, "{name}");
+        }
+        assert_eq!(sanitize_text(ANNOTATION), ANNOTATION_EXPECTED);
+    }
+
+    #[test]
+    fn every_row_changes_except_the_kept_zwj() {
+        for (name, sent, expected) in ROWS {
+            assert_eq!(sent == expected, *name == "zwj-kept", "{name}");
+        }
+    }
+
+    #[test]
+    fn escape_shows_invisible_characters() {
+        assert_eq!(escape("a\u{200B}b\u{E0041}"), "a<U+200B>b<U+E0041>");
     }
 }

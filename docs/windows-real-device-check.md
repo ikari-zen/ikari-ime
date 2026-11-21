@@ -656,6 +656,13 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 - 期待する結果（**見込み**）: 行は 16 に、1 行は 256 文字に切り詰められて出る。窓の幅は作業領域の幅まで（長い行は窓の右端で切れて見える）で、作業領域の中に収まる。候補窓は落ちない（ADR 0068 §10 の推測の確認）。
 - うまくいかないとき: 窓の矩形と、落ちたならイベントビューアのエラーを残す。上限の値は仮置きなので、見た目の印象（長すぎる・短すぎる）も備考に書く。
 
+#### 項目 61b: 見えない文字と向きを変える文字の除去（#450 FP-5）
+
+- 前提: 項目 61 と同じ。**別の候補窓が動いていると、パイプ名（SID とセッション番号で決まり、変えられない）が衝突する**ので、`start-engine.ps1 -Action stop` で engine-host（と、それが起動した窓）を止め、項目 59 の (a) のとおり `ikari-candidate.exe` を手で起動してから流す。終わったら手で起動した窓を止め、engine-host を起動し直す。
+- やること: `ikari-candidate-send.exe 300 100 below 1 15 invisible`。7 行（zero-width、bidi-override、bidi-isolate、line-separator、control、tag、zwj-kept）が出る。送った文字列は、標準出力に `sent <名前>: ab<U+200B>cd…` の形で出る（窓のログはない。確かめるのは画面）。1 行目の候補とモデルには、注釈 `note<U+200B><U+202E>-x` も付く。
+- 期待する結果（**見込み**）: 窓の各行が、zero-width は `abcdefgh`、bidi-override は `abcdefghi`（除かれなければ `def` が逆順に見える）、bidi-isolate は `abcdef`、line-separator と control は 1 行のまま（改行・タブで行が割れたり、豆腐が出たりしない）、tag は `abcd`、zwj-kept は家族の絵文字（ZWJ は残るので 1 つに見える。フォントによっては 3 つに分かれて見える）。注釈は `note-x`（窓が注釈を描く場合）。窓は落ちない。単体テスト（`cargo test -p ikari-candidate --example candidate-send`、CI）は、同じ文字列が `limits::sanitize_text` で上の見込みになることを確かめる。
+- うまくいかないとき: 画面の写真（どの行が見込みと違うか）、送り手の出力、窓が落ちたならイベントビューアのエラーを残す。
+
 #### 項目 62: ビルドと CI（第 2 段。Windows で未ビルド）
 
 - やること: (a) CI の Windows のジョブが通ること（候補窓のビルド、製品のビルドの検査、artifact）。artifact に `target\release\candidate\ikari-candidate.exe` があること。(b) NuGet のロック（`windows/candidate-ui/packages.lock.json`。Mac の .NET SDK 11 で作った）が、CI（.NET SDK 10。`CI=true` のとき、ロックのとおりでなければ失敗する）で通ること。(c) VM で `windows\dev\build.ps1`（.NET SDK があるとき候補窓も発行する）が通り、`target\release\candidate-publish\ikari-candidate.exe` ができること。
