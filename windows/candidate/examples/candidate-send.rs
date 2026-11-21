@@ -3,10 +3,11 @@
 //! （`docs/windows-real-device-check.md` の候補窓の項目）。
 //!
 //! 使い方（Windows。候補窓と同じユーザーとセッションで流す）:
-//!   candidate-send.exe <x> <y> [above|below] [scale] [seconds] [long|invisible]
+//!   candidate-send.exe <x> <y> [above|below] [scale] [seconds] [long|invisible|invisible:<n>|invisible:note]
 //! `long` は、上限（行の数、1 行の長さ。`limits`）を超える候補を送る（切り詰めた見た目を見る）。
 //! `invisible` は、見えない文字と表示の向きを変える文字を混ぜた候補、注釈、モデルの注釈を送る（`limits` が除くことを見る。
-//! #450 FP-5）。送った内容（コードポイントを `U+XXXX` で書いたもの）を標準出力に出す。
+//! #450 FP-5）。1 画面（5 行）に収まらないので、`invisible:<n>`（n は 1 始まりの行番号）はその行だけを 1 行目の候補として、
+//! `invisible:note` は注釈とモデルの注釈だけを 1 候補に付けて送る。送った内容（コードポイントを `U+XXXX` で書いたもの）を標準出力に出す。
 //! 候補窓は別のものが動いているとパイプ名が衝突する（名前は SID とセッションで決まり、変えられない）ので、
 //! engine-host を止めて、手で起動した窓を相手にする（項目 59、61）。
 //! x と y はアンカー（物理のピクセル、左上が原点）。作業領域は主画面の 1920x1040 とみなす（確認用の固定の値）。
@@ -37,6 +38,53 @@ mod invisible {
     pub const ANNOTATION: &str = "note\u{200B}\u{202E}-x";
     #[cfg(test)]
     pub const ANNOTATION_EXPECTED: &str = "note-x";
+
+    /// 注釈を見るときの候補の表記（見えない文字を含まない）
+    pub const NOTE_SURFACE: &str = "漢字";
+    pub const MODE_PREFIX: &str = "invisible";
+    pub const NOTE_SELECTOR: &str = "note";
+
+    /// 送る内容: (名前、送る文字列) の並びと、注釈を付けるか
+    #[derive(Debug, PartialEq, Eq)]
+    pub struct Payload {
+        pub candidates: Vec<(&'static str, &'static str)>,
+        /// 先頭の候補とモデルに `ANNOTATION` を付ける
+        pub annotated: bool,
+    }
+
+    /// `invisible`（全部）、`invisible:<n>`（n 行目だけ）、`invisible:note`（注釈だけ）を読む。
+    /// `invisible` で始まらない指定は `None`（別のモード）。
+    pub fn parse(mode: &str) -> Option<Result<Payload, String>> {
+        let rest = mode.strip_prefix(MODE_PREFIX)?;
+        if rest.is_empty() {
+            return Some(Ok(Payload {
+                candidates: ROWS.iter().map(|(n, s, _)| (*n, *s)).collect(),
+                annotated: true,
+            }));
+        }
+        let selector = rest.strip_prefix(':')?;
+        if selector == NOTE_SELECTOR {
+            return Some(Ok(Payload {
+                candidates: vec![(NOTE_SELECTOR, NOTE_SURFACE)],
+                annotated: true,
+            }));
+        }
+        let row = selector
+            .parse::<usize>()
+            .ok()
+            .and_then(|n| n.checked_sub(1))
+            .and_then(|i| ROWS.get(i));
+        Some(match row {
+            Some((name, sent, _)) => Ok(Payload {
+                candidates: vec![(*name, *sent)],
+                annotated: false,
+            }),
+            None => Err(format!(
+                "bad row: {selector} (1..={} or {NOTE_SELECTOR})",
+                ROWS.len()
+            )),
+        })
+    }
 
     /// コードポイントを `U+XXXX` で書き出す（ASCII の文字はそのまま）。標準出力に何を送ったかを残す
     pub fn escape(text: &str) -> String {
@@ -131,15 +179,17 @@ mod windows_main {
             reserved_rows: 9,
             ..Default::default()
         };
-        if mode == Some("invisible") {
-            model.candidates = invisible::ROWS
+        if let Some(payload) = mode.and_then(invisible::parse) {
+            let payload = payload?;
+            model.candidates = payload
+                .candidates
                 .iter()
                 .enumerate()
-                .map(|(i, (name, sent, _))| {
+                .map(|(i, (name, sent))| {
                     println!("sent {name}: {}", invisible::escape(sent));
                     CandidateItem {
                         surface: (*sent).to_owned(),
-                        annotation: if i == 0 {
+                        annotation: if payload.annotated && i == 0 {
                             invisible::ANNOTATION.to_owned()
                         } else {
                             String::new()
@@ -148,7 +198,13 @@ mod windows_main {
                     }
                 })
                 .collect();
-            model.annotation = invisible::ANNOTATION.to_owned();
+            if payload.annotated {
+                println!(
+                    "sent annotation: {}",
+                    invisible::escape(invisible::ANNOTATION)
+                );
+                model.annotation = invisible::ANNOTATION.to_owned();
+            }
         } else {
             let surfaces: Vec<String> = if mode == Some("long") {
                 (0..LONG_ROWS)
@@ -191,7 +247,7 @@ mod windows_main {
 
 #[cfg(test)]
 mod tests {
-    use super::invisible::{ANNOTATION, ANNOTATION_EXPECTED, ROWS, escape};
+    use super::invisible::{ANNOTATION, ANNOTATION_EXPECTED, NOTE_SURFACE, ROWS, escape, parse};
     use ikari_candidate::limits::sanitize_text;
 
     #[test]
@@ -212,5 +268,49 @@ mod tests {
     #[test]
     fn escape_shows_invisible_characters() {
         assert_eq!(escape("a\u{200B}b\u{E0041}"), "a<U+200B>b<U+E0041>");
+    }
+
+    #[test]
+    fn all_sends_every_row_with_annotation() {
+        let p = parse("invisible").unwrap().unwrap();
+        assert_eq!(p.candidates.len(), ROWS.len());
+        assert!(p.annotated);
+    }
+
+    #[test]
+    fn each_row_number_sends_exactly_that_row() {
+        for (i, (name, sent, expected)) in ROWS.iter().enumerate() {
+            let p = parse(&format!("invisible:{}", i + 1)).unwrap().unwrap();
+            assert_eq!(p.candidates, vec![(*name, *sent)]);
+            assert!(!p.annotated);
+            assert_eq!(sanitize_text(p.candidates[0].1), *expected, "{name}");
+        }
+    }
+
+    #[test]
+    fn out_of_range_row_is_an_error() {
+        for bad in [
+            "invisible:0",
+            "invisible:8",
+            "invisible:-1",
+            "invisible:x",
+            "invisible:",
+        ] {
+            assert!(parse(bad).unwrap().is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn note_sends_one_annotated_candidate() {
+        let p = parse("invisible:note").unwrap().unwrap();
+        assert_eq!(p.candidates, vec![("note", NOTE_SURFACE)]);
+        assert!(p.annotated);
+        assert_eq!(sanitize_text(ANNOTATION), ANNOTATION_EXPECTED);
+    }
+
+    #[test]
+    fn other_modes_are_not_invisible() {
+        assert!(parse("long").is_none());
+        assert!(parse("invisiblex").is_none());
     }
 }
