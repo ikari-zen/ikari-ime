@@ -1,0 +1,108 @@
+# スパイク（#486。ADR 0074 §8。捨てるコード。main には入れない）。
+# Windows（Vulkan と CPU）で、LM の decode ごとの時間（ikari-eval の SPIKE 行）と、abort callback が呼ばれるか
+# （abort-probe の ABORTPROBE 行）を測るための exe を artifact にする。必須ではない。
+name: spike-lm-cancel
+on:
+  push:
+    branches: [spike/lm-cancel-measure-486]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-vulkan-artifact:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    env:
+      VULKAN_SDK_VERSION: "1.4.363.1"
+      VULKAN_SDK_SHA256: "c02932bd9a968b22d404536108adaacac908c081cd6b0113f5bfefc523dd0a6a"
+      CARGO_TARGET_DIR: C:\t
+      CMAKE_GENERATOR: Ninja
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Vulkan SDK のキャッシュ
+        id: vulkan-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: C:\VulkanSDK\${{ env.VULKAN_SDK_VERSION }}
+          key: vulkan-sdk-${{ env.VULKAN_SDK_VERSION }}-${{ runner.os }}
+      - name: Vulkan SDK を入れる
+        if: steps.vulkan-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        timeout-minutes: 20
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $v = $env:VULKAN_SDK_VERSION
+          $file = "vulkansdk-windows-X64-$v.exe"
+          $installer = Join-Path $env:RUNNER_TEMP $file
+          Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/$v/windows/$file" -OutFile $installer
+          $actual = (Get-FileHash -Algorithm SHA256 $installer).Hash.ToLowerInvariant()
+          if ($actual -ne $env:VULKAN_SDK_SHA256) {
+            throw "Vulkan SDK sha256 mismatch: expected $env:VULKAN_SDK_SHA256, got $actual"
+          }
+          $p = Start-Process -FilePath $installer -Wait -PassThru -ArgumentList @(
+            '--root', "C:\VulkanSDK\$v", '--accept-licenses', '--default-answer', '--confirm-command', 'install')
+          if ($p.ExitCode -ne 0) { throw "Vulkan SDK installer exited with $($p.ExitCode)" }
+      - name: VULKAN_SDK を設定する
+        shell: pwsh
+        run: |
+          $sdk = "C:\VulkanSDK\$env:VULKAN_SDK_VERSION"
+          if (-not (Test-Path "$sdk\Bin\glslc.exe")) { throw "glslc.exe not found under $sdk\Bin" }
+          "VULKAN_SDK=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "$sdk\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+        with:
+          workspaces: ". -> C:\\t"
+      - name: MSVC の環境を設定する（vcvars64）
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $vcvars = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'
+          if (-not (Test-Path $vcvars)) { throw "vcvars64.bat not found: $vcvars" }
+          $lines = cmd /c "`"$vcvars`" >nul && set"
+          if ($LASTEXITCODE -ne 0) { throw "vcvars64.bat failed" }
+          foreach ($line in $lines) {
+            if ($line -match '^(INCLUDE|LIB|LIBPATH|PATH|VCINSTALLDIR|VCToolsInstallDir|VCToolsVersion|WindowsSdkDir|WindowsSDKVersion|WindowsSdkBinPath|UCRTVersion|UniversalCRTSdkDir|VSINSTALLDIR|Platform)=(.*)$') {
+              "$($Matches[1])=$($Matches[2])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            }
+          }
+      # 評価ツール（SPIKE 行つき。同じプロセスで LM を動かす）と、abort-probe と、devices
+      - name: release ビルド
+        run: |
+          ninja --version
+          cargo build --release -p ikari-eval --features lm-vulkan
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo build --release -p ikari-lm --example abort-probe --features vulkan,dev-knobs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo build --release -p ikari-lm --example devices --features vulkan,dev-knobs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: artifact の中身を集める
+        shell: bash
+        run: |
+          set -euo pipefail
+          rel="$(cygpath -u "$CARGO_TARGET_DIR")/release"
+          out=dist/spike/target/release
+          mkdir -p "$out/backends" dist/spike/eval
+          cp "$rel/ikari-eval.exe" "$out/"
+          cp "$rel/examples/abort-probe.exe" "$rel/examples/devices.exe" "$out/"
+          sysout=""
+          for o in "$rel"/build/llama-cpp-sys-2-*/out; do
+            if ls "$o"/backends/ggml-vulkan*.dll >/dev/null 2>&1; then sysout="$o"; fi
+          done
+          if [ -z "$sysout" ]; then echo "no ggml-vulkan DLL" >&2; exit 1; fi
+          cp "$sysout"/bin/*.dll "$out/"
+          cp "$sysout"/backends/*.dll "$out/backends/"
+          cp -r eval/sets dist/spike/eval/sets
+          git rev-parse HEAD > dist/spike/COMMIT
+          (cd dist/spike && find . -type f \( -name '*.dll' -o -name '*.exe' \) -printf '%s\t%p\n' | sort -k2) > dist/spike/MANIFEST.tsv
+          cat dist/spike/MANIFEST.tsv
+      - name: ランナーで abort-probe の CPU だけ確認する（モデルが無いので、デバイス一覧だけ）
+        continue-on-error: true
+        shell: bash
+        run: dist/spike/target/release/devices.exe
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ikari-lm-cancel-spike
+          path: dist/spike
+          if-no-files-found: error
+          retention-days: 14
