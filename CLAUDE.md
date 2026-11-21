@@ -8,6 +8,13 @@
 2. `docs/user-feedback.md`（ユーザーの指摘と決定。具体例つき。同じ失敗を繰り返さないため）
 3. `docs/architecture.md`（今の構成）と `docs/adr/README.md`（設計の決定の索引）
 
+## 役割: リードは Claude Code、Antigravity（Gemini）はレーン（2026-11-22 ユーザー決定）
+- 開発の主導権は Claude Code（リード）が持つ。Antigravity には、`antigravity` ラベルの issue を割り当てる。Antigravity の指示は [docs/antigravity.md](docs/antigravity.md)（入口は `GEMINI.md`）。
+- **この CLAUDE.md の「リード」「サブエージェント」の記述は、Claude Code への指示。** Antigravity は `docs/antigravity.md` の読み替えに従う（自分でマージしない、リードの作業コピーに触らない、**別の clone** で作業する、Mac の測定・smoke・VM は依頼する、`scripts/check.sh` は流さない）。
+- **Claude Code から Antigravity を自動で呼ばない**（プロンプトを送る、プロセスを起こす、など。2026-11-22 ユーザー決定）。利用規約に触れるおそれがあるため。規約の中身は未確認（ユーザーが確かめる）。つなぎ方は GitHub だけ: リードは issue に `antigravity` ラベルを付けて割り当て、ユーザーが Antigravity を起動すると、Antigravity が自分の担当の issue を進める。状態は `ag:wip`・`ag:question`・`ag:done` のラベルで見る。リードはセッションの始めに `gh issue list -l antigravity` と、`ag:question`・`ag:done` が付いたものを見る。
+- **Antigravity の PR は、マージの前に、リードが自分の作業コピーで先頭コミットの `scripts/check.sh`（フル）を流し直す**（Antigravity が `gh pr merge` をしないのは文書の約束だけで、技術的には止められない。リードの確認が実効の門になる）。
+- すり合わせは GitHub の issue と PR のコメントで行う（形式は `docs/antigravity.md` §5）。リードは、マージ、`scripts/check.sh`、共有資源（Mac の CPU、VM、smoke）の順番、ユーザーへの確認を持つ。割り当ての単位は issue。割り当てに向くのは、crate 単位で `cargo test -p` が完結する作業、文書、調査（向かないものは `docs/antigravity.md` §4）。
+
 ## 進め方: 必ずエージェントチームで動く
 - **リード**（ユーザーと話すエージェント）は、自分で大きな実装をしない。タスクを洗い出し、設計 → 契約 → 並行実装 → 統合の順に、サブエージェントを組んで進める。
   1. **設計**: architect が ADR（`docs/adr/NNNN-*.md`）を書く。ユーザーの判断が要る点は末尾にまとめ、リードがユーザーに聞く。決定は ADR に記録する。
