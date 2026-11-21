@@ -5,6 +5,9 @@ use std::io::stdout;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
+    // 親が終わったら止まる（ADR 0079 §3.6。Windows の Job Object に当たる）
+    #[cfg(target_os = "macos")]
+    ikari_data::macos::watch_parent();
     let args: Vec<String> = match std::env::args_os()
         .skip(1)
         .map(|a| a.into_string())

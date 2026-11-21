@@ -8,6 +8,33 @@ const MAX_ANCHOR_COORDINATE: f64 = 1_000_000.0;
 /// 水平方向の最後の拠り所を置く、表示領域の高さに対する割合（下から 1/4）。
 const LAST_RESORT_HEIGHT_RATIO: f64 = 0.25;
 
+/// 殻から渡された座標・大きさを、配置の計算に使える値にそろえる（NaN と無限大は 0、それ以外は ±`MAX_ANCHOR_COORDINATE` に収める）。
+/// 結果の frame に NaN や巨大値が入って、OS の窓の API に渡らないようにする（#450 L3）。
+pub fn sanitize_coordinate(value: f64) -> f64 {
+    if value.is_finite() {
+        value.clamp(-MAX_ANCHOR_COORDINATE, MAX_ANCHOR_COORDINATE)
+    } else {
+        0.0
+    }
+}
+
+/// 大きさ用。負の値は 0 にする。
+pub fn sanitize_extent(value: f64) -> f64 {
+    sanitize_coordinate(value).max(0.0)
+}
+
+impl Rect {
+    /// 各値を `sanitize_coordinate`（大きさは `sanitize_extent`）でそろえた矩形。
+    pub fn sanitized(&self) -> Self {
+        Self::new(
+            sanitize_coordinate(self.origin.x),
+            sanitize_coordinate(self.origin.y),
+            sanitize_extent(self.size.width),
+            sanitize_extent(self.size.height),
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Point {
     pub x: f64,

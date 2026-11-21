@@ -22,8 +22,46 @@ use std::path::Path;
 #[cfg(not(windows))]
 use std::process::{ChildStdin, ChildStdout};
 
+/// LM の子の AppContainer（段 2）。部品は `ikari_sandbox::appcontainer`（ADR 0078 §3.2 の 3）。ここは LM の
+/// プロファイルの名前を決めて呼ぶだけ。能力は 1 つも付けない
 #[cfg(windows)]
-mod appcontainer;
+mod appcontainer {
+    use std::io;
+    use std::path::Path;
+
+    use ikari_sandbox::appcontainer::{self as sandbox, ContainerProfile};
+
+    pub(super) use ikari_sandbox::appcontainer::Container as AppContainerSid;
+    pub(super) use ikari_sandbox::appcontainer::grant_read;
+
+    /// プロファイル（利用者ごとに 1 つ）
+    #[cfg(not(test))]
+    pub(super) const PROFILE: ContainerProfile = ContainerProfile {
+        name: crate::host::CAGE_PROFILE_NAME,
+        display_name: "ikari LM host",
+    };
+    /// 単体テストのプロファイル（製品のプロファイルに触れない）
+    #[cfg(test)]
+    pub(super) const PROFILE: ContainerProfile = ContainerProfile {
+        name: "io.github.ikari-zen.lm-host-test",
+        display_name: "ikari LM host",
+    };
+
+    /// プロファイルを用意して、その SID を返す（無ければ作る）
+    pub(super) fn ensure_profile() -> io::Result<AppContainerSid> {
+        AppContainerSid::ensure(&PROFILE, &[])
+    }
+
+    /// プロファイルを消す（アンインストールのとき。無くても成功）
+    pub(super) fn delete_profile() -> io::Result<()> {
+        sandbox::delete_profile(&PROFILE)
+    }
+
+    /// `path` から、LM のプロファイルの SID の ACE を外す（無くても成功）
+    pub(super) fn revoke_read(path: &Path) -> io::Result<()> {
+        sandbox::revoke_read(path, &PROFILE)
+    }
+}
 #[cfg(target_vendor = "apple")]
 mod apple;
 #[cfg(any(windows, test))]

@@ -1,6 +1,8 @@
-//! 書く先のハンドル渡しのテスト（Windows。ADR 0078 §6 の段 1 の (a)〜(d)）。テストの実行ファイル自身を、`transfer` と
-//! 同じ起こし方（`spawn_transfer`。低い整合性、Job、追記だけの写し）で子にし、子の中と親の両方から確かめる。
-//! cmd.exe は引用符つきの引数を読めないので使わない。
+//! 書く先のハンドル渡しのテスト（Windows。ADR 0078 §6 の段 1 の (a)〜(d)）と、AppContainer の子のテスト（段 2）。
+//! テストの実行ファイル自身を、`transfer` と同じ起こし方（`spawn_transfer`。低い整合性か AppContainer、Job、追記だけの
+//! 写し）で子にし、子の中と親の両方から確かめる。cmd.exe は引用符つきの引数を読めないので使わない。
+//! AppContainer のテストは、テスト用のプロファイル（`TRANSFER_PROFILE`。単体テストでは製品と別の名前）を作り、最後に
+//! 消す。GitHub Actions の runner ではプロファイルが作れないので飛ばす（VM と実機で流す）。
 
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -14,6 +16,8 @@ const PROBE_TEST: &str = "spawn_windows::tests::probe_out_handle";
 const MARK: &str = "probe ";
 /// 子の仕事の選び方（libtest の名前の絞り込みとして渡す。どのテストの名前にも合わない）
 const MODE_PREFIX: &str = "mode=";
+/// 子にパスで開かせてみるファイル（利用者のファイルの代わり。同じく名前の絞り込みとして渡す）
+const READ_PREFIX: &str = "read=";
 const MODE_WRITE: &str = "write";
 const MODE_FLOOD: &str = "flood";
 /// `write` の子が書くもの
@@ -74,7 +78,26 @@ fn probe_out_handle() {
     writeln!(out, "{MARK}read={}", ok(read)).unwrap();
     writeln!(out, "{MARK}truncate={}", ok(truncated)).unwrap();
     writeln!(out, "{MARK}rewind-write={}", ok(rewound)).unwrap();
+    if let Some(path) = args.iter().find_map(|a| a.strip_prefix(READ_PREFIX)) {
+        writeln!(out, "{MARK}read-path={}", ok(std::fs::read(path).is_ok())).unwrap();
+        // `transfer` の自己確認（ADR 0078 §3.2 の 4）を、この子のトークンで
+        for (name, expected) in [
+            ("low", ChildBox::Low),
+            ("appcontainer", ChildBox::AppContainer),
+        ] {
+            let allowed = crate::run::transfer_allowed_here(expected);
+            let verdict = if allowed { "allowed" } else { "refused" };
+            writeln!(out, "{MARK}check-{name}={verdict}").unwrap();
+        }
+    }
     out.flush().unwrap();
+}
+
+/// `probe_args` に、パスで開かせてみるファイルを足す
+fn probe_args_reading(mode: &str, path: &Path) -> Vec<String> {
+    let mut args = probe_args(mode);
+    args.push(format!("{READ_PREFIX}{}", path.display()));
+    args
 }
 
 fn probe_args(mode: &str) -> Vec<String> {
@@ -192,4 +215,93 @@ fn the_copy_given_to_the_child_is_append_only_and_not_inheritable() {
     copy.write_all(b"d").unwrap();
     drop(copy);
     assert_eq!(std::fs::read(&path).unwrap(), b"abcd");
+}
+
+/// 利用者のファイルの代わり（親が作り、親は読める）
+fn user_file(dir: &Path) -> std::path::PathBuf {
+    let path = dir.join("user-document.txt");
+    std::fs::write(&path, b"not for the child").unwrap();
+    path
+}
+
+/// GitHub Actions の runner では、AppContainer のプロファイルが作れない（`CreateAppContainerProfile` が一定しない
+/// エラーで失敗する。VM と実機では動く。ADR 0072 §12、`lm` と `ikari-sandbox` の段 2 のテストと同じ扱い）。CI
+/// （`GITHUB_ACTIONS` が立っている）で作れないときだけ飛ばす。手元・VM・実機では、作れなければ落とす
+fn appcontainer_unavailable_here() -> bool {
+    match Container::ensure(&TRANSFER_PROFILE, TRANSFER_CAPABILITIES) {
+        Ok(_) => false,
+        Err(e) if std::env::var_os("GITHUB_ACTIONS").is_some() => {
+            eprintln!("skip: CI の runner では AppContainer のプロファイルが作れない（{e}）");
+            true
+        }
+        Err(e) => panic!("AppContainer のプロファイルが作れない: {e}"),
+    }
+}
+
+#[test]
+fn the_low_child_reads_user_files_and_passes_only_the_low_self_check() {
+    // 段 1 の限界（低い整合性は読み取りを止めない）を、AppContainer の子と比べるために確かめる
+    let tmp = tempfile::tempdir().unwrap();
+    let (_path, out) = parent_file(tmp.path());
+    let user = user_file(tmp.path());
+    let exe = std::env::current_exe().unwrap();
+    let (child, mut stdout) = spawn_transfer(
+        &exe,
+        &probe_args_reading(MODE_WRITE, &user),
+        &out,
+        Confine::Low,
+    )
+    .unwrap();
+    let mut lines = String::new();
+    stdout.read_to_string(&mut lines).unwrap();
+    assert_eq!(child.wait().unwrap(), 0, "{lines}");
+    let lines = probe_lines(&lines);
+    for expected in [
+        "read-path=ok",
+        "check-low=allowed",
+        "check-appcontainer=refused",
+    ] {
+        assert!(lines.contains(&expected), "{expected}: {lines:?}");
+    }
+}
+
+#[test]
+fn the_appcontainer_child_appends_through_the_handle_and_cannot_open_user_files() {
+    if appcontainer_unavailable_here() {
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let (path, out) = parent_file(tmp.path());
+    let user = user_file(tmp.path());
+    // 親の側では読める（子が読めないのは、檻のせい）
+    assert!(std::fs::read(&user).is_ok());
+    let exe = std::env::current_exe().unwrap();
+    let (child, mut stdout) = spawn_transfer(
+        &exe,
+        &probe_args_reading(MODE_WRITE, &user),
+        &out,
+        Confine::AppContainer(&TRANSFER_PROFILE),
+    )
+    .unwrap();
+    let mut lines = String::new();
+    stdout.read_to_string(&mut lines).unwrap();
+    assert_eq!(child.wait().unwrap(), 0, "{lines}");
+    assert_eq!(
+        probe_lines(&lines),
+        [
+            "take=ok",
+            "write=ok",
+            "read=denied",
+            "truncate=denied",
+            "rewind-write=ok",
+            "read-path=denied",
+            "check-low=allowed",
+            "check-appcontainer=allowed",
+        ],
+        "{lines}"
+    );
+    out.sync_all().unwrap();
+    assert_eq!(std::fs::read(&path).unwrap(), [FIRST, SECOND].concat());
+    drop(child);
+    ikari_sandbox::appcontainer::delete_profile(&TRANSFER_PROFILE).unwrap();
 }

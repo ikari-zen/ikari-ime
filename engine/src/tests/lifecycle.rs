@@ -71,9 +71,19 @@ fn convert_prefetch_and_page_are_not_blocked_while_the_stack_is_rebuilt() {
     open_gate();
     let _ = worker.join();
     let elapsed = elapsed.expect("convert path was blocked by the rebuild");
-    assert!(elapsed < Duration::from_secs(1), "{elapsed:?}");
+    let limit = Duration::from_secs(1);
+    assert!(
+        elapsed < limit,
+        "{}",
+        ikari_testtime::report(elapsed, format_args!("< {limit:?}"))
+    );
     assert!(entered, "the janitor never started the rebuild");
-    assert!(during.unwrap() < Duration::from_secs(1), "{during:?}");
+    let during = during.unwrap();
+    assert!(
+        during < limit,
+        "{}",
+        ikari_testtime::report(during, format_args!("< {limit:?}"))
+    );
     drop(e);
     let _ = std::fs::remove_dir_all(dir);
 }

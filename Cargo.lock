@@ -711,6 +711,7 @@ dependencies = [
  "block2",
  "ikari-core",
  "ikari-resource",
+ "ikari-sandbox",
  "ikari-testtime",
  "libc",
  "llama-cpp-2",
@@ -799,6 +800,7 @@ version = "0.1.0"
 dependencies = [
  "ikari-lm",
  "ikari-pipe",
+ "ikari-resource",
  "tempfile",
  "windows-sys",
 ]
@@ -810,6 +812,7 @@ dependencies = [
  "dhat",
  "ikari-input",
  "ikari-proto",
+ "ikari-resource",
  "ikari-runmark",
  "ikari-textfile",
  "prost",

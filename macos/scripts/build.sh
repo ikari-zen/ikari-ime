@@ -7,7 +7,7 @@
 #   --signing adhoc  ad-hoc 署名（署名要件は identifier の一致だけになる）
 #   --release/--debug  Swift のビルド種別（Rust は常に release）。既定は release
 #   --no-lm          llama.cpp（Metal）を入れない（cmake が使えないとき、LM が要らないとき）。LM の子（ikari-lm-host）も、檻役（IkariLMCage.xpc）も作らない
-#   --skip-rust      cargo と XCFramework の作成を飛ばし、macos/Frameworks/ にあるものを使う
+#   --skip-rust      cargo と XCFramework の作成を飛ばし、macos/Frameworks/ にあるものを使う（ikari-data は target/data/ のビルド済みを使う）
 #   --allow-stub     XCFramework がなくてもビルドする（FFI なしのスタブのエンジンになる。インストールしてはいけない）。
 #                    檻役の bin（ikari-lm-cage）がまだ無いときも、空のスタブで束と署名を作る（同じく、インストールしてはいけない）
 #   --distribution   配布用（未署名の公開物。ADR 0069 §6、#40）。--signing adhoc が要る。Smoke を同梱せず、エンジンの許可リストからも外す。出力は <種別>-adhoc-dist/
@@ -66,6 +66,11 @@ LM_HOST_BUILT="$IKARI_ROOT/target/lm/$RUST_TARGET/release/$LM_HOST_NAME"
 # 檻役の実行ファイル（Rust の bin。llama.cpp は持たない）。LM の子とは別の target で作る（feature を混ぜない）
 LM_CAGE_NAME=ikari-lm-cage
 LM_CAGE_BUILT="$IKARI_ROOT/target/lm-cage/$RUST_TARGET/release/$LM_CAGE_NAME"
+# 取得の部品（ADR 0079）。Contents/Helpers/ に置く単体の exe。Info.plist をリンクのときに埋めるので、
+# 手元のビルドや LM の target と混ざらないよう、別の target で作る
+DATA_NAME=ikari-data
+DATA_BUILT="$IKARI_ROOT/target/data/$RUST_TARGET/release/$DATA_NAME"
+DATA_DEST="$APP/Contents/Helpers/$DATA_NAME"
 VERSION="$(workspace_version)"
 [[ -n "$VERSION" ]] || die "Cargo.toml から版を読めません"
 
@@ -142,6 +147,24 @@ build_cage() {
   [[ -x "$LM_CAGE_BUILT" ]] || die "$LM_CAGE_BUILT がありません"
 }
 
+# ikari-data（ADR 0079 §3.2）。Info.plist（DATA_ID。版を埋めたもの）をリンクのときに __TEXT,__info_plist へ埋める
+# （埋めない Sandbox の exe は起動の直後に落ちる。ADR 0076 §16）。--frameworks-only では要らない
+build_data() {
+  local plist="$OUT/$DATA_NAME.Info.plist"
+  mkdir -p "$OUT"
+  cp "$TEMPLATES/$DATA_NAME.Info.plist" "$plist"
+  render_identity "$plist"
+  plist_set_string "$plist" CFBundleShortVersionString "$VERSION"
+  plist_set_string "$plist" CFBundleVersion "$VERSION"
+  [[ "$(plutil -extract CFBundleIdentifier raw "$plist")" == "$DATA_ID" ]] \
+    || die "$plist の CFBundleIdentifier が $DATA_ID ではありません（templates/$DATA_NAME.Info.plist と lib.sh の DATA_ID を揃える）"
+  log "cargo rustc: ${DATA_NAME}（Info.plist を埋め込む）"
+  (cd "$IKARI_ROOT" && CARGO_TARGET_DIR="$IKARI_ROOT/target/data" cargo rustc --release \
+    --target "$RUST_TARGET" -p ikari-data --bin "$DATA_NAME" -- \
+    -C "link-arg=-Wl,-sectcreate,__TEXT,__info_plist,$plist") || die "$DATA_NAME をビルドできません"
+  [[ -x "$DATA_BUILT" ]] || die "$DATA_BUILT がありません"
+}
+
 build_rust() {
   log "cargo build: ikari-shell-ffi"
   (cd "$IKARI_ROOT" && cargo build --release --target "$RUST_TARGET" -p ikari-shell-ffi)
@@ -172,6 +195,8 @@ build_rust() {
     "$IKARI_ROOT/shell-ffi/include" ikari_shell.h IkariShellFFI "$FRAMEWORKS/IkariShellFFI.xcframework"
   make_xcframework "$IKARI_ROOT/target/lm/$RUST_TARGET/release/libikari_engine_ffi.a" \
     "$IKARI_ROOT/engine-ffi/include" ikari_engine.h IkariEngineFFI "$FRAMEWORKS/IkariEngineFFI.xcframework"
+  # 作り終えた印。check の鮮度の検査が、Cargo.toml だけの変更（cargo が作り直さないもの）を誤検知しないために使う（#296）
+  touch "$FRAMEWORKS/.built"
 }
 
 # ---------------------------------------------------------------- Swift とバンドル
@@ -225,6 +250,9 @@ assemble_bundle() {
   [[ "$WITH_LM" == 0 ]] || mkdir -p "$CAGE/Contents/MacOS"
 
   cp "$BIN_DIR/ikari" "$APP/Contents/MacOS/ikari"
+  [[ -x "$DATA_BUILT" ]] || die "$DATA_BUILT がありません（--skip-rust を外してビルドする）"
+  mkdir -p "$APP/Contents/Helpers"
+  cp "$DATA_BUILT" "$DATA_DEST"
   [[ "$DISTRIBUTION" -eq 1 ]] || cp "$BIN_DIR/ikari-smoke" "$APP/Contents/MacOS/ikari-smoke"
   cp "$BIN_DIR/IkariEngine" "$XPC/Contents/MacOS/IkariEngine"
   # 檻役と、その束の中の LM の子（檻役は自分の束の中の ikari-lm-host だけを起動する。エンジンの束には置かない。ADR 0077 §3.4）。
@@ -297,6 +325,8 @@ sign_bundle() {
   local common=(--force --options runtime --timestamp=none -s "$IDENTITY")
   # 内側から
   [[ "$DISTRIBUTION" -eq 1 ]] || codesign "${common[@]}" -i "$SMOKE_ID" "$APP/Contents/MacOS/ikari-smoke"
+  # 取得の部品: Hardened Runtime、App Sandbox、通信（client）、fetch/ と inbox/ の一時例外（ADR 0079 §3.2、§3.3）。ikari.app の署名が封印する
+  codesign "${common[@]}" -i "$DATA_ID" --entitlements "$TEMPLATES/$DATA_NAME.entitlements" "$DATA_DEST"
   # LM の子: Hardened Runtime。entitlement は付けない（起動した檻役の Sandbox をそのまま引き継ぐ）
   if [[ -f "$CAGE/Contents/MacOS/$LM_HOST_NAME" ]]; then
     codesign "${common[@]}" -i "$LM_HOST_ID" "$CAGE/Contents/MacOS/$LM_HOST_NAME"
@@ -441,6 +471,71 @@ verify_cage() {
   fi
 }
 
+# ikari-data（ADR 0079 §3.7）: 署名と Info.plist の identifier が DATA_ID、Hardened Runtime、entitlement はちょうど 3 つ
+# （app-sandbox、network.client、fetch/ と inbox/ だけの一時例外）、束の中で network.* を持つのは ikari-data だけ、ikari.app の署名が封印している
+verify_data() {
+  [[ -x "$DATA_DEST" ]] || die "ikari-data が $DATA_DEST にありません"
+  codesign --verify --strict "$DATA_DEST" || die "ikari-data の署名を検証できません"
+
+  local info identifier
+  info="$(codesign -dv "$DATA_DEST" 2>&1)"
+  identifier="$(printf '%s\n' "$info" | sed -n 's/^Identifier=//p')"
+  [[ "$identifier" == "$DATA_ID" ]] || die "ikari-data の identifier が $DATA_ID ではありません: '$identifier'"
+  printf '%s\n' "$info" | grep -Eq '^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime' || die "ikari-data に Hardened Runtime（runtime）が付いていません"
+
+  # 埋めた Info.plist（署名の identifier と同じ CFBundleIdentifier）
+  printf '%s\n' "$info" | grep -Eq '^Info\.plist entries=[1-9][0-9]*' || die "ikari-data に Info.plist が埋まっていません（Sandbox の exe は起動の直後に落ちる）"
+  local embedded
+  # otool は 4 バイトごとに（リトルエンディアンで）16 進に出すので、バイトの並びを戻してから読む（arm64 のビルドだけ。RUST_TARGET）
+  embedded="$(otool -X -s __TEXT __info_plist "$DATA_DEST" | sed 's/^[0-9a-f]*[[:space:]]*//' | xxd -r -p \
+    | xxd -p -c4 | sed 's/\(..\)\(..\)\(..\)\(..\)/\4\3\2\1/' | xxd -r -p \
+    | plutil -extract CFBundleIdentifier raw - 2>/dev/null || true)"
+  [[ "$embedded" == "$DATA_ID" ]] || die "ikari-data の埋めた Info.plist の CFBundleIdentifier が $DATA_ID ではありません: '$embedded'"
+
+  # entitlement: キーはちょうど 3 つ
+  local ents keys key_sandbox key_client key_exc="com\\.apple\\.security\\.temporary-exception\\.files\\.home-relative-path\\.read-write"
+  ents="$(entitlements_of "$DATA_DEST")"
+  [[ -n "$ents" ]] || die "ikari-data の entitlement を読めません"
+  keys="$(printf '%s' "$ents" | plutil -convert xml1 -o - - | grep -c '<key>')"
+  [[ "$keys" -eq 3 ]] || die "ikari-data の entitlement が 3 つではありません（キーが $keys 個）"
+  key_sandbox="$(printf '%s' "$ents" | plutil -extract 'com\.apple\.security\.app-sandbox' raw - 2>/dev/null || true)"
+  key_client="$(printf '%s' "$ents" | plutil -extract 'com\.apple\.security\.network\.client' raw - 2>/dev/null || true)"
+  [[ "$key_sandbox" == true ]] || die "ikari-data に com.apple.security.app-sandbox がありません"
+  [[ "$key_client" == true ]] || die "ikari-data に com.apple.security.network.client がありません"
+
+  # 一時例外の配列は、fetch/ と inbox/ の 2 つの文字列に厳密に一致する（数も並びも）
+  local count first second
+  count="$(printf '%s' "$ents" | plutil -extract "$key_exc" raw - 2>/dev/null || true)"
+  [[ "$count" == 2 ]] || die "ikari-data の一時例外が 2 つではありません: '$count'"
+  first="$(printf '%s' "$ents" | plutil -extract "$key_exc.0" raw - 2>/dev/null || true)"
+  second="$(printf '%s' "$ents" | plutil -extract "$key_exc.1" raw - 2>/dev/null || true)"
+  [[ "$first" == "/Library/Application Support/ikari-ime/fetch/" ]] || die "ikari-data の一時例外の 1 つめが fetch/ ではありません: '$first'"
+  [[ "$second" == "/Library/Application Support/ikari-ime/inbox/" ]] || die "ikari-data の一時例外の 2 つめが inbox/ ではありません: '$second'"
+  echo "data entitlements: app-sandbox=true, network.client=true, temporary-exception=fetch/ and inbox/ only (3 keys)"
+
+  # 束の中で network.* を持つのは ikari-data だけ。一覧は手で並べず、Contents/ の下の Mach-O を全部見る
+  local file file_ents scanned=0
+  while IFS= read -r -d '' file; do
+    file -b "$file" | grep -q 'Mach-O' || continue
+    scanned=$((scanned + 1))
+    [[ "$file" != "$DATA_DEST" ]] || continue
+    file_ents="$(entitlements_of "$file")"
+    [[ -z "$file_ents" ]] || ! printf '%s' "$file_ents" | plutil -convert xml1 -o - - | grep -q '<key>com\.apple\.security\.network\.' \
+      || die "$file に com.apple.security.network.* があります（束の中で持てるのは ikari-data の network.client だけ）"
+  done < <(find "$APP/Contents" -type f -print0)
+  [[ "$scanned" -ge 2 ]] || die "束の中の署名されたコードを見つけられません（検査が空振りしている）"
+  echo "network.*: only ikari-data (scanned $scanned Mach-O files)"
+
+  grep -q "Helpers/$DATA_NAME" "$APP/Contents/_CodeSignature/CodeResources" || die "ikari.app の署名が Helpers/$DATA_NAME を封印していません"
+
+  if [[ "$SIGNING" == team ]]; then
+    local team
+    team="$(printf '%s\n' "$info" | sed -n 's/^TeamIdentifier=//p')"
+    [[ "$team" == "$TEAM_ID" ]] || die "ikari-data のチームID が $TEAM_ID ではありません: '$team'"
+    echo "TeamIdentifier=$TEAM_ID (data)"
+  fi
+}
+
 # 設定アプリ（ADR 0005 §6.2、§10.1「署名」）: Hardened Runtime、Sandbox なし、network の権限なし（NFR-17）、
 # 殻の署名要件（SigningRequirements.settingsApp）を満たす、外側の署名に封印されている
 verify_settings_app() {
@@ -491,6 +586,7 @@ fi
 resolve_identity
 if [[ "$SKIP_RUST" -eq 0 ]]; then
   build_rust
+  build_data
 else
   # XCFramework がないと Package.swift が FFI なしの形になり、動かない「スタブのエンジン」の ikari.app ができる
   for framework in IkariShellFFI IkariEngineFFI; do
@@ -509,4 +605,5 @@ assemble_bundle
 sign_bundle
 verify_bundle
 verify_settings_app
+verify_data
 log "完了: $APP"

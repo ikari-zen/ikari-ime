@@ -6,14 +6,17 @@
 //!   （`PROC_THREAD_ATTRIBUTE_HANDLE_LIST`）。渡さない標準入出力は null。渡すハンドルの継承の印は、起動の直前に付け、
 //!   起動のあとに外す。
 //! - 整合性を低くできる（トークンを複製して `WinLowLabelSid`。`CreateProcessAsUserW`）。
+//! - AppContainer に入れられる（`Launch::container`。`PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES`。トークンは OS が
+//!   作り、整合性は低になる）。プロファイル、能力、読み取りの許可は `appcontainer`（ADR 0078 §3.2）。
 //! - 窓を出さない（`CREATE_NO_WINDOW`）。実行ファイルは絶対パスで明示し、コマンドラインはすべて引用符で囲む
 //!   （`cmdline`）。カレントディレクトリは実行ファイルのフォルダ。シェルを通さない。
 //! - どれか 1 つでもかけられなければ、子を止めて失敗を返す。
 //!
 //! 使う側: `ikari-data` の `transfer` の起動（`fetch/src/spawn_windows.rs`）、設定画面の核の `ikari-data` の起動
-//! （`windows/settings/src/fetch_os.rs`）。LM の子（`lm/src/host/os/windows.rs`）は、段 2（AppContainer）の
-//! 統合のあとで移す（ADR 0076 §17）。
+//! （`windows/settings/src/fetch_os.rs`）。LM の子（`lm/src/host/os/windows.rs`）は、`appcontainer` の部品だけを使い、
+//! 起動の本体はまだ自分で持つ（ADR 0076 §17 の移行まで、属性の組み立ては 2 か所）。
 
+pub mod appcontainer;
 pub mod cmdline;
 
 #[cfg(windows)]

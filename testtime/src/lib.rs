@@ -42,6 +42,15 @@ pub fn ms(n: u64) -> Duration {
     scaled(Duration::from_millis(n))
 }
 
+/// 時間のアサーションの失敗メッセージ用。待ちの実測値、期待の範囲、倍率を 1 行にする。
+/// 再発したとき、CI の log だけで「どれだけ遅れたか」が分かるようにする（判定には使わない）
+pub fn report(elapsed: Duration, expected: impl std::fmt::Display) -> String {
+    format!(
+        "elapsed={elapsed:?} expected={expected} {TIME_SCALE_ENV}={}",
+        scale()
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -60,6 +69,13 @@ mod tests {
             assert_eq!(parse_scale(raw), 1.0, "{raw:?}");
         }
         assert_eq!(parse_scale(Some(" 2.5 ")), 2.5);
+    }
+
+    #[test]
+    fn report_has_elapsed_expected_and_scale() {
+        let m = report(Duration::from_millis(7), "< 10ms");
+        assert!(m.contains("elapsed=7ms expected=< 10ms"), "{m}");
+        assert!(m.contains("IKARI_TEST_TIME_SCALE="), "{m}");
     }
 
     #[test]

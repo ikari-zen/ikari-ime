@@ -4,7 +4,7 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use ikari_proto::shell::v1 as pb;
-use ikari_shell_core::panel::{Size, layout_panel, resolve_anchor};
+use ikari_shell_core::panel::{Size, layout_panel, resolve_anchor, sanitize_extent};
 use prost::Message;
 
 use crate::convert::{rect_from_pb, rect_to_pb, side_to_pb, source_to_pb};
@@ -63,15 +63,18 @@ pub unsafe extern "C" fn ikari_panel_resolve_anchor(
 pub unsafe extern "C" fn ikari_panel_layout(request: IkariStr, out: *mut IkariShellBuf) -> i32 {
     run(request, out, |raw| {
         let request = pb::PanelLayoutRequest::decode(raw).map_err(|_| IKARI_SHELL_ERR_DECODE)?;
-        let anchor = rect_from_pb(request.anchor).unwrap_or_default();
-        let visible = rect_from_pb(request.visible_frame).unwrap_or_default();
+        // 殻の値は信じない: NaN・無限大・巨大値・負の大きさは、窓の API に渡る前にここでそろえる（#450 L3）
+        let anchor = rect_from_pb(request.anchor).unwrap_or_default().sanitized();
+        let visible = rect_from_pb(request.visible_frame)
+            .unwrap_or_default()
+            .sanitized();
         let placement = layout_panel(
             &anchor,
             Size {
-                width: request.width,
-                height: request.height,
+                width: sanitize_extent(request.width),
+                height: sanitize_extent(request.height),
             },
-            request.reserved_height,
+            request.reserved_height.map(sanitize_extent),
             &visible,
         );
         Ok(pb::PanelPlacement {
@@ -133,6 +136,25 @@ mod tests {
         let placement = pb::PanelPlacement::decode(out.as_slice()).unwrap();
         assert_eq!(placement.side, pb::PanelSide::Above as i32);
         assert_eq!(placement.frame, rect(100.0, 70.0, 200.0, 100.0));
+    }
+
+    #[test]
+    fn layout_sanitizes_nan_and_huge_values() {
+        let request = pb::PanelLayoutRequest {
+            anchor: rect(f64::NAN, f64::INFINITY, -5.0, 1e300),
+            width: f64::NAN,
+            height: 1e300,
+            reserved_height: Some(f64::NEG_INFINITY),
+            visible_frame: rect(0.0, 0.0, 1000.0, 800.0),
+        };
+        let (status, out) = call(ikari_panel_layout, &request.encode_to_vec());
+        assert_eq!(status, IKARI_SHELL_OK);
+        let placement = pb::PanelPlacement::decode(out.as_slice()).unwrap();
+        let frame = placement.frame.unwrap();
+        for v in [frame.x, frame.y, frame.width, frame.height] {
+            assert!(v.is_finite() && v.abs() <= 1_000_000.0, "{v}");
+        }
+        assert!(frame.width >= 0.0 && frame.height >= 0.0);
     }
 
     #[test]
