@@ -15,6 +15,7 @@ pub mod lm_timing;
 pub mod ops;
 pub mod reach;
 pub mod reading;
+pub mod replay;
 pub mod report;
 pub mod rss;
 pub mod run;

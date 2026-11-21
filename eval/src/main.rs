@@ -40,8 +40,8 @@ use ikari_stack::RankerSet;
 mod args;
 
 use args::{
-    Cli, Command, EngineArgs, OpsArgs, ReachArgs, ReadingArgs, RunArgs, SegmentsArgs, SetFormat,
-    SplitArg,
+    Cli, Command, EngineArgs, OpsArgs, ReachArgs, ReadingArgs, ReplayArgs, RunArgs, SegmentsArgs,
+    SetFormat, SplitArg,
 };
 
 const DICT_DIR_ENV: &str = "IKARI_DICT_DIR";
@@ -109,6 +109,7 @@ fn run_main() -> Result<ExitCode, Box<dyn Error>> {
         Some(Command::Segments(args)) => run_segments(args),
         Some(Command::Ops(args)) => run_ops(args),
         Some(Command::Reading(args)) => run_reading(args),
+        Some(Command::Replay(args)) => run_replay_mode(args),
         None => run_eval(cli.run),
     }
 }
@@ -385,6 +386,69 @@ fn run_scenario_mode(
         );
         Ok(ExitCode::from(EXIT_GATE_FAILED))
     }
+}
+
+/// 再生の評価（ADR 0065 §3.4）。製品と同じ `Engine` に、本物の時間で Prefetch と Convert を送る
+fn run_replay_mode(args: ReplayArgs) -> Result<ExitCode, Box<dyn Error>> {
+    use ikari_eval::replay::{
+        DEFAULT_QUANTILES, EngineSetup, ReplayEngine, ReplayMeta, ReplayOptions, debug_infer_keys,
+        file_name_of, load_average, parse_quantiles, render_cases_tsv as render_replay_cases,
+        render_markdown as render_replay, run_replay, summarize as summarize_replay,
+    };
+
+    let quantiles = match &args.replay_quantiles {
+        Some(path) => parse_quantiles(&read_file(path)?).map_err(|e| format!("{}: {e}", path.display()))?,
+        None => parse_quantiles(DEFAULT_QUANTILES)?,
+    };
+    let loaded = load_cases(&read_file(&args.set)?).map_err(|e| format!("{}: {e}", args.set.display()))?;
+    let cases = filter_cases(loaded, split_sel(args.split), false).cases;
+    if cases.is_empty() {
+        return Err("no cases to replay".into());
+    }
+    let ranker_config = match &args.ranker_config {
+        Some(path) => ikari_stack::read_ranker_config(path).map_err(|e| e.detail())?,
+        None => Default::default(),
+    };
+    let setup = EngineSetup {
+        dict_dir: dict_dir(args.dict.clone()),
+        lm_model: Some(args.lm.clone()),
+        lm_host: args.lm_host.clone(),
+        ranker_config: ranker_config.clone(),
+        lm_deadline: args.lm_deadline_ms.map(Duration::from_millis),
+    };
+    let mut engine = ReplayEngine::open(&setup)?;
+    let opts = ReplayOptions {
+        seed: args.replay_seed,
+        settle: Duration::from_millis(args.replay_settle_ms),
+        limit: args.replay_limit,
+    };
+    let load_before = load_average();
+    let started = std::time::Instant::now();
+    let outcomes = run_replay(&mut engine, &cases, &quantiles, &opts, |done, total| {
+        if done % 25 == 0 || done == total {
+            eprintln!("replay: {done}/{total}");
+        }
+    })?;
+    let meta = ReplayMeta {
+        set_name: file_name_of(&args.set),
+        rows_in_set: cases.len(),
+        seed: opts.seed,
+        settle: opts.settle,
+        limit: opts.limit,
+        lm_deadline: engine.lm_deadline,
+        convert_wait: engine.convert_wait,
+        debug_infer: debug_infer_keys(&ranker_config),
+        model_name: file_name_of(&args.lm),
+        load_before,
+        load_after: load_average(),
+        elapsed: started.elapsed(),
+    };
+    print!("{}", render_replay(&meta, &summarize_replay(&outcomes)));
+    if let Some(path) = &args.out_cases {
+        std::fs::write(path, render_replay_cases(&outcomes))
+            .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+    }
+    Ok(ExitCode::SUCCESS)
 }
 
 /// 文節の評価の subcommand が使う構成を作る（辞書を開いて Converter を組む）
