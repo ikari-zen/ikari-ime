@@ -486,7 +486,7 @@ impl PrefetchQueue {
     /// 処理中の依頼が別の鍵なら、その取り消しの印を立てる。
     pub fn submit(&self, entry: Arc<CacheEntry>, context: Context) -> Option<Arc<CacheEntry>> {
         let mut state = lock(&self.state);
-        state.cancel_running(Some(&entry.key), None);
+        // 捨てるコード（#486 の前後比較）: submit で走っている依頼の印を立てない（取り消しの前の挙動）
         state.seq += 1;
         let job = Job {
             entry: Arc::clone(&entry),
