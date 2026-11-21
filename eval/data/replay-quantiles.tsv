@@ -1,0 +1,20 @@
+# 再生の評価（`ikari-eval replay`。ADR 0065 §3.4）が引く、時間の分位数の表。数字だけ。
+# 出どころは ADR 0065 §1.3 の表（作者 1 人の実測の分位数。ログそのものは入れない）。
+# 列: kind（interval = 同じ読みの中の Prefetch から次の Prefetch までの打鍵の間隔、
+#     gap = 最後の Prefetch から Space（Convert）までの間）、p（分位。0..1）、ms。
+# 分位数の間は直線で補う。表の端より外（p が最小より小さい、最大より大きい）は端の値のまま（外挿しない。仮置き）。
+# interval には p5 の値がない（§1.3 の「—」）ので、p10 が下端になる。
+kind	p	ms
+interval	0.10	116
+interval	0.50	280
+interval	0.90	595
+interval	0.95	799
+interval	0.99	1526
+gap	0.05	77
+gap	0.10	91
+gap	0.25	117
+gap	0.50	136
+gap	0.75	198
+gap	0.90	310
+gap	0.95	421
+gap	0.99	779

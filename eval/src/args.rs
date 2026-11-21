@@ -32,6 +32,49 @@ pub(crate) enum Command {
     Ops(OpsArgs),
     /// 再変換で推定した読みの一致率（既存のセットの表記と読みの組。ADR 0006 §7.1-5）
     Reading(ReadingArgs),
+    /// 打鍵の間隔と Space までの間を再生して、LM が付く率を測る（ADR 0065 §3.4。実時間で流れる）
+    Replay(ReplayArgs),
+}
+
+#[derive(clap::Args, Debug)]
+pub(crate) struct ReplayArgs {
+    /// 辞書ディレクトリ。省略時は $IKARI_DICT_DIR、なければ ./data/build/dict
+    #[arg(long)]
+    pub(crate) dict: Option<PathBuf>,
+    /// 評価セット（TSV）。各行の読みを 1 文字ずつ Prefetch して Convert する
+    #[arg(long, default_value = "eval/sets/homophones-ext.tsv")]
+    pub(crate) set: PathBuf,
+    /// split 列で絞る
+    #[arg(long, value_enum, default_value = "all")]
+    pub(crate) split: SplitArg,
+    /// zenz の GGUF
+    #[arg(long)]
+    pub(crate) lm: PathBuf,
+    /// LM を別プロセスで動かす（`ikari-lm-host` の実行ファイル）。省略時は同じプロセス（feature lm が要る）
+    #[arg(long)]
+    pub(crate) lm_host: Option<PathBuf>,
+    /// 人工の遅延は、ここに `zenz.debug_infer_scale`（倍率 k）と `zenz.debug_infer_extra_ms`（固定 d ms）を書く
+    /// （ikari-lm の feature dev-knobs。製品には入らない）
+    #[arg(long)]
+    pub(crate) ranker_config: Option<PathBuf>,
+    /// LM の締め切り（ms）。省略時は設定の既定（engine.lm_deadline_ms の既定）
+    #[arg(long)]
+    pub(crate) lm_deadline_ms: Option<u64>,
+    /// 乱数の種（結果に書く）
+    #[arg(long, default_value_t = ikari_eval::replay::DEFAULT_SEED)]
+    pub(crate) replay_seed: u64,
+    /// 再生する行数の上限（種で決まった行を、元の並びで）。省略時は全行。1 行あたり約 2〜3 秒かかる
+    #[arg(long)]
+    pub(crate) replay_limit: Option<usize>,
+    /// 行と行の間の静まり（ms）。前の行の古い推論を持ち越さないため
+    #[arg(long, default_value_t = ikari_eval::replay::DEFAULT_SETTLE_MS)]
+    pub(crate) replay_settle_ms: u64,
+    /// 打鍵の間隔と Space までの間の分位数の表（TSV）。省略時は同梱の eval/data/replay-quantiles.tsv
+    #[arg(long)]
+    pub(crate) replay_quantiles: Option<PathBuf>,
+    /// 行ごとの結果を TSV で書き出すパス
+    #[arg(long)]
+    pub(crate) out_cases: Option<PathBuf>,
 }
 
 #[derive(clap::Args, Debug)]
