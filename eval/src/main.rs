@@ -397,10 +397,13 @@ fn run_replay_mode(args: ReplayArgs) -> Result<ExitCode, Box<dyn Error>> {
     };
 
     let quantiles = match &args.replay_quantiles {
-        Some(path) => parse_quantiles(&read_file(path)?).map_err(|e| format!("{}: {e}", path.display()))?,
+        Some(path) => {
+            parse_quantiles(&read_file(path)?).map_err(|e| format!("{}: {e}", path.display()))?
+        }
         None => parse_quantiles(DEFAULT_QUANTILES)?,
     };
-    let loaded = load_cases(&read_file(&args.set)?).map_err(|e| format!("{}: {e}", args.set.display()))?;
+    let loaded =
+        load_cases(&read_file(&args.set)?).map_err(|e| format!("{}: {e}", args.set.display()))?;
     let cases = filter_cases(loaded, split_sel(args.split), false).cases;
     if cases.is_empty() {
         return Err("no cases to replay".into());

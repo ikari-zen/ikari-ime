@@ -336,6 +336,19 @@ mod tests {
         assert_eq!(parse("engine.lm\ton\r\n").lm, Some(true));
     }
 
+    /// 検証用の人工の遅延（ADR 0065 §3.4）は、利用者の設定ファイルからは届かない。
+    /// エンジンは `zenz.*` を読まず（`Settings` に欄がない）、Stack の `ranker_config` も渡さない
+    #[test]
+    fn debug_infer_keys_in_the_settings_file_are_ignored() {
+        let s = parse("zenz.debug_infer_scale\t6\nzenz.debug_infer_extra_ms\t500\n");
+        assert_eq!(s, Settings::default());
+        assert!(
+            crate::stack_options(0, ikari_core::LmBudget::default())
+                .ranker_config
+                .is_empty()
+        );
+    }
+
     #[test]
     fn timeout_keys_default_to_the_current_constants() {
         let none = parse("");

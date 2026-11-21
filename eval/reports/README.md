@@ -65,3 +65,21 @@ ADR が根拠として参照しているレポートは、リンクを壊さな�
   - 回帰の比較（`snapshot.sh`）: `2000`（時間切れ 0 を確かめる）。
   - エンジンを模す: 「Space を押すまでの間」の p10 = 100ms なら `--lm-budget-ms 100 --lm-deadline-ms 100`。
 - 時間切れはマシンの混み具合で揺れる（ADR 0021 §2.4）。LM ありの数字には、`uptime` の load average を添える。
+
+## 再生の評価（`ikari-eval replay`。ADR 0065 §3.4）
+
+打鍵の間隔と Space までの間を実時間で再生し、製品と同じ `Engine`（先行計算、待ち行列、Space からの待ち）に Prefetch と Convert を送って、`LmReport.verdict` の内訳、LM が付いた率（LM_APPLIED）、1 位、Space から 1 ページ目までの p50 / p99 を出す。
+
+```sh
+# 遅くする指定（検証用。ikari-lm の dev-knobs。製品には入らない）: ranker.conf に
+#   zenz.debug_infer_scale = 3      # 実際の時間の k 倍にする（k−1 倍を足す）
+#   zenz.debug_infer_extra_ms = 0   # 固定の d ms を足す
+cargo run --release -p ikari-eval --features lm-metal -- replay \
+  --lm data/raw/zenz/<gguf> --ranker-config ranker.conf \
+  --replay-seed 486 --replay-limit 150 --replay-settle-ms 1000
+```
+
+- 分位数の表は `eval/data/replay-quantiles.tsv`（ADR 0065 §1.3 の数字だけ。間は直線、端より外は端の値）。`--replay-quantiles` で替えられる。実機のログや学習は使わない。
+- 行ごとの時刻の計画は「種 + 行 id」だけで決まる。同じ種・同じ `--replay-limit` なら、設定を替えても同じ行が同じ時刻で打たれる。種と設定は結果に出る。
+- 実時間で流れる（1 行 約 2〜3 秒）。負荷で揺れるので、結果に出る負荷平均を記録し、2 回測る。
+- 学習は一時ディレクトリ（利用者のデータは使わない）。確定は送らない。
