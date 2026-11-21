@@ -166,7 +166,13 @@ impl Placement {
         let dev_err = |e: llama_cpp_2::LlamaCppError| LmError::Load(format!("devices: {e}"));
         match self {
             Placement::Default => {
-                let n_gpu_layers = if cfg!(feature = "metal") { u32::MAX } else { 0 };
+                // スパイク: IKARI_LM_GPU=0 で Metal のビルドでも CPU にする
+                let spike_cpu = std::env::var("IKARI_LM_GPU").as_deref() == Ok("0");
+                let n_gpu_layers = if cfg!(feature = "metal") && !spike_cpu {
+                    u32::MAX
+                } else {
+                    0
+                };
                 Ok(base.with_n_gpu_layers(n_gpu_layers))
             }
             // 空の一覧（NULL で終わる配列だけ）を渡す = llama.cpp の `--device none` と同じ。
@@ -523,7 +529,12 @@ impl LmScorer for LlamaScorer {
             spike_t.elapsed().as_secs_f64() * 1000.0
         );
         let last = batch.n_tokens() - 1;
+        let spike_t = std::time::Instant::now();
         let first_logits = self.ctx.get_logits_ith(last).to_vec();
+        eprintln!(
+            "SPIKE decode kind=prompt_logits tokens=0 ms={:.3}",
+            spike_t.elapsed().as_secs_f64() * 1000.0
+        );
         let prompt_len = prompt_tokens.len();
 
         // 2. 候補のトークン列
@@ -557,6 +568,7 @@ impl LmScorer for LlamaScorer {
                 continue;
             }
 
+            let spike_prep = std::time::Instant::now();
             self.ctx
                 .clear_kv_cache_seq(None, Some(prompt_len as u32), None)
                 .map_err(|e| err("kv trim", &e))?;
@@ -583,6 +595,10 @@ impl LmScorer for LlamaScorer {
                     None => offsets.push(None),
                 }
             }
+            eprintln!(
+                "SPIKE decode kind=batch_prep tokens=0 ms={:.3}",
+                spike_prep.elapsed().as_secs_f64() * 1000.0
+            );
             if cursor > 0 {
                 let spike_t = std::time::Instant::now();
                 self.ctx
@@ -597,6 +613,15 @@ impl LmScorer for LlamaScorer {
                 );
             }
 
+            let spike_score = std::time::Instant::now();
+            if let Some(Some(b0)) = offsets.iter().find(|o| o.is_some()) {
+                let t = std::time::Instant::now();
+                let _ = self.ctx.get_logits_ith(i32::try_from(*b0).unwrap_or(0));
+                eprintln!(
+                    "SPIKE decode kind=batch_first_logits tokens=0 ms={:.3}",
+                    t.elapsed().as_secs_f64() * 1000.0
+                );
+            }
             for (k, i) in (start..end).enumerate() {
                 let (Some(tokens), Some(base)) = (&token_lists[i], offsets[k]) else {
                     continue;
@@ -616,6 +641,10 @@ impl LmScorer for LlamaScorer {
                 nll -= Self::log_prob(logits, self.eos);
                 out[i] = nll;
             }
+            eprintln!(
+                "SPIKE decode kind=batch_score tokens=0 ms={:.3}",
+                spike_score.elapsed().as_secs_f64() * 1000.0
+            );
             start = end;
         }
         eprintln!(
