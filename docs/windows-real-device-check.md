@@ -660,6 +660,7 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 
 - 前提: 項目 61 と同じ。**別の候補窓が動いていると、パイプ名（SID とセッション番号で決まり、変えられない）が衝突する**ので、`start-engine.ps1 -Action stop` で engine-host（と、それが起動した窓）を止め、項目 59 の (a) のとおり `ikari-candidate.exe` を手で起動してから流す。終わったら手で起動した窓を止め、engine-host を起動し直す。
 - やること: `ikari-candidate-send.exe 300 100 below 1 15 invisible`。7 行（zero-width、bidi-override、bidi-isolate、line-separator、control、tag、zwj-kept）が出る。送った文字列は、標準出力に `sent <名前>: ab<U+200B>cd…` の形で出る（窓のログはない。確かめるのは画面）。1 行目の候補とモデルには、注釈 `note<U+200B><U+202E>-x` も付く。
+- 1 画面は 5 行で、ページ送りの手段がないので、6〜7 行目（tag、zwj-kept）と注釈は上の「全部」では見えない（2026-11-22 の確認）。**1 行ずつ送る**: 第 6 引数を `invisible:<n>`（n は 1〜7 の行番号。その行を 1 行目の候補として送る）、`invisible:note`（注釈とモデルの注釈を 1 候補だけに付けて送る）にして、`ikari-candidate-send.exe 300 100 below 1 15 invisible:1` から `invisible:7`、`invisible:note` まで 8 回流す（窓は流すたびに Hide されるので、続けて流してよい）。範囲外の n は `bad row` で止まる。各回の見込みは次のとおり（1: `abcdefgh`、2: `abcdefghi`、3: `abcdef`、4: `abcdef`（1 行）、5: `abcdefg`（1 行）、6: `abcd`、7: 家族の絵文字、note: 候補 `漢字` と注釈 `note-x`）。
 - 期待する結果（**見込み**）: 窓の各行が、zero-width は `abcdefgh`、bidi-override は `abcdefghi`（除かれなければ `def` が逆順に見える）、bidi-isolate は `abcdef`、line-separator と control は 1 行のまま（改行・タブで行が割れたり、豆腐が出たりしない）、tag は `abcd`、zwj-kept は家族の絵文字（ZWJ は残るので 1 つに見える。フォントによっては 3 つに分かれて見える）。注釈は `note-x`（窓が注釈を描く場合）。窓は落ちない。単体テスト（`cargo test -p ikari-candidate --example candidate-send`、CI）は、同じ文字列が `limits::sanitize_text` で上の見込みになることを確かめる。
 - うまくいかないとき: 画面の写真（どの行が見込みと違うか）、送り手の出力、窓が落ちたならイベントビューアのエラーを残す。
 
