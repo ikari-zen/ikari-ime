@@ -74,7 +74,7 @@ ADR が根拠として参照しているレポートは、リンクを壊さな�
 # 遅くする指定（検証用。ikari-lm の dev-knobs。製品には入らない）: ranker.conf に
 #   zenz.debug_infer_scale = 3      # 実際の時間の k 倍にする（k−1 倍を足す）
 #   zenz.debug_infer_extra_ms = 0   # 固定の d ms を足す
-cargo run --release -p ikari-eval --features lm-metal -- replay \
+cargo run --release -p ikari-eval --features lm-metal,replay-dev -- replay \
   --lm data/raw/zenz/<gguf> --ranker-config ranker.conf \
   --replay-seed 486 --replay-limit 150 --replay-settle-ms 1000
 ```

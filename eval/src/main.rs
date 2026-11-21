@@ -396,6 +396,13 @@ fn run_replay_mode(args: ReplayArgs) -> Result<ExitCode, Box<dyn Error>> {
         render_markdown as render_replay, run_replay, summarize as summarize_replay,
     };
 
+    if !cfg!(feature = "replay-dev") {
+        return Err(
+            "replay needs a build with the `replay-dev` feature: cargo build --release -p ikari-eval --features lm-metal,replay-dev \
+             (on macOS the product engine only uses the LM cage and waits for its port, so without it the LM never becomes ready)"
+                .into(),
+        );
+    }
     let quantiles = match &args.replay_quantiles {
         Some(path) => {
             parse_quantiles(&read_file(path)?).map_err(|e| format!("{}: {e}", path.display()))?
