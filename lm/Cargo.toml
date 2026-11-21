@@ -8,7 +8,7 @@ license.workspace = true
 default = []
 # llama.cpp を使う実装を有効にする。cmake と Xcode のコマンドラインツールが必要。
 # 無効のときは llama.cpp をビルドしない（`cargo build --workspace` を軽く保つ）。
-llama = ["dep:llama-cpp-2"]
+llama = ["dep:llama-cpp-2", "dep:llama-cpp-sys-2"]
 metal = ["llama", "llama-cpp-2/metal"]
 # Vulkan（Windows。ADR 0059 §2.2）。バックエンドを別の DLL にして exe の隣の `backends\` から読む。
 # ビルドに Vulkan SDK（`VULKAN_SDK`）が要る。`metal` とは同時に付けない。`llama` だけのビルドは SDK が要らない
@@ -22,6 +22,11 @@ dev-knobs = []
 # exe の隣の `backends` を読むので、エンジンの exe と同じフォルダに置いて動かす
 [[example]]
 name = "devices"
+required-features = ["llama"]
+
+# スパイク（#486。捨てるコード）: abort callback が CPU と Vulkan で呼ばれるかを調べる
+[[example]]
+name = "abort-probe"
 required-features = ["llama"]
 
 # LM の推論を担う別プロセス（ADR 0060 Q4）。エンジンが標準入出力のパイプで採点を頼む。llama.cpp が要る
@@ -46,6 +51,8 @@ test = false
 ikari-core.workspace = true
 ikari-resource.workspace = true
 llama-cpp-2 = { workspace = true, optional = true }
+# スパイク（#486）: abort callback の確認用に生の FFI を使う
+llama-cpp-sys-2 = { version = "=0.1.161", optional = true }
 
 # 子の stdin のパイプに SIGPIPE を出させない設定（`src/host/os.rs` だけが使う）
 [target.'cfg(unix)'.dependencies]

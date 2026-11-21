@@ -715,6 +715,7 @@ dependencies = [
  "ikari-testtime",
  "libc",
  "llama-cpp-2",
+ "llama-cpp-sys-2",
  "tempfile",
  "windows-sys",
 ]
