@@ -569,7 +569,7 @@ impl ReplayEngine {
                 case.id
             ));
         };
-        let report = reply.lm_report.clone().unwrap_or_default();
+        let report = reply.lm_report.unwrap_or_default();
         let outcome = RowOutcome {
             id: case.id.clone(),
             verdict: LmVerdict::try_from(report.verdict).unwrap_or(LmVerdict::Unspecified),
