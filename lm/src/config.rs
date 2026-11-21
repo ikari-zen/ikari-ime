@@ -51,6 +51,10 @@ pub struct ZenzConfig {
     /// 推論を別プロセス（`ikari-lm-host`）で動かすときの締め切りと断念の回数（ADR 0060 Q4）。
     /// 同じプロセスで動かすときは使わない
     pub host: HostLimits,
+    /// 検証用の人工の遅延（`zenz.debug_infer_scale`、`zenz.debug_infer_extra_ms`。ADR 0065 §3.4）。
+    /// feature `dev-knobs` のときだけある。製品のビルドでは、この 2 つのキーは未知のキーとして拒まれる
+    #[cfg(feature = "dev-knobs")]
+    pub debug_infer: crate::delay::DebugInfer,
 }
 
 impl Default for ZenzConfig {
@@ -77,6 +81,8 @@ impl ZenzConfig {
             load_retry: Duration::from_secs(DEFAULT_LOAD_RETRY_SECS),
             gpu: DEFAULT_GPU,
             host: HostLimits::default(),
+            #[cfg(feature = "dev-knobs")]
+            debug_infer: crate::delay::DebugInfer::default(),
         }
     }
 }
@@ -158,6 +164,20 @@ impl ZenzConfig {
                         return Err(bad("must be at least 1"));
                     }
                     cfg.host.max_failures = v;
+                }
+                #[cfg(feature = "dev-knobs")]
+                "debug_infer_scale" => {
+                    let v: f32 = value.trim().parse().map_err(|_| bad("not a number"))?;
+                    if !v.is_finite() || v < crate::delay::MIN_SCALE {
+                        return Err(bad("must be a finite number of at least 1"));
+                    }
+                    cfg.debug_infer.scale = v;
+                }
+                #[cfg(feature = "dev-knobs")]
+                "debug_infer_extra_ms" => {
+                    cfg.debug_infer.extra = Duration::from_millis(
+                        parse_u64(value).ok_or_else(|| bad("not an integer"))?,
+                    );
                 }
                 "context_chars" => {
                     cfg.context_chars = parse_usize(value).ok_or_else(|| bad("not an integer"))?;
@@ -275,6 +295,36 @@ mod tests {
         assert_eq!(c.host.max_failures, 5);
         assert_eq!(ZenzConfig::default().host, HostLimits::default());
         assert!(ZenzConfig::from_kv(&kv(&[("zenz.host_max_failures", "0")])).is_err());
+    }
+
+    /// 製品のビルド（feature `dev-knobs` なし）では、人工の遅延のキーは未知のキーで、拒まれる（ADR 0065 §3.4）
+    #[cfg(not(feature = "dev-knobs"))]
+    #[test]
+    fn debug_infer_keys_are_unknown_without_dev_knobs() {
+        for k in ["zenz.debug_infer_scale", "zenz.debug_infer_extra_ms"] {
+            assert!(ZenzConfig::from_kv(&kv(&[(k, "3")])).is_err(), "{k}");
+        }
+    }
+
+    #[cfg(feature = "dev-knobs")]
+    #[test]
+    fn debug_infer_keys_are_read_with_dev_knobs() {
+        let c = ZenzConfig::from_kv(&kv(&[
+            ("zenz.debug_infer_scale", "3"),
+            ("zenz.debug_infer_extra_ms", "40"),
+        ]))
+        .unwrap();
+        assert_eq!(c.debug_infer.scale, 3.0);
+        assert_eq!(c.debug_infer.extra, Duration::from_millis(40));
+        assert!(ZenzConfig::default().debug_infer.is_noop());
+        for (k, v) in [
+            ("zenz.debug_infer_scale", "0.5"),
+            ("zenz.debug_infer_scale", "inf"),
+            ("zenz.debug_infer_scale", "x"),
+            ("zenz.debug_infer_extra_ms", "-1"),
+        ] {
+            assert!(ZenzConfig::from_kv(&kv(&[(k, v)])).is_err(), "{k}={v}");
+        }
     }
 
     #[test]

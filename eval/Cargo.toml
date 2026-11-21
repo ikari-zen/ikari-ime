@@ -17,6 +17,10 @@ ikari-core = { workspace = true, features = ["dev-knobs"] }
 ikari-dict-format.workspace = true
 ikari-stack = { workspace = true, features = ["dev-knobs"] }
 clap.workspace = true
+# 再生の評価（`replay`）は製品と同じ `Engine` を通す（ADR 0065 §3.4）
+ikari-engine.workspace = true
+ikari-proto.workspace = true
+prost.workspace = true
 ikari-import.workspace = true
 serde_json.workspace = true
 
@@ -25,6 +29,9 @@ serde_json.workspace = true
 lm = ["ikari-stack/lm"]
 lm-metal = ["lm", "ikari-stack/lm-metal"]
 lm-vulkan = ["lm", "ikari-stack/lm-vulkan"]
+# `replay` を macOS で使うのに要る。engine の dev-knobs（製品の macOS ビルドは檻役の口だけを使い、口がないと LM が ready にならない。
+# engine/src/lm_cage.rs の product_uses_cage）。workspace 全体で feature が統合されるため、既定ではオフ（製品の前提を崩さない）
+replay-dev = ["ikari-engine/dev-knobs"]
 
 [dev-dependencies]
 ikari-dict-builder.workspace = true

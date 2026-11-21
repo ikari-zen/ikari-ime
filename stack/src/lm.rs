@@ -49,6 +49,9 @@ pub fn build(
         }
         None => (in_process_loader(path, cfg.gpu)?, None),
     };
+    // 検証用の人工の遅延（feature `dev-knobs` だけ。ADR 0065 §3.4）。製品のビルドにこの行は入らない
+    #[cfg(feature = "dev-knobs")]
+    let loader = ikari_lm::delay::DelayedScorer::wrap_loader(loader, cfg.debug_infer);
     let ranker = Arc::new(ZenzRanker::new(loader, cfg));
     let handle = Arc::new(ZenzHandle {
         ranker: Arc::clone(&ranker),

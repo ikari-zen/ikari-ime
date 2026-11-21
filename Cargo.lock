@@ -682,8 +682,11 @@ dependencies = [
  "ikari-core",
  "ikari-dict-builder",
  "ikari-dict-format",
+ "ikari-engine",
  "ikari-import",
+ "ikari-proto",
  "ikari-stack",
+ "prost",
  "serde_json",
  "tempfile",
 ]

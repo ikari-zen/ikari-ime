@@ -11,6 +11,8 @@
 
 pub mod cancel;
 mod config;
+#[cfg(feature = "dev-knobs")]
+pub mod delay;
 mod error;
 pub mod host;
 mod placement;
