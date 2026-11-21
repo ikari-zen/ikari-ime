@@ -493,6 +493,9 @@ impl LmScorer for LlamaScorer {
         if candidates.is_empty() {
             return Ok(out);
         }
+        // スパイク（捨てるコード。ADR 0074 §8）: decode ごとの時間を標準エラーに出す
+        let spike_t0 = std::time::Instant::now();
+        let mut spike_batches = 0usize;
 
         // 1. プロンプトを評価する
         let mut prompt_tokens: Vec<LlamaToken> = self.bos.into_iter().collect();
@@ -510,9 +513,15 @@ impl LmScorer for LlamaScorer {
         batch
             .add_sequence(&prompt_tokens, PROMPT_SEQ, false)
             .map_err(|e| err("batch", &e))?;
+        let spike_t = std::time::Instant::now();
         self.ctx
             .decode(&mut batch)
             .map_err(|e| err("decode prompt", &e))?;
+        eprintln!(
+            "SPIKE decode kind=prompt tokens={} ms={:.3}",
+            prompt_tokens.len(),
+            spike_t.elapsed().as_secs_f64() * 1000.0
+        );
         let last = batch.n_tokens() - 1;
         let first_logits = self.ctx.get_logits_ith(last).to_vec();
         let prompt_len = prompt_tokens.len();
@@ -575,9 +584,17 @@ impl LmScorer for LlamaScorer {
                 }
             }
             if cursor > 0 {
+                let spike_t = std::time::Instant::now();
                 self.ctx
                     .decode(&mut batch)
                     .map_err(|e| err("decode candidates", &e))?;
+                spike_batches += 1;
+                eprintln!(
+                    "SPIKE decode kind=batch tokens={} seqs={} ms={:.3}",
+                    cursor,
+                    end - start,
+                    spike_t.elapsed().as_secs_f64() * 1000.0
+                );
             }
 
             for (k, i) in (start..end).enumerate() {
@@ -601,6 +618,12 @@ impl LmScorer for LlamaScorer {
             }
             start = end;
         }
+        eprintln!(
+            "SPIKE nll candidates={} batches={} ms={:.3}",
+            candidates.len(),
+            spike_batches,
+            spike_t0.elapsed().as_secs_f64() * 1000.0
+        );
         Ok(out)
     }
 }
