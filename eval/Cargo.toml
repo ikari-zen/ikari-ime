@@ -18,7 +18,8 @@ ikari-dict-format.workspace = true
 ikari-stack = { workspace = true, features = ["dev-knobs"] }
 clap.workspace = true
 # 再生の評価（`replay`）は製品と同じ `Engine` を通す（ADR 0065 §3.4）
-ikari-engine.workspace = true
+# dev-knobs: macOS の製品ビルドは檻役の口を待つので、評価では外す（engine/src/lm_cage.rs の product_uses_cage）
+ikari-engine = { workspace = true, features = ["dev-knobs"] }
 ikari-proto.workspace = true
 prost.workspace = true
 ikari-import.workspace = true
