@@ -22,9 +22,10 @@ ikari-ime は、Claude Code が**リード**、Antigravity が**レーン**と�
 git clone https://github.com/ikari-zen/ikari-ime.git ~/github.com/ikari-zen/ikari-ime-ag
 cd ~/github.com/ikari-zen/ikari-ime-ag
 git config core.hooksPath .githooks
-git config user.name "Antigravity (Gemini)"   # コミットの作者名で、リードのコミットと区別する
+git config user.name "Antigravity (<作業するモデルの名前>)"   # 例: Antigravity (Gemini 4 Neon)、Antigravity (Claude Sonnet 5.5)
 ```
 
+- **作者名は「Antigravity (モデル名)」にする**（2026-11-22 ユーザー決定）。リードのコミットと区別し、どのモデルが作業したかが履歴で分かるようにする。**セッションでモデルを変えたら、作業の前に `git config user.name` を直す**（例: `Antigravity (Gemini 4 Neon)`、`Antigravity (Claude Sonnet 5.5)`）。PR の説明の「実施モデル」と、issue の完了コメントの「実施モデル」にも、同じ名前を書く。
 - jj は使わない（git だけ）。リードの jj のリポジトリに、あなたの ref を入れない。
 - コミットの作者の email は、ユーザーに確認してから設定する（新しい個人情報を書かない）。
 - 同じ Mac で動くので、あなたの clone の `target/` は 20〜40GB になる。使い終わったら `rm -rf target`。ディスクの空きが 50GB を切ったら、リードに知らせる。
