@@ -1,6 +1,6 @@
 //! 登録と解除（`regsvr32` が `DllRegisterServer` / `DllUnregisterServer` を呼ぶ）。
 //!
-//! 1. COM のクラス: `HKCR\CLSID\{CLSID}`（既定値は名前）、`InprocServer32`（既定値は DLL のパス、
+//! 1. COM のクラス: `HKLM\Software\Classes\CLSID\{CLSID}`（既定値は名前）、`InprocServer32`（既定値は DLL のパス、
 //!    `ThreadingModel` は `Apartment`。TSF は UI スレッドの STA から呼ぶ）。
 //! 2. TSF の入力プロファイル（`ITfInputProcessorProfileMgr::RegisterProfile`。日本語）。
 //! 3. TSF のカテゴリ（`ITfCategoryMgr::RegisterCategory`）。
@@ -12,8 +12,8 @@
 //! パス）を自分の場所に書き換えるだけで、CLSID・プロファイルの GUID・カテゴリは版をまたいで同じ。登録が途中で
 //! 失敗したときも、前の登録があれば解除しない（`deploy::cleanup_after_failed_register`）。
 //!
-//! TODO(S9): いまは HKCR（`HKLM\Software\Classes`。管理者が要る）に書く。ユーザーごとの登録（HKCU）で TSF が
-//! 読むか、更新のときの置き換えとあわせて W5 の実機で確かめる。
+//! COM のクラスは `HKEY_LOCAL_MACHINE` に書く（管理者が要る。ADR 0067 §3.3: インストーラは HKCU に触れない）。
+//! `HKEY_LOCAL_MACHINE` は HKCU 側の同じキーに書くことがあるので使わない。
 
 use std::os::windows::ffi::OsStrExt;
 
@@ -22,7 +22,7 @@ use windows::Win32::Foundation::{
 };
 use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance};
 use windows::Win32::System::Registry::{
-    HKEY_CLASSES_ROOT, REG_SZ, RRF_RT_REG_SZ, RegDeleteTreeW, RegGetValueW, RegSetKeyValueW,
+    HKEY_LOCAL_MACHINE, REG_SZ, RRF_RT_REG_SZ, RegDeleteTreeW, RegGetValueW, RegSetKeyValueW,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::HKL;
 use windows::Win32::UI::TextServices::{
@@ -36,6 +36,8 @@ use super::guids::{CLSID_TEXT_SERVICE, GUID_PROFILE_JAPANESE};
 use super::{dll, host, log};
 use crate::deploy::{self, PriorRegistration, RegisterFailureCleanup};
 
+/// `HKEY_LOCAL_MACHINE` の下のクラスの登録の根
+const CLASSES_SUBKEY: &str = "Software\\Classes";
 /// 入力メニューと設定に出る名前
 const DISPLAY_NAME: &str = "ikari";
 /// `ThreadingModel`
@@ -97,8 +99,13 @@ pub fn unregister() -> windows_core::Result<()> {
     categories.and(profile).and(class)
 }
 
+/// `HKEY_LOCAL_MACHINE` の下の、クラスのキー。
 fn clsid_key() -> String {
-    format!("CLSID\\{{{CLSID_TEXT_SERVICE:?}}}")
+    clsid_key_for(&format!("{CLSID_TEXT_SERVICE:?}"))
+}
+
+fn clsid_key_for(clsid: &str) -> String {
+    format!("{CLASSES_SUBKEY}\\CLSID\\{{{clsid}}}")
 }
 
 /// 登録を始める前の `InprocServer32` の既定値の有無（値は読まない）。
@@ -108,7 +115,7 @@ fn prior_registration() -> PriorRegistration {
     // データとその大きさの受け口を渡さない（有無だけを見る。pvData が null なら pcbData も null でよい）
     let status = unsafe {
         RegGetValueW(
-            HKEY_CLASSES_ROOT,
+            HKEY_LOCAL_MACHINE,
             &key,
             PCWSTR::null(),
             RRF_RT_REG_SZ,
@@ -156,7 +163,7 @@ fn set_string(subkey: &str, name: Option<&str>, value: &[u16]) -> windows_core::
     // `data` は `bytes` バイトの読める領域で、呼び出しの間生きている
     let status = unsafe {
         RegSetKeyValueW(
-            HKEY_CLASSES_ROOT,
+            HKEY_LOCAL_MACHINE,
             &subkey,
             name_ptr,
             REG_SZ.0,
@@ -180,7 +187,7 @@ fn register_class(path: &[u16]) -> windows_core::Result<()> {
 fn unregister_class() -> windows_core::Result<()> {
     let key = HSTRING::from(clsid_key());
     // SAFETY: `key` は NUL で終わる UTF-16 で、呼び出しの間生きている
-    let status = unsafe { RegDeleteTreeW(HKEY_CLASSES_ROOT, &key) };
+    let status = unsafe { RegDeleteTreeW(HKEY_LOCAL_MACHINE, &key) };
     if status == ERROR_FILE_NOT_FOUND {
         return Ok(());
     }
@@ -252,4 +259,21 @@ fn unregister_categories() -> windows_core::Result<()> {
         }
     }
     first_error
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clsid_key_is_under_software_classes() {
+        assert_eq!(clsid_key_for("ABC"), "Software\\Classes\\CLSID\\{ABC}");
+    }
+
+    #[test]
+    fn clsid_key_uses_registered_clsid() {
+        let key = clsid_key();
+        assert!(key.starts_with("Software\\Classes\\CLSID\\{"));
+        assert!(key.ends_with('}'));
+    }
 }

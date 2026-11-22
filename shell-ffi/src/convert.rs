@@ -464,7 +464,7 @@ fn event_from_pb(event: pb::ShellEvent) -> Result<ShellEvent> {
             Event::Key(key) => ShellEvent::Key(key_from_pb(key)?),
             Event::Activate(activate) => ShellEvent::Activate {
                 bundle_id: activate.bundle_id,
-                secure: activate.secure,
+                secure: Some(activate.secure),
             },
             Event::Deactivate(_) => ShellEvent::Deactivate,
             Event::MenuCommand(command) => ShellEvent::MenuCommand {
@@ -480,7 +480,7 @@ fn event_from_pb(event: pb::ShellEvent) -> Result<ShellEvent> {
             },
             Event::InputModeChanged(changed) => ShellEvent::InputModeChanged {
                 mode_id: changed.mode_id,
-                secure: changed.secure,
+                secure: Some(changed.secure),
             },
             Event::CommitComposition(_) => ShellEvent::CommitComposition,
             Event::PanelShown(shown) => ShellEvent::PanelShown {
@@ -501,7 +501,8 @@ fn event_to_pb(event: &ShellEvent) -> pb::ShellEvent {
         ShellEvent::Key(key) => Event::Key(key_to_pb(key)),
         ShellEvent::Activate { bundle_id, secure } => Event::Activate(pb::Activate {
             bundle_id: bundle_id.clone(),
-            secure: *secure,
+            // proto は bool。`None`（分からない）は FFI を通る殻（macOS）では出ない。false に倒す
+            secure: secure.unwrap_or(false),
         }),
         ShellEvent::Deactivate => Event::Deactivate(pb::Empty {}),
         ShellEvent::MenuCommand { command } => Event::MenuCommand(menu_command_to_pb(command)),
@@ -514,7 +515,7 @@ fn event_to_pb(event: &ShellEvent) -> pb::ShellEvent {
         ShellEvent::InputModeChanged { mode_id, secure } => {
             Event::InputModeChanged(pb::InputModeChanged {
                 mode_id: mode_id.clone(),
-                secure: *secure,
+                secure: secure.unwrap_or(false),
             })
         }
         ShellEvent::CommitComposition => Event::CommitComposition(pb::Empty {}),
@@ -794,11 +795,11 @@ mod tests {
             ShellEvent::Key(KeyInput::new(KeyKind::Kana)),
             ShellEvent::Activate {
                 bundle_id: "com.apple.TextEdit".into(),
-                secure: true,
+                secure: Some(true),
             },
             ShellEvent::InputModeChanged {
                 mode_id: "io.github.ikari-zen.inputmethod.ikari.English".into(),
-                secure: false,
+                secure: Some(false),
             },
             ShellEvent::CommitComposition,
             ShellEvent::PanelShown {

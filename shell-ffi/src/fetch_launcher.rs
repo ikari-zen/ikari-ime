@@ -3,6 +3,7 @@
 //! - exe の場所は、自分（設定アプリ）の exe の場所から決める。`<X>/ikari.app/Contents/Helpers/IkariSettings.app/Contents/MacOS/<exe>`
 //!   の形でなければ起こさない。起こすのは `<X>/ikari.app/Contents/Helpers/ikari-data`（絶対パス。PATH を使わない。シェルを通さない）。
 //! - 標準入力と標準エラーは `/dev/null`、標準出力はパイプ。環境はプロキシの変数だけ（`HOME` も渡さない。ADR 0076 §3.4）。
+//! - 子に渡す fd は標準入出力の 3 つだけ（ADR 0068 §6.1）。起こし方は `apple`（`posix_spawn`）。
 //! - 取り消しは子に `SIGKILL`（子は孫を作らない）。待ちは `wait`。
 //!
 //! 判断の置き場所: Rust。
@@ -10,9 +11,7 @@
 use std::ffi::OsString;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::sync::{Arc, Mutex, MutexGuard};
-use std::thread;
+#[cfg(not(target_os = "macos"))]
 use std::time::Duration;
 
 use ikari_shell_core::settings::fetch::{Launcher, Running};
@@ -37,6 +36,7 @@ const PROXY_VARS: [&str; 8] = [
 ];
 
 /// `wait` が子の終わりを見る間隔（`kill` が子の確認の間に入れるようにする）
+#[cfg(not(target_os = "macos"))]
 const WAIT_POLL: Duration = Duration::from_millis(10);
 
 fn name_is(path: &Path, expected: &str) -> bool {
@@ -68,16 +68,29 @@ fn child_environment() -> Vec<(OsString, OsString)> {
         .collect()
 }
 
-fn lock(child: &Mutex<Child>) -> MutexGuard<'_, Child> {
-    child.lock().unwrap_or_else(|e| e.into_inner())
-}
+#[cfg(target_os = "macos")]
+mod apple;
 
-/// `program` を、標準出力だけをパイプにして起こす（`environment` 以外の環境は渡さない）。製品もテストもこれを通る
+#[cfg(target_os = "macos")]
+pub use apple::spawn_running;
+
+/// `program` を、標準出力だけをパイプにして起こす（`environment` 以外の環境は渡さない）。
+/// macOS 以外の写しで、テストのためだけにある（`ProductLauncher` は束の中でしか起こさず、束は macOS だけ）。
+/// 子に渡る fd を絞らないので、製品の起動には使わない（ADR 0068 §6.1 は macOS の `apple` が守る）
+#[cfg(not(target_os = "macos"))]
 pub fn spawn_running(
     program: &Path,
     args: &[String],
     environment: &[(OsString, OsString)],
 ) -> io::Result<Running> {
+    use std::process::{Child, Command, Stdio};
+    use std::sync::{Arc, Mutex, MutexGuard};
+    use std::thread;
+
+    fn lock(child: &Mutex<Child>) -> MutexGuard<'_, Child> {
+        child.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     let mut child = Command::new(program)
         .args(args)
         .env_clear()
