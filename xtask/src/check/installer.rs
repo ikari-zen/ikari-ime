@@ -212,9 +212,57 @@ fn code_body(iss: &str) -> String {
     out
 }
 
+/// `[Code]` の `{ … }` の注記の中に `{` があると、Inno Setup の Pascal は注記を入れ子にせず、最初の `}` で閉じる。
+/// 残りが構文エラーになる（`{app}` を書いた注記で、ISCC が落ちた）。その行番号（1 始まり）を返す
+fn nested_brace_comment_lines(iss: &str) -> Vec<usize> {
+    let mut in_code = false;
+    let mut in_comment = false;
+    let mut found = Vec::new();
+    for (index, raw) in iss.lines().enumerate() {
+        let text = raw.trim();
+        if text.starts_with('[') && text.ends_with(']') && !text.contains(' ') {
+            in_code = text.eq_ignore_ascii_case("[Code]");
+            in_comment = false;
+            continue;
+        }
+        if !in_code {
+            continue;
+        }
+        let mut in_string = false;
+        let mut chars = raw.chars().peekable();
+        while let Some(c) = chars.next() {
+            if !in_comment && c == '\'' {
+                in_string = !in_string;
+            }
+            if in_string {
+                continue;
+            }
+            if !in_comment && c == '/' && chars.peek() == Some(&'/') {
+                break;
+            }
+            if c == '{' && chars.peek() != Some(&'#') {
+                if in_comment {
+                    found.push(index + 1);
+                    break;
+                }
+                in_comment = true;
+            } else if c == '}' && in_comment {
+                in_comment = false;
+            }
+        }
+    }
+    found
+}
+
 fn problems(iss: &str, helper_lib: &str, helper_stop: &str) -> Vec<String> {
     let mut found = Vec::new();
     let lines = lines(iss);
+
+    for line in nested_brace_comment_lines(iss) {
+        found.push(format!(
+            "[Code] の {line} 行目: `{{ … }}` の注記の中に `{{` がある（Inno Setup は入れ子にせず最初の `}}` で閉じて構文エラーになる。`{{app}}` などを書かない）"
+        ));
+    }
 
     if !iss.lines().any(|l| l.trim() == MIN_INNO_GUARD) {
         found.push(format!(
@@ -509,6 +557,16 @@ mod tests {
 
     fn has(problems: &[String], needle: &str) -> bool {
         problems.iter().any(|p| p.contains(needle))
+    }
+
+    #[test]
+    fn a_brace_inside_a_brace_comment_is_found() {
+        let bad = "[Code]\n{ 先頭の {app} の項目 }\nprocedure X;\nbegin\nend;\n";
+        assert_eq!(nested_brace_comment_lines(bad), vec![2]);
+        let ok = "[Code]\n{ 先頭の app の項目 }\nprocedure X;\nbegin\n  { 注記 }\nend;\n";
+        assert!(nested_brace_comment_lines(ok).is_empty());
+        let in_string = "[Code]\nprocedure X;\nbegin\n  Y('{app}');\nend;\n";
+        assert!(nested_brace_comment_lines(in_string).is_empty());
     }
 
     #[test]
