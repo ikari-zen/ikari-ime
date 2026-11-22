@@ -26,7 +26,7 @@ pub fn run(args: &[String], out: &mut dyn Write) -> i32 {
     };
     match command {
         Command::Transfer(transfer) => run_transfer(&transfer, out),
-        Command::VersionProbe => run_version_probe(out),
+        Command::VersionProbe(child_box) => run_version_probe(child_box, out),
         Command::ModelFetch(_) | Command::Cleanup | Command::VersionCheck => {
             run_parent(command, out)
         }
@@ -61,7 +61,7 @@ fn run_parent(command: Command, out: &mut dyn Write) -> i32 {
             };
             job::model_fetch(&source, &ctx, out)
         }
-        Command::VersionCheck | Command::VersionProbe | Command::Transfer(_) => EXIT_USAGE,
+        Command::VersionCheck | Command::VersionProbe(_) | Command::Transfer(_) => EXIT_USAGE,
     }
 }
 
@@ -107,7 +107,7 @@ fn run_transfer(command: &TransferCommand, out: &mut dyn Write) -> i32 {
     }
 }
 
-/// `transfer` の自己確認を、自分のトークンで行う（ADR 0078 §3.2 の 4）
+/// 通信する子（`transfer`、`version-probe`）の自己確認を、自分のトークンで行う（ADR 0078 §3.2 の 4）
 #[cfg(windows)]
 pub(crate) fn transfer_allowed_here(expected: ikari_resource::fetch_report::ChildBox) -> bool {
     use ikari_pipe::os::windows::current_integrity_rid;
@@ -180,11 +180,14 @@ fn transfer_into(
     Ok(())
 }
 
-/// 版の確認の通信をする子の仕事。`transfer` と同じく、Windows では低い整合性でなければ `refused`
+/// 版の確認の通信をする子の仕事。`transfer` と同じ自己確認をする（Windows では低い整合性でなければ `refused`。
+/// AppContainer で起こされたはず（`--box appcontainer`）なら、トークンが AppContainer でなければ `refused`）
 #[cfg(windows)]
-fn run_version_probe(out: &mut dyn Write) -> i32 {
-    use ikari_pipe::os::windows::current_integrity_rid;
-    if !crate::child::is_low_integrity(current_integrity_rid()) {
+fn run_version_probe(
+    child_box: ikari_resource::fetch_report::ChildBox,
+    out: &mut dyn Write,
+) -> i32 {
+    if !transfer_allowed_here(child_box) {
         job::emit(out, &Report::Error(FetchErrorCode::Refused));
         return EXIT_ERROR;
     }
@@ -193,7 +196,10 @@ fn run_version_probe(out: &mut dyn Write) -> i32 {
 
 /// macOS は子を作らない（`version-check` が自分で通信する）ので、Windows 以外の `version-probe` は使わせない
 #[cfg(not(windows))]
-fn run_version_probe(_out: &mut dyn Write) -> i32 {
+fn run_version_probe(
+    _child_box: ikari_resource::fetch_report::ChildBox,
+    _out: &mut dyn Write,
+) -> i32 {
     EXIT_USAGE
 }
 
@@ -280,16 +286,25 @@ mod tests {
     #[test]
     fn version_probe_refuses_unless_low_integrity() {
         // Windows のテストは中の整合性で動くので、通信の前に `refused` で終わる
-        assert_eq!(
-            run_str("version-probe"),
-            (EXIT_ERROR, "error refused\n".to_owned())
-        );
+        for line in [
+            "version-probe",
+            "version-probe --box low",
+            "version-probe --box appcontainer",
+        ] {
+            assert_eq!(
+                run_str(line),
+                (EXIT_ERROR, "error refused\n".to_owned()),
+                "{line}"
+            );
+        }
     }
 
     #[cfg(not(windows))]
     #[test]
     fn version_probe_is_not_for_people_outside_windows() {
-        assert_eq!(run_str("version-probe"), (EXIT_USAGE, String::new()));
+        for line in ["version-probe", "version-probe --box appcontainer"] {
+            assert_eq!(run_str(line), (EXIT_USAGE, String::new()), "{line}");
+        }
     }
 
     #[cfg(not(windows))]

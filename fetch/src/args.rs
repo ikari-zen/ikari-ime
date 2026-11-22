@@ -7,6 +7,7 @@
 //! ikari-data cleanup
 //! ikari-data transfer --url <URL> --max-size <バイト> [--expect-size <バイト>] [--box appcontainer|low] --out-handle <十進>
 //!                                                                         （内部。Windows の子）
+//! ikari-data version-probe [--box appcontainer|low]                       （内部。Windows の子）
 //! ```
 //!
 //! 知らない引数、重なった引数、足りない引数は `Usage`（何もしない）。データの場所を変える引数は持たない（ADR 0067）。
@@ -28,8 +29,9 @@ pub enum Command {
     Cleanup,
     /// 通信する子の仕事（`ikari-data` が自分の子にだけ使う。使い方の表示には出さない）
     Transfer(TransferCommand),
-    /// 版の確認の通信をする子の仕事（`transfer` と同じく、自分の子にだけ使う。引数なし）
-    VersionProbe,
+    /// 版の確認の通信をする子の仕事（`transfer` と同じく、自分の子にだけ使う）。値は親が起こした檻（`--box`。無ければ
+    /// `Low`）。子は、自分のトークンがこれに合わなければ `refused`
+    VersionProbe(ChildBox),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,7 +82,7 @@ pub fn parse(args: &[String]) -> Result<Command, Usage> {
             parse_model_fetch(rest)
         }
         "version-check" if rest.is_empty() => Ok(Command::VersionCheck),
-        "version-probe" if rest.is_empty() => Ok(Command::VersionProbe),
+        "version-probe" => parse_version_probe(rest),
         "cleanup" if rest.is_empty() => Ok(Command::Cleanup),
         "transfer" => parse_transfer(rest),
         _ => Err(Usage),
@@ -146,6 +148,19 @@ fn parse_model_fetch(args: &[String]) -> Result<Command, Usage> {
     }
 }
 
+fn parse_version_probe(args: &[String]) -> Result<Command, Usage> {
+    let p = pairs(args, &["box"])?;
+    Ok(Command::VersionProbe(parse_box(get(&p, "box"))?))
+}
+
+/// `--box` の値。無ければ `Low`
+fn parse_box(word: Option<&str>) -> Result<ChildBox, Usage> {
+    match word {
+        None => Ok(ChildBox::Low),
+        Some(word) => ChildBox::from_word(word).ok_or(Usage),
+    }
+}
+
 fn parse_transfer(args: &[String]) -> Result<Command, Usage> {
     let p = pairs(
         args,
@@ -168,10 +183,7 @@ fn parse_transfer(args: &[String]) -> Result<Command, Usage> {
             expect_size: number("expect-size")?,
         },
         out_handle: number("out-handle")?.ok_or(Usage)?,
-        child_box: match get(&p, "box") {
-            None => ChildBox::Low,
-            Some(word) => ChildBox::from_word(word).ok_or(Usage)?,
-        },
+        child_box: parse_box(get(&p, "box"))?,
     }))
 }
 
@@ -208,8 +220,18 @@ mod tests {
             }))
         );
         assert_eq!(parse_str("version-check"), Ok(Command::VersionCheck));
-        assert_eq!(parse_str("version-probe"), Ok(Command::VersionProbe));
-        assert_eq!(parse_str("version-probe --x 1"), Err(Usage));
+        assert_eq!(
+            parse_str("version-probe"),
+            Ok(Command::VersionProbe(ChildBox::Low))
+        );
+        assert_eq!(
+            parse_str("version-probe --box low"),
+            Ok(Command::VersionProbe(ChildBox::Low))
+        );
+        assert_eq!(
+            parse_str("version-probe --box appcontainer"),
+            Ok(Command::VersionProbe(ChildBox::AppContainer))
+        );
         assert_eq!(parse_str("cleanup"), Ok(Command::Cleanup));
         assert_eq!(
             parse_str(&format!(
@@ -285,6 +307,11 @@ mod tests {
             "transfer --url https://e.com/ --max-size 1 --out-handle 4 --box none",
             "transfer --url https://e.com/ --max-size 1 --out-handle 4 --box",
             "transfer --url https://e.com/ --max-size 1 --out-handle 4 --box low --box low",
+            "version-probe --x 1",
+            "version-probe --box",
+            "version-probe --box none",
+            "version-probe --box low --box low",
+            "version-probe --box low extra",
             "unknown",
         ] {
             assert_eq!(parse_str(line), Err(Usage), "{line:?}");

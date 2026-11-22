@@ -1,4 +1,4 @@
-//! 通信する子（Windows の `ikari-data transfer`）の起動の、OS に依存しない部分（ADR 0076 §3.2、§3.4、ADR 0078 §3.1）。
+//! 通信する子（Windows の `ikari-data transfer` と `version-probe`）の起動の、OS に依存しない部分（ADR 0076 §3.2、§3.4、ADR 0078 §3.1）。
 //! Mac でもテストする。OS を呼ぶ部分は `spawn_windows.rs`（起動の作りとコマンドラインは `ikari-sandbox`）。
 
 #![cfg_attr(not(windows), allow(dead_code))]
@@ -46,7 +46,7 @@ pub fn is_low_integrity(rid: Option<u32>) -> bool {
     rid.is_some_and(|rid| rid < MEDIUM_INTEGRITY_RID)
 }
 
-/// `transfer` の自己確認（ADR 0076 §3.2、ADR 0078 §3.2 の 4）。どの檻でも整合性は低でなければならない。AppContainer で
+/// 通信する子（`transfer`、`version-probe`）の自己確認（ADR 0076 §3.2、ADR 0078 §3.2 の 4）。どの檻でも整合性は低でなければならない。AppContainer で
 /// 起こされたはずなら、トークンが AppContainer であることも要る。取れなかった値（`None`）は、満たさない側に倒す
 pub fn transfer_allowed(expected: ChildBox, rid: Option<u32>, appcontainer: Option<bool>) -> bool {
     is_low_integrity(rid)
@@ -96,6 +96,14 @@ pub fn transfer_args(args: &TransferArgs) -> Vec<String> {
         v.push(expect.to_string());
     }
     v
+}
+
+/// 版の確認の子の内部コマンド（`args` の `version-probe`）
+pub const VERSION_PROBE_COMMAND: &str = "version-probe";
+
+/// `version-probe` の引数（子の `parse` が読む形）。`child_box` は起こす檻（`spawn_windows` が、実際に起こす檻から渡す）
+pub fn version_probe_args(child_box: ChildBox) -> Vec<String> {
+    with_box(vec![VERSION_PROBE_COMMAND.to_owned()], child_box)
 }
 
 /// `transfer_args` に、書く先のハンドルの値を足す
@@ -222,6 +230,17 @@ mod tests {
                 child_box: ChildBox::AppContainer,
             })
         );
+    }
+
+    #[test]
+    fn version_probe_args_round_trip_through_the_parser() {
+        for child_box in ChildBox::ALL {
+            assert_eq!(
+                crate::args::parse(&version_probe_args(child_box)),
+                Ok(crate::args::Command::VersionProbe(child_box)),
+                "{child_box:?}"
+            );
+        }
     }
 
     #[test]

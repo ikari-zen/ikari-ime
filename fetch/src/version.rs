@@ -7,10 +7,12 @@
 //!   `ikari_resource::app_version::AppVersion::parse_tag` で読む。ほかは `bad-reply`。
 //! - 成功は `latest <数.数.数>` の行を出して 0 で終わる。比べるのは設定画面の核。
 //! - 取得も導入もしない。自動では確認しない。
-//! - Windows では、通信するのは低い整合性の子だけ（ADR 0076 §3.2）。
+//! - Windows では、通信するのは絞った子だけ（ADR 0076 §3.2、ADR 0078 §3.2）。
 //!
-//! Windows: 通信するのは低い整合性の子（`ikari-data version-probe`。`transfer` と同じ起こし方）だけ。利用者の側
-//! （`run_version_check`）は、子の行を信じず、`latest` の行の版を読み直してから出す。macOS は子なし（自分で通信する）。
+//! Windows: 通信するのは子（`ikari-data version-probe`）だけ。起こし方はモデルの取得の `transfer` と同じで、
+//! AppContainer で起こし、起こせなければ低い整合性に落として続ける（ADR 0078 §3.2 の 5）。どちらで起こしたかは
+//! `box` の行で知らせる（`low` なら設定画面に印が出る）。利用者の側（`run_version_check`）は、子の行を信じず、
+//! `latest` の行の版を読み直してから出す。macOS は子なし（自分で通信する）。
 
 use std::io::Write;
 
@@ -74,7 +76,10 @@ fn report(out: &mut dyn Write, result: Result<AppVersion, FetchError>) -> i32 {
 /// `version-check` の仕事（利用者の側。`run_parent` から呼ぶ）。終了コードを返し、行は `out` へ。
 #[cfg(windows)]
 pub fn run_version_check(out: &mut dyn Write) -> i32 {
-    report(out, check_in_child())
+    let result = check_in_child(&mut |child_box| {
+        job::emit(out, &Report::Box(child_box));
+    });
+    report(out, result)
 }
 
 /// macOS は子なし。自分で通信する
@@ -83,9 +88,12 @@ pub fn run_version_check(out: &mut dyn Write) -> i32 {
     run_probe(out)
 }
 
-/// 低い整合性の子に通信させ、`latest` の行の版を読み直して返す（子の出力は信じない）
+/// 子に通信させ、`latest` の行の版を読み直して返す（子の出力は信じない）。子を起こしたら、どの檻で起こしたかを
+/// `boxed` に 1 回だけ渡す
 #[cfg(windows)]
-fn check_in_child() -> Result<AppVersion, FetchError> {
+fn check_in_child(
+    boxed: &mut dyn FnMut(ikari_resource::fetch_report::ChildBox),
+) -> Result<AppVersion, FetchError> {
     use std::io::BufReader;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::mpsc;
@@ -93,11 +101,18 @@ fn check_in_child() -> Result<AppVersion, FetchError> {
 
     use ikari_resource::fetch_report::{Line, ReportReader, read_line_capped};
 
-    use crate::spawn_windows::spawn_low;
+    use crate::child::spawn_preferring_container;
+    use crate::spawn_windows::{Confine, TRANSFER_PROFILE, spawn_version_probe};
 
     let tool = || FetchError(FetchErrorCode::Tool);
     let exe = std::env::current_exe().map_err(|_| tool())?;
-    let (child, stdout) = spawn_low(&exe, &[PROBE_COMMAND.to_owned()]).map_err(|_| tool())?;
+    // モデルの取得と同じ。AppContainer で起こせなければ低い整合性に落として続け、`box low` の行で知らせる
+    let ((child, stdout), child_box) = spawn_preferring_container(
+        || spawn_version_probe(&exe, Confine::AppContainer(&TRANSFER_PROFILE)),
+        || spawn_version_probe(&exe, Confine::Low),
+    )
+    .map_err(|_| tool())?;
+    boxed(child_box);
     // 親の全体の締め切り（FV-1）。子が出力を閉じなくても、過ぎたら Job を閉じて（子を止めて）`network` にする
     let (done_tx, done_rx) = mpsc::channel::<()>();
     let timed_out = AtomicBool::new(false);
@@ -142,10 +157,6 @@ fn check_in_child() -> Result<AppVersion, FetchError> {
         (None, _, _) => Err(FetchError(FetchErrorCode::Internal)),
     }
 }
-
-/// 子の内部コマンド（`args` の `version-probe`）
-#[cfg(windows)]
-const PROBE_COMMAND: &str = "version-probe";
 
 #[cfg(test)]
 mod tests {
