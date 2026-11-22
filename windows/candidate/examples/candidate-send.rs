@@ -3,7 +3,9 @@
 //! （`docs/windows-real-device-check.md` の候補窓の項目）。
 //!
 //! 使い方（Windows。候補窓と同じユーザーとセッションで流す）:
-//!   candidate-send.exe <x> <y> [above|below] [scale] [seconds] [long|invisible|invisible:<n>|invisible:note]
+//!   candidate-send.exe <x> <y> [above|below] [scale|auto] [seconds] [long|invisible|invisible:<n>|invisible:note]
+//! `scale` は、省くか `auto` にすると、その画面の表示の倍率（DPI / 96。150% なら 1.5）にする。窓の大きさは「行の高さ × scale」で決まり、
+//! 中身は画面の実際の倍率で描かれるので、合わない値を渡すと、窓が内容より小さく（大きく）なって、文字が切れる（#525）。
 //! `long` は、上限（行の数、1 行の長さ。`limits`）を超える候補を送る（切り詰めた見た目を見る）。
 //! `invisible` は、見えない文字と表示の向きを変える文字を混ぜた候補、注釈、モデルの注釈を送る（`limits` が除くことを見る。
 //! #450 FP-5）。1 画面（5 行）に収まらないので、`invisible:<n>`（n は 1 始まりの行番号）はその行だけを 1 行目の候補として、
@@ -11,6 +13,32 @@
 //! 候補窓は別のものが動いているとパイプ名が衝突する（名前は SID とセッションで決まり、変えられない）ので、
 //! engine-host を止めて、手で起動した窓を相手にする（項目 59、61）。
 //! x と y はアンカー（物理のピクセル、左上が原点）。作業領域は主画面の 1920x1040 とみなす（確認用の固定の値）。
+
+/// 表示の倍率（製品の TIP は DPI / 96 を渡す。ADR 0062 §6.3）。純粋なので Mac でテストが回る。
+#[cfg_attr(not(windows), allow(dead_code))]
+mod dpi {
+    /// DPI から倍率を出す。取れなかったとき（0）は 1.0
+    pub fn scale_from_dpi(dpi: u32) -> f64 {
+        if dpi == 0 { 1.0 } else { f64::from(dpi) / 96.0 }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::scale_from_dpi;
+
+        #[test]
+        fn the_scale_is_dpi_over_96() {
+            assert_eq!(scale_from_dpi(96), 1.0);
+            assert_eq!(scale_from_dpi(144), 1.5);
+            assert_eq!(scale_from_dpi(192), 2.0);
+        }
+
+        #[test]
+        fn an_unknown_dpi_is_scale_one() {
+            assert_eq!(scale_from_dpi(0), 1.0);
+        }
+    }
+}
 
 /// `invisible` のモードで送る文字列（`limits::sanitize_text` が除く文字を混ぜる）。純粋なので Mac でテストが回る。
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -118,6 +146,7 @@ fn main() {
 mod windows_main {
     use std::time::Duration;
 
+    use crate::dpi::scale_from_dpi;
     use crate::invisible;
 
     use ikari_candidate::command::{
@@ -126,6 +155,22 @@ mod windows_main {
     use ikari_pipe::os::windows::{connect, current_session_id, current_user_sid};
     use ikari_proto::shell::v1::{CandidateItem, CandidatePanelModel, PanelSide, Rect};
     use prost::Message;
+
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn SetProcessDPIAware() -> i32;
+        fn GetDpiForSystem() -> u32;
+    }
+
+    /// この画面の表示の倍率。DPI に対応していない（仮想化される）プロセスだと 96 が返るので、先に対応を宣言する
+    fn system_scale() -> f64 {
+        // SAFETY: 引数のない user32 の関数を呼ぶだけ
+        let dpi = unsafe {
+            SetProcessDPIAware();
+            GetDpiForSystem()
+        };
+        scale_from_dpi(dpi)
+    }
 
     const SAMPLE: &[&str] = &["漢字", "感じ", "幹事", "監事", "かんじ"];
     const WORK_AREA: Rect = Rect {
@@ -153,7 +198,10 @@ mod windows_main {
             Some("above") => PanelSide::Above,
             _ => PanelSide::Below,
         };
-        let scale = num(3, 1.0)?;
+        let scale = match args.get(3).map(String::as_str) {
+            None | Some("auto") => system_scale(),
+            Some(_) => num(3, 1.0)?,
+        };
         let seconds = args.get(4).map_or(Ok(DEFAULT_SECONDS), |s| {
             s.parse().map_err(|_| format!("bad seconds: {s}"))
         })?;
