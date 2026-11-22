@@ -164,6 +164,29 @@ fn secure_session_events_are_dropped_silently() {
 }
 
 #[test]
+fn secure_begin_and_end_session_write_no_log_line() {
+    let (e, _, dir) = logged("diag-secure-lifecycle");
+    // secure の BeginSession / EndSession は、成功しても engine.log に行を書かない（NFR-18）
+    begin_app(&e, 5, "", true);
+    send_ack(
+        &e,
+        envelope::Body::EndSession(pb::EndSession { session_id: 5 }),
+    );
+    let text = log_of(&e, &dir);
+    assert!(!text.contains("begin_session"), "{text}");
+    assert!(!text.contains("end_session"), "{text}");
+    // secure でないセッションは、今までどおり書く
+    begin_app(&e, 6, BUNDLE_ID, false);
+    send_ack(
+        &e,
+        envelope::Body::EndSession(pb::EndSession { session_id: 6 }),
+    );
+    assert_eq!(lines_of(&e, &dir, "begin_session").len(), 1);
+    assert_eq!(lines_of(&e, &dir, "end_session").len(), 1);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn unknown_session_is_counted_not_reported_as_an_error() {
     let (e, _, dir) = logged("diag-nosession");
     let r = send(&e, event(99, "sh_episode", &[("keys", 1)], &[]));
@@ -214,7 +237,6 @@ fn bundle_id_is_written_only_on_the_begin_session_and_convert_lines() {
             "session=1 app=com.example.Editor",
             "session=2 app=invalid",
             "session=3 app=none",
-            "session=4",
         ]
     );
     let text = log_of(&e, &dir);

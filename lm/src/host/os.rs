@@ -334,6 +334,27 @@ pub(super) fn delete_cage_profile() -> io::Result<()> {
     appcontainer::delete_profile()
 }
 
+/// `SetDefaultDllDirectories` に渡す DLL 探索の範囲（ADR 0067 §4.4: system32 と自分の exe のフォルダだけ）。
+/// `LOAD_LIBRARY_SEARCH_APPLICATION_DIR` (0x200) | `LOAD_LIBRARY_SEARCH_SYSTEM32` (0x800)。
+pub(super) const DLL_SEARCH_FLAGS: u32 = 0x0000_0200 | 0x0000_0800;
+
+/// 以後の DLL の読み込みを system32 と自分のフォルダに限る（ADR 0067 §4.4）。Windows 以外では何もしない
+pub(super) fn restrict_dll_search() {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::System::LibraryLoader::{
+            LOAD_LIBRARY_SEARCH_APPLICATION_DIR, LOAD_LIBRARY_SEARCH_SYSTEM32,
+            SetDefaultDllDirectories,
+        };
+        const _: () = assert!(
+            DLL_SEARCH_FLAGS
+                == (LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32)
+        );
+        // SAFETY: 引数は定数のフラグの組み合わせ。失敗しても既定の探索のまま続ける
+        unsafe { SetDefaultDllDirectories(DLL_SEARCH_FLAGS) };
+    }
+}
+
 /// 製品の対象でない unix（テストと CLI だけ）。`std::process` で起動する。Rust の標準ライブラリが開く fd は
 /// close-on-exec なので、子に渡るのは標準入出力だけ
 #[cfg(not(any(target_vendor = "apple", windows)))]
@@ -476,7 +497,7 @@ mod tests {
 
 #[cfg(test)]
 mod cage_tests {
-    use super::CageState;
+    use super::{CageState, DLL_SEARCH_FLAGS, restrict_dll_search};
 
     #[test]
     fn cage_words_are_fixed_and_distinct() {
@@ -484,6 +505,14 @@ mod cage_tests {
         words.sort_unstable();
         words.dedup();
         assert_eq!(words.len(), CageState::ALL.len());
+    }
+
+    #[test]
+    fn dll_search_flags_allow_only_application_dir_and_system32() {
+        // LOAD_LIBRARY_SEARCH_APPLICATION_DIR (0x200) | LOAD_LIBRARY_SEARCH_SYSTEM32 (0x800)
+        assert_eq!(DLL_SEARCH_FLAGS, 0x0000_0200 | 0x0000_0800);
+        assert_eq!(DLL_SEARCH_FLAGS & !0x0000_0a00, 0);
+        restrict_dll_search();
     }
 }
 

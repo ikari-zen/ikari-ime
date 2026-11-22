@@ -99,6 +99,8 @@ pub(super) fn release_args(facts: &Facts, notes: &str, assets: &[PathBuf]) -> Ve
         facts.title(),
         "--notes".to_owned(),
         notes.to_owned(),
+        // データの Release は「最新」にしない（アプリの版の確認が最新の Release を読むため。ADR 0076 §18.2）
+        "--latest=false".to_owned(),
     ];
     args.extend(assets.iter().map(|p| p.display().to_string()));
     args
@@ -333,6 +335,7 @@ mod tests {
                 "外来語の一覧 webwords-20270201",
                 "--notes",
                 "N",
+                "--latest=false",
                 "/o/a.xz",
                 "/o/r.md"
             ]

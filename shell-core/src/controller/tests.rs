@@ -352,6 +352,34 @@ fn mode_requests_are_taken_once_and_a_switch_back_by_the_os_is_recorded() {
 }
 
 #[test]
+fn mode_switch_keys_pass_through_when_secure() {
+    let mut shell = shell(
+        SettingsSource::Inline("keymap.mode.toggle\tf13\n".into()),
+        resources(),
+    );
+    activate(&mut shell);
+    shell.dispatch(key(KeyKind::Character { text: "a".into() }), &mut NoText);
+    let actions = shell.dispatch(
+        ShellEvent::Key(KeyInput {
+            key: KeyKind::Function { number: 13 },
+            modifiers: Modifiers::NONE,
+            is_repeat: false,
+            secure: true,
+            layout_text: None,
+        }),
+        &mut NoText,
+    );
+    assert_eq!(
+        actions,
+        vec![
+            ShellAction::Commit { text: "あ".into() },
+            ShellAction::PassThrough,
+        ]
+    );
+    assert_eq!(shell.take_mode_request(), None);
+}
+
+#[test]
 fn english_mode_reads_jis_keys_by_their_ascii_legend() {
     let jis = |code, shift| KeyInput {
         key: KeyKind::Jis { code },
@@ -831,5 +859,82 @@ mod learning_quarantine {
             learning_quarantined: true,
         };
         assert_eq!(count(&shell.accept(stale)), 1);
+    }
+}
+
+// ---------------------------------------------------------------- secure のセッション（ADR 0073 §2）
+
+mod secure_session {
+    use super::*;
+    use ikari_proto::v1::{BeginSession, envelope::Body as EngineBody};
+
+    /// 返事を待たずに送った枠（`post`）の本文を記録する輸送
+    #[derive(Clone, Default)]
+    struct PostRecorder(Arc<std::sync::Mutex<Vec<EngineBody>>>);
+
+    impl EngineTransport for PostRecorder {
+        fn connect(&self) -> Result<TransportHandle, TransportError> {
+            Ok(TransportHandle(1))
+        }
+        fn request(
+            &self,
+            _: TransportHandle,
+            _: &[u8],
+            _: Duration,
+        ) -> Result<Vec<u8>, TransportError> {
+            Err(TransportError::Unavailable)
+        }
+        fn post(&self, _: TransportHandle, bytes: &[u8]) {
+            use prost::Message;
+            let env = ikari_proto::v1::Envelope::decode(bytes).unwrap();
+            self.0.lock().unwrap().extend(env.body);
+        }
+        fn close(&self, _: TransportHandle) {}
+        fn pid(&self, _: TransportHandle) -> Option<i32> {
+            None
+        }
+    }
+
+    /// `Activate` で送られた `BeginSession` を集める
+    fn begin_sessions_on_activate(bundle_id: &str, secure: bool) -> Vec<BeginSession> {
+        let transport = PostRecorder::default();
+        let sent = Arc::clone(&transport.0);
+        let mut shell = shell_with(
+            SettingsSource::Inline(String::new()),
+            resources(),
+            true,
+            Box::new(transport),
+        );
+        shell.dispatch(
+            ShellEvent::Activate {
+                bundle_id: bundle_id.into(),
+                secure,
+            },
+            &mut NoText,
+        );
+        let sent = sent.lock().unwrap();
+        sent.iter()
+            .filter_map(|body| match body {
+                EngineBody::BeginSession(b) => Some(b.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_secure_field_sends_one_begin_session_without_the_app_id() {
+        // secure の印だけを送り、アプリの識別子は送らない。二重には送らない
+        let begins = begin_sessions_on_activate("com.example.Bank", true);
+        assert_eq!(begins.len(), 1, "{begins:?}");
+        assert!(begins[0].secure);
+        assert_eq!(begins[0].client_bundle_id, "");
+    }
+
+    #[test]
+    fn a_normal_field_sends_the_app_id() {
+        let begins = begin_sessions_on_activate("com.example.Editor", false);
+        assert_eq!(begins.len(), 1, "{begins:?}");
+        assert!(!begins[0].secure);
+        assert_eq!(begins[0].client_bundle_id, "com.example.Editor");
     }
 }
