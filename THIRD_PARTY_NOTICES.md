@@ -4,13 +4,13 @@
 
 ## 辞書データ
 
-### SudachiDict Core
+### SudachiDict Full
 
 - **ライセンス**: Apache License 2.0
-- **著作権**: WorksApplications
-- **説明**: 日本語形態素解析器Sudachi用の辞書。このプロジェクトでは、バージョン 20260723 のSmall LexとCore Lexを使用しています。
+- **著作権**: Copyright (c) 2017-2023 Works Applications Co., Ltd.
+- **説明**: 日本語形態素解析器Sudachi用の辞書。このプロジェクトでは、バージョン 20260723 のSmall Lex、Core Lex、NotCore Lex（Full。ADR 0012）を使用しています。
 - **出典**: http://sudachi.s3-website-ap-northeast-1.amazonaws.com/sudachidict-raw/
-- **使用方法**: 初期セットアップで `data/raw/sudachi-20260723/` に配置したCSVファイル（small_lex.csv、core_lex.csv、matrix.def）を、dict-builderで処理してバイナリ辞書に変換します。バイナリ辞書自体（grammar.bin、system.dict）はプロジェクトに同梱されません。使用時に`data/raw/sudachi-20260723/`から毎回生成されます。
+- **使用方法**: 初期セットアップで `data/raw/sudachi-20260723/` に配置したCSVファイル（small_lex.csv、core_lex.csv、notcore_lex.csv、matrix.def）を、dict-builderで処理してバイナリ辞書に変換します。バイナリ辞書自体（grammar.bin、system.dict）はプロジェクトに同梱されません。使用時に`data/raw/sudachi-20260723/`から毎回生成されます。
 
 詳細は [testdata/sudachi-mini/README.md](testdata/sudachi-mini/README.md) をご覧ください。
 
@@ -153,7 +153,7 @@ limitations under the License.
 ### chiVe
 
 - **ライセンス**: Apache License 2.0
-- **著作権**: Works Applications Co., Ltd.
+- **著作権**: Copyright (c) 2024 Works Applications Co., Ltd.
 - **説明**: Sudachi の単語分割で学習した日本語の単語ベクトル（v1.3 mc90）。語の頻度順位（ポリシーの `lemma_rank`）と、話題スコア用の `vectors.bin` の元になる
 - **出典**: https://sudachi.s3.ap-northeast-1.amazonaws.com/chive/chive-1.3-mc90.tar.gz（`scripts/fetch-data.sh` が取得）
 - **使用方法**: `data/raw/chive/` に置き、dict-builder が `vectors.bin`（語ごとの 300 次元ベクトルを量子化したもの）を作る。`vectors.bin` は `~/Library/Application Support/ikari-ime/dict/` に置かれる（バンドルには含めない）。chiVe 本体は同梱しない
@@ -161,14 +161,14 @@ limitations under the License.
 ### アドレス・ベース・レジストリ 町字マスター（デジタル庁）
 
 - **ライセンス**: 公共データ利用規約（第1.0版。PDL1.0）。出典の記載と、編集・加工したことおよびその主体の記載が要る
-- **出典**: 「アドレス・ベース・レジストリ 町字マスター」（デジタル庁）（https://data.address-br.digital.go.jp/mt_town/mt_town_all.csv.zip）。利用規約: アドレス・ベース・レジストリの利用規約（デジタル庁。最終更新 2026-05-29）
+- **出典**: 「アドレス・ベース・レジストリ 町字マスター」（デジタル庁）（https://data.address-br.digital.go.jp/mt_town/mt_town_all.csv.zip）。利用規約: アドレス・ベース・レジストリの利用規約（デジタル庁。https://www.digital.go.jp/policies/base_registry_address_tos 、最終更新 2026-05-29。PDL1.0 原文: https://www.digital.go.jp/resources/open_data/public_data_license_v1.0 ）
 - **加工**: 「アドレス・ベース・レジストリ 町字マスター」（デジタル庁）をもとに ikari-ime が加工して作成した。国が作成した未加工のデータではない。町字マスターの大字・町名（丁目の行の大字・町名を含む。小字と京都の通り名は使わない）の表記と読みから、「大字」「字」の接頭辞の除去、読みの小書きの修正（「チヨウ」→「チョウ」など）、数字・括弧・異体字などを含む表記と、読みが表記に対応しない行の除外、SudachiDict にある語の除外を行い、地名の語彙（読みと表記の組）にして変換辞書に加えている。あわせて、同じ町字マスターの都道府県・郡・市区町村・区の名と大字・町名をつないだ住所の表記と読み（「東京都千代田区千代田」など）も、変換辞書に加えている（ADR 0030）
 - **使用方法**: `scripts/fetch-data.sh --only abr` で `data/raw/abr/` に置き、dict-builder の `town` が語彙にして辞書（`system.dict`）に加える。町字マスター本体は同梱しない。辞書は `~/Library/Application Support/ikari-ime/dict/` に置かれる（バンドルには含めない）
 
 ### アドレス・ベース・レジストリ 町字・郵便番号変換表（デジタル庁。元は日本郵便の郵便番号データ）
 
-- **ライセンス**: 公共データ利用規約（第1.0版。PDL1.0）。出典の記載と、編集・加工したことおよびその主体の記載が要る。変換表自体の licenseInfo は空で、説明文は ABR の利用規約に従うとある。変換表は日本郵便の郵便番号データをもとにしたものである（再配布の可否は確かめていない。ikari-ime は表を配らず、利用者が取得する）
-- **出典**: 「アドレス・ベース・レジストリ 町字・郵便番号変換表」（デジタル庁）（カタログ https://dataset.address-br.digital.go.jp/ の項目 `1098a4f61dab4f52997839d04245132a`。取得は https://www.arcgis.com/sharing/rest/content/items/1098a4f61dab4f52997839d04245132a/data）。郵便番号データの版 2609（更新日 2026-09-24）、取得日 2026-10-23。利用規約: アドレス・ベース・レジストリの利用規約（デジタル庁）
+- **ライセンス**: 公共データ利用規約（第1.0版。PDL1.0）。出典の記載と、編集・加工したことおよびその主体の記載が要る。変換表のメタデータ（licenseInfo）はアドレス・ベース・レジストリの利用規約（https://www.digital.go.jp/policies/base_registry_address_tos 、PDL1.0）を指し、説明文は郵便番号について日本郵便株式会社の「郵便番号データの説明」（https://www.post.japanpost.jp/service/search/zipcode/download/readme.html ）を参照している。日本郵便の同説明ページには「郵便番号データに限っては日本郵便株式会社は著作権を主張しません。自由に配布していただいて結構です。」と記載されている（2026-11-22 確認。現時点では ikari-ime は表を配らず、利用者が取得する）
+- **出典**: 「アドレス・ベース・レジストリ 町字・郵便番号変換表」（デジタル庁）（カタログ https://dataset.address-br.digital.go.jp/ の項目 `1098a4f61dab4f52997839d04245132a`。取得は https://www.arcgis.com/sharing/rest/content/items/1098a4f61dab4f52997839d04245132a/data）。郵便番号データの版 2609（更新日 2026-09-24）、取得日 2026-10-23。利用規約: アドレス・ベース・レジストリの利用規約（デジタル庁。https://www.digital.go.jp/policies/base_registry_address_tos ）
 - **加工**: 「アドレス・ベース・レジストリ 町字・郵便番号変換表」（デジタル庁。元は日本郵便の郵便番号データ）をもとに ikari-ime が加工して作成した。国や日本郵便が作成した未加工のデータではない。変換表の各行を町字マスターと (lg_code, machiaza_id) で結び、大字・町名に畳み（丁目と小字の違いは消える）、上の町字マスターと同じ方法で読みを付け、都道府県つき・郡つき、都道府県や郡を省いた形ごとに住所の表記と読み、郵便番号を並べた表（`postal.tsv`）にしている。廃止された町字の行は使わない。町名に畳めない行（表記に数字を含む町など）は表に入れない（ADR 0032）
 - **使用方法**: `scripts/fetch-data.sh --only postal` で `data/raw/abr/` に置き、dict-builder の `town` が `postal.tsv` を作る。`postal.tsv` は `~/Library/Application Support/ikari-ime/dict/` に置かれる（バンドルには含めない）。変換表本体は同梱しない
 
