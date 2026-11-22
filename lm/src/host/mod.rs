@@ -55,3 +55,13 @@ pub fn delete_cage_profile() -> std::io::Result<()> {
 pub fn host_exe_name() -> String {
     format!("{HOST_EXE_STEM}{}", std::env::consts::EXE_SUFFIX)
 }
+
+/// `SetDefaultDllDirectories` に渡す DLL 探索の範囲（ADR 0067 §4.4: system32 と自分の exe のフォルダだけ）。
+/// `LOAD_LIBRARY_SEARCH_APPLICATION_DIR` (0x200) | `LOAD_LIBRARY_SEARCH_SYSTEM32` (0x800)。
+pub const DLL_SEARCH_FLAGS: u32 = os::DLL_SEARCH_FLAGS;
+
+/// 以後の DLL の読み込みを system32 と自分のフォルダに限る（ADR 0067 §4.4）。
+/// 子の起動の最初（引数の解釈や他の DLL の読み込みの前）に呼ぶ。Windows 以外では何もしない。
+pub fn restrict_dll_search() {
+    os::restrict_dll_search();
+}

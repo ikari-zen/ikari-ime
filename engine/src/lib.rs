@@ -481,7 +481,7 @@ impl Inner {
         if done.kind != diag::KIND_DIAG {
             self.diag.count_request();
         }
-        if done.kind != diag::KIND_DIAG || done.error.is_some() {
+        if !done.silent && (done.kind != diag::KIND_DIAG || done.error.is_some()) {
             self.log.record_note(
                 done.kind,
                 micros,

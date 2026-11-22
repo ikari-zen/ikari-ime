@@ -122,10 +122,16 @@ pub struct SessionInfo {
 }
 
 impl SessionInfo {
+    /// secure のときは、secure であるという印だけを送り、アプリの識別子は空にする（ADR 0073 §2）
     fn to_proto(&self) -> v1::BeginSession {
+        let client_bundle_id = if self.secure {
+            String::new()
+        } else {
+            self.client_bundle_id.clone()
+        };
         v1::BeginSession {
             session_id: self.session_id,
-            client_bundle_id: self.client_bundle_id.clone(),
+            client_bundle_id,
             secure: self.secure,
         }
     }
@@ -309,8 +315,21 @@ impl InputStateMachine {
 
     /// 打鍵のたびに secure を渡す。変わったときだけエンジンへ知らせる（NFR-18）。
     pub fn set_secure(&mut self, secure: bool) {
+        if self.apply_secure(secure) {
+            self.begin_session();
+        }
+    }
+
+    /// 入力モードが有効になったとき（`activate` と `set_secure` を 1 回の `BeginSession` で行う）。
+    pub fn activate_with_secure(&mut self, secure: bool) {
+        self.apply_secure(secure);
+        self.activate();
+    }
+
+    /// secure を反映して、状態を捨てる。変わったら true（エンジンへ知らせる必要がある）
+    fn apply_secure(&mut self, secure: bool) -> bool {
         if secure == self.session.secure {
-            return;
+            return false;
         }
         self.session.secure = secure;
         if secure {
@@ -319,7 +338,7 @@ impl InputStateMachine {
             self.cached_context = None;
             self.episode = None;
         }
-        self.begin_session();
+        true
     }
 
     /// 英語のモードの文脈のたまりを、確定履歴へ送る（`reading` は空）。空と secure のときは送らない。

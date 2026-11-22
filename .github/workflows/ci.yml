@@ -173,8 +173,10 @@ jobs:
       VULKAN_SDK_VERSION: "1.4.363.1"
       VULKAN_SDK_SHA256: "c02932bd9a968b22d404536108adaacac908c081cd6b0113f5bfefc523dd0a6a"
       # vulkan-shaders-gen（内側の CMake）のビルドのフォルダは深い。rc.exe が manifest.rc で RC2136 を出して落ちた
-      # （スパイクの 2・3 回目の run）。パスの長さが原因という推測で、target を短くしたら通った
-      CARGO_TARGET_DIR: C:\t
+      # （スパイクの 2・3 回目の run）。パスの長さが原因という推測で、target を短くしたら通った。
+      # Swatinem/rust-cache は workspaces の target を workspace（D:\a\ikari-ime\ikari-ime）からの
+      # 相対パスとして結合するため、同じ 4 文字の D:\t にして下の workspaces と一致させる（#295）
+      CARGO_TARGET_DIR: D:\t
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Vulkan SDK のキャッシュ
@@ -210,7 +212,7 @@ jobs:
           "$sdk\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
-          workspaces: ". -> C:\\t"
+          workspaces: ". -> ../../../t"
       # Ninja のとき、vulkan-shaders-gen（内側の CMake）はコンパイラの環境（INCLUDE、LIB）を cmake crate から受け取らず、
       # コンパイラの検査で落ちた（スパイクの 2 回目の run。rc.exe の RC2136）。vcvars64 の環境を job に書き出す
       - name: MSVC の環境を設定する（vcvars64）
@@ -375,7 +377,7 @@ jobs:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          # target は CARGO_TARGET_DIR（C:\t）。配置は windows/dev/build.ps1 -LmVulkan と同じ
+          # target は CARGO_TARGET_DIR（D:\t）。配置は windows/dev/build.ps1 -LmVulkan と同じ
           rel="$(cygpath -u "$CARGO_TARGET_DIR")/release"
           out=dist/target/release
           mkdir -p "$out/backends" dist/windows dist/shell-core/resources dist/eval

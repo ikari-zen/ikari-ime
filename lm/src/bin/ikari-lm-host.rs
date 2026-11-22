@@ -11,7 +11,9 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use ikari_lm::host::{ARG_GPU, ARG_GPU_CPU, ARG_GPU_OFF, ARG_GPU_ON, ARG_MODEL, ReadyInfo, serve};
+use ikari_lm::host::{
+    ARG_GPU, ARG_GPU_CPU, ARG_GPU_OFF, ARG_GPU_ON, ARG_MODEL, ReadyInfo, restrict_dll_search, serve,
+};
 use ikari_lm::{LlamaScorer, LmScorer};
 
 const EXIT_USAGE: u8 = 2;
@@ -56,6 +58,9 @@ fn parse_args() -> Option<Args> {
 }
 
 fn main() -> ExitCode {
+    // 起動の最初に DLL の探索を固定する（引数の解釈や他の DLL を読む前。ADR 0067 §4.4）
+    restrict_dll_search();
+
     let Some(args) = parse_args() else {
         eprintln!(
             "usage: ikari-lm-host {ARG_MODEL} <model.gguf> {ARG_GPU} {ARG_GPU_ON}|{ARG_GPU_OFF}|{ARG_GPU_CPU}"

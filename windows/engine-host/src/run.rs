@@ -55,6 +55,28 @@ pub const START_FAILURE_LOG: &str = "start-failure.log";
 const LOGS_DIR_NAME: &str = "logs";
 /// 非 Windows で出す文
 pub const UNSUPPORTED_MESSAGE: &str = "ikari-engine: Windows 専用です";
+/// `SetDefaultDllDirectories` に渡す DLL 探索の範囲（ADR 0067 §4.4: system32 と自分の exe のフォルダだけ）。
+/// `LOAD_LIBRARY_SEARCH_APPLICATION_DIR` (0x200) | `LOAD_LIBRARY_SEARCH_SYSTEM32` (0x800)。
+pub const DLL_SEARCH_FLAGS: u32 = 0x0000_0200 | 0x0000_0800;
+
+/// 以後の DLL の読み込みを system32 と自分のフォルダに限る（ADR 0067 §4.4）。
+/// 起動の最初（ほかの処理や DLL の読み込みの前）に呼ぶ。Windows 以外では何もしない。
+#[allow(unsafe_code)]
+pub fn restrict_dll_search() {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::System::LibraryLoader::{
+            LOAD_LIBRARY_SEARCH_APPLICATION_DIR, LOAD_LIBRARY_SEARCH_SYSTEM32,
+            SetDefaultDllDirectories,
+        };
+        const _: () = assert!(
+            DLL_SEARCH_FLAGS
+                == (LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32)
+        );
+        // SAFETY: 引数は定数のフラグの組み合わせ。失敗しても既定の探索のまま続ける
+        unsafe { SetDefaultDllDirectories(DLL_SEARCH_FLAGS) };
+    }
+}
 /// LM のモデルが置かれていれば、使うかは設定の `engine.lm` が決める。Windows の既定は LM なし（ADR 0040 §2.6）
 const ENABLE_LM_DEFAULT: bool = false;
 /// 使われないモデルを手放すまでの秒数（macOS の `IkariEngineService` と同じ）
@@ -441,5 +463,14 @@ mod tests {
             StartError::Failed("x".into()).exit_code(),
             EXIT_START_FAILED
         );
+    }
+
+    #[test]
+    fn dll_search_flags_allow_only_application_dir_and_system32() {
+        // LOAD_LIBRARY_SEARCH_APPLICATION_DIR (0x200) | LOAD_LIBRARY_SEARCH_SYSTEM32 (0x800)
+        assert_eq!(DLL_SEARCH_FLAGS, 0x0000_0200 | 0x0000_0800);
+        // LOAD_LIBRARY_SEARCH_USER_DIRS (0x400) や DEFAULT_DIRS (0x1000) を含まない
+        assert_eq!(DLL_SEARCH_FLAGS & !0x0000_0a00, 0);
+        restrict_dll_search();
     }
 }

@@ -42,6 +42,15 @@
       ]
     },
     {
+      "name": "mode toggle in secure passes through",
+      "from": "IkariInputController.swift handle (secure)",
+      "rust_only": "殻の判断（IkariInputController・AppContext。Swift は IkariIME にありテストから呼べない）",
+      "setup": {"settings": ["keymap.mode.toggle\tctrl+;"], "client": {"secure": true}},
+      "steps": [
+        {"press": "ctrl+;", "expect": [{"type": "pass_through"}], "engine": [{"type": "begin_session", "client_bundle_id": "", "secure": true}], "mode_request": "none"}
+      ]
+    },
+    {
       "name": "english mode passes keys through and pools them",
       "from": "IkariInputController.swift handleEnglish",
       "rust_only": "殻の判断（IkariInputController・AppContext。Swift は IkariIME にありテストから呼べない）",
@@ -60,7 +69,7 @@
       "setup": {"client": {"secure": true}},
       "steps": [
         {"host": {"type": "input_mode_changed", "mode_id": "com.apple.inputmethod.Roman"}, "expect": [{"type": "hide_candidates"}], "engine": []},
-        {"press": "a", "expect": [{"type": "pass_through"}], "engine": [{"type": "begin_session", "client_bundle_id": "com.apple.TextEdit", "secure": true}]}
+        {"press": "a", "expect": [{"type": "pass_through"}], "engine": [{"type": "begin_session", "client_bundle_id": "", "secure": true}]}
       ]
     },
     {
