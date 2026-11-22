@@ -154,8 +154,9 @@ int32_t ikari_settings_app(IkariStr request, IkariShellBuf *out);
 // 画面は、ボタンから start、タイマーで poll、取り消しで cancel、終わったら free を呼ぶだけ。文は Rust が作る。
 // 文字列の引数は、NULL（長さ 0）か読める UTF-8（呼び出しの間だけ借りる）。使えなければ IKARI_SHELL_ERR_ARG。
 // msg と text は NULL なら書かない。書いたものは ikari_shell_buf_free で 1 回だけ解放する。
-// 注意: 今は契約の stub。start は起こせない失敗（IKARI_SHELL_ERR_FAILED と「取得の部品を起動できませんでした」）を返し、
-//   ハンドルは作らない。中身は ADR 0079 §7 のレーン S。
+// 版（ADR 0080 §7.1）: 口は両方の版で同じ。オフライン版（Rust の feature online なし）は何も起こさず、start は
+//   IKARI_SHELL_ERR_FAILED と文を返してハンドルを作らない。poll・sha256・cancel は NULL なら IKARI_SHELL_ERR_NULL、
+//   ほかは IKARI_SHELL_ERR_FAILED。画面は ikari_settings_edition_capabilities で取得の入口を出すかを決める。
 
 // 走っている取得の不透明なハンドル。ikari_settings_fetch_free で必ず解放する。
 typedef struct IkariSettingsFetch IkariSettingsFetch;
@@ -196,6 +197,25 @@ int32_t ikari_settings_fetch_cancel(const IkariSettingsFetch *fetch);
 
 // 解放する（走っていれば取り消す）。NULL は何もしない。同じ値を 2 回渡さない。
 void ikari_settings_fetch_free(IkariSettingsFetch *fetch);
+
+// ---------------------------------------------------------------- 版と、画面に出してよい機能（ADR 0080 §7.2）
+// 判断は Rust（shell-core の edition）。画面は値でボタンを出す・出さないを決めるだけ。形と値は Windows と同じ。
+
+typedef enum {
+    IKARI_EDITION_NORMAL = 0,   // 通常版
+    IKARI_EDITION_OFFLINE = 1,  // オフライン版（通信する機能を持たない）
+} IkariEdition;
+
+// 真偽は 0 か 1。
+typedef struct {
+    int32_t edition;          // IkariEdition
+    uint8_t url_model_fetch;  // 「URL から取る」
+    uint8_t version_check;    // 「新しい版を確認」
+    uint8_t file_import;      // 「ファイルから取り込む」（両方の版で 1）
+} IkariEditionCapabilities;
+
+// *out に書く。out が NULL なら IKARI_SHELL_ERR_NULL。どのスレッドからでも呼べる。
+int32_t ikari_settings_edition_capabilities(IkariEditionCapabilities *out);
 
 // ---------------------------------------------------------------- 候補ウィンドウの配置（L-E で追加）
 // 状態を持たない純関数。どのスレッドからでも呼べる。入出力は protobuf。IKARI_SHELL_OK 以外では *out は空。

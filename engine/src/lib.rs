@@ -60,8 +60,9 @@ use ikari_proto::v1::{Envelope, ErrorCode, ErrorReply, LmState, envelope};
 use ikari_runmark::RunMark;
 use ikari_stack::lm_cage::CageSlot;
 use ikari_stack::{
-    LmIsolation, LmOverrides, LmStats, ProfileSel, RankerSet, Reuse, Stack, StackError,
-    StackOptions, StackPaths, build_stack, build_stack_with, lm_host_exe_name,
+    DictSetReject, LmIsolation, LmOverrides, LmStats, ProfileSel, RankerSet, Reuse, Stack,
+    StackError, StackOptions, StackPaths, build_stack, build_stack_with, check_dictionary_set,
+    lm_host_exe_name,
 };
 use prost::Message;
 
@@ -73,6 +74,7 @@ use crate::connection::{ConnectionIds, SessionKey};
 use crate::context_limits::ContextLimits;
 use crate::convert::candidate_kind;
 use crate::data::{DataWatch, SaveState, load_emoji_reply};
+use crate::data_location::{DataLocations, DataStatus, LocationKind};
 use crate::log::{EngineLog, LOG_DIR_NAME, RUN_MARK_FILE_NAME};
 use crate::segments::{LookJob, LookaheadQueue, RealSeam, SegEntry, SegmentSeam, layout_reply};
 use crate::session::Session;
@@ -112,6 +114,12 @@ const JANITOR_TICK: Duration = Duration::from_secs(1);
 const DATA_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 /// `idle_unload_secs == 0`（解放しない）を LM の設定に渡すときの値（10 年）
 const NEVER_UNLOAD_SECS: u64 = 315_360_000;
+/// どの場所の辞書とモデルを使っているかの行（`data_location dict=<語> model=<語>`。ADR 0080 §3.2）
+const KIND_DATA_LOCATION: &str = "data_location";
+/// 辞書の組を検査に落とした行（`dict_reject location=<語> reason=<語>`。次の場所を使った）
+const KIND_DICT_REJECT: &str = "dict_reject";
+/// `data_location` の行で、LM を読まないときの語
+const NO_MODEL_WORD: &str = "none";
 
 /// エンジン本体。複数スレッドから `handle` を同時に呼んでよい（`Send + Sync`）。
 pub struct Engine {
@@ -243,6 +251,18 @@ impl Engine {
 
     /// [`Engine::open`] と同じ。LM の推論の場所を選ぶ（テストと計測のため）。
     pub fn open_with(cfg: &EngineConfig, lm_host: &LmHostChoice) -> Result<Engine, EngineError> {
+        Engine::open_in(cfg, lm_host, data_location::bundled_data_dir().as_deref())
+    }
+
+    /// [`Engine::open_with`] の本体。`bundled` は同梱の場所（製品は実行ファイルのパスから決める。テストは渡す）。
+    ///
+    /// 辞書とモデルは、利用者のデータの場所 → 同梱の場所の順に、検査に通った最初のものを使う（ADR 0080 §3.2）。
+    /// 辞書の組は最後の候補だけ検査せずに開き、開けなければ今までどおり起動に失敗する（どちらも無い・落ちるとき）
+    pub(crate) fn open_in(
+        cfg: &EngineConfig,
+        lm_host: &LmHostChoice,
+        bundled: Option<&Path>,
+    ) -> Result<Engine, EngineError> {
         if cfg.data_dir.is_empty() {
             return Err(EngineError::Config("data_dir is empty".into()));
         }
@@ -251,6 +271,7 @@ impl Engine {
             return Err(EngineError::Config("data_dir is not a directory".into()));
         }
         secure_data_dir(&data_dir);
+        let locations = DataLocations::new(&data_dir, bundled);
         let settings = settings::load(&data_dir);
         let lm_requested = settings.lm.unwrap_or(cfg.enable_lm);
         let idle_unload_secs = settings.idle_unload_secs.unwrap_or(cfg.idle_unload_secs);
@@ -264,7 +285,7 @@ impl Engine {
         // 自由指定は、段 2 のある構成でだけ読む（同じプロセスで動かすときは読まない）
         let resolved = model_select::resolve_model(
             lm_requested,
-            &data_dir,
+            &locations,
             &settings,
             model_select::user_models_offered(lm_host.is_some()),
         );
@@ -289,8 +310,9 @@ impl Engine {
         // このビルドの feature ではなく OS で見る（子が Vulkan のビルドかは、エンジンからは分からない。
         // GPU に載らなければ、遅くする値は使われない）
         let slow_gpu_unload = cfg!(feature = "lm-vulkan") || (cfg!(windows) && lm_host.is_some());
+        let dict = choose_dictionary_set(&locations);
         let paths = StackPaths {
-            dict_dir: UserDir::new(&data_dir).dict_dir(),
+            dict_dir: dict.dir.clone(),
             user_dir: Some(data_dir.clone()),
             vectors: None,
             lm_model,
@@ -323,8 +345,20 @@ impl Engine {
         opts.date = DateOptions {
             weekday_dates: settings.date_weekday_dates_or_default(),
         };
+        // 郵便番号の表も、上から順に置かれている最初の場所（§3.2）。組み立て直すたびに選び直す
+        // （利用者が後から置いた・消した表に合わせる）
+        opts.postal_tsv = Some(locations.table_path(ikari_core::POSTAL_TSV_FILE_NAME));
         let stack = build_stack(&paths, &opts).map_err(|e| EngineError::Open(e.to_string()))?;
-        let rebuild: StackBuilder = Box::new(move |reuse| build_stack_with(&paths, &opts, reuse));
+        let rebuild_locations = locations.clone();
+        let rebuild: StackBuilder = Box::new(move |reuse| {
+            let mut opts = opts.clone();
+            opts.postal_tsv = Some(rebuild_locations.table_path(ikari_core::POSTAL_TSV_FILE_NAME));
+            build_stack_with(&paths, &opts, reuse)
+        });
+        let status = DataStatus {
+            dict: dict.kind,
+            model: resolved.location,
+        };
         let engine = Engine::from_parts_with(
             EngineParts {
                 stack,
@@ -338,7 +372,12 @@ impl Engine {
             None,
             lm_cage_slot,
             loading_mark,
+            Some(OpenedData { locations, status }),
         );
+        for (kind, reason) in &dict.rejects {
+            engine.inner.record_dict_reject(*kind, *reason);
+        }
+        engine.inner.note_data_location(status);
         for outcome in &imported {
             engine.inner.record_model_import(outcome);
         }
@@ -358,16 +397,18 @@ impl Engine {
         parts: EngineParts,
         seam_override: Option<Arc<dyn SegmentSeam>>,
     ) -> Engine {
-        Engine::from_parts_with(parts, seam_override, Arc::default(), Arc::default())
+        Engine::from_parts_with(parts, seam_override, Arc::default(), Arc::default(), None)
     }
 
     /// `from_parts_seam` と同じ。檻役の口を入れる場所（`lm_cage`）を、組み立てに渡したものと同じにする。
-    /// `loading_mark` は、組み立ての前に書いた読み込みの印（D-4 の条件 5）
+    /// `loading_mark` は、組み立ての前に書いた読み込みの印（D-4 の条件 5）。`opened` は `open` が選んだ場所
+    /// （無ければ利用者のデータの場所だけ。`from_parts`）
     fn from_parts_with(
         parts: EngineParts,
         seam_override: Option<Arc<dyn SegmentSeam>>,
         lm_cage: Arc<CageSlot>,
         loading_mark: Arc<model_select::LoadingMark>,
+        opened: Option<OpenedData>,
     ) -> Engine {
         let EngineParts {
             stack,
@@ -392,12 +433,12 @@ impl Engine {
             None => (None, None),
         };
         let watch = data_dir.as_deref().map(DataWatch::new).map(Mutex::new);
-        let emoji = load_emoji_reply(
-            data_dir
-                .as_deref()
-                .map(dispatch::emoji_tsv_path_in)
-                .as_deref(),
-        );
+        let (locations, data_status) = opened.map(|o| (o.locations, o.status)).unzip();
+        let emoji_path = match &locations {
+            Some(locations) => Some(locations.table_path(ikari_core::EMOJI_TSV_FILE_NAME)),
+            None => data_dir.as_deref().map(dispatch::emoji_tsv_path_in),
+        };
+        let emoji = load_emoji_reply(emoji_path.as_deref());
         let admin_dir = data_dir.clone();
         let learning_quarantined = AtomicBool::new(stack.meta.learning_quarantined.is_some());
         let inner = Arc::new(Inner {
@@ -432,6 +473,8 @@ impl Engine {
             seam_override,
             lm_cage,
             loading_mark,
+            locations,
+            data_status,
         });
         diag::set_panic_log(&inner.log);
         // 前回の終わり方は、このエンジンの最初の行にする（ワーカーを起こす前に書く）
@@ -465,6 +508,59 @@ impl Engine {
     /// Envelope（protobuf のバイト列）を受けて Envelope を返す。決して panic せず、エラーも Envelope で返す。
     pub fn handle(&self, req: &[u8]) -> Vec<u8> {
         self.inner.handle_frame(ConnectionId::DEFAULT, req)
+    }
+
+    /// どちらの場所の辞書とモデルを使っているか（ADR 0080 §3.2 の状態）。`open` で開いたエンジンだけ Some
+    pub fn data_status(&self) -> Option<DataStatus> {
+        self.inner.data_status
+    }
+}
+
+/// `open` が選んだ場所（`from_parts_with` に渡す）
+struct OpenedData {
+    locations: DataLocations,
+    status: DataStatus,
+}
+
+/// 選んだ辞書の組
+struct DictChoice {
+    kind: LocationKind,
+    dir: PathBuf,
+    /// 検査に落とした場所と理由（置かれていないだけの場所は含めない）
+    rejects: Vec<(LocationKind, DictSetReject)>,
+}
+
+/// 辞書の組を、上から順に、検査に通った最初の場所から選ぶ（ADR 0080 §3.2）。最後の候補は検査しない
+/// （組み立てが開いて確かめる。開けなければ今までどおり起動に失敗する。候補が 1 つの開発のビルドは今と同じ）
+fn choose_dictionary_set(locations: &DataLocations) -> DictChoice {
+    let mut rejects = Vec::new();
+    let mut candidates = locations.iter().peekable();
+    while let Some(loc) = candidates.next() {
+        let dir = loc.dict_dir();
+        let is_last = candidates.peek().is_none();
+        let passed = is_last || {
+            match check_dictionary_set(&dir) {
+                Ok(()) => true,
+                Err(DictSetReject::Missing) => false,
+                Err(reason) => {
+                    rejects.push((loc.kind, reason));
+                    false
+                }
+            }
+        };
+        if passed {
+            return DictChoice {
+                kind: loc.kind,
+                dir,
+                rejects,
+            };
+        }
+    }
+    // 利用者のデータの場所はいつも候補にある（ここには来ない）
+    DictChoice {
+        kind: LocationKind::User,
+        dir: locations.user().dict_dir(),
+        rejects,
     }
 }
 
@@ -624,6 +720,10 @@ struct Inner {
     lm_cage: Arc<CageSlot>,
     /// 自由指定のモデルの読み込みの印（`model_select`。最初に読み込めたら消す）
     loading_mark: Arc<model_select::LoadingMark>,
+    /// 辞書と表を読む場所の候補（`open` のときだけ。ADR 0080 §3.2）。None なら利用者のデータの場所だけ
+    locations: Option<DataLocations>,
+    /// どちらの場所の辞書とモデルを使っているか（`open` のときだけ）
+    data_status: Option<DataStatus>,
 }
 
 /// 起動時にデータ用フォルダ（本体、backups、logs）を 0700、中のファイルを 0600 にする。
@@ -669,6 +769,35 @@ fn head_chars(s: &str, n: usize) -> &str {
 }
 
 impl Inner {
+    /// 絵文字の表を読み直す場所。`watched` は見張っている利用者のデータの場所の `emoji.tsv`（§3.2: 置かれていれば
+    /// それ、無ければ同梱の場所の物）
+    pub(crate) fn emoji_table_path(&self, watched: &Path) -> PathBuf {
+        self.locations.as_ref().map_or_else(
+            || watched.to_path_buf(),
+            |l| l.table_path(ikari_core::EMOJI_TSV_FILE_NAME),
+        )
+    }
+
+    /// `dict_reject location=<語> reason=<語>`（パスは書かない）
+    fn record_dict_reject(&self, kind: LocationKind, reason: DictSetReject) {
+        let note = format!("location={} reason={}", kind.as_word(), reason.as_word());
+        self.log
+            .record_note(KIND_DICT_REJECT, 0, self.lm_state_name(), None, Some(&note));
+    }
+
+    /// `data_location dict=<語> model=<語>`
+    fn note_data_location(&self, status: DataStatus) {
+        let model = status.model.map_or(NO_MODEL_WORD, LocationKind::as_word);
+        let note = format!("dict={} model={model}", status.dict.as_word());
+        self.log.record_note(
+            KIND_DATA_LOCATION,
+            0,
+            self.lm_state_name(),
+            None,
+            Some(&note),
+        );
+    }
+
     fn limits(&self) -> ContextLimits {
         *self.limits.read().unwrap_or_else(|e| e.into_inner())
     }

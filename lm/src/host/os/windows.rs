@@ -179,7 +179,9 @@ pub(super) fn spawn(
     let (container, token, state) = match cage {
         Cage::AppContainer { readable } => {
             let sid = appcontainer::ensure_profile()?;
-            appcontainer::grant_read(readable, &sid)?;
+            if let Some(readable) = readable {
+                appcontainer::grant_read(readable, &sid)?;
+            }
             (Some(sid), None, CageState::AppContainer)
         }
         Cage::Standard if low_integrity_enabled() => {

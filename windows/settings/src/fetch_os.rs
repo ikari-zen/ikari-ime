@@ -31,6 +31,15 @@ pub fn data_exe_path(own: &Path) -> Option<PathBuf> {
     Some(dir.parent()?.join(DATA_EXE))
 }
 
+/// インストール先に `ikari-data.exe` があるか（画面に取得の入口を出すか。ADR 0080 §7.2）。
+/// 調べられないときは無いとする（出さない側に倒す）
+pub fn data_tool_present() -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|own| data_exe_path(&own))
+        .is_some_and(|exe| exe.is_file())
+}
+
 /// 製品の起こし方
 pub struct ProductLauncher;
 

@@ -22,6 +22,10 @@ use std::sync::Arc;
 pub struct ModelHandle {
     file: Arc<File>,
     path: PathBuf,
+    /// 段 2 の子に、起動の前に読み取りを許す必要があるか（Windows。既定は要る）。
+    /// 同梱の場所（`Program Files\ikari-ime\data\`。ADR 0080 §3.1）のモデルは、継承の読み取り
+    /// （ALL APPLICATION PACKAGES）で段 2 の子が読め、許可を足す権限（WRITE_DAC）も無いので、許可を足さない（#578 の C4）
+    cage_grant: bool,
 }
 
 impl fmt::Debug for ModelHandle {
@@ -58,7 +62,20 @@ impl ModelHandle {
         Ok(ModelHandle {
             file: Arc::new(file),
             path: path.to_owned(),
+            cage_grant: true,
         })
+    }
+
+    /// 段 2 の子が許可を足さずに読める場所のモデルだと印を付ける（同梱の場所。ADR 0080 §3.1）。
+    /// 付けると、段 2 の起動の前の許可の追加と、段 1 に落とすときの許可の取り消しをしない
+    pub fn readable_without_cage_grant(mut self) -> ModelHandle {
+        self.cage_grant = false;
+        self
+    }
+
+    /// 段 2 の子に、起動の前に読み取りを許す必要があるか
+    pub fn needs_cage_grant(&self) -> bool {
+        self.cage_grant
     }
 
     /// 開いたときのパス
@@ -104,6 +121,14 @@ mod tests {
             handle.for_child().unwrap().read_to_end(&mut out).unwrap();
             assert_eq!(out, BODY);
         }
+    }
+
+    #[test]
+    fn a_bundled_model_needs_no_cage_grant() {
+        let (_dir, path) = model();
+        let handle = ModelHandle::open(&path).unwrap();
+        assert!(handle.needs_cage_grant());
+        assert!(!handle.readable_without_cage_grant().needs_cage_grant());
     }
 
     #[test]

@@ -100,6 +100,23 @@ void ikari_settings_fetch_free(IkariSettingsFetch *fetch);
 int32_t ikari_settings_fetch_sha256(const IkariSettingsFetch *fetch, IkariSettingsBuf *out);
 /* 版の確認を始める（ikari-data version-check。ADR 0076 §6）。様子は fetch_poll、解放は fetch_free。（契約。D-2d） */
 int32_t ikari_settings_version_check_start(IkariSettingsFetch **out, IkariSettingsBuf *msg);
+/* 版（ADR 0080 §7.1）: 上の口は両方の版で同じ。オフライン版（Rust の feature online なし）は何も起こさず、start は
+ * ERR_FAILED と文を返してハンドルを作らない。poll・sha256・cancel は NULL なら ERR_NULL、ほかは ERR_FAILED。 */
+
+/* ---- 版と、画面に出してよい機能（src/edition_abi.rs。ADR 0080 §7.2。形と値は macOS の ikari_shell.h と同じ）----
+ * 判断は核。画面は値でボタンを出す・出さないを決めるだけ。真偽は 0 か 1。 */
+#define IKARI_EDITION_NORMAL 0  /* 通常版 */
+#define IKARI_EDITION_OFFLINE 1 /* オフライン版（通信する機能を持たない） */
+
+typedef struct IkariEditionCapabilities {
+    int32_t edition;         /* IKARI_EDITION_* */
+    uint8_t url_model_fetch; /* 「URL から取る」 */
+    uint8_t version_check;   /* 「新しい版を確認」 */
+    uint8_t file_import;     /* 「ファイルから取り込む」（両方の版で 1） */
+} IkariEditionCapabilities;
+
+/* *out に書く。out が NULL なら ERR_NULL。 */
+int32_t ikari_settings_edition_capabilities(IkariEditionCapabilities *out);
 
 #ifdef __cplusplus
 }

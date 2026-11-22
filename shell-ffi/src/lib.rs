@@ -3,7 +3,10 @@
 //! - このファイル: 共通の型（`IkariStr`、`IkariShellBuf`）と解放（`ikari_shell_buf_free`）
 //! - `shell`: 殻の 1 本の口（`ikari_shell_*`。ADR 0041 §4.4）
 //! - `settings`: 設定アプリ用（`ikari_settings_validate`・`rewrite`。ADR 0041 §2.3）
-//! - `settings_fetch`: 取得（`ikari-data`）の起動（`ikari_settings_fetch_*`。ADR 0079 §3.6。今は契約のスタブ）
+//! - `settings_fetch`: 取得（`ikari-data`）の起動（`ikari_settings_fetch_*`。ADR 0079 §3.6）。中身は通常版
+//!   （feature `online`）だけ。オフライン版は口だけで何も起こさない（ADR 0080 §7.1）
+//! - `fetch_launcher`: `ikari-data` の起こし方（通常版だけ）
+//! - `edition`: 版と、画面に出してよい機能（`ikari_settings_edition_capabilities`。ADR 0080 §7.2）
 //! - `settings_app`: 設定アプリの Model 用（`ikari_settings_app`。入出力は `ikari.settings.v1`）
 //! - `panel`: 候補ウィンドウの配置（`ikari_panel_*`）
 //! - `convert`: `shell-core` の型と proto（`ikari.shell.v1`）の写し
@@ -12,6 +15,8 @@
 //! ヘッダと一致させること（シグネチャの変更は契約の変更）。
 
 pub mod convert;
+mod edition;
+#[cfg(feature = "online")]
 mod fetch_launcher;
 mod panel;
 mod settings;
@@ -19,6 +24,7 @@ mod settings_app;
 mod settings_fetch;
 mod shell;
 
+pub use edition::*;
 pub use settings::{ikari_settings_rewrite, ikari_settings_validate};
 pub use settings_app::ikari_settings_app;
 pub use settings_fetch::*;
@@ -147,6 +153,14 @@ mod tests {
             "ikari_settings_app",
             "ikari_panel_resolve_anchor",
             "ikari_panel_layout",
+            "ikari_settings_fetch_start",
+            "ikari_settings_version_check_start",
+            "ikari_settings_fetch_poll",
+            "ikari_settings_fetch_sha256",
+            "ikari_settings_fetch_cancel",
+            "ikari_settings_fetch_free",
+            "ikari_settings_edition_capabilities",
+            "IkariEditionCapabilities",
         ] {
             assert!(
                 header.contains(name),
@@ -189,6 +203,8 @@ mod tests {
                 "IKARI_SHELL_DOWN_INVALIDATED",
                 i32::from(IKARI_SHELL_DOWN_INVALIDATED),
             ),
+            ("IKARI_EDITION_NORMAL", IKARI_EDITION_NORMAL),
+            ("IKARI_EDITION_OFFLINE", IKARI_EDITION_OFFLINE),
         ] {
             let line = format!("{name} = {value},");
             assert!(

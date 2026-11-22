@@ -1,7 +1,8 @@
 //! 配る物の供給の検査（ADR 0069 §4.1、ADR 0066 §6.2 の層 1、ADR 0076 §9）。どちらもファイルと `cargo tree` を読むだけで、
 //! 道具もネットワークも要らない。
 //!   - 配る対象（Windows、macOS）の依存に、通信の手段（HTTP・TLS・ソケットの crate）が無いこと。
-//!     例外は取得する部品 `ikari-data`（ADR 0076）の下だけ（`ONLY_UNDER_DATA`）。
+//!     通常版の例外は取得する部品 `ikari-data`（ADR 0076）の下だけ（`ONLY_UNDER_DATA`）。オフライン版（ADR 0080 §7.4）は
+//!     例外なし（`ikari-data` も入らない）。
 //!   - `.github/workflows` の Action が、すべてコミットの SHA で固定されていること
 
 use std::collections::BTreeSet;
@@ -88,8 +89,56 @@ fn member_dependents(inverted: &str) -> BTreeSet<String> {
         .collect()
 }
 
+/// 通常版の feature（ADR 0080 §7.1）。`online` を持つ crate をすべて並べる（`cargo test --workspace` などに渡す形）。
+/// 通常版を作る手段（`macos/scripts/build.sh`、`release.yml`、`ci.yml`、`xtask check`）はこれと同じ物を付ける
+pub const ONLINE_FEATURES: &str =
+    "ikari-shell-core/online,ikari-shell-ffi/online,ikari-settings-core/online";
+
+/// 調べる版（ADR 0080 §7.4 の「依存」の検査）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Edition {
+    /// 通常版（`ONLINE_FEATURES` を付ける）。通信の手段は `ikari-data` の下だけ
+    Normal,
+    /// オフライン版（feature なし、`ikari-data` を除く）。通信の手段も `ikari-data` も 1 つも無い
+    Offline,
+}
+
+impl Edition {
+    fn label(self) -> &'static str {
+        match self {
+            Edition::Normal => "通常版",
+            Edition::Offline => "オフライン版",
+        }
+    }
+
+    /// 版ごとの `cargo tree` の引数（どの crate を、どの feature で見るか）
+    fn tree_args(self) -> &'static [&'static str] {
+        match self {
+            Edition::Normal => &["--features", ONLINE_FEATURES],
+            Edition::Offline => &["--exclude", DATA_CRATE],
+        }
+    }
+}
+
+/// 版で、木に出た通信の手段の crate のうち、どこにも置けないものの文
+fn misplaced(edition: Edition, target: &str, names: &BTreeSet<&str>) -> Vec<String> {
+    let mut problems: Vec<String> = NET_CRATES
+        .iter()
+        .filter(|n| names.contains(*n))
+        .filter(|n| edition == Edition::Offline || !ONLY_UNDER_DATA.contains(n))
+        .map(|n| format!("{target}（{}）: {n}（どこにも置けない）", edition.label()))
+        .collect();
+    if edition == Edition::Offline && names.contains(DATA_CRATE) {
+        problems.push(format!(
+            "{target}（{}）: {DATA_CRATE} に依存している（オフライン版には入れない）",
+            edition.label()
+        ));
+    }
+    problems
+}
+
 /// 1 つの対象の依存の木を調べて、問題の文を返す
-fn check_target(root: &Path, target: &str) -> Result<Vec<String>, Failure> {
+fn check_target(root: &Path, target: &str, edition: Edition) -> Result<Vec<String>, Failure> {
     let tree = |extra: &[&str]| {
         let mut cmd = cargo(root);
         cmd.args([
@@ -101,22 +150,26 @@ fn check_target(root: &Path, target: &str) -> Result<Vec<String>, Failure> {
             "--target",
             target,
         ]);
+        cmd.args(edition.tree_args());
         cmd.args(extra);
-        capture(&mut cmd)
-            .ok_or_else(|| Failure::new(format!("cargo tree（{target}）に失敗しました")))
+        capture(&mut cmd).ok_or_else(|| {
+            Failure::new(format!(
+                "cargo tree（{target}、{}）に失敗しました",
+                edition.label()
+            ))
+        })
     };
     let all = tree(&["--prefix", "none", "--format", "{p}"])?;
+    let names = tree_names(&all);
+    let mut problems = misplaced(edition, target, &names);
+    if edition == Edition::Offline {
+        return Ok(problems);
+    }
     let present: Vec<&str> = NET_CRATES
         .iter()
         .copied()
-        .filter(|n| tree_names(&all).contains(n))
+        .filter(|n| names.contains(n))
         .collect();
-    let mut problems = Vec::new();
-    for name in &present {
-        if !ONLY_UNDER_DATA.contains(name) {
-            problems.push(format!("{target}: {name}（どこにも置けない）"));
-        }
-    }
     let allowed: Vec<&str> = present
         .iter()
         .copied()
@@ -132,7 +185,8 @@ fn check_target(root: &Path, target: &str) -> Result<Vec<String>, Failure> {
         for member in member_dependents(&inverted) {
             if member != DATA_CRATE {
                 problems.push(format!(
-                    "{target}: {member} が通信の手段（{}）に依存している（{DATA_CRATE} の下にだけ置ける）",
+                    "{target}（{}）: {member} が通信の手段（{}）に依存している（{DATA_CRATE} の下にだけ置ける）",
+                    edition.label(),
                     allowed.join(", ")
                 ));
             }
@@ -141,14 +195,18 @@ fn check_target(root: &Path, target: &str) -> Result<Vec<String>, Failure> {
     Ok(problems)
 }
 
-/// 配る対象の依存に、通信の手段の crate が `ikari-data` の下以外に無いこと（ADR 0066 §6.2 の L1、ADR 0076 §9）
-pub fn net_crates(root: &Path) -> Result<(), Failure> {
-    log(
-        "依存の通信の手段の crate が ikari-data の下だけにあること（cargo tree。ADR 0066 §6.2、0076 §9）",
-    );
+/// 配る対象の依存に、通信の手段の crate が置ける場所の外に無いこと（ADR 0066 §6.2 の L1、ADR 0076 §9、ADR 0080 §7.4）。
+/// 通常版は `ikari-data` の下だけ。オフライン版は、通信の手段の crate も `ikari-data` も 1 つも無い
+pub fn net_crates(root: &Path, edition: Edition) -> Result<(), Failure> {
+    log(&match edition {
+        Edition::Normal => "依存の通信の手段の crate が ikari-data の下だけにあること（通常版。cargo tree。ADR 0066 §6.2、0076 §9）".to_owned(),
+        Edition::Offline => format!(
+            "依存に通信の手段の crate と {DATA_CRATE} が無いこと（オフライン版。cargo tree。ADR 0080 §7.4）"
+        ),
+    });
     let mut problems = Vec::new();
     for target in DIST_TARGETS {
-        problems.extend(check_target(root, target)?);
+        problems.extend(check_target(root, target, edition)?);
     }
     if problems.is_empty() {
         return Ok(());
@@ -307,11 +365,52 @@ mod tests {
         }
     }
 
-    /// 本物のワークスペースで通る（`cargo tree` が使える環境）
+    #[test]
+    fn offline_allows_no_network_crate_and_not_the_data_crate() {
+        let names: BTreeSet<&str> = ["ikari-shell-core", "ureq", "ring", DATA_CRATE].into();
+        let normal = misplaced(Edition::Normal, "t", &names);
+        assert_eq!(normal, ["t（通常版）: ring（どこにも置けない）"]);
+        let offline = misplaced(Edition::Offline, "t", &names);
+        assert_eq!(
+            offline,
+            [
+                "t（オフライン版）: ureq（どこにも置けない）",
+                "t（オフライン版）: ring（どこにも置けない）",
+                "t（オフライン版）: ikari-data に依存している（オフライン版には入れない）",
+            ]
+        );
+        let clean: BTreeSet<&str> = ["ikari-shell-core", "prost"].into();
+        assert!(misplaced(Edition::Offline, "t", &clean).is_empty());
+    }
+
+    /// `online` を宣言した crate は、すべて `ONLINE_FEATURES` に並ぶ（付け忘れの crate を作らない）。逆も同じ
+    #[test]
+    fn online_features_list_every_crate_that_declares_online() {
+        let root = crate::data::run::repo_root();
+        let mut cmd = cargo(&root);
+        cmd.args(["metadata", "--no-deps", "--format-version", "1"]);
+        let out = capture(&mut cmd).expect("cargo metadata");
+        let meta: serde_json::Value = serde_json::from_str(&out).expect("json");
+        let mut declared: Vec<String> = meta["packages"]
+            .as_array()
+            .expect("packages")
+            .iter()
+            .filter(|p| p["features"].get("online").is_some())
+            .map(|p| format!("{}/online", p["name"].as_str().expect("name")))
+            .collect();
+        declared.sort();
+        let mut listed: Vec<&str> = ONLINE_FEATURES.split(',').collect();
+        listed.sort();
+        assert_eq!(declared, listed);
+    }
+
+    /// 本物のワークスペースで、両方の版が通る（`cargo tree` が使える環境）
     #[test]
     fn the_real_workspace_passes() {
         let root = crate::data::run::repo_root();
-        net_crates(&root).unwrap_or_else(|e| panic!("{}", e.message));
+        for edition in [Edition::Normal, Edition::Offline] {
+            net_crates(&root, edition).unwrap_or_else(|e| panic!("{}", e.message));
+        }
     }
 
     #[test]
