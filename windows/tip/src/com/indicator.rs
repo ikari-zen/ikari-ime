@@ -55,13 +55,23 @@ const CONNECT_E_CANNOTCONNECT: HRESULT = HRESULT(0x8004_0202_u32 as i32);
 const ITEM_SINK_COOKIE: u32 = 1;
 
 /// 言語バーのボタン。今のモードの文字と説明を持つ。
+/// `interactive` が偽（素通し）のときは、クリックを無視し、アイコン配色も HKCU を読まない固定色を使う。
 #[implement(ITfLangBarItemButton, ITfSource)]
 struct ModeButton {
     mode: Cell<InputMode>,
     sink: RefCell<Option<ITfLangBarItemSink>>,
     compartments: ITfCompartmentMgr,
     client_id: u32,
+    interactive: bool,
     _dll: DllRef,
+}
+
+fn icon_theme(interactive: bool) -> icon::IconTheme {
+    if interactive {
+        icon::IconTheme::Taskbar
+    } else {
+        icon::IconTheme::Fixed
+    }
 }
 
 impl ModeButton {
@@ -133,6 +143,10 @@ impl ITfLangBarItemButton_Impl for ModeButton_Impl {
         _area: *const RECT,
     ) -> windows_core::Result<()> {
         guard_result("panic in lang bar OnClick", || {
+            // 素通しではクリックを受け付けない（ADR 0067 §5）
+            if !self.interactive {
+                return Ok(());
+            }
             // IME のオン・オフを反転するだけ。どのモードになるかは、compartment の通知から `shell-core` が決める
             let open = read_i32(&self.compartments, &GUID_COMPARTMENT_KEYBOARD_OPENCLOSE)
                 .map(|value| value != 0)
@@ -158,7 +172,7 @@ impl ITfLangBarItemButton_Impl for ModeButton_Impl {
     fn GetIcon(&self) -> windows_core::Result<HICON> {
         // 受け取った側が `DestroyIcon` で捨てる。作れなければ空のアイコン（言語の略称に戻るだけ）
         guard_result("panic in lang bar GetIcon", || {
-            match icon::mode_icon(mode::label(self.mode.get())) {
+            match icon::mode_icon(mode::label(self.mode.get()), icon_theme(self.interactive)) {
                 Ok(icon) => Ok(icon),
                 Err(e) => {
                     log::error("mode icon failed", &e);
@@ -284,6 +298,7 @@ impl Indicator {
         client_id: u32,
         sink: &ITfCompartmentEventSink,
         global_sink: &ITfCompartmentEventSink,
+        interactive: bool,
     ) -> windows_core::Result<Self> {
         let compartments: ITfCompartmentMgr = thread_mgr.cast()?;
         // SAFETY: COM の呼び出し。スレッドの管理者は生きている
@@ -300,6 +315,7 @@ impl Indicator {
             sink: RefCell::new(None),
             compartments: compartments.clone(),
             client_id,
+            interactive,
             _dll: DllRef::new(),
         });
         let item_iface: ITfLangBarItem = item.to_interface::<ITfLangBarItemButton>().cast()?;
@@ -437,5 +453,16 @@ impl Indicator {
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn passthrough_indicator_uses_fixed_icon_theme() {
+        assert_eq!(icon_theme(false), icon::IconTheme::Fixed);
+        assert_eq!(icon_theme(true), icon::IconTheme::Taskbar);
     }
 }
