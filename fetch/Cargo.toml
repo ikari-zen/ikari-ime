@@ -37,6 +37,8 @@ windows-sys = { workspace = true, features = [
     # 自分のトークンが AppContainer か（`transfer` の自己確認。ADR 0078 §3.2 の 4）
     "Win32_Security",
     "Win32_Storage_FileSystem",
+    # 起動冒頭の DLL 探索範囲の制限（ADR 0067 §4.4）
+    "Win32_System_LibraryLoader",
     "Win32_System_Threading",
 ] }
 

@@ -29,4 +29,4 @@ pub mod version;
 pub mod workspace;
 
 pub use error::FetchError;
-pub use run::run;
+pub use run::{DLL_SEARCH_FLAGS, restrict_dll_search, run};

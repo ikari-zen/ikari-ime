@@ -35,7 +35,7 @@ elseif (-not $RemoveFiles) {
 $dirs = @(Get-TipVersionDirs)
 
 Write-Step 'Plan'
-if ($registered) { Write-Note "run    $Regsvr32 /u /s `"$registered`"   (the DLL removes HKCR\CLSID\$TipClsid and its TSF profile)" }
+if ($registered) { Write-Note "run    $Regsvr32 /u /s `"$registered`"   (the DLL removes HKLM\Software\Classes\CLSID\$TipClsid and its TSF profile)" }
 else { Write-Note 'the TIP is not registered: no regsvr32 /u' }
 if ($RemoveFiles) {
     if ($dirs.Count -eq 0) { Write-Note "no version folder in $TipVersionsDir" }

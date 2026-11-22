@@ -506,7 +506,7 @@ impl TextService_Impl {
         }
         if !plan.events {
             // 素通し: 通知を受けない（キーはすべてアプリへ）。入力モードの表示だけ入れる
-            self.install_indicator(thread_mgr, client_id)?;
+            self.install_indicator(thread_mgr, client_id, plan.events)?;
             ModeSink::show(&ServiceModes(&self.this()), plan.initial_mode);
             self.initial_mode_pending.set(false);
             return Ok(());
@@ -533,7 +533,7 @@ impl TextService_Impl {
             .map_err(|_| E_UNEXPECTED)?
             .key_sink_advised = true;
 
-        self.install_indicator(thread_mgr, client_id)?;
+        self.install_indicator(thread_mgr, client_id, plan.events)?;
 
         let shell = host::create_shell();
         {
@@ -560,6 +560,7 @@ impl TextService_Impl {
         &self,
         thread_mgr: &ITfThreadMgr,
         client_id: u32,
+        interactive: bool,
     ) -> windows_core::Result<()> {
         let compartment_sink: ITfCompartmentEventSink = self.to_interface();
         let global_sink: ITfCompartmentEventSink = GlobalCompartmentSink {
@@ -567,7 +568,13 @@ impl TextService_Impl {
             _dll: DllRef::new(),
         }
         .into();
-        match Indicator::install(thread_mgr, client_id, &compartment_sink, &global_sink) {
+        match Indicator::install(
+            thread_mgr,
+            client_id,
+            &compartment_sink,
+            &global_sink,
+            interactive,
+        ) {
             Ok(indicator) => {
                 *self.indicator.try_borrow_mut().map_err(|_| E_UNEXPECTED)? = Some(indicator)
             }
