@@ -36,3 +36,8 @@ ikari-stack = { workspace = true, features = ["dev-knobs"] }
 ikari-testtime.workspace = true
 ikari-dict-builder.workspace = true
 tempfile.workspace = true
+
+# スパイク #578（マージしない）
+[[example]]
+name = "spike578-engine-probe"
+path = "../spike/adr0080-macos-578/engine-probe.rs"
