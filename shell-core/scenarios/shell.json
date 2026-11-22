@@ -60,7 +60,7 @@
       "setup": {"client": {"secure": true}},
       "steps": [
         {"host": {"type": "input_mode_changed", "mode_id": "com.apple.inputmethod.Roman"}, "expect": [{"type": "hide_candidates"}], "engine": []},
-        {"press": "a", "expect": [{"type": "pass_through"}], "engine": [{"type": "begin_session", "client_bundle_id": "com.apple.TextEdit", "secure": true}]}
+        {"press": "a", "expect": [{"type": "pass_through"}], "engine": [{"type": "begin_session", "client_bundle_id": "", "secure": true}]}
       ]
     },
     {

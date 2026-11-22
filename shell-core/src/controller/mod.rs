@@ -415,8 +415,7 @@ impl Shell {
         }
         self.sync_settings();
         if let Some(client) = &mut self.client {
-            client.machine.set_secure(secure);
-            client.machine.activate();
+            client.machine.activate_with_secure(secure);
         }
         // 絵文字の表と、エンジンの起動の前倒し・メニューの状態の取り直し。主スレッドは止めない
         self.refresh_emoji_table();

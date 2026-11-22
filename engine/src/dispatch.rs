@@ -9,6 +9,8 @@ pub(crate) struct Processed {
     pub(crate) error: Option<&'static str>,
     /// 文節の数、区切り直しの向き。ユーザーの文字列は入れない
     pub(crate) note: Option<String>,
+    /// true なら、成功したときに `engine.log` へ行を書かない（secure のセッションの開始と終わり。NFR-18）
+    pub(crate) silent: bool,
 }
 
 impl Processed {
@@ -18,6 +20,7 @@ impl Processed {
             kind,
             error: Some(code.as_str_name()),
             note: None,
+            silent: false,
         }
     }
 }
@@ -121,6 +124,15 @@ fn join_notes(first: Option<String>, second: Option<String>) -> Option<String> {
 }
 
 impl Inner {
+    /// secure のセッションの `BeginSession` / `EndSession` か。そうなら成功してもログに行を書かない（NFR-18）
+    fn is_secure_lifecycle(&self, conn: ConnectionId, body: &envelope::Body) -> bool {
+        match body {
+            envelope::Body::BeginSession(b) => b.secure,
+            envelope::Body::EndSession(e) => self.session_is_secure(conn, e.session_id),
+            _ => false,
+        }
+    }
+
     /// 要求 1 件を処理して、(返事, 要求の種類, エラーの種類) を返す。セッションは `conn` の名前空間で引く
     pub(crate) fn process(&self, conn: ConnectionId, req: &[u8]) -> Processed {
         if req.len() > MAX_ADMIN_REQUEST_BYTES {
@@ -171,6 +183,7 @@ impl Inner {
             envelope::Body::Convert(_) | envelope::Body::Reconvert(_)
         );
         let request_conv = request_conversion(&body);
+        let silent = self.is_secure_lifecycle(conn, &body);
         let result = catch_unwind(AssertUnwindSafe(|| self.dispatch(conn, body)))
             .unwrap_or(Err(Fail::new(ErrorCode::Internal, "internal error")));
         match result {
@@ -194,6 +207,7 @@ impl Inner {
                     kind,
                     error: issue,
                     note,
+                    silent,
                 }
             }
             Err(fail) => {
