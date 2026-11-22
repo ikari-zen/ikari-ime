@@ -484,6 +484,76 @@ pub fn build_stack_with(
     assemble_with(inputs, paths, &opts, reuse)
 }
 
+/// 辞書の組（`grammar.bin`、`system.dict`、`vectors.bin`）を使えない理由（ADR 0080 §3.2）。ログに書く固定の語
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DictSetReject {
+    /// 組が置かれていない（`dict/` が無い、または `grammar.bin` か `system.dict` が無い）
+    Missing,
+    /// 開けない、形式が合わない、`grammar_id` が合わない（壊れた辞書、形式の古い辞書）
+    Invalid,
+    /// `vectors.bin` が置かれているのに開けない、または `dict_id` が合わない（別の辞書の物）
+    Vectors,
+}
+
+impl DictSetReject {
+    pub fn as_word(self) -> &'static str {
+        match self {
+            DictSetReject::Missing => "missing",
+            DictSetReject::Invalid => "invalid",
+            DictSetReject::Vectors => "vectors",
+        }
+    }
+}
+
+/// 辞書の組を検査する（ADR 0080 §3.2 の「組の検査」。開くときと同じ magic、形式の版、`grammar_id`・`dict_id` の照合）。
+/// 3 ファイルは組で見る（場所をまたいで混ぜない）。`vectors.bin` は無くてもよい（無ければ話題の手がかりなしで動く。
+/// 今の組み立てと同じ）が、置かれているのに通らなければ組ごと落とす。
+/// 開いた物は捨てる（mmap とヘッダの検査だけ。組み立ては [`build_stack`] がもう一度開く）
+pub fn check_dictionary_set(dict_dir: &Path) -> Result<(), DictSetReject> {
+    if !dict_dir.is_dir() {
+        return Err(DictSetReject::Missing);
+    }
+    let loaded = open_dir(dict_dir).map_err(|e| match e {
+        ikari_core::DictError::Io(io) if io.kind() == std::io::ErrorKind::NotFound => {
+            DictSetReject::Missing
+        }
+        _ => DictSetReject::Invalid,
+    })?;
+    let vectors = dict_dir.join(VECTORS_FILE_NAME);
+    // 形式 v1 の辞書（`dict_id` が無い）は、組み立てでも vectors.bin を使わない（`load_vectors`）。ここでも見ない
+    if let Some(dict_id) = loaded.dict.dict_id()
+        && vectors.exists()
+    {
+        open_vectors(&vectors, dict_id).map_err(|_| DictSetReject::Vectors)?;
+    }
+    Ok(())
+}
+
 fn dict_label(dict_id: Option<u64>) -> String {
     dict_id.map_or_else(|| "unknown".to_owned(), |id| format!("{id:016x}"))
+}
+
+#[cfg(test)]
+mod dict_set_tests {
+    use super::*;
+
+    #[test]
+    fn a_missing_set_and_a_broken_set_are_told_apart() {
+        let root = std::env::temp_dir().join(format!("ikari-stack-dictset-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        // dict/ が無い、中が空 → 置かれていない
+        assert_eq!(
+            check_dictionary_set(&root.join("dict")),
+            Err(DictSetReject::Missing)
+        );
+        let dict = root.join("dict");
+        std::fs::create_dir_all(&dict).unwrap();
+        assert_eq!(check_dictionary_set(&dict), Err(DictSetReject::Missing));
+        // 置かれているのに開けない → 壊れている
+        std::fs::write(dict.join("grammar.bin"), b"not a grammar").unwrap();
+        std::fs::write(dict.join("system.dict"), b"not a dictionary").unwrap();
+        assert_eq!(check_dictionary_set(&dict), Err(DictSetReject::Invalid));
+        assert_eq!(DictSetReject::Invalid.as_word(), "invalid");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
