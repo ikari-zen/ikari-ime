@@ -9,6 +9,7 @@ ikari-ime（日本語入力メソッド）の文書の索引です。文書は�
 | 文書 | 内容 |
 | --- | --- |
 | [../README.md](../README.md) | ikari-ime とは。ソースからのビルド、入力ソースの追加、アンインストール、プライバシー |
+| [windows-user-guide.md](windows-user-guide.md) | Windows 版の導入・更新・アンインストール・困ったときの手順（下書き） |
 | [features.md](features.md) | 機能の一覧（実装済み、一部、予定） |
 | [roadmap.md](roadmap.md) | 今後の計画と、公開の方針 |
 | [proxy-download.md](proxy-download.md) | プロキシの下で元データを取得する手順 |
