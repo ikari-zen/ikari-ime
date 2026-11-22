@@ -7,7 +7,6 @@ namespace IkariCandidate;
 /// 核（ikari_candidate.dll）の C の ABI（windows/candidate/include/ikari_candidate.h と同じに保つ）。
 /// 判断は核が持つ。ここは呼び出しを写すだけ。
 /// </summary>
-[DefaultDllImportSearchPaths(DllImportSearchPath.ApplicationDirectory)]
 internal static unsafe partial class CoreNative
 {
     private const string Dll = "ikari_candidate.dll";

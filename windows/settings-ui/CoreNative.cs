@@ -8,7 +8,6 @@ namespace IkariSettings;
 /// 核（ikari_settings_core.dll）の C の ABI（windows/settings/include/ikari_settings_core.h と同じに保つ）。
 /// 判断は核が持つ。ここは呼び出しを写すことと、文字列を UTF-8 のバイト列にすることだけ。
 /// </summary>
-[DefaultDllImportSearchPaths(DllImportSearchPath.ApplicationDirectory)]
 internal static unsafe partial class CoreNative
 {
     private const string Dll = "ikari_settings_core.dll";
