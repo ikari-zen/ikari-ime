@@ -12,7 +12,7 @@
 - 2026-11-19: 通常版も、公式のままの zenz-v3.2-small と、デプロイ時点の辞書を、配布物に同梱する。通常版の通信は、自由指定のモデルの取得と版の確認だけ（ボタンを押したときだけ）。最初のセットアップの取得の同意画面は作らない。オフライン版は、通信のロジック（`ikari-data` と通信ライブラリ）を持たない版。ソースは 1 つで、コンパイル時とパッケージ作成時の指定で作る。オフライン版に通信の部品が入っていないことを CI で検査する。通信の機能を出すかの判断は Rust 側。ファイルからの取り込み（#246）が要る。オフライン版の更新はパッケージの入手し直し。
 - 2026-11-22: 辞書とモデルは 0.1.0 から同梱する（取得の手順だけで出す案は取らない）。配布は先に GitHub Release、そのあとで Homebrew と winget（#479）。未署名の配布（ADR 0069）。
 - 2026-11-22: **macOS の配布の形は dmg。** dmg の中に `~/Library/Input Methods` へのショートカットと案内を入れる。pkg は管理者の権限でスクリプトが走る点を懸念して見送り。未署名の警告の越え方は #241 の実機の確認で確かめる。
-- 2026-11-22（§12 の Q1〜Q3）: dmg の案内は `~/Library/Input Methods` だけ（`/Library/Input Methods` は並べない。利用者が束を差し替えられる限界を `SECURITY.md` に書く）。外来語の一覧を含む `system.dict` を CC BY-SA 4.0 として示す。`vectors.bin` の同梱は、先に評価で無い場合と比べてから決める。
+- 2026-11-22（§12 の Q1〜Q3）: dmg の案内は `~/Library/Input Methods` だけ（`/Library/Input Methods` は並べない。利用者が束を差し替えられる限界を `SECURITY.md` に書く）。外来語の一覧を含む `system.dict` を CC BY-SA 4.0 として示す。`vectors.bin` は同梱する（話題の手がかりの主力で効果が大きい。ADR 0003 の実験で ext 30.9% → 58.6%）。
 
 ## 1. 分かったこと（2026-11-22）
 
@@ -30,14 +30,14 @@
 | （参考）`vectors.bin` を除く | | 412.1MB | 185.7MB | 149.3MB |
 
 - 実行ファイル（llama.cpp、Metal・Vulkan のバックエンド、.NET と Windows App SDK）は数えていない（未計測）。
-- `vectors.bin` が半分近くを占め、ほとんど縮まない（浮動小数の量子化済みのため、と推測）。`stack` は `vectors.bin` が無ければ使わずに動く（`stack/src/lib.rs` の `vectors`。話題の手がかり R3 が効かなくなる）。無いときの変換の質の差は測っていない。
+- `vectors.bin` が半分近くを占め、ほとんど縮まない（浮動小数の量子化済みのため、と推測）。`stack` は `vectors.bin` が無ければ使わずに動く（`stack/src/lib.rs` の `vectors`。話題の手がかり R3 が効かなくなる）。効果は ADR 0003 の実験で ext 30.9% → 58.6% と大きく、同梱する（§12 の Q3）。
 - GitHub の Release の 1 ファイルの上限は 2 GiB（GitHub の文書）。どの形でも収まる。
 
 ### 1.2 ライセンス（#242 の結果。法的助言ではない）
 
 - 配れないデータは無かった。同梱するものと義務は [調査 §1](../research/license-redistribution-2026-11.md) の表のとおり（zenz と外来語の一覧は CC BY-SA 4.0、SudachiDict と chiVe は Apache-2.0（SudachiDict は `LEGAL` に UniDic BSD-3-Clause と NEologd を含む）、ABR は PDL1.0、郵便番号は PDL1.0 と日本郵便の「著作権を主張しない」、絵文字は MIT）。
 - 未改変の zenz を別ファイルで同梱するのは集合物に近く、本体（Apache-2.0）に ShareAlike は及ばないと読める（調査 §2.3。残るグレーは 2026-11-19 にユーザーが受け入れた）。
-- 外来語の一覧（CC BY-SA 4.0）を `system.dict` に混ぜて同梱するときの扱いは、選ぶ必要がある（調査 §3.2。§12 の Q2）。
+- 外来語の一覧（CC BY-SA 4.0）を `system.dict` に混ぜて同梱するときの扱いは、調査 §3.2 で 3 案が示された。**`system.dict` を CC BY-SA 4.0 として示すと決めた**（2026-11-22 ユーザー決定。§4 の 5、§12 の Q2）。
 - Windows のインストーラは、今は `THIRD_PARTY_NOTICES.md` を入れていない（`windows/installer/ikari.iss` の `[Files]`）。
 
 ### 1.3 今の置き場所と読み方
@@ -222,7 +222,6 @@
 
 | 順 | レーン | 中身 | 持つファイル |
 | --- | --- | --- | --- |
-| — | 評価（`vectors.bin`。ほかと並べてよい） | `vectors.bin` あり・なしで全セットの 1 位を比べる（`eval/scripts/snapshot.sh`。LM あり・なしの両方）。結果を `eval/reports/` に置き、同梱するかをユーザーに聞く（§12 の Q3）。線は数字を見てから決める | `eval/reports/` だけ |
 | 0 | 契約（リード） | 同梱の場所を決める関数のシグネチャ、場所の候補の列の型、`Capabilities` と `Edition`、各 crate の `online` の宣言だけ（中身はスタブ） | `engine/src/` の新しいモジュール 1 つ、`shell-core` の 1 ファイル、該当の `Cargo.toml` |
 | 1 | 解決（Rust） | §3.2 の選び方、落ちたときの 2 番目、状態の返し方、共通のシナリオ | `engine/src/lib.rs`・`model_select.rs`、`stack/src/lib.rs`、`shell-core/scenarios/` |
 | 2 | 版の分け方（Rust） | `online` で取得の核を囲う、`Capabilities` の中身、`net_crates` の版の引数 | `shell-core`、`shell-ffi`、`windows/settings`、`xtask/src/check/supply.rs` |
@@ -232,7 +231,7 @@
 | 6 | リリースの workflow | `build-dict` の job、モデルの取得、4 つの成果物（2 OS × 2 版）、配る物の検査 | `.github/workflows/release.yml`、`xtask/src/check/product.rs` |
 | 7 | 表示と文書 | `THIRD_PARTY_NOTICES.md`（`system.dict` を CC BY-SA 4.0 として示す）、`NOTICE.txt`・`licenses/` の元、`SECURITY.md` の置き場所の限界（§5.4）、ADR 0069 §6 の 3 への追記、`fetch.rs`・`fetch-data.sh` のコメント（CC BY-SA 4.0 に）、README、SECURITY.md、publish-checklist §4、spec NFR-17、security-design（オフライン版の行）、ADR 0060・0067・0071・0072・0076 の備考 | 文書だけ |
 
-- `vectors.bin` を同梱するかは評価のあとで決まる。レーン 4・5・6 は、同梱の物の一覧を 1 か所（`xtask` の表）から読む形にして、決まる前に進められるようにする。
+- レーン 4・5・6 は、同梱する物の一覧を 1 か所（`xtask` の表）から読む（OS ごと・版ごとに一覧を重ねて持たない）。
 - 1 と 2 は並べられる（持つファイルが重ならない）。3 は 0 のあと。4・5 は 1 のあと。6 は 4・5 のあと。7 は最後（実装が入るまで「配らない」の記述は今の事実として正しい。ADR 0060 更新の「事実と未確認」）。
 - 先にスパイク: C1（macOS の読み）と C2（署名の時間）。捨てるコード。
 
@@ -242,13 +241,13 @@
 | --- | --- | --- | --- |
 | Q1 | dmg の案内に `/Library/Input Methods` も並べるか | 並べない。`~/Library/Input Methods` だけを案内し、利用者が束を差し替えられる限界を `SECURITY.md` に書く。ADR 0069 §6 の 3 の「動けば既定にする」は取りやめる | §5.4、§11 のレーン 7 |
 | Q2 | 外来語の一覧を含む `system.dict` の表示 | 含めて同梱し、`system.dict` を CC BY-SA 4.0（と各表示）として示す（調査 §3.2 の案 A） | §4 の 5、§11 のレーン 7 |
-| Q3 | `vectors.bin`（337MB）を同梱するか | 先に評価で「無い場合」と比べてから決める。どの程度の差なら外すかは、数字を見てから決める | §11 の評価のレーン |
+| Q3 | `vectors.bin`（337MB）を同梱するか | 同梱する。話題の手がかりの主力で効果が大きい（ADR 0003 の実験で ext 30.9% → 58.6%） | §1.1 |
 
 ### （記録）決定の前の選択肢
 
 - Q1: (a) `~/Library/Input Methods` だけ（推奨）、(b) `/Library/Input Methods` の別名も並べる。
 - Q2: (a) 含めて CC BY-SA 4.0 を示す（推奨）、(b) 外来語の一覧なしで作る、(c) 含めて示さない。
-- Q3: (a) 先に評価する（推奨）、(b) 測らずに同梱、(c) 測らずに外す。
+- Q3: (a) 先に評価で無い場合と比べる（推奨）、(b) 同梱する、(c) 外す。いったん (a) で決めたが、ADR 0003 の実験の数字があるので (b) に改めた（同日）。
 
 ## 13. 検討した案（採らなかったもの）
 
@@ -262,12 +261,12 @@
 ## 14. 結果
 
 - 得るもの: 取得の手順なしで、入れればすぐ LM つきで変換できる。ネットワークを隔離した環境向けに、通信の部品を持たないことを検査で示せる版を出せる。壊れた辞書でエンジンが起動しない事態が、同梱の辞書で救われる。
-- 失うもの: 配る物が数百 MB になる（`vectors.bin` の評価しだい）。版を出すたびに辞書のビルドが workflow に乗り、元データの取得先に依る。リリースの成果物が 2 OS × 2 版の 4 つになる。macOS は `~/Library/Input Methods` に置くため、ADR 0069 §6 の 3 の限界（R1）が残る。
+- 失うもの: 配る物が約 360MB（xz 相当。実行物を除く）になる。版を出すたびに辞書のビルドが workflow に乗り、元データの取得先に依る。リリースの成果物が 2 OS × 2 版の 4 つになる。macOS は `~/Library/Input Methods` に置くため、ADR 0069 §6 の 3 の限界（R1）が残る。
 - 改める文書（実装の PR で直す。今は直さない）: ADR 0058 §1.3（起動の失敗）、0060（更新の実装の参照）、0067 §3.1（配置の図）、0069 §6 の 3（`/Library` を既定にする案の取りやめ。§5.4）、0070 §6 の 2（辞書とモデル）、0071 §3・0076 §2・§7（取得の範囲）、0072（配る条件）、`security-design.md`、spec NFR-17、`publish-checklist.md` §4、`SECURITY.md`、README、`windows/installer/README.md`、`release.yml` の冒頭の「未完了」。
 
 ## 15. 推測と未確認（まとめ）
 
-- 未確認: §3.4 の XPC の束の読み（C1）、署名と起動の時間（C2）、#241 の 3 点と dmg のショートカットの形（C3）、dmg の圧縮の方式ごとの大きさとマウントの時間、AppContainer からの読み（C4）、Homebrew の公式の cask の条件（#479）、辞書のビルドの再現性、workflow の時間とディスク、`vectors.bin` なしの質の差（§11 の評価）、実行物を含めた配る物の大きさ。
+- 未確認: §3.4 の XPC の束の読み（C1）、署名と起動の時間（C2）、#241 の 3 点と dmg のショートカットの形（C3）、dmg の圧縮の方式ごとの大きさとマウントの時間、AppContainer からの読み（C4）、Homebrew の公式の cask の条件（#479）、辞書のビルドの再現性、workflow の時間とディスク、実行物を含めた配る物の大きさ。
 - 推測: dmg から写した物に隔離の印が引き継がれる、隔離の印のある入力メソッドを OS がどう扱うか、`vectors.bin` が縮まない理由。
 
 ## 参考
