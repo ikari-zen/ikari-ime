@@ -166,8 +166,9 @@ build_data() {
 }
 
 build_rust() {
-  log "cargo build: ikari-shell-ffi"
-  (cd "$IKARI_ROOT" && cargo build --release --target "$RUST_TARGET" -p ikari-shell-ffi)
+  # 通常版（取得の核を持つ。ADR 0080 §7.1）。online を付けないとオフライン版の中身になる（版の指定はレーン 4）
+  log "cargo build: ikari-shell-ffi (features: online)"
+  (cd "$IKARI_ROOT" && cargo build --release --target "$RUST_TARGET" -p ikari-shell-ffi --features online)
 
   log "cargo rustc: ikari-engine-ffi（llama.cpp なし）"
   local output

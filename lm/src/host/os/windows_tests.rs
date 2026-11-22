@@ -205,8 +205,14 @@ fn the_appcontainer_child_reads_only_the_granted_file() {
         .iter()
         .map(OsString::from)
         .collect();
-    let (proc, mut stdin, mut stdout) =
-        spawn(&exe, &args, Cage::AppContainer { readable: &granted }).unwrap();
+    let (proc, mut stdin, mut stdout) = spawn(
+        &exe,
+        &args,
+        Cage::AppContainer {
+            readable: Some(&granted),
+        },
+    )
+    .unwrap();
     assert_eq!(proc.cage(), CageState::AppContainer);
     assert!(is_appcontainer(proc.inner.process_handle()));
     assert_eq!(integrity_rid(proc.inner.process_handle()), LOW_RID);

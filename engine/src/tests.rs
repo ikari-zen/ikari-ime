@@ -795,6 +795,7 @@ fn weights(domains: &[pb::ProfileDomainState]) -> Vec<(&str, i32)> {
 mod admin_dict;
 mod admin_import;
 mod admin_learning;
+mod bundled;
 mod connection;
 mod context;
 mod convert;
