@@ -14,8 +14,12 @@ use ikari_pipe::name::stop_event_open_name;
 pub const ENGINE_EXE: &str = "ikari-engine-host.exe";
 
 /// エンジンのあとに、残っていれば終わらせる子の exe（インストール先からの相対。ADR 0067 §3.1）。
-/// TODO(ADR 0071): 設定画面の exe の名前が決まったら足す（利用者が開いている窓を閉じることになる）。
-pub const CHILD_EXES: &[&str] = &["ikari-lm-host.exe", r"candidate\ikari-candidate.exe"];
+/// 設定画面は、利用者が開いている窓を閉じることになる（名前は `windows/settings-ui` の `AssemblyName`。ADR 0071）。
+pub const CHILD_EXES: &[&str] = &[
+    "ikari-lm-host.exe",
+    r"candidate\ikari-candidate.exe",
+    r"settings\ikari-settings.exe",
+];
 
 /// 合図のあと、エンジンが自分で終わるのを待つ時間（ミリ秒）。
 /// TODO(ADR 0068 §6.2): 仮置き（計測なし）。実機で終了にかかる時間を測って決める（実機の手順書の項目 51）。
@@ -120,6 +124,10 @@ mod tests {
         assert_eq!(
             exe_path(r"C:\Program Files\ikari-ime\", CHILD_EXES[1]),
             r"C:\Program Files\ikari-ime\candidate\ikari-candidate.exe"
+        );
+        assert_eq!(
+            exe_path(r"C:\Program Files\ikari-ime\", CHILD_EXES[2]),
+            r"C:\Program Files\ikari-ime\settings\ikari-settings.exe"
         );
     }
 

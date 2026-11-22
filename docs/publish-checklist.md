@@ -17,7 +17,7 @@
 - [x] 追跡しているファイル全体を `git grep` で探す。語は、`.gitleaks.local.toml` の規則にある語と、次の例の形に合わせる。
 
   ```sh
-  git grep -nE '/Users/[A-Za-z0-9._-]+' -- . ':!THIRD_PARTY_LICENSES_RUST.md'   # ホームのパス（ダミーの someone と u は問題なし）
+  git grep -nE '/Users/[A-Za-z0-9._-]+' -- . ':!THIRD_PARTY_LICENSES_RUST.md' ':!THIRD_PARTY_LICENSES_RUST_WINDOWS.md'   # ホームのパス（ダミーの someone と u は問題なし）
   git grep -nE '[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}' | grep -v noreply   # メールアドレスの形
   ```
 
@@ -55,7 +55,7 @@
 ### 1.2 検査の全部を通す
 
 - [x] `scripts/check.sh` を、**フルで**流して、`CHECK_EXIT=0` になること（fmt、clippy、`cargo test`、`swift test`、文書のリンク、gitleaks を含む）。`macos/Frameworks` が古いと止まるので、そのときは `macos/scripts/build.sh --signing team --release` を先に流す。
-- [x] `cargo xtask licenses --check` が通ること（Rust の依存のライセンス一覧 [THIRD_PARTY_LICENSES_RUST.md](../THIRD_PARTY_LICENSES_RUST.md) が最新）。
+- [x] `cargo xtask licenses --check` が通ること（Rust の依存のライセンス一覧 [THIRD_PARTY_LICENSES_RUST.md](../THIRD_PARTY_LICENSES_RUST.md)（macOS）と [THIRD_PARTY_LICENSES_RUST_WINDOWS.md](../THIRD_PARTY_LICENSES_RUST_WINDOWS.md)（Windows）が最新）。
 - [x] 新しいクローン（別のフォルダ）で、README の「ビルドと検証だけ」の手順を、そのまま流して通ること。README に書いた時間と容量と、手順の名前が合っていること。
 
 ### 1.3 ライセンスと表示
