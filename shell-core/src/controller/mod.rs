@@ -496,9 +496,10 @@ impl Shell {
             return self.handle_english(input, text);
         }
         let input = &japanese_key(input, client.machine.settings().input_method);
-        // キー割り当ての `mode.*` は、変換より先に見る（合成中なら今の表示のまま確定してから切り替える）
-        if let Some(target) =
-            EnglishMode::mode_switch_target(input, &self.keymap_for_client(), self.input_mode)
+        // キー割り当ての `mode.*` は、変換より先に見る（合成中なら今の表示のまま確定してから切り替える）。secure では素通し（ADR 0026 D5、ADR 0073 §2）
+        if !input.secure
+            && let Some(target) =
+                EnglishMode::mode_switch_target(input, &self.keymap_for_client(), self.input_mode)
         {
             return consumed(self.select_mode(target));
         }

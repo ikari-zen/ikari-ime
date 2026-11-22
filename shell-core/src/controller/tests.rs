@@ -352,6 +352,34 @@ fn mode_requests_are_taken_once_and_a_switch_back_by_the_os_is_recorded() {
 }
 
 #[test]
+fn mode_switch_keys_pass_through_when_secure() {
+    let mut shell = shell(
+        SettingsSource::Inline("keymap.mode.toggle\tf13\n".into()),
+        resources(),
+    );
+    activate(&mut shell);
+    shell.dispatch(key(KeyKind::Character { text: "a".into() }), &mut NoText);
+    let actions = shell.dispatch(
+        ShellEvent::Key(KeyInput {
+            key: KeyKind::Function { number: 13 },
+            modifiers: Modifiers::NONE,
+            is_repeat: false,
+            secure: true,
+            layout_text: None,
+        }),
+        &mut NoText,
+    );
+    assert_eq!(
+        actions,
+        vec![
+            ShellAction::Commit { text: "あ".into() },
+            ShellAction::PassThrough,
+        ]
+    );
+    assert_eq!(shell.take_mode_request(), None);
+}
+
+#[test]
 fn english_mode_reads_jis_keys_by_their_ascii_legend() {
     let jis = |code, shift| KeyInput {
         key: KeyKind::Jis { code },
