@@ -19,7 +19,6 @@
 #
 # 未完了（この workflow の中身が、まだ仮の部分）:
 #   - Windows の VC++ の再頒布パッケージ（LM の子が使う。ADR 0067 §4.5 の (a)）は、まだ同梱しない（インストーラの側が未実装）。
-#   - Windows の THIRD_PARTY_LICENSES_RUST.md は、今は macOS の成果物の一覧（cargo xtask licenses の対象が macOS だけ）。
 #   - 版の付け方: Windows のインストーラの版は数字だけ（VersionInfoVersion と tip\<版>\）。プレリリースのタグ（v1.2.3-rc.1）は、
 #     付け方が決まるまで verify-tag で止める。セキュリティの修正の印（ikari.iss の SecurityUpdate）は、まだ渡す口が無い。
 #   - macOS の置き場所と配布の形（zip か dmg か pkg か）は #241 の実機の確認で決まる。今は zip。
@@ -222,7 +221,9 @@ jobs:
             Pop-Location
             if ($code -ne 0) { exit $code }
           }
-          Copy-Item LICENSE, NOTICE, THIRD_PARTY_NOTICES.md, THIRD_PARTY_LICENSES_RUST.md $stage
+          Copy-Item LICENSE, NOTICE, THIRD_PARTY_NOTICES.md $stage
+          # Windows の依存の一覧（cargo xtask licenses が作る）は、配置では THIRD_PARTY_LICENSES_RUST.md の名前で置く
+          Copy-Item THIRD_PARTY_LICENSES_RUST_WINDOWS.md (Join-Path $stage 'THIRD_PARTY_LICENSES_RUST.md')
           "STAGE_DIR=$stage" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       # インストーラに入れる物の全部を、置き場所ごとの検査で見る（cargo xtask scan-product --stage。xtask/src/scan/stage.rs）:
       # あるべき物、開発用の文字列と動的な C ランタイムが無いこと（ADR 0067 §4.4・§6）、開発用の exe や測定ツールが無いこと
