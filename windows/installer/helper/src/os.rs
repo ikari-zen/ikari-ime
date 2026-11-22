@@ -34,9 +34,9 @@ use windows_sys::Win32::System::LibraryLoader::{
 };
 use windows_sys::Win32::System::RemoteDesktop::ProcessIdToSessionId;
 use windows_sys::Win32::System::Threading::{
-    EVENT_MODIFY_STATE, GetCurrentProcess, OpenEventW, OpenProcess, OpenProcessToken,
-    PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
-    QueryFullProcessImageNameW, SetEvent, TerminateProcess, WaitForSingleObject,
+    EVENT_MODIFY_STATE, GetCurrentProcess, GetCurrentProcessId, OpenEventW, OpenProcess,
+    OpenProcessToken, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
+    PROCESS_TERMINATE, QueryFullProcessImageNameW, SetEvent, TerminateProcess, WaitForSingleObject,
 };
 
 use ikari_setup_helper::acl::{Ace, Descriptor};
@@ -350,7 +350,14 @@ fn signal(pid: u32, process: HANDLE) -> bool {
     if unsafe { ProcessIdToSessionId(pid, &mut session) } == FALSE {
         return false;
     }
-    let Some(name) = event_name_for(&sid, session) else {
+    // SAFETY: 引数なし。自分のプロセスの番号
+    let own_pid = unsafe { GetCurrentProcessId() };
+    let mut own_session = 0u32;
+    // SAFETY: own_session は書ける u32
+    if unsafe { ProcessIdToSessionId(own_pid, &mut own_session) } == FALSE {
+        return false;
+    }
+    let Some(name) = event_name_for(&sid, session, own_session) else {
         return false;
     };
     let wide = to_wide(&name);
