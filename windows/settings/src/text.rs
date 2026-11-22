@@ -5,7 +5,8 @@
 use ikari_proto::v1::{DataCounts, DataIssue, DataIssueKind, ErrorCode, ExportReply, ImportReply};
 use ikari_shell_core::bridge::proto::BridgeErrorCode;
 
-// 取得の文は共有の核にある（ADR 0079 §3.6）
+// 取得の文は共有の核にある（ADR 0079 §3.6）。核は通常版（feature `online`）だけ（ADR 0080 §7.1）
+#[cfg(feature = "online")]
 pub use ikari_shell_core::settings::fetch::text::{
     FETCH_UNBOXED, counted_sha256, custom_model_without_sha256_warning, fetch_error,
     fetch_snapshot, version_verdict,

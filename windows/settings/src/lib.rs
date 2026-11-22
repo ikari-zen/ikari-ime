@@ -5,6 +5,9 @@
 //! - `link`: 設定の口とのつながり（相手の照合のあと `Hello`、読み書き、パスでの書き出し・取り込み）
 //! - `peer`: 設定の口の相手（engine-host）の照合（ADR 0068 §4。S3 の設定画面の側）
 //! - `abi`: 画面（C#）が呼ぶ C の ABI（ヘッダは `include/ikari_settings_core.h`）
+//! - `fetch`・`fetch_os`: 取得（`ikari-data.exe`）の核と起こし方。通常版（feature `online`）だけ（ADR 0080 §7.1）
+//! - `fetch_abi`: 取得の口（オフライン版は口だけで何も起こさない）
+//! - `edition_abi`: 版と、画面に出してよい機能（ADR 0080 §7.2）
 //!
 //! 判断の置き場所: Rust（この crate と、その下の `shell-core` の `settings`）。画面（C#）は、核が渡すものを描くことと、
 //! OS の入口（窓、ファイルを選ぶ窓）だけ（ADR 0042、ADR 0071 §2）。純粋な部分は `cfg(windows)` なしで、Mac でテストが回る。
@@ -14,7 +17,9 @@
 #![deny(unsafe_code)]
 
 pub mod edit;
+#[cfg(feature = "online")]
 pub mod fetch;
+#[cfg(feature = "online")]
 #[allow(unsafe_code)]
 pub mod fetch_os;
 pub mod link;
@@ -30,3 +35,6 @@ pub mod session_abi;
 
 #[allow(unsafe_code)]
 pub mod fetch_abi;
+
+#[allow(unsafe_code)]
+pub mod edition_abi;
