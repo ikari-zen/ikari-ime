@@ -12,11 +12,13 @@
 //! - `values`: 設定アプリの Model のうち、検証・整形・既定値・変更の組み立て（`@Observable` の状態は持たない）
 //! - `specs`: 画面に出す設定の一覧（キー、種類、既定値、節。ADR 0040 §2.5）
 //! - `admin`: 管理の要求（属性プロファイル）の組み立て
-//! - `fetch`: 取得（`ikari-data`）の OS に依存しない核（ADR 0079 §3.6。Windows の設定画面から移した）
+//! - `fetch`: 取得（`ikari-data`）の OS に依存しない核（ADR 0079 §3.6。Windows の設定画面から移した）。
+//!   通常版だけ（feature `online`。ADR 0080 §7.1）。オフライン版のビルドには入らない
 
 mod admin;
 mod chord;
 mod defaults;
+#[cfg(feature = "online")]
 pub mod fetch;
 mod file;
 mod lm_notice;

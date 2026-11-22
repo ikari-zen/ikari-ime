@@ -1,12 +1,24 @@
-//! 版（通常版・オフライン版）と、画面に出してよい機能（ADR 0080 §7.2。契約。レーン 0）。
+//! 版（通常版・オフライン版）と、画面に出してよい機能（ADR 0080 §7.2）。
 //!
-//! 判断の置き場所: Rust（macOS と Windows で 1 つ）。Swift と C# は [`edition_capabilities`] の値で、
+//! 判断の置き場所: Rust（macOS と Windows で 1 つ）。Swift と C# は [`edition_capabilities`] の値（殻の FFI を通した値）で、
 //! ボタンを出す・出さないを決めるだけ。
 //!
-//! 値の決め方（レーン 2 で埋める）: `cfg!(feature = "online")`、檻の段（自由指定は段 2 のある OS だけ。ADR 0072 Q1）、
-//! `ikari-data` が同梱の場所にあるか。
+//! 値は [`capabilities_for`]（入力を受ける純粋な関数）が決める。入力は 3 つ:
+//! - `cfg!(feature = "online")`（取得の核をビルドに持つか。ADR 0080 §7.1）
+//! - `ikari-data` が同梱の場所にあるか（自分の exe の場所から決める。調べるのは OS の入口を持つ `shell-ffi` と
+//!   `windows/settings`。ここでは調べない）
+//! - 自由指定のモデルを読める構成か（檻の段。自由指定は段 2 のある OS だけ。ADR 0072 Q1。決めるのはエンジン）
 //!
-//! 今の中身はスタブ: 通常版の値（すべて出す）を返す。今の画面の挙動と同じ。
+//! [`edition_capabilities`]（引数なし）は、このビルドで分かる値だけで [`capabilities_for`] を呼ぶ。分からない 2 つは、
+//! 「通常版の束には `ikari-data` がある」「檻の段はエンジンが読むときに確かめる」として出す側に置く（今の画面の挙動）。
+//! 実際の有無で絞るのは FFI の入口（`ikari_settings_edition_capabilities`）。
+
+/// 取得の核をビルドに持つか（`online` の feature。ADR 0080 §7.1）
+const ONLINE: bool = cfg!(feature = "online");
+
+/// オフライン版で、取得・版の確認の入口が呼ばれたときの文（画面はボタンを出さないので、ふつうは出ない）
+pub const FETCH_UNAVAILABLE_IN_OFFLINE: &str =
+    "この版（オフライン版）には、通信する機能がありません。ファイルから取り込んでください";
 
 /// 版
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -30,27 +42,71 @@ pub struct Capabilities {
     pub file_import: bool,
 }
 
-/// このビルドの版と、出してよい機能。
+/// [`capabilities_for`] の入力
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct EditionInputs {
+    /// 取得の核をビルドに持つか（`cfg!(feature = "online")`）
+    pub online: bool,
+    /// `ikari-data` が同梱の場所にあるか
+    pub data_tool_present: bool,
+    /// 自由指定のモデルを読める構成か（檻の段 2 がある。ADR 0072 Q1）
+    pub user_models_offered: bool,
+}
+
+impl EditionInputs {
+    /// このビルドで分かる値（`online`）と、分からない 2 つを出す側に置いた値（モジュールの説明）
+    pub const fn this_build() -> EditionInputs {
+        EditionInputs {
+            online: ONLINE,
+            data_tool_present: ONLINE,
+            user_models_offered: true,
+        }
+    }
+}
+
+/// 入力から、版と出してよい機能を決める（純粋な関数。ADR 0080 §7.2）。
 ///
-/// スタブ: 通常版の値を返す（今の挙動）。
-pub fn edition_capabilities() -> Capabilities {
+/// - 版の名前は、ビルドが取得の核を持つか（`online`）だけで決める（パッケージの中身では変えない）。
+/// - 通信する機能（URL からの取得、版の確認）は、核があり、かつ `ikari-data` があるときだけ。
+///   URL からの取得は、さらに自由指定のモデルを読める構成のときだけ（取っても読めないものを出さない）。
+/// - ファイルからの取り込み（#246）は、通信しないので、いつも出す。
+pub const fn capabilities_for(inputs: EditionInputs) -> Capabilities {
+    let edition = if inputs.online {
+        Edition::Normal
+    } else {
+        Edition::Offline
+    };
+    let can_fetch = inputs.online && inputs.data_tool_present;
     Capabilities {
-        edition: Edition::Normal,
-        url_model_fetch: true,
-        version_check: true,
+        edition,
+        url_model_fetch: can_fetch && inputs.user_models_offered,
+        version_check: can_fetch,
         file_import: true,
     }
+}
+
+/// このビルドの版と、出してよい機能（[`EditionInputs::this_build`] で [`capabilities_for`] を呼ぶ）
+pub fn edition_capabilities() -> Capabilities {
+    capabilities_for(EditionInputs::this_build())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// スタブの挙動は今と同じ（通常版。取得と版の確認のボタンを出す）
+    fn inputs(online: bool, data_tool_present: bool, user_models_offered: bool) -> EditionInputs {
+        EditionInputs {
+            online,
+            data_tool_present,
+            user_models_offered,
+        }
+    }
+
+    /// 通常版で、部品がそろっていれば、すべて出す（今の画面の挙動）
     #[test]
-    fn stub_is_the_normal_edition() {
+    fn normal_edition_with_everything_offers_everything() {
         assert_eq!(
-            edition_capabilities(),
+            capabilities_for(inputs(true, true, true)),
             Capabilities {
                 edition: Edition::Normal,
                 url_model_fetch: true,
@@ -60,11 +116,57 @@ mod tests {
         );
     }
 
+    /// オフライン版は、ほかの入力にかかわらず、通信する機能を出さない。取り込みは出す
+    #[test]
+    fn offline_never_offers_network_features() {
+        for data in [false, true] {
+            for user in [false, true] {
+                assert_eq!(
+                    capabilities_for(inputs(false, data, user)),
+                    Capabilities {
+                        edition: Edition::Offline,
+                        url_model_fetch: false,
+                        version_check: false,
+                        file_import: true,
+                    },
+                    "data={data} user={user}"
+                );
+            }
+        }
+    }
+
+    /// 通常版でも `ikari-data` が無ければ通信する機能は出さない（版の名前は通常版のまま）
+    #[test]
+    fn normal_without_the_data_tool_hides_network_features() {
+        let c = capabilities_for(inputs(true, false, true));
+        assert_eq!(c.edition, Edition::Normal);
+        assert!(!c.url_model_fetch && !c.version_check && c.file_import);
+    }
+
+    /// 自由指定のモデルを読めない構成では、URL からの取得だけを出さない（版の確認は出す）
+    #[test]
+    fn url_fetch_needs_the_user_model_cage() {
+        let c = capabilities_for(inputs(true, true, false));
+        assert!(!c.url_model_fetch && c.version_check && c.file_import);
+    }
+
+    /// 引数なしの関数は、ビルドの feature で版が決まる
+    #[test]
+    fn this_build_follows_the_online_feature() {
+        let c = edition_capabilities();
+        if cfg!(feature = "online") {
+            assert_eq!(c, capabilities_for(inputs(true, true, true)));
+        } else {
+            assert_eq!(c, capabilities_for(inputs(false, false, true)));
+        }
+    }
+
     /// 殻のスレッドをまたいで渡せる（値の型）
     #[test]
     fn capabilities_are_plain_values() {
         fn assert_traits<T: Copy + Send + Sync + 'static>() {}
         assert_traits::<Capabilities>();
         assert_traits::<Edition>();
+        assert_traits::<EditionInputs>();
     }
 }

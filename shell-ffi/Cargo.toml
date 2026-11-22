@@ -8,9 +8,9 @@ license.workspace = true
 crate-type = ["staticlib", "rlib"]
 
 [features]
-# 通常版（取得の核を持つ。ADR 0080 §7.1）。既定では付けない（足すと機能が増える形）。
-# レーン 0（#579）は宣言だけ。取得のコードを囲うのと、build.sh・release.yml・xtask で明示するのはレーン 2
-online = ["ikari-shell-core/online"]
+# 通常版（取得の核と `ikari-data` の起こし方を持つ。ADR 0080 §7.1）。既定では付けない（足すと機能が増える形。
+# 付け忘れは通信の少ない側に倒れる）。通常版を作る手段（build.sh、release.yml、xtask check、CI）は `online` を明示する
+online = ["ikari-shell-core/online", "dep:libc"]
 
 [dependencies]
 ikari-proto.workspace = true
@@ -18,6 +18,6 @@ ikari-runmark.workspace = true
 ikari-shell-core.workspace = true
 prost.workspace = true
 
-# 取得の子の起動（`posix_spawn`。`src/fetch_launcher/apple.rs` だけが使う。ADR 0068 §6.1）
+# 取得の子の起動（`posix_spawn`。`src/fetch_launcher/apple.rs` だけが使う。ADR 0068 §6.1）。通常版（`online`）だけ
 [target.'cfg(target_os = "macos")'.dependencies]
-libc = "0.2"
+libc = { version = "0.2", optional = true }

@@ -125,6 +125,16 @@ pub fn spawn_running(
     })
 }
 
+/// 自分（設定アプリ）の束の中に `ikari-data` があるか（画面に取得の入口を出すか。ADR 0080 §7.2）。
+/// 調べられないときは無いとする（出さない側に倒す）
+pub fn data_tool_present() -> bool {
+    std::env::current_exe()
+        .and_then(|own| own.canonicalize())
+        .ok()
+        .and_then(|own| data_exe_path(&own))
+        .is_some_and(|exe| exe.is_file())
+}
+
 /// 製品の起こし方
 pub struct ProductLauncher;
 
