@@ -134,12 +134,11 @@ pub fn check_geometry(
 pub fn clamp_anchor(anchor: &Rect, work_area: &Rect) -> Rect {
     let width = anchor.width.min(work_area.width);
     let height = anchor.height.min(work_area.height);
-    let x = anchor
-        .x
-        .clamp(work_area.x, work_area.x + work_area.width - width);
-    let y = anchor
-        .y
-        .clamp(work_area.y, work_area.y + work_area.height - height);
+    // 浮動小数点の丸めで上限が下限を下回らないよう保護する
+    let max_x = (work_area.x + (work_area.width - width)).max(work_area.x);
+    let max_y = (work_area.y + (work_area.height - height)).max(work_area.y);
+    let x = anchor.x.clamp(work_area.x, max_x);
+    let y = anchor.y.clamp(work_area.y, max_y);
     Rect {
         x,
         y,
@@ -315,5 +314,31 @@ mod tests {
             height: 5000.0,
         };
         assert_eq!(clamp_anchor(&huge, &WORK), WORK);
+    }
+
+    #[test]
+    fn clamp_anchor_handles_floating_point_rounding() {
+        // 座標が大きく幅・高さが極小でも、浮動小数点の丸め誤差で panic しない
+        let origin = 524_288.0; // 2^19
+        let tiny = f64::exp2(-34.0);
+        let work_area = Rect {
+            x: origin,
+            y: origin,
+            width: tiny,
+            height: tiny,
+        };
+        let anchor = Rect {
+            x: origin,
+            y: origin,
+            width: tiny,
+            height: tiny,
+        };
+        let mut s = show(anchor, 1.0);
+        s.work_area = Some(work_area);
+        let clamped = sanitize_show(s).unwrap().anchor.unwrap();
+        assert_eq!(clamped.x, origin);
+        assert_eq!(clamped.y, origin);
+        assert_eq!(clamped.width, tiny);
+        assert_eq!(clamped.height, tiny);
     }
 }
