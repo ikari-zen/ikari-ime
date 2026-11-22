@@ -49,25 +49,28 @@ internal sealed class VersionPanel
         lock (_lock)
         {
             _disposed = true;
-            if (_fetch != IntPtr.Zero)
-            {
-                VersionNative.Free(_fetch);
-                _fetch = IntPtr.Zero;
-            }
         }
+        ReleaseFetch();
     }
 
     private async Task StartAsync()
     {
-        if (_fetch != IntPtr.Zero)
+        lock (_lock)
         {
-            return;
+            if (_disposed || _fetch != IntPtr.Zero)
+            {
+                return;
+            }
         }
         _check.IsEnabled = false;
         _result.Text = RunningText;
         var (code, handle, message) = await Task.Run(VersionNative.Start);
         if (code != CoreNative.Ok || handle == IntPtr.Zero)
         {
+            if (_disposed)
+            {
+                return;
+            }
             _result.Text = message.Length > 0 ? message : UnknownText;
             _check.IsEnabled = true;
             return;
@@ -85,22 +88,43 @@ internal sealed class VersionPanel
         _timer.Start();
     }
 
+    /// <summary>ハンドルを取り出して、1 回だけ核に返す（二重に返さない）。取り出せたら true</summary>
+    private bool ReleaseFetch()
+    {
+        IntPtr handle;
+        lock (_lock)
+        {
+            handle = _fetch;
+            _fetch = IntPtr.Zero;
+        }
+        if (handle == IntPtr.Zero)
+        {
+            return false;
+        }
+        VersionNative.Free(handle);
+        return true;
+    }
+
     private void Poll()
     {
-        if (_fetch == IntPtr.Zero)
+        (int Code, int Phase, string Text) poll;
+        lock (_lock)
         {
-            _timer.Stop();
-            return;
+            if (_disposed || _fetch == IntPtr.Zero)
+            {
+                _timer.Stop();
+                return;
+            }
+            poll = VersionNative.Poll(_fetch);
         }
-        var (code, phase, text) = VersionNative.Poll(_fetch);
+        var (code, phase, text) = poll;
         if (code == CoreNative.Ok && phase == VersionNative.PhaseRunning)
         {
             return;
         }
         // 終わった（成功、失敗、取り消し）か、核の呼び出しが失敗した。文は核の言うとおり
         _timer.Stop();
-        VersionNative.Free(_fetch);
-        _fetch = IntPtr.Zero;
+        ReleaseFetch();
         _result.Text = code == CoreNative.Ok && text.Length > 0 ? text : UnknownText;
         _check.IsEnabled = true;
     }
