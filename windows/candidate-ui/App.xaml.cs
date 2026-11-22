@@ -30,13 +30,15 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        var window = new CandidateWindow();
-        _window = window;
-        _core = CoreHost.Start(DispatcherQueue.GetForCurrentThread(), window.Render);
+        // 核の起動（高い権限の検査を含む）を、窓の生成より先に行う（ADR 0067 §4.3）。
+        // 状態は UI のスレッドのキューで届くので、この関数が戻るまでは窓の生成が間に合う
+        _core = CoreHost.Start(DispatcherQueue.GetForCurrentThread(), state => _window?.Render(state));
         if (_core is null)
         {
             Shutdown(ExitCoreUnavailable);
+            return;
         }
+        _window = new CandidateWindow();
     }
 
     private void Shutdown(int code)

@@ -87,7 +87,7 @@ internal sealed class CandidateWindow
         _rows.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
         // 窓は作業領域より広くしない（長い行は末尾が切れて見える。ADR 0068 §5）
         int width = (int)Math.Min(Math.Ceiling(_rows.DesiredSize.Width * state.Scale), Math.Floor(state.WorkArea.Width));
-        int height = (int)Math.Ceiling(heightDip * state.Scale);
+        int height = (int)Math.Min(Math.Ceiling(heightDip * state.Scale), Math.Floor(state.WorkArea.Height));
         Rect anchor = state.Anchor;
         Rect work = state.WorkArea;
         double x = CoreNative.HorizontalOrigin(anchor.X, width, work.X, work.Width);

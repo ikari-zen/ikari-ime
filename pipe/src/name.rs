@@ -9,14 +9,14 @@ pub const SETTINGS_NAME_PREFIX: &str = r"\\.\pipe\ikari-ime-settings-v1-";
 /// 候補窓（`ikari-candidate.exe`）のパイプの名前の先頭（ADR 0062 §5.3、§7.2）。TIP → 候補窓の片道。
 /// エンジン、設定画面のパイプとは別（先頭が一致しないので、同じ SID とセッションでも衝突しない）。
 pub const CANDIDATE_NAME_PREFIX: &str = r"\\.\pipe\ikari-ime-candidate-v1-";
-/// 止める口（engine-host が作る名前つきのイベント。ADR 0068 §6.2）の名前の先頭。
-///
-/// 別のセッションのインストーラからも開けるように、セッションごとの名前空間でなく `Global\` に置き、
-/// セッションの区別は名前の末尾（`-s<session>`）で持つ（パイプと同じ作り）。
-/// TODO(ADR 0068 §10、security-design.md §5.3): 別のセッションの管理者が、この名前のイベントを開いて合図できるかは
-/// 未確認（仮）。できなければ、合図は同じセッションのエンジンだけにし、ほかのセッションは強制の終了にする
-/// （その場合も、この関数の形は変えない）。
-pub const STOP_EVENT_NAME_PREFIX: &str = r"Global\ikari-ime-stop-v1-";
+/// 止める口（engine-host が作る名前つきのイベント。ADR 0068 §6.2）の、作るときの名前の先頭。
+/// 自分のセッションの名前空間（`Local\`）に作る。別のセッションの合図する側は、`Session\<番号>\` で開く
+/// （`stop_event_open_name`）。`Global\` は使わない。
+pub const STOP_EVENT_LOCAL_PREFIX: &str = r"Local\ikari-ime-stop-v1-";
+/// 別のセッションから開くときの名前空間の先頭（`Session\<番号>\` の `Session\` の部分）。
+const STOP_EVENT_SESSION_NAMESPACE: &str = r"Session\";
+/// 止める口の名前の本体（名前空間のあとの部分）の先頭
+const STOP_EVENT_BASE_PREFIX: &str = "ikari-ime-stop-v1-";
 /// SID の長さの上限（文字数）。`S-1-5-21-` と 4 つの部分の SID でも 60 文字ほど。パイプの名前の上限（256）に収める。
 const MAX_SID_CHARS: usize = 184;
 
@@ -48,11 +48,28 @@ pub fn candidate_pipe_name(sid: &str, session_id: u32) -> Result<String, PipeNam
     named(CANDIDATE_NAME_PREFIX, sid, session_id)
 }
 
-/// `Global\ikari-ime-stop-v1-<sid>-s<session>`。engine-host が起動のときに作る、止める合図のイベントの名前
+/// `Local\ikari-ime-stop-v1-<sid>-s<session>`。engine-host が起動のときに作る、止める合図のイベントの名前
 /// （ADR 0068 §6.2）。`sid` の規則は `pipe_name` と同じ。合図を許す相手（自分のユーザー、SYSTEM、管理者）は、
 /// イベントを作る OS 層が DACL で決める。
-pub fn stop_event_name(sid: &str, session_id: u32) -> Result<String, PipeNameError> {
-    named(STOP_EVENT_NAME_PREFIX, sid, session_id)
+pub fn stop_event_create_name(sid: &str, session_id: u32) -> Result<String, PipeNameError> {
+    named(STOP_EVENT_LOCAL_PREFIX, sid, session_id)
+}
+
+/// 合図する側が開くときの名前。対象のエンジンのセッション（`target_session`）が自分のセッション
+/// （`own_session`）と同じなら `Local\ikari-ime-stop-v1-<sid>-s<session>`、違えば
+/// `Session\<target_session>\ikari-ime-stop-v1-<sid>-s<session>`。`sid` の規則は `pipe_name` と同じ。
+pub fn stop_event_open_name(
+    sid: &str,
+    target_session: u32,
+    own_session: u32,
+) -> Result<String, PipeNameError> {
+    if target_session == own_session {
+        return stop_event_create_name(sid, target_session);
+    }
+    let base = named(STOP_EVENT_BASE_PREFIX, sid, target_session)?;
+    Ok(format!(
+        "{STOP_EVENT_SESSION_NAMESPACE}{target_session}\\{base}"
+    ))
 }
 
 fn named(prefix: &str, sid: &str, session_id: u32) -> Result<String, PipeNameError> {
@@ -107,23 +124,53 @@ mod tests {
     }
 
     #[test]
-    fn stop_event_name_is_global_and_per_user_and_session() {
+    fn stop_event_create_name_is_local_and_per_user_and_session() {
         assert_eq!(
-            stop_event_name(SID, 2).unwrap(),
-            r"Global\ikari-ime-stop-v1-S-1-5-21-1004336348-1177238915-682003330-512-s2"
+            stop_event_create_name(SID, 2).unwrap(),
+            r"Local\ikari-ime-stop-v1-S-1-5-21-1004336348-1177238915-682003330-512-s2"
         );
         // パイプの名前と同じ形にしない（イベントはパイプの名前空間に無い）
-        assert!(!STOP_EVENT_NAME_PREFIX.starts_with(r"\\.\pipe\"));
-        assert_ne!(stop_event_name(SID, 1), stop_event_name(SID, 2));
+        assert!(!STOP_EVENT_LOCAL_PREFIX.starts_with(r"\\.\pipe\"));
         assert_ne!(
-            stop_event_name(SID, 1),
-            stop_event_name("S-1-5-21-1-2-3-1000", 1)
+            stop_event_create_name(SID, 1),
+            stop_event_create_name(SID, 2)
         );
-        // イベントの名前に `\` を足させない（`Global\` のあとに区切りは 1 つも無い）
-        let name = stop_event_name(SID, 1).unwrap();
+        assert_ne!(
+            stop_event_create_name(SID, 1),
+            stop_event_create_name("S-1-5-21-1-2-3-1000", 1)
+        );
+        // イベントの名前に `\` を足させない（`Local\` のあとに区切りは 1 つも無い）
+        let name = stop_event_create_name(SID, 1).unwrap();
         assert_eq!(name.matches('\\').count(), 1);
         assert_eq!(
-            stop_event_name(r"S-1\..\x", 1),
+            stop_event_create_name(r"S-1\..\x", 1),
+            Err(PipeNameError::InvalidSid)
+        );
+    }
+
+    #[test]
+    fn stop_event_open_name_uses_the_target_session_namespace() {
+        // 別のセッション: Session\<対象のセッション>\<作った名前の本体>
+        assert_eq!(
+            stop_event_open_name(SID, 1, 0).unwrap(),
+            r"Session\1\ikari-ime-stop-v1-S-1-5-21-1004336348-1177238915-682003330-512-s1"
+        );
+        // 同じセッション: 作った名前と同じ（Local\）
+        assert_eq!(
+            stop_event_open_name(SID, 2, 2),
+            stop_event_create_name(SID, 2)
+        );
+        // 開く名前の末尾（本体）は、作る名前の `Local\` のあとと一致する
+        let created = stop_event_create_name(SID, 3).unwrap();
+        let opened = stop_event_open_name(SID, 3, 0).unwrap();
+        assert!(opened.ends_with(created.strip_prefix(r"Local\").unwrap()));
+        // `Global\` は使わない
+        assert!(!opened.starts_with("Global"));
+        assert!(!created.starts_with("Global"));
+        // 区切りは `Session\<番号>\` の 2 つだけ
+        assert_eq!(opened.matches('\\').count(), 2);
+        assert_eq!(
+            stop_event_open_name(r"S-1\..\x", 1, 0),
             Err(PipeNameError::InvalidSid)
         );
     }

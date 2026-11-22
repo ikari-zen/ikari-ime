@@ -34,7 +34,8 @@ pub use duplex::{Duplex, Listener, Shutdown};
 pub use frame::{Frame, FrameError, FrameKind, MAX_FRAME_LEN};
 pub use limits::{Port, PortLimits, Refusal, limits};
 pub use name::{
-    CANDIDATE_NAME_PREFIX, PipeNameError, SETTINGS_NAME_PREFIX, STOP_EVENT_NAME_PREFIX,
-    candidate_pipe_name, pipe_name, settings_pipe_name, stop_event_name,
+    CANDIDATE_NAME_PREFIX, PipeNameError, SETTINGS_NAME_PREFIX, STOP_EVENT_LOCAL_PREFIX,
+    candidate_pipe_name, pipe_name, settings_pipe_name, stop_event_create_name,
+    stop_event_open_name,
 };
 pub use server::{Server, serve_connection, serve_connection_with};

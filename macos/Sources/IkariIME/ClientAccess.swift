@@ -15,6 +15,8 @@ struct ClientAccess: @unchecked Sendable {
     /// 再変換のために読む選択範囲の上限（UTF-16 の単位）。shell-core の上限（64 書記素）より十分大きく、
     /// 巨大な選択を持つクライアントから全部を読み込まないための歯止め。超えたら取れない扱い（shell-core はどのみち断る）
     static let selectionReadLimit = 2000
+    /// 取り残された変換中の文字列を読む上限（UTF-16 の単位）。超えるものは扱わない（選択範囲の上限と同じ値）
+    static let strayMarkedReadLimit = selectionReadLimit
 
     let client: any IMKTextInput
 
@@ -157,7 +159,8 @@ struct ClientAccess: @unchecked Sendable {
         let selected = client.selectedRange()
         guard Self.isValid(selected), selected.length <= Self.selectionReadLimit else { return nil }
         var actual = NSRange(location: 0, length: 0)
-        guard let text = client.string(from: selected, actualRange: &actual), !text.isEmpty, actual == selected else {
+        guard let text = client.string(from: selected, actualRange: &actual), !text.isEmpty, actual == selected,
+              text.utf16.count <= Self.selectionReadLimit else {
             return nil
         }
         var result = Ikari_Shell_V1_SelectedText()
@@ -170,8 +173,8 @@ struct ClientAccess: @unchecked Sendable {
     /// 何も入力していないのにクライアントに残っている変換中の文字列（ADR 0006 §16.3）。なければ nil
     func strayMarkedText() -> String? {
         let marked = client.markedRange()
-        guard Self.isValid(marked) else { return nil }
-        guard let text = string(marked), !text.isEmpty else { return nil }
+        guard Self.isValid(marked), marked.length <= Self.strayMarkedReadLimit else { return nil }
+        guard let text = string(marked), !text.isEmpty, text.utf16.count <= Self.strayMarkedReadLimit else { return nil }
         return text
     }
 

@@ -5,9 +5,10 @@
 //! 残っていれば強制的に終わらせる。そのあと、子（候補窓、LM の子）が残っていれば終わらせる
 //! （ふつうはエンジンの Job Object と一緒に終わっている）。
 //!
-//! 止める口の名前は `ikari_pipe::name::stop_event_name`（契約。ここでは作り方を変えない）。
+//! 止める口の名前は `ikari_pipe::name::stop_event_open_name`（契約。ここでは作り方を変えない）。
+//! 相手のセッションが自分と違えば `Session\<番号>\` で開く。
 
-use ikari_pipe::name::stop_event_name;
+use ikari_pipe::name::stop_event_open_name;
 
 /// エンジンの exe の名前（インストール先の直下。ADR 0067 §3.1）
 pub const ENGINE_EXE: &str = "ikari-engine-host.exe";
@@ -46,10 +47,10 @@ pub fn exe_path(install_dir: &str, relative: &str) -> String {
     format!("{}\\{relative}", install_dir.trim_end_matches(['\\', '/']))
 }
 
-/// 相手のユーザーとセッションから、止める口の名前。SID が名前の規則を通らなければ `None`
-/// （合図はせず、強制の終了だけになる）。
-pub fn event_name_for(sid: &str, session_id: u32) -> Option<String> {
-    stop_event_name(sid, session_id).ok()
+/// 相手のユーザーとセッション（`target_session`）、自分のセッション（`own_session`）から、止める口を開く名前。
+/// SID が名前の規則を通らなければ `None`（合図はせず、強制の終了だけになる）。
+pub fn event_name_for(sid: &str, target_session: u32, own_session: u32) -> Option<String> {
+    stop_event_open_name(sid, target_session, own_session).ok()
 }
 
 /// 止めた結果（数だけ。パスや SID は出さない）
@@ -125,10 +126,14 @@ mod tests {
     #[test]
     fn event_names_come_from_the_contract() {
         assert_eq!(
-            event_name_for("S-1-5-21-1-2-3-1001", 2).as_deref(),
-            Some(r"Global\ikari-ime-stop-v1-S-1-5-21-1-2-3-1001-s2")
+            event_name_for("S-1-5-21-1-2-3-1001", 2, 0).as_deref(),
+            Some(r"Session\2\ikari-ime-stop-v1-S-1-5-21-1-2-3-1001-s2")
         );
-        assert_eq!(event_name_for(r"S-1\..\x", 1), None);
+        assert_eq!(
+            event_name_for("S-1-5-21-1-2-3-1001", 2, 2).as_deref(),
+            Some(r"Local\ikari-ime-stop-v1-S-1-5-21-1-2-3-1001-s2")
+        );
+        assert_eq!(event_name_for(r"S-1\..\x", 1, 0), None);
     }
 
     #[test]
