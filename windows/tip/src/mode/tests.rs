@@ -57,7 +57,7 @@ fn shell(settings: &str) -> Shell {
     shell.dispatch(
         ShellEvent::Activate {
             bundle_id: "notepad.exe".into(),
-            secure: false,
+            secure: None,
         },
         &mut NoText,
     );
@@ -191,7 +191,7 @@ fn an_os_side_change_reaches_the_shell() {
     shell.dispatch(
         ShellEvent::InputModeChanged {
             mode_id: InputMode::English.mode_id().into(),
-            secure: false,
+            secure: None,
         },
         &mut NoText,
     );

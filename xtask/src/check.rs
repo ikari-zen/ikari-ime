@@ -127,6 +127,7 @@ fn steps(root: &Path, plan: &Plan) -> Result<(), Failure> {
     docs::adr_status(root)?;
     supply::net_crates(root)?;
     supply::actions_pinned(root)?;
+    supply::nuget_locked(root)?;
     product::crt_static(root)?;
     product::dev_knobs_wiring(root)?;
     product::startup_hook_off(root)?;

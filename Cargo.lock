@@ -831,6 +831,7 @@ dependencies = [
  "ikari-proto",
  "ikari-runmark",
  "ikari-shell-core",
+ "libc",
  "prost",
 ]
 

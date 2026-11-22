@@ -132,7 +132,7 @@ fn dispatch_round_trips_protobuf_bytes() {
         space(),
         convert::encode_event(&ShellEvent::Activate {
             bundle_id: "com.apple.TextEdit".into(),
-            secure: false,
+            secure: Some(false),
         }),
         convert::encode_event(&ShellEvent::Deactivate),
         // C 側が proto を直接組み立てた場合も同じ
