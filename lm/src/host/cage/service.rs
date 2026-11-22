@@ -79,6 +79,7 @@ impl CageCore {
     fn released(&self) -> spawn::OnReaped {
         let live = Arc::clone(&self.live);
         let transactions = self.transactions;
+        // `OnReaped` は `FnOnce`。型の上で 1 回しか呼べない
         Box::new(move || {
             live.fetch_sub(1, Ordering::AcqRel);
             if transactions {

@@ -104,7 +104,12 @@ impl CagedChild {
     }
 }
 
-/// 子を起動する。`stdin`・`stdout`・`model` は、確かめ済みの fd（[`super::check_launch_fds`]）
+/// 子を起動する。
+///
+/// 契約: `Err` を返したときは `on_reaped` を呼ばない（子はいない。数やトランザクションを戻すのは呼び出し側）。
+/// `Ok` のときだけ、子を回収した時に見張りのスレッドが 1 回呼ぶ。
+///
+/// `stdin`・`stdout`・`model` は、確かめ済みの fd（[`super::check_launch_fds`]）
 pub(super) fn spawn(
     program: &Path,
     gpu: CageGpu,
@@ -155,16 +160,11 @@ pub(super) fn spawn(
         done: Condvar::new(),
     });
     let watcher = Arc::clone(&child);
-    let on_reaped = Arc::new(Mutex::new(Some(on_reaped)));
-    let hook = Arc::clone(&on_reaped);
     let started = thread::Builder::new()
         .name(REAPER_THREAD_NAME.to_owned())
-        .spawn(move || {
-            let f = hook.lock().unwrap_or_else(|e| e.into_inner()).take();
-            watcher.watch(f.unwrap_or_else(|| Box::new(|| {})));
-        });
+        .spawn(move || watcher.watch(on_reaped));
     if let Err(e) = started {
-        // 見張りを置けないなら、子を残さない
+        // 見張りを置けないなら、子を残さない。`on_reaped` は呼ばない（呼ぶのは呼び出し側の責任）
         // SAFETY: 今起動した、まだ回収していない自分の子
         unsafe {
             libc::kill(pid, libc::SIGKILL);
@@ -172,9 +172,6 @@ pub(super) fn spawn(
             while libc::waitpid(pid, &mut status, 0) == -1
                 && io::Error::last_os_error().kind() == io::ErrorKind::Interrupted
             {}
-        }
-        if let Some(f) = on_reaped.lock().unwrap_or_else(|e| e.into_inner()).take() {
-            f();
         }
         return Err(e);
     }
@@ -286,5 +283,31 @@ impl Drop for SpawnAttr {
     fn drop(&mut self) {
         // SAFETY: `new` で初期化した値を 1 回だけ破棄する
         unsafe { libc::posix_spawnattr_destroy(&mut self.0) };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::fd::AsFd;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn failed_spawn_does_not_call_on_reaped() {
+        let null = std::fs::File::open("/dev/null").unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let hook = Arc::clone(&calls);
+        let r = spawn(
+            Path::new("/nonexistent/ikari-cage-test-child"),
+            CageGpu::Off,
+            null.as_fd(),
+            null.as_fd(),
+            null.as_fd(),
+            Box::new(move || {
+                hook.fetch_add(1, Ordering::SeqCst);
+            }),
+        );
+        assert!(r.is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
     }
 }
