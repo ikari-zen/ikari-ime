@@ -234,6 +234,13 @@ pub fn parse_jsonl(bytes: &[u8]) -> Result<Parsed, SchemaError> {
         if trimmed.is_empty() || trimmed.starts_with(CODE_FENCE) {
             continue;
         }
+        if line.len() > MAX_LINE_BYTES {
+            if prompt_version.is_none() {
+                return Err(SchemaError::BadHeader("ヘッダ行が長すぎます".to_string()));
+            }
+            drops.add(DropReason::LineTooLong);
+            continue;
+        }
         if prompt_version.is_none() {
             // 最初の行はヘッダでなければならない
             let v: Value = serde_json::from_str(trimmed)
@@ -246,10 +253,6 @@ pub fn parse_jsonl(bytes: &[u8]) -> Result<Parsed, SchemaError> {
                     }
                 })?;
             prompt_version = Some(parse_header(&v)?);
-            continue;
-        }
-        if line.len() > MAX_LINE_BYTES {
-            drops.add(DropReason::LineTooLong);
             continue;
         }
         let Ok(v) = serde_json::from_str::<Value>(trimmed) else {
@@ -351,6 +354,14 @@ mod tests {
             parse_jsonl(&[0xff, 0xfe, b'{']).unwrap_err(),
             SchemaError::NotUtf8
         );
+        let long_header = format!(
+            r#"{{"type":"header","format":"ikari-ingest","version":1,"prompt_version":"ingest-prompt-v1","pad":"{}"}}"#,
+            "a".repeat(MAX_LINE_BYTES)
+        );
+        assert!(matches!(
+            parse_jsonl(long_header.as_bytes()),
+            Err(SchemaError::BadHeader(_))
+        ));
     }
 
     #[test]
