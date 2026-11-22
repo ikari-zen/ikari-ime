@@ -107,6 +107,7 @@ internal sealed class VersionPanel
 }
 
 /// <summary>版の確認の呼び出し（ikari_settings_core.h の「取得」の欄と同じに保つ）。写すだけ</summary>
+[DefaultDllImportSearchPaths(DllImportSearchPath.ApplicationDirectory)]
 internal static unsafe partial class VersionNative
 {
     private const string Dll = "ikari_settings_core.dll";
