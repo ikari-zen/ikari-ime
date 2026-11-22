@@ -1,0 +1,16 @@
+== data: 717M
+  0.0%  dict/system.dict
+  0.0%  dict/vectors.bin
+  0.0%  models/zenz-v3.2-small-Q5_K_M.gguf
+-- 最初の exec
+  host exec wall=2210ms
+100.0%  dict/system.dict
+100.0%  dict/vectors.bin
+100.0%  models/zenz-v3.2-small-Q5_K_M.gguf
+-- 2 回目の exec
+  host exec wall=10ms
+== nodata: 3.0M
+-- 最初の exec
+  host exec wall=95ms
+-- 2 回目の exec
+  host exec wall=9ms

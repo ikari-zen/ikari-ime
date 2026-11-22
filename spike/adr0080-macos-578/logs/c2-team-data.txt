@@ -1,0 +1,22 @@
+##### C2 team data: 束の大きさ 765M（data: 714M）
+--- 署名（build.sh の sign_bundle の順。--force で付け直す）
+  ikari-smoke                      71ms
+  ikari-data                       53ms
+  ikari-lm-host                    64ms
+  IkariLMCage.xpc                  42ms
+  IkariEngine.xpc                2792ms
+  IkariSettings.app                74ms
+  ikari.app                        75ms
+  合計                         3223ms
+  TeamIdentifier=L9Z8SK775X
+  CodeResources に載った data のファイル: 14
+--- 検証
+  verify --deep --strict (温まった状態（署名の直後）): exit=0 354ms
+  verify --deep --strict (温まった状態 2 回目): exit=0 303ms
+  verify --deep --strict (冷えた状態（clone で置き直した直後）): exit=0 346ms
+  verify --deep --strict (冷えた状態 2 回目): exit=0 475ms
+--- 改ざんの検出（vectors.bin の 1 バイトを変える）
+W/c2-team-data/ikari.app: a sealed resource is missing or invalid
+In subcomponent: W/c2-team-data/ikari.app/Contents/XPCServices/IkariEngine.xpc
+  verify --deep --strict (1 バイト変えたあと（失敗するはず）): exit=1 274ms
+##### 終わり（写した束は消した）

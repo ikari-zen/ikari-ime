@@ -1,0 +1,23 @@
+##### C2 adhoc data: 束の大きさ 765M（data: 714M）
+--- 署名（build.sh の sign_bundle の順。--force で付け直す）
+  ikari-smoke                      32ms
+  ikari-data                       21ms
+  ikari-lm-host                    39ms
+  IkariLMCage.xpc                  20ms
+  IkariEngine.xpc                2634ms
+  IkariSettings.app                63ms
+  ikari.app                        55ms
+  合計                         2914ms
+  Signature=adhoc
+  TeamIdentifier=not set
+  CodeResources に載った data のファイル: 14
+--- 検証
+  verify --deep --strict (温まった状態（署名の直後）): exit=0 297ms
+  verify --deep --strict (温まった状態 2 回目): exit=0 163ms
+  verify --deep --strict (冷えた状態（clone で置き直した直後）): exit=0 256ms
+  verify --deep --strict (冷えた状態 2 回目): exit=0 311ms
+--- 改ざんの検出（vectors.bin の 1 バイトを変える）
+W/c2-adhoc-data/ikari.app: a sealed resource is missing or invalid
+In subcomponent: W/c2-adhoc-data/ikari.app/Contents/XPCServices/IkariEngine.xpc
+  verify --deep --strict (1 バイト変えたあと（失敗するはず）): exit=1 181ms
+##### 終わり（写した束は消した）

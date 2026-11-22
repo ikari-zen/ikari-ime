@@ -1,0 +1,76 @@
+##### ビルド (team)
+717M	W/Spike578-team.app
+##### 署名 (team)
+verify OK
+CodeResources に載った data のファイル数: 14
+	[Key] com.apple.security.app-sandbox
+	[Key] com.apple.security.temporary-exception.files.home-relative-path.read-write
+##### C1-a XPC（launchd が起こす）: 新しい識別子の最初の起動。冷えた状態（clone で置き直した直後）
+  0.0%  dict/system.dict
+  0.0%  dict/vectors.bin
+  0.0%  models/zenz-v3.2-small-Q5_K_M.gguf
+--- 殻を、無い名前のサービスで（殻の最初の exec だけ。XPC は起きない）
+  wall=2578ms
+100.0%  dict/system.dict
+100.0%  dict/vectors.bin
+100.0%  models/zenz-v3.2-small-Q5_K_M.gguf
+--- 本物のサービス（最初の起動。コンテナができる）
+pid=87896 sandboxed=1 HOME=~/Library/Containers/io.github.ikari-zen.spike578.team.probe/Data
+root=W/Spike578-team.app/Contents/XPCServices/Probe.xpc/Contents/MacOS/../Resources/data
+dict/system.dict: size=242.3MB mmap=1.26ms resident_before=100.0% touch_all=7.1ms resident_after=100.0%
+dict/grammar.bin: size=71.7MB mmap=0.45ms resident_before=100.0% touch_all=2.2ms resident_after=100.0%
+dict/vectors.bin: size=336.7MB mmap=1.66ms resident_before=100.0% touch_all=11.2ms resident_after=100.0%
+models/zenz-v3.2-small-Q5_K_M.gguf: size=73.9MB mmap=0.45ms resident_before=100.0% touch_all=2.2ms resident_after=100.0%
+mmap total: 724.5MB in 53.2ms
+deny-check: W/outside.txt: errno=1 (Operation not permitted)
+xpc round trip (launch + probe): 141.5ms
+  wall=151ms
+##### C1-a XPC: 置き直して 2 回目の起動（データは冷えている）
+pid=87904 sandboxed=1 HOME=~/Library/Containers/io.github.ikari-zen.spike578.team.probe/Data
+root=W/Spike578-team.app/Contents/XPCServices/Probe.xpc/Contents/MacOS/../Resources/data
+dict/system.dict: size=242.3MB mmap=0.04ms resident_before=0.0% touch_all=372.5ms resident_after=100.0%
+dict/grammar.bin: size=71.7MB mmap=0.09ms resident_before=0.0% touch_all=99.3ms resident_after=100.0%
+dict/vectors.bin: size=336.7MB mmap=0.08ms resident_before=0.0% touch_all=452.9ms resident_after=100.0%
+models/zenz-v3.2-small-Q5_K_M.gguf: size=73.9MB mmap=0.09ms resident_before=0.0% touch_all=129.0ms resident_after=100.0%
+mmap total: 724.5MB in 1081.9ms
+deny-check: W/outside.txt: errno=1 (Operation not permitted)
+xpc round trip (launch + probe): 1091.4ms
+##### C1-a XPC: 2 回目（ファイルのキャッシュに載った状態）
+pid=87911 sandboxed=1 HOME=~/Library/Containers/io.github.ikari-zen.spike578.team.probe/Data
+root=W/Spike578-team.app/Contents/XPCServices/Probe.xpc/Contents/MacOS/../Resources/data
+dict/system.dict: size=242.3MB mmap=1.30ms resident_before=100.0% touch_all=7.2ms resident_after=100.0%
+dict/grammar.bin: size=71.7MB mmap=0.41ms resident_before=100.0% touch_all=2.1ms resident_after=100.0%
+dict/vectors.bin: size=336.7MB mmap=2.12ms resident_before=100.0% touch_all=9.8ms resident_after=100.0%
+models/zenz-v3.2-small-Q5_K_M.gguf: size=73.9MB mmap=0.50ms resident_before=100.0% touch_all=2.3ms resident_after=100.0%
+mmap total: 724.5MB in 51.2ms
+deny-check: W/outside.txt: errno=1 (Operation not permitted)
+xpc round trip (launch + probe): 60.3ms
+##### C1-b engine-probe engine: 冷えた状態
+sandboxed=1 HOME=~/Library/Containers/io.github.ikari-zen.spike578.team.engineprobe/Data
+data_root=W/Spike578-team.app/Contents/XPCServices/Probe.xpc/Contents/Resources/data
+dict/system.dict: resident_before=0.0%
+models/zenz-v3.2-small-Q5_K_M.gguf: resident_before=0.0%
+Engine::open OK in 274.3ms (LM なし)
+dict/system.dict: resident_after_open=40.0%
+model sha256 29c223d4c23327b8… in 39.0ms
+##### C1-b engine-probe engine: 2 回目
+sandboxed=1 HOME=~/Library/Containers/io.github.ikari-zen.spike578.team.engineprobe/Data
+data_root=W/Spike578-team.app/Contents/XPCServices/Probe.xpc/Contents/Resources/data
+dict/system.dict: resident_before=40.0%
+models/zenz-v3.2-small-Q5_K_M.gguf: resident_before=100.0%
+Engine::open OK in 127.6ms (LM なし)
+dict/system.dict: resident_after_open=40.0%
+model sha256 29c223d4c23327b8… in 35.8ms
+##### C1-b engine-probe mmap と deny
+sandboxed=1 HOME=~/Library/Containers/io.github.ikari-zen.spike578.team.engineprobe/Data
+data_root=W/Spike578-team.app/Contents/XPCServices/Probe.xpc/Contents/Resources/data
+dict/system.dict: size=242.3MB mmap=0.51ms resident_before=40.0% touch_all=191.9ms resident_after=100.0% (sum=1931254)
+dict/grammar.bin: size=71.7MB mmap=0.09ms resident_before=0.5% touch_all=88.0ms resident_after=100.0% (sum=568203)
+dict/vectors.bin: size=336.7MB mmap=0.09ms resident_before=0.0% touch_all=497.0ms resident_after=100.0% (sum=2476502)
+models/zenz-v3.2-small-Q5_K_M.gguf: size=73.9MB mmap=0.47ms resident_before=100.0% touch_all=2.6ms resident_after=100.0% (sum=535613)
+mmap total: 724.5MB in 809.2ms
+sandboxed=1 HOME=~/Library/Containers/io.github.ikari-zen.spike578.team.engineprobe/Data
+data_root=W/Spike578-team.app/Contents/XPCServices/Probe.xpc/Contents/Resources/data
+deny-check: W/outside.txt: Operation not permitted (os error 1) (raw=Some(1))
+置き直したあとも verify OK
+##### 終わり team

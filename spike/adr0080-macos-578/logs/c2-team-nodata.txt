@@ -1,0 +1,15 @@
+##### C2 team nodata: 束の大きさ  51M（data: ）
+--- 署名（build.sh の sign_bundle の順。--force で付け直す）
+  ikari-smoke                      58ms
+  ikari-data                       52ms
+  ikari-lm-host                    70ms
+  IkariLMCage.xpc                  48ms
+  IkariEngine.xpc                  66ms
+  IkariSettings.app                77ms
+  ikari.app                        69ms
+  合計                         488ms
+  TeamIdentifier=L9Z8SK775X
+--- 検証
+  verify --deep --strict (温まった状態（署名の直後）): exit=0 29ms
+  verify --deep --strict (温まった状態 2 回目): exit=0 33ms
+##### 終わり（写した束は消した）

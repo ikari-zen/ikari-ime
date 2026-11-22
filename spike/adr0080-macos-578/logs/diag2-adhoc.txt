@@ -1,0 +1,22 @@
+== 印 n1 で xpc-probe を作り直し、XPC の束と殻を署名し直す（cdhash が変わる）
+== 置き直す
+  0.0%  dict/system.dict
+  0.0%  dict/vectors.bin
+  0.0%  models/zenz-v3.2-small-Q5_K_M.gguf
+== 殻を、無い名前のサービスで（殻の exec だけ）
+  0.0%  dict/system.dict
+  0.0%  dict/vectors.bin
+  0.0%  models/zenz-v3.2-small-Q5_K_M.gguf
+== 本物のサービスで（新しい cdhash の最初の起動）
+pid=80587 sandboxed=1 HOME=~/Library/Containers/io.github.ikari-zen.spike578.adhoc.probe/Data
+dict/system.dict: size=242.3MB mmap=0.04ms resident_before=0.0% touch_all=337.8ms resident_after=100.0%
+xpc round trip (launch + probe): 1053.9ms
+  wall=1063ms
+100.0%  dict/system.dict
+100.0%  dict/vectors.bin
+100.0%  models/zenz-v3.2-small-Q5_K_M.gguf
+== 置き直して、もう一度（同じ cdhash の 2 回目の起動。データは冷えている）
+pid=80619 sandboxed=1 HOME=~/Library/Containers/io.github.ikari-zen.spike578.adhoc.probe/Data
+dict/system.dict: size=242.3MB mmap=0.03ms resident_before=0.0% touch_all=324.2ms resident_after=100.0%
+xpc round trip (launch + probe): 1010.7ms
+  wall=1019ms

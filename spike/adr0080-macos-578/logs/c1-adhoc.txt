@@ -1,0 +1,56 @@
+##### ビルド (adhoc)
+717M	W/Spike578-adhoc.app
+##### 署名 (adhoc)
+verify OK
+CodeResources に載った data のファイル数: 14
+	[Key] com.apple.security.app-sandbox
+	[Key] com.apple.security.temporary-exception.files.home-relative-path.read-write
+##### C1-a XPC（launchd が起こす）: 冷えた状態（clone で置き直した直後）
+pid=77880 sandboxed=1 HOME=~/Library/Containers/io.github.ikari-zen.spike578.adhoc.probe/Data
+root=W/Spike578-adhoc.app/Contents/XPCServices/Probe.xpc/Contents/MacOS/../Resources/data
+dict/system.dict: size=242.3MB mmap=1.62ms resident_before=100.0% touch_all=8.5ms resident_after=100.0%
+dict/grammar.bin: size=71.7MB mmap=0.53ms resident_before=100.0% touch_all=2.2ms resident_after=100.0%
+dict/vectors.bin: size=336.7MB mmap=2.44ms resident_before=100.0% touch_all=11.4ms resident_after=100.0%
+models/zenz-v3.2-small-Q5_K_M.gguf: size=73.9MB mmap=0.57ms resident_before=100.0% touch_all=2.4ms resident_after=100.0%
+mmap total: 724.5MB in 62.8ms
+deny-check: W/outside.txt: errno=1 (Operation not permitted)
+xpc round trip (launch + probe): 266.4ms
+##### C1-a XPC: 2 回目（ファイルのキャッシュに載った状態）
+pid=77890 sandboxed=1 HOME=~/Library/Containers/io.github.ikari-zen.spike578.adhoc.probe/Data
+root=W/Spike578-adhoc.app/Contents/XPCServices/Probe.xpc/Contents/MacOS/../Resources/data
+dict/system.dict: size=242.3MB mmap=1.55ms resident_before=100.0% touch_all=8.0ms resident_after=100.0%
+dict/grammar.bin: size=71.7MB mmap=0.52ms resident_before=100.0% touch_all=2.4ms resident_after=100.0%
+dict/vectors.bin: size=336.7MB mmap=2.19ms resident_before=100.0% touch_all=11.2ms resident_after=100.0%
+models/zenz-v3.2-small-Q5_K_M.gguf: size=73.9MB mmap=0.54ms resident_before=100.0% touch_all=2.3ms resident_after=100.0%
+mmap total: 724.5MB in 60.5ms
+deny-check: W/outside.txt: errno=1 (Operation not permitted)
+xpc round trip (launch + probe): 116.8ms
+##### C1-b engine-probe engine: 冷えた状態
+sandboxed=1 HOME=~/Library/Containers/io.github.ikari-zen.spike578.adhoc.engineprobe/Data
+data_root=W/Spike578-adhoc.app/Contents/XPCServices/Probe.xpc/Contents/Resources/data
+dict/system.dict: resident_before=0.0%
+models/zenz-v3.2-small-Q5_K_M.gguf: resident_before=0.0%
+Engine::open OK in 435.5ms (LM なし)
+dict/system.dict: resident_after_open=40.0%
+model sha256 29c223d4c23327b8… in 48.6ms
+##### C1-b engine-probe engine: 2 回目
+sandboxed=1 HOME=~/Library/Containers/io.github.ikari-zen.spike578.adhoc.engineprobe/Data
+data_root=W/Spike578-adhoc.app/Contents/XPCServices/Probe.xpc/Contents/Resources/data
+dict/system.dict: resident_before=40.0%
+models/zenz-v3.2-small-Q5_K_M.gguf: resident_before=100.0%
+Engine::open OK in 299.2ms (LM なし)
+dict/system.dict: resident_after_open=40.0%
+model sha256 29c223d4c23327b8… in 43.6ms
+##### C1-b engine-probe mmap と deny
+sandboxed=1 HOME=~/Library/Containers/io.github.ikari-zen.spike578.adhoc.engineprobe/Data
+data_root=W/Spike578-adhoc.app/Contents/XPCServices/Probe.xpc/Contents/Resources/data
+dict/system.dict: size=242.3MB mmap=0.67ms resident_before=40.0% touch_all=594.4ms resident_after=100.0% (sum=1931254)
+dict/grammar.bin: size=71.7MB mmap=0.16ms resident_before=0.5% touch_all=178.7ms resident_after=100.0% (sum=568203)
+dict/vectors.bin: size=336.7MB mmap=0.08ms resident_before=0.0% touch_all=591.3ms resident_after=100.0% (sum=2476502)
+models/zenz-v3.2-small-Q5_K_M.gguf: size=73.9MB mmap=0.62ms resident_before=100.0% touch_all=2.4ms resident_after=100.0% (sum=535613)
+mmap total: 724.5MB in 1399.9ms
+sandboxed=1 HOME=~/Library/Containers/io.github.ikari-zen.spike578.adhoc.engineprobe/Data
+data_root=W/Spike578-adhoc.app/Contents/XPCServices/Probe.xpc/Contents/Resources/data
+deny-check: W/outside.txt: Operation not permitted (os error 1) (raw=Some(1))
+置き直したあとも verify OK
+##### 終わり adhoc

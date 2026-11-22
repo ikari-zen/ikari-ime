@@ -1,0 +1,16 @@
+##### C2 adhoc nodata: 束の大きさ  51M（data: ）
+--- 署名（build.sh の sign_bundle の順。--force で付け直す）
+  ikari-smoke                      32ms
+  ikari-data                       21ms
+  ikari-lm-host                    37ms
+  IkariLMCage.xpc                  20ms
+  IkariEngine.xpc                  39ms
+  IkariSettings.app                42ms
+  ikari.app                        39ms
+  合計                         277ms
+  Signature=adhoc
+  TeamIdentifier=not set
+--- 検証
+  verify --deep --strict (温まった状態（署名の直後）): exit=0 26ms
+  verify --deep --strict (温まった状態 2 回目): exit=0 30ms
+##### 終わり（写した束は消した）

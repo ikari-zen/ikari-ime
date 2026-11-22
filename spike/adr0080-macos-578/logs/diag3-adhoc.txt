@@ -1,0 +1,14 @@
+== 殻を印 h1 で作り直して署名し直す（データの封印は同じ）
+  0.0%  dict/system.dict
+  0.0%  dict/vectors.bin
+  0.0%  models/zenz-v3.2-small-Q5_K_M.gguf
+== 新しい殻の最初の exec
+  host exec wall=16ms
+  0.0%  dict/system.dict
+  0.0%  dict/vectors.bin
+  0.0%  models/zenz-v3.2-small-Q5_K_M.gguf
+== 置き直して、同じ殻の 2 回目の exec
+  host exec wall=9ms
+  0.0%  dict/system.dict
+  0.0%  dict/vectors.bin
+  0.0%  models/zenz-v3.2-small-Q5_K_M.gguf

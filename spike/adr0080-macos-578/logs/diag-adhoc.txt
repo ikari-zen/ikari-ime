@@ -1,0 +1,31 @@
+== 1. clone で置き直した直後
+  0.0%  dict/system.dict
+  0.0%  dict/vectors.bin
+  0.0%  models/zenz-v3.2-small-Q5_K_M.gguf
+== 2. 殻（xpc-host）を、無い名前のサービスで起こす（XPC は起きない）
+connection event: Connection invalid
+reply error: Connection invalid (0.7ms)
+  (9ms: W/Spike578-adhoc.app/Contents/MacOS/xpc-host io.github.ikari-zen.spike578.adhoc.probe.nonexistent /dev/null)
+  0.0%  dict/system.dict
+  0.0%  dict/vectors.bin
+  0.0%  models/zenz-v3.2-small-Q5_K_M.gguf
+== 3. 置き直して、本物のサービスで
+  0.0%  dict/system.dict
+  0.0%  dict/vectors.bin
+  0.0%  models/zenz-v3.2-small-Q5_K_M.gguf
+dict/system.dict: size=242.3MB mmap=0.04ms resident_before=0.0% touch_all=340.7ms resident_after=100.0%
+dict/grammar.bin: size=71.7MB mmap=0.08ms resident_before=0.0% touch_all=97.5ms resident_after=100.0%
+dict/vectors.bin: size=336.7MB mmap=0.06ms resident_before=0.0% touch_all=510.4ms resident_after=100.0%
+models/zenz-v3.2-small-Q5_K_M.gguf: size=73.9MB mmap=0.06ms resident_before=0.0% touch_all=108.3ms resident_after=100.0%
+xpc round trip (launch + probe): 1095.0ms
+100.0%  dict/system.dict
+100.0%  dict/vectors.bin
+100.0%  models/zenz-v3.2-small-Q5_K_M.gguf
+== 4. 置き直して、もう一度本物のサービスで（2 回目の置き直し）
+dict/system.dict: size=242.3MB mmap=0.04ms resident_before=0.0% touch_all=326.2ms resident_after=100.0%
+xpc round trip (launch + probe): 1019.0ms
+== 5. 置き直して、codesign --verify --deep --strict だけ
+  (242ms: codesign --verify --deep --strict W/Spike578-adhoc.app)
+100.0%  dict/system.dict
+100.0%  dict/vectors.bin
+100.0%  models/zenz-v3.2-small-Q5_K_M.gguf
