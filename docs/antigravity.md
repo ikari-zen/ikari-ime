@@ -26,9 +26,9 @@ git config user.name "Antigravity (<作業するモデルの名前>)"   # 例: A
 ```
 
 - **作者名は「Antigravity (モデル名)」にする**（2026-11-22 ユーザー決定）。リードのコミットと区別し、どのモデルが作業したかが履歴で分かるようにする。**セッションでモデルを変えたら、作業の前に `git config user.name` を直す**（例: `Antigravity (Gemini 4 Neon)`、`Antigravity (Claude Sonnet 5.5)`）。PR の説明の「実施モデル」と、issue の完了コメントの「実施モデル」にも、同じ名前を書く。
-- **コミットの末尾に Co-Authored-By の行を付ける**（Claude Code と同じ運用。2026-11-22 ユーザー決定）。作者名と同じ「Antigravity (モデル名)」で、メールは固定の noreply:
+- **コミットの末尾に Co-Authored-By の行を付ける**（Claude Code と同じ運用。2026-11-22 ユーザー決定）。作者名と同じ「Antigravity (モデル名)」で、メールは Claude Code と同じ noreply@anthropic.com（届かないアドレス。2026-11-22 ユーザー決定）:
   ```
-  Co-Authored-By: Antigravity (Gemini 4 Neon) <noreply@antigravity.google>
+  Co-Authored-By: Antigravity (Gemini 4 Neon) <noreply@anthropic.com>
   ```
   squash マージのあとの main には、作者名（`user.name`）は残らず、この行だけが残る。どのモデルが書いたかを履歴で追えるように、必ず付ける。PR の説明の末尾にも、同じ名前で生成元を書く。
 - jj は使わない（git だけ）。リードの jj のリポジトリに、あなたの ref を入れない。
