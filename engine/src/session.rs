@@ -131,6 +131,13 @@ impl Inner {
             .and_then(|s| s.app.as_ref().map(|a| format!("app={a}")))
     }
 
+    /// そのセッションが secure か（知らないセッションは false）
+    pub(crate) fn session_is_secure(&self, conn: ConnectionId, session_id: u64) -> bool {
+        lock_mutex(&self.sessions)
+            .get(&SessionKey::new(conn, session_id))
+            .is_some_and(|s| s.secure)
+    }
+
     /// (secure, 確定履歴)。セッションがなければ `UNKNOWN_SESSION`。
     pub(crate) fn session_info(
         &self,

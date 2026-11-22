@@ -31,12 +31,15 @@ fn windows_main() -> u8 {
 
     use ikari_engine_host::run::{
         EXIT_ELEVATED, EXIT_OK, EXIT_START_FAILED, EXIT_USAGE, StartError, StopWait, check_launch,
-        parse_args, record_failure, resolve_data_dir, run_host, start,
+        parse_args, record_failure, resolve_data_dir, restrict_dll_search, run_host, start,
     };
     use ikari_engine_host::settings_pipe::bind_settings_listener;
     use ikari_engine_host::{candidate_window, ctrl, endsession, stop_event};
     use ikari_pipe::Shutdown;
     use ikari_pipe::os::windows::NamedPipeListener;
+
+    // 起動の最初に DLL の探索を固定する（ADR 0067 §4.4）
+    restrict_dll_search();
 
     // 最初に確かめる（高い権限なら、引数もデータの場所も見ずに終わる。理由の語だけを出す。ADR 0067 §4.3）
     if let Err(reason) = check_launch(ikari_pipe::os::windows::current_integrity_rid()) {
