@@ -80,6 +80,22 @@ final class XPCTransport: EngineTransport, @unchecked Sendable {
         connection.resume()
     }
 
+    /// スパイク #536（マージしない）: プロセスの中の匿名の口につなぐ（署名要件なし）。測定のテストだけが使う
+    init(
+        spikeListenerEndpoint endpoint: NSXPCListenerEndpoint, cage: LMCageBroker?,
+        onDown: @escaping @Sendable (TransportDown) -> Void
+    ) {
+        connection = NSXPCConnection(listenerEndpoint: endpoint)
+        self.cage = cage
+        connection.remoteObjectInterface = IkariEngineXPCInterface.make()
+        connection.interruptionHandler = { [weak self] in
+            self?.forgetAttachment()
+            onDown(.interrupted)
+        }
+        connection.invalidationHandler = { onDown(.invalidated) }
+        connection.resume()
+    }
+
     private func forgetAttachment() { setAttachedGeneration(nil) }
 
     /// 檻役の口が変わっていた、またはエンジンが入れ替わっていたら、口をエンジンに渡す。
