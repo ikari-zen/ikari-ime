@@ -49,7 +49,7 @@ enum Command {
     Cov(cov::Args),
     /// 配るバイナリの Rust 依存のライセンス一覧（THIRD_PARTY_LICENSES_RUST.md）を作る（cargo-about が要る。issue #242）
     Licenses(licenses::Args),
-    /// 製品のビルドの exe と DLL に、開発用の文字列と動的な C ランタイムが無いことを調べる（ADR 0067 §4.4・§6）
+    /// 製品のビルドの exe と DLL に、開発用の文字列と動的な C ランタイムが無いことを調べる（ADR 0067 §4.4・§6）。--stage でインストーラに入れるフォルダを調べる
     ScanProduct(scan::Args),
     /// Wikipedia 日本語版のダンプから外来語の一覧を作る（メンテナー用。ADR 0055 §5.1。issue #113）
     Webwords(webwords::Args),
