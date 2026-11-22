@@ -7,7 +7,7 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use crate::data::run::{Failure, capture, cargo, log};
+use crate::data::run::{Failure, capture, cargo, git, log};
 
 const WORKFLOW_DIR: &str = ".github/workflows";
 const SHA_LEN: usize = 40;
@@ -221,6 +221,46 @@ pub fn actions_pinned(root: &Path) -> Result<(), Failure> {
     )))
 }
 
+/// csproj の本文が NuGet のロックの設定を持つか。足りない設定の説明を返す。
+fn csproj_lock_problems(text: &str, has_lock_file: bool) -> Vec<String> {
+    let squeezed: String = text.split_whitespace().collect();
+    let mut out = Vec::new();
+    if !squeezed.contains("<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>") {
+        out.push("RestorePackagesWithLockFile が true でない".to_string());
+    }
+    if !squeezed.contains("<RestoreLockedMode") || !squeezed.contains(">true</RestoreLockedMode>") {
+        out.push("RestoreLockedMode（CI=true で true）が無い".to_string());
+    }
+    if !has_lock_file {
+        out.push("隣に packages.lock.json が無い".to_string());
+    }
+    out
+}
+
+/// 追跡されている全 .csproj が NuGet のロックを固定していること（ADR 0069 §4.1）
+pub fn nuget_locked(root: &Path) -> Result<(), Failure> {
+    log("全 csproj が NuGet のロックを固定していること（ADR 0069 §4.1）");
+    let listed = capture(git(root).args(["ls-files", "*.csproj"]))
+        .ok_or_else(|| Failure::new("git ls-files に失敗しました"))?;
+    let mut bad = Vec::new();
+    for rel in listed.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        let path = root.join(rel);
+        let text = std::fs::read_to_string(&path)
+            .map_err(|e| Failure::new(format!("{rel} を読めません: {e}")))?;
+        let has_lock = path.with_file_name("packages.lock.json").is_file();
+        for p in csproj_lock_problems(&text, has_lock) {
+            bad.push(format!("{rel}: {p}"));
+        }
+    }
+    if bad.is_empty() {
+        return Ok(());
+    }
+    Err(Failure::new(format!(
+        "NuGet のロックが固定されていない csproj があります（candidate-ui の書き方に合わせ、Windows で dotnet restore を流して packages.lock.json を作る）:\n  {}",
+        bad.join("\n  ")
+    )))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -281,6 +321,14 @@ mod tests {
             "steps:\n  - uses: actions/checkout@{sha}\n  # uses: a/b@v1\n  - uses: x/y@{sha} # v2\n  - uses: ./local\n  - uses: a/b@v4\n  - uses: c/d@main\n  - uses: e/f\n    with:\n      name: uses: not-an-action\n"
         );
         assert_eq!(unpinned_in(&text), ["a/b@v4", "c/d@main", "e/f"]);
+    }
+
+    #[test]
+    fn csproj_lock_cases() {
+        let ok = "<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>\n<RestoreLockedMode Condition=\"'$(CI)' == 'true'\">true</RestoreLockedMode>";
+        assert!(csproj_lock_problems(ok, true).is_empty());
+        assert_eq!(csproj_lock_problems("<Project/>", true).len(), 2);
+        assert_eq!(csproj_lock_problems(ok, false).len(), 1);
     }
 
     #[test]
