@@ -271,8 +271,10 @@ fn spawn_caged(
     if let HostLauncher::Cage(slot) = &spec.launcher {
         return os::spawn_via_cage(slot, &spec.model, args, cage_for(spec));
     }
+    // 同梱の場所のモデルは、許可を足さずに読める（足す権限も無い。`ModelHandle::needs_cage_grant`）
+    let grant = spec.model.needs_cage_grant();
     let container = Cage::AppContainer {
-        readable: spec.model.path(),
+        readable: grant.then(|| spec.model.path()),
     };
     match cage_for(spec) {
         HostCage::Standard => os::spawn(&spec.program, args, Cage::Standard),
@@ -281,7 +283,9 @@ fn spawn_caged(
             Ok(child) => Ok(child),
             Err(_) => {
                 // 許可を外せなくても段 1 を試す（読めなければ、読み込みの失敗に数えられる）
-                let _ = os::revoke_cage_read(spec.model.path());
+                if grant {
+                    let _ = os::revoke_cage_read(spec.model.path());
+                }
                 os::spawn(&spec.program, args, Cage::Standard)
             }
         },

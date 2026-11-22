@@ -178,7 +178,7 @@ fn resolve_preset(
         );
         rejects.extend(reject.map(|r| (file_name.to_owned(), r)));
         if let Some(model) = model {
-            chosen = Some((model, *kind));
+            chosen = Some((for_location(model, *kind), *kind));
             break;
         }
     }
@@ -190,6 +190,15 @@ fn resolve_preset(
         origin: ModelOrigin::Preset,
         loading: None,
         location,
+    }
+}
+
+/// 同梱の場所のモデルには、段 2 の子への許可を足さない印を付ける（Windows の `Program Files` は継承の読み取りで
+/// 読め、許可を足す権限が無い。足そうとすると段 2 の起動が失敗する。#578 の C4）
+fn for_location(model: LmModelHandle, kind: LocationKind) -> LmModelHandle {
+    match kind {
+        LocationKind::User => model,
+        LocationKind::Bundled => model.readable_without_cage_grant(),
     }
 }
 
@@ -539,6 +548,17 @@ mod tests {
         let r = resolve_model(true, &locs, &f.settings(), true);
         assert_eq!(words(&r)[0], ModelReject::Manifest);
         assert_eq!(r.rejects.len(), 2, "the bundled preset was checked too");
+    }
+
+    #[test]
+    fn only_a_bundled_model_skips_the_cage_grant() {
+        let f = installed("zenz-v3");
+        let path = f.models().join(f.id.file_name());
+        let open = || LmModelHandle::open(&path).unwrap();
+        assert!(for_location(open(), LocationKind::User).needs_cage_grant());
+        assert!(!for_location(open(), LocationKind::Bundled).needs_cage_grant());
+        // 自由指定のモデル（利用者の場所）は、今までどおり許可を足す
+        assert!(f.resolve(true).model.unwrap().needs_cage_grant());
     }
 
     #[test]

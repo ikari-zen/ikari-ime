@@ -101,9 +101,10 @@ pub(super) type FromChild = io::PipeReader;
 pub(super) enum Cage<'a> {
     /// 段 1（Windows: Job の制限と、低い整合性。macOS: エンジンの Sandbox を引き継ぐ）
     Standard,
-    /// 段 2（Windows だけ）: 能力なしの AppContainer。`readable` に読み取りを許してから起動する
+    /// 段 2（Windows だけ）: 能力なしの AppContainer。`readable` があれば、読み取りを許してから起動する
+    /// （None は許可を足さない。継承の読み取りで読める同梱の場所のモデル。ADR 0080 §3.1）
     #[cfg_attr(not(windows), allow(dead_code))]
-    AppContainer { readable: &'a Path },
+    AppContainer { readable: Option<&'a Path> },
 }
 
 /// 実際にかけた檻（`lm_load` のログの `box=` の語）
@@ -476,7 +477,9 @@ mod tests {
         let err = spawn(
             Path::new("/bin/cat"),
             &[],
-            Cage::AppContainer { readable: model },
+            Cage::AppContainer {
+                readable: Some(model),
+            },
         )
         .err()
         .unwrap();
