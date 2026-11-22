@@ -161,11 +161,12 @@ jobs:
               "$($Matches[1])=$($Matches[2])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
             }
           }
-      # 製品のビルド（dev-knobs なし）。エンジンは窓なし（hide-console。ログオンの Run で起動する。ADR 0067 §4.1）
+      # 製品のビルド（dev-knobs なし）。エンジンは窓なし（hide-console。ログオンの Run で起動する。ADR 0067 §4.1）。
+      # 設定画面の核は通常版（online。取得の核を持つ。ADR 0080 §7.1。オフライン版の成果物はレーン 6）
       - name: release ビルド（エンジン、TIP、候補窓と設定画面の核、helper。--locked）
         shell: pwsh
         run: |
-          cargo build --release --locked -p ikari-engine-host -p ikari-tip -p ikari-candidate -p ikari-settings-core -p ikari-setup-helper --features ikari-engine-host/hide-console
+          cargo build --release --locked -p ikari-engine-host -p ikari-tip -p ikari-candidate -p ikari-settings-core -p ikari-setup-helper --features ikari-engine-host/hide-console,ikari-settings-core/online
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       # 取得の子（ADR 0076。設定画面の取得のボタンが起動する）。通信の crate（ureq と OS の TLS）を持つのはこれだけなので、
       # ほかの製品と feature がまざらないよう、別の cargo の呼び出しにする（ci.yml の windows-artifact と同じ）

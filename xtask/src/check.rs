@@ -125,7 +125,8 @@ fn steps(root: &Path, plan: &Plan) -> Result<(), Failure> {
     docs::identity(root)?;
     docs::leaks(root)?;
     docs::adr_status(root)?;
-    supply::net_crates(root)?;
+    supply::net_crates(root, supply::Edition::Normal)?;
+    supply::net_crates(root, supply::Edition::Offline)?;
     supply::actions_pinned(root)?;
     supply::nuget_locked(root)?;
     product::crt_static(root)?;
@@ -220,19 +221,62 @@ fn rust_licenses(root: &Path) -> Result<(), Failure> {
 fn rust_base(root: &Path) -> Result<(), Failure> {
     log("cargo fmt --check");
     exec(cargo(root).args(["fmt", "--all", "--", "--check"]))?;
-    log("cargo clippy --workspace --all-targets -D warnings");
+    // 通常版（取得の核を持つ。ADR 0080 §7.1）で流す。オフライン版は `offline_edition` が別に見る
+    log("cargo clippy --workspace --all-targets -D warnings（通常版: online）");
     exec(cargo(root).args([
         "clippy",
         "--workspace",
         "--all-targets",
+        "--features",
+        supply::ONLINE_FEATURES,
         "--",
         "-D",
         "warnings",
     ]))?;
-    log("cargo test --workspace");
-    exec(cargo(root).args(["test", "--workspace"]))?;
+    log("cargo test --workspace（通常版: online）");
+    exec(cargo(root).args(["test", "--workspace", "--features", supply::ONLINE_FEATURES]))?;
+    offline_edition(root)?;
     product_build(root)?;
     windows_check(root)
+}
+
+/// `online` を持つ crate（`supply::ONLINE_FEATURES` の `crate/online` の crate の側）
+fn edition_crates() -> impl Iterator<Item = &'static str> {
+    supply::ONLINE_FEATURES
+        .split(',')
+        .filter_map(|f| f.split_once('/').map(|(krate, _)| krate))
+}
+
+/// オフライン版（`online` なし。ADR 0080 §7.1）でも、版で分けた crate が警告なしに通り、テストが通ること。
+/// Windows 向けの clippy も流す（`windows/settings` の Windows だけの部分が `online` で消えるため）
+fn offline_edition(root: &Path) -> Result<(), Failure> {
+    log("オフライン版（online なし）の cargo clippy と cargo test");
+    let mut clippy = cargo(root);
+    clippy.args(["clippy", "--all-targets"]);
+    for krate in edition_crates() {
+        clippy.args(["-p", krate]);
+    }
+    clippy.args(["--", "-D", "warnings"]);
+    exec(&mut clippy)?;
+    let mut test = cargo(root);
+    test.arg("test");
+    for krate in edition_crates() {
+        test.args(["-p", krate]);
+    }
+    exec(&mut test)?;
+    if cfg!(windows) || !target_installed(WINDOWS_TARGET) {
+        return Ok(());
+    }
+    log(&format!(
+        "オフライン版（online なし）の cargo clippy --target {WINDOWS_TARGET}"
+    ));
+    let mut clippy = cargo(root);
+    clippy.args(["clippy", "--all-targets", "--target", WINDOWS_TARGET]);
+    for krate in edition_crates() {
+        clippy.args(["-p", krate]);
+    }
+    clippy.args(["--", "-D", "warnings"]);
+    exec(&mut clippy)
 }
 
 /// 製品のビルドで開発用の口に頼る crate（`dev-knobs` を付けない）。`--workspace` は feature が統合されて
@@ -297,6 +341,8 @@ fn windows_check(root: &Path) -> Result<(), Failure> {
         "--tests",
         "--target",
         WINDOWS_TARGET,
+        "--features",
+        supply::ONLINE_FEATURES,
     ]);
     for krate in WINDOWS_CHECK_EXCLUDES {
         command.args(["--exclude", krate]);

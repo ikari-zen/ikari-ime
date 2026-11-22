@@ -21,8 +21,9 @@ use crate::data::run::repo_root;
 
 /// 生成物（リポジトリ直下）
 pub const OUTPUT_FILE: &str = "THIRD_PARTY_LICENSES_RUST.md";
-/// 配る Rust の成果物（パッケージ、機能）。`macos/scripts/build.sh` の `cargo build -p …` と合わせる
-const SHIPPED: [(&str, &str); 3] = [("lm", "metal"), ("engine-ffi", ""), ("shell-ffi", "")];
+/// 配る Rust の成果物（パッケージ、機能）。`macos/scripts/build.sh` の `cargo build -p …` と合わせる。
+/// `shell-ffi` は通常版（`online`。ADR 0080 §7.1）で数える（オフライン版の依存はその部分集合）
+const SHIPPED: [(&str, &str); 3] = [("lm", "metal"), ("engine-ffi", ""), ("shell-ffi", "online")];
 /// 生成物の先頭の見出し
 const TITLE: &str = "# Rust 依存クレートのライセンス";
 
