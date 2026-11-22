@@ -761,10 +761,12 @@ version = "0.1.0"
 dependencies = [
  "ikari-dict-format",
  "ikari-textfile",
+ "libc",
  "serde",
  "serde_json",
  "sha2",
  "tempfile",
+ "windows-sys",
 ]
 
 [[package]]
