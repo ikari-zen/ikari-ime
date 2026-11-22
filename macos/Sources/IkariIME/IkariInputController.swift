@@ -112,7 +112,11 @@ final class PanelUI: ShellUI {
             source = resolved.source
             anchor = rect
         }
-        let visibleFrame = Self.screen(containing: rect).visibleFrame
+        // 画面が 1 つも取れないときは、候補窓を出さずに抜ける
+        guard let visibleFrame = Self.screen(containing: rect)?.visibleFrame else {
+            panel.hide()
+            return (.below, source)
+        }
         let side = panel.show(model: model, anchor: rect, visibleFrame: visibleFrame, level: access.windowLevel)
         return (side, source)
     }
@@ -135,7 +139,7 @@ final class PanelUI: ShellUI {
     private func resolveAnchor(_ access: ClientAccess) -> (rect: CGRect, source: AnchorSource) {
         let bundleID = access.bundleIdentifier
         var request = Ikari_Shell_V1_PanelAnchorRequest()
-        request.mouseScreenVisibleFrame = .init(Self.mouseScreen().visibleFrame)
+        request.mouseScreenVisibleFrame = .init(Self.mouseScreen()?.visibleFrame ?? .zero)
         for caret in access.caretRects() {
             request.client = .init(caret)
             if let anchor = ShellPanelGeometry.resolveAnchor(request), anchor.source == .client {
@@ -147,19 +151,20 @@ final class PanelUI: ShellUI {
         if let accessibility = AccessibilityAnchor.focusedElementBottomLeft() { request.accessibility = .init(accessibility) }
         if let last = lastKnown[bundleID] { request.lastKnown = .init(last) }
         guard let anchor = ShellPanelGeometry.resolveAnchor(request) else {
-            let frame = Self.mouseScreen().visibleFrame
+            let frame = Self.mouseScreen()?.visibleFrame ?? .zero
             return (CGRect(x: frame.midX, y: frame.midY, width: 0, height: 0), .mouseScreen)
         }
         return (CGRect(anchor.rect), anchor.source)
     }
 
-    private static func screen(containing rect: CGRect) -> NSScreen {
+    private static func screen(containing rect: CGRect) -> NSScreen? {
         let point = CGPoint(x: rect.minX, y: rect.midY)
         return NSScreen.screens.first { $0.frame.contains(point) } ?? mouseScreen()
     }
 
-    private static func mouseScreen() -> NSScreen {
+    /// 画面が 1 つも無いとき（着脱やスリープの直後など）は nil
+    private static func mouseScreen() -> NSScreen? {
         let mouse = NSEvent.mouseLocation
-        return NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main ?? NSScreen.screens[0]
+        return NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main ?? NSScreen.screens.first
     }
 }

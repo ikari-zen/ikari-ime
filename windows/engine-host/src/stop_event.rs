@@ -5,14 +5,13 @@
 //! （受け付けを止め、学習を保存して終わる。新しい終了の仕組みは持たない）。
 //!
 //! - 口でできるのは「止める」だけ（R6）。データは運ばない。
-//! - 合図を許すのは、自分のユーザー、SYSTEM、管理者だけ（`stop_event_sddl`）。
+//! - 合図を許すのは、自分のユーザー、SYSTEM、管理者だけ（`stop_event_sddl`）。権利は合図（`EVENT_MODIFY_STATE`）だけ。
+//!   待つのは作ったときのハンドルなので、待つ権利は要らない。所有者は自分のユーザーで、中の整合性のラベルを明示する。
+//! - 名前は自分のセッションの `Local\`。別のセッションの合図する側は `Session\<番号>\` で開く（`stop_event_open_name`）。
 //! - 作れなかったとき（名前を先に取られていた、など）は、止める口が無いだけで、エンジンは動き続ける。
 //!   待ちが壊れたときも、止めずに口を閉じるだけ（誤って止めない）。
-//!
-//! TODO(ADR 0068 §10、security-design.md §5.3): 別のセッションの管理者が、この名前のイベントを開いて合図できるかは
-//! 実機で確かめる。できなければ、合図は同じセッションのエンジンだけにして、ほかは強制の終了にする（名前の形は変えない）。
 
-use ikari_pipe::name::{PipeNameError, stop_event_name};
+use ikari_pipe::name::{PipeNameError, stop_event_create_name};
 
 #[cfg(windows)]
 use crate::run::StopHandle;
@@ -21,9 +20,13 @@ use crate::run::StopHandle;
 #[allow(unsafe_code)]
 mod os;
 
-/// イベントに許す権利（SDDL の 16 進）: `EVENT_MODIFY_STATE`（0x2。合図する）と `SYNCHRONIZE`（0x100000。待つ）。
-/// 合図に要る最小の権利だけで、削除・ACL の変更は許さない。
-const SIGNAL_RIGHTS: &str = "0x100002";
+/// イベントに許す権利（SDDL の 16 進）: `EVENT_MODIFY_STATE`（0x2。合図する）だけ。
+/// 待つ権利（`SYNCHRONIZE`）は、作る側が `CreateEventW` のハンドルで待つので要らない。削除・ACL の変更も許さない。
+const SIGNAL_RIGHTS: &str = "0x2";
+/// 所有者の指定の先頭（`O:<sid>`）
+const OWNER_PREFIX: &str = "O:";
+/// 中の整合性の明示のラベル（`pipe/src/os/mod.rs` の方針に揃える。それより低い整合性からの書き込みを拒む）
+const MANDATORY_LABEL: &str = "S:(ML;;NW;;;ME)";
 /// 親からの継承を受けない DACL の先頭
 const DACL_PREFIX: &str = "D:P";
 /// SYSTEM と、組み込みの Administrators（SDDL の別名）
@@ -54,17 +57,17 @@ impl StopPortError {
     }
 }
 
-/// 名前（`Global\ikari-ime-stop-v1-<sid>-s<session>`）と DACL の SDDL。`sid` は `stop_event_name` の規則を通ったものだけ。
+/// 名前（`Local\ikari-ime-stop-v1-<sid>-s<session>`）と、所有者・DACL・ラベルの SDDL。`sid` は `stop_event_create_name` の規則を通ったものだけ。
 pub fn stop_event_spec(sid: &str, session_id: u32) -> Result<(String, String), PipeNameError> {
-    let name = stop_event_name(sid, session_id)?;
+    let name = stop_event_create_name(sid, session_id)?;
     Ok((name, stop_event_sddl(sid)))
 }
 
-/// 自分のユーザー（`sid`）、SYSTEM、管理者だけに合図を許す DACL。ほかの ACE は無いので、ほかのユーザー、
+/// 自分のユーザー（`sid`）、SYSTEM、管理者だけに合図を許す。所有者は `sid`、ラベルは中。ほかの ACE は無いので、ほかのユーザー、
 /// Everyone、匿名は開けない。`sid` は呼び出し側が検査済み（`stop_event_spec` を通す）。
 fn stop_event_sddl(sid: &str) -> String {
     format!(
-        "{DACL_PREFIX}(A;;{SIGNAL_RIGHTS};;;{sid})(A;;{SIGNAL_RIGHTS};;;{SYSTEM_ALIAS})(A;;{SIGNAL_RIGHTS};;;{ADMINISTRATORS_ALIAS})"
+        "{OWNER_PREFIX}{sid}{DACL_PREFIX}(A;;{SIGNAL_RIGHTS};;;{sid})(A;;{SIGNAL_RIGHTS};;;{SYSTEM_ALIAS})(A;;{SIGNAL_RIGHTS};;;{ADMINISTRATORS_ALIAS}){MANDATORY_LABEL}"
     )
 }
 
@@ -106,10 +109,10 @@ mod tests {
     #[test]
     fn name_and_sddl_follow_the_contract() {
         let (name, sddl) = stop_event_spec(SID, 2).unwrap();
-        assert_eq!(name, format!(r"Global\ikari-ime-stop-v1-{SID}-s2"));
+        assert_eq!(name, format!(r"Local\ikari-ime-stop-v1-{SID}-s2"));
         assert_eq!(
             sddl,
-            format!("D:P(A;;0x100002;;;{SID})(A;;0x100002;;;SY)(A;;0x100002;;;BA)")
+            format!("O:{SID}D:P(A;;0x2;;;{SID})(A;;0x2;;;SY)(A;;0x2;;;BA)S:(ML;;NW;;;ME)")
         );
     }
 
@@ -120,6 +123,9 @@ mod tests {
         for forbidden in ["WD", "AU", "AN", "BU", "IU", "GA", "(D;"] {
             assert!(!sddl.contains(forbidden), "{forbidden}");
         }
+        // 待つ権利（SYNCHRONIZE）は付けない
+        assert!(!sddl.contains("0x100000"));
+        assert!(!sddl.contains("0x100002"));
     }
 
     #[test]

@@ -17,6 +17,11 @@ public partial class App : Application
 
     public App()
     {
+        // 高い権限などで使えないときは、XAML の初期化の前に終わる（ADR 0067 §4.3）
+        if (CoreNative.GetAbiVersion() != CoreNative.AbiVersion || CoreNative.CheckSelf() != CoreNative.Ok)
+        {
+            Environment.Exit(ExitCoreUnavailable);
+        }
         InitializeComponent();
         UnhandledException += (_, e) =>
         {
@@ -27,11 +32,6 @@ public partial class App : Application
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
-        if (CoreNative.GetAbiVersion() != CoreNative.AbiVersion || CoreNative.CheckSelf() != CoreNative.Ok)
-        {
-            Environment.Exit(ExitCoreUnavailable);
-            return;
-        }
         // つながらなくても窓は出す（状態の欄に理由を出し、値は既定値で読むだけにする。ADR 0068 §7）
         _window = new SettingsWindow(new CoreSession());
         await _window.ShowAsync();

@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 namespace IkariCandidate;
 
 /// <summary>窓の拡張スタイルと角丸（OS の入口だけ。スパイク #368 で確かめた作法）。x64 だけ。</summary>
+[DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
 internal static partial class Win32
 {
     private const int GwlExStyle = -20;

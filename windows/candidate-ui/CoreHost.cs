@@ -49,7 +49,7 @@ internal sealed unsafe class CoreHost : IDisposable
     {
         try
         {
-            if (len > int.MaxValue || GCHandle.FromIntPtr(userData).Target is not CoreHost host)
+            if (len > int.MaxValue || (len > 0 && state == null) || GCHandle.FromIntPtr(userData).Target is not CoreHost host)
             {
                 return;
             }
@@ -79,7 +79,14 @@ internal sealed unsafe class CoreHost : IDisposable
         {
             return;
         }
-        _render(RenderState.Parser.ParseFrom(bytes));
+        try
+        {
+            _render(RenderState.Parser.ParseFrom(bytes));
+        }
+        catch (Exception)
+        {
+            // 描けないだけ。次の状態で描き直す（常駐を終わらせない）
+        }
     }
 
     public void Dispose()
