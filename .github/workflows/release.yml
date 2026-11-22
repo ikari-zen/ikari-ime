@@ -167,6 +167,13 @@ jobs:
         run: |
           cargo build --release --locked -p ikari-engine-host -p ikari-tip -p ikari-candidate -p ikari-settings-core -p ikari-setup-helper --features ikari-engine-host/hide-console
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      # 取得の子（ADR 0076。設定画面の取得のボタンが起動する）。通信の crate（ureq と OS の TLS）を持つのはこれだけなので、
+      # ほかの製品と feature がまざらないよう、別の cargo の呼び出しにする（ci.yml の windows-artifact と同じ）
+      - name: release ビルド（取得の子 ikari-data。--locked）
+        shell: pwsh
+        run: |
+          cargo build --release --locked -p ikari-data
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       # LM の子（Vulkan。ADR 0059）。llama.cpp と ggml は DLL になり、バックエンドは exe の隣の backends\ から読む。
       # エンジンには llama.cpp を入れない（ADR 0072 §5）。Visual Studio のジェネレータでは vulkan-shaders-gen のインストールが落ちるので Ninja
       - name: release ビルド（LM の子 ikari-lm-host。Vulkan。--locked）
@@ -191,7 +198,7 @@ jobs:
           $stage = Join-Path $PWD 'stage\ikari-ime'
           if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
           New-Item -ItemType Directory -Force $stage, "$stage\backends", "$stage\tip\resources\keymap" | Out-Null
-          Copy-Item "$rel\ikari-engine-host.exe", "$rel\ikari-lm-host.exe", "$rel\ikari-setup-helper.exe" $stage
+          Copy-Item "$rel\ikari-engine-host.exe", "$rel\ikari-lm-host.exe", "$rel\ikari-setup-helper.exe", "$rel\ikari-data.exe" $stage
           # llama.cpp（Vulkan）の DLL: backends に ggml-vulkan を持つ OUT_DIR（ci.yml の windows-artifact と同じ探し方）
           $sysout = Get-ChildItem "$rel\build" -Directory -Filter 'llama-cpp-sys-2-*' |
             ForEach-Object { Join-Path $_.FullName 'out' } |

@@ -107,6 +107,8 @@ Source: "{#StageDir}\ikari-setup-helper.exe"; DestDir: "{code:SetupWorkDir}"; Fl
 Source: "{#StageDir}\ikari-setup-helper.exe"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion
 Source: "{#StageDir}\ikari-engine-host.exe"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion
 Source: "{#StageDir}\ikari-lm-host.exe"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion
+; 取得の子（ADR 0076。設定画面の核がインストール先の直下のこれを起動する）。送信ブロックの規則はかけない（ADR 0076、0071 §3.1）
+Source: "{#StageDir}\ikari-data.exe"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion
 Source: "{#StageDir}\*.dll"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#StageDir}\backends\*"; DestDir: "{app}\backends"; Check: AppDirReady; Flags: ignoreversion recursesubdirs skipifsourcedoesntexist
 ; 候補窓（ADR 0062。W3 でできるまで無い）

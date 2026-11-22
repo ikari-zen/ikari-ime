@@ -1,7 +1,7 @@
 //! `cargo xtask scan-product --stage <フォルダ>`: インストーラに入れる前の、配置の形（ADR 0067 §3.1）に並べたフォルダの検査。
 //! インストーラ（`windows/installer/ikari.iss`）は、このフォルダの中身をそのまま入れるので、入れる物の全部にここで検査を効かせる。
-//!   - あるべきファイルがあること（エンジン、LM の子と llama の DLL、Vulkan のバックエンド、候補窓、設定画面、TIP とリソース、helper、ライセンス）
-//!   - ikari の Rust の製品（エンジン、helper、TIP、候補窓と設定画面の核）に、`scan-product` の検査の全部を効かせる
+//!   - あるべきファイルがあること（エンジン、LM の子と llama の DLL、Vulkan のバックエンド、候補窓、設定画面、取得の子、TIP とリソース、helper、ライセンス）
+//!   - ikari の Rust の製品（エンジン、helper、取得の子、TIP、候補窓と設定画面の核）に、`scan-product` の検査の全部を効かせる
 //!   - LM の子は、開発用の文字列と測定ツールの印だけを見る（llama.cpp と動的な C ランタイムは入っていて正しい。ADR 0067 §4.4・§4.5）
 //!   - 直下の exe は決まった名前だけ（評価ツールや開発用の exe を入れない）。直下の DLL に ikari の DLL を置かない
 //!     （`ikari.iss` は直下の `*.dll` をすべてインストール先の直下に入れる）。`tip\` には TIP の DLL とリソースだけ
@@ -18,10 +18,14 @@ use super::{check_bytes, find_dev_strings, find_probe};
 const PRODUCT_FILES: &[&str] = &[
     "ikari-engine-host.exe",
     "ikari-setup-helper.exe",
+    // 取得の子（ADR 0076。設定画面の核が、インストール先の直下のこれを起動する。windows/settings/src/fetch_os.rs）
+    DATA_EXE,
     "tip/ikari_tip.dll",
     "candidate/ikari_candidate.dll",
     "settings/ikari_settings_core.dll",
 ];
+/// 取得の子
+const DATA_EXE: &str = "ikari-data.exe";
 /// LM の子。開発用の文字列と測定ツールの印だけを見る
 const LM_CHILD: &str = "ikari-lm-host.exe";
 /// あるべきもの（中身はここでは見ない）
@@ -39,7 +43,12 @@ const REQUIRED_DIRS: &[&str] = &["tip/resources/keymap"];
 const REQUIRED_PATTERNS: &[(&str, &str, &str)] =
     &[("", "llama", ".dll"), ("backends", "ggml-vulkan", ".dll")];
 /// 直下に置いてよい exe
-const TOP_LEVEL_EXES: &[&str] = &["ikari-engine-host.exe", "ikari-setup-helper.exe", LM_CHILD];
+const TOP_LEVEL_EXES: &[&str] = &[
+    "ikari-engine-host.exe",
+    "ikari-setup-helper.exe",
+    DATA_EXE,
+    LM_CHILD,
+];
 /// 直下の DLL に使ってはいけない名前の前置き（ikari の DLL は、それぞれのフォルダに置く）
 const TOP_LEVEL_DLL_FORBIDDEN_PREFIX: &str = "ikari";
 /// `tip\` の直下に置いてよいもの

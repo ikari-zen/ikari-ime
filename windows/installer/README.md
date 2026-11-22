@@ -10,7 +10,7 @@ Inno Setup のスクリプト（`ikari.iss`）と、インストーラが管理�
 
 配る物は、タグからリリースの workflow（[release.yml](../../.github/workflows/release.yml) の `build-windows`）が作る。手順はそれと同じ:
 
-1. 製品のビルド（`dev-knobs` なし）を作る。エンジン（`hide-console`）、TIP、候補窓と設定画面の核、helper（`cargo build --release -p ikari-setup-helper`）と、LM の子（`-p ikari-lm --bin ikari-lm-host --features vulkan`）。
+1. 製品のビルド（`dev-knobs` なし）を作る。エンジン（`hide-console`）、TIP、候補窓と設定画面の核、helper（`cargo build --release -p ikari-setup-helper`）、取得の子（`-p ikari-data`。別の cargo の呼び出しで）と、LM の子（`-p ikari-lm --bin ikari-lm-host --features vulkan`）。
 2. 配置の形（ADR 0067 §3.1）に並べたフォルダ（以下 `<stage>`）を作る:
 
    ```
@@ -20,6 +20,7 @@ Inno Setup のスクリプト（`ikari.iss`）と、インストーラが管理�
    <stage>\settings\…（設定画面。dotnet publish の自己完結）
    <stage>\tip\ikari_tip.dll、tip\resources\keymap\*.tsv
    <stage>\ikari-setup-helper.exe
+   <stage>\ikari-data.exe（取得の子。送信ブロックの規則はかけない）
    <stage>\LICENSE、NOTICE、THIRD_PARTY_NOTICES.md、THIRD_PARTY_LICENSES_RUST.md
    ```
 
