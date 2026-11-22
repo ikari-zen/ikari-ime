@@ -713,3 +713,6 @@ mod tests {
 // 子の終わりは lm/tests/cage_xpc.rs
 #[cfg(all(test, target_vendor = "apple"))]
 mod xpc_tests;
+// スパイク #536（マージしない）
+#[cfg(all(test, target_vendor = "apple"))]
+mod wait_spike_tests;
