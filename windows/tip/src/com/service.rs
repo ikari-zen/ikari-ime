@@ -421,9 +421,9 @@ fn ensure_active(this: &ComObject<TextService>) -> bool {
             None,
             ShellEvent::Activate {
                 bundle_id: name,
-                // 編集セッションがなく、入力スコープは読めない。secure は打鍵のたびに `Key` で伝える
-                // （`shell-core` は打鍵のたびに見る。`Activate` の時点では周辺テキストも読まない）
-                secure: false,
+                // 編集セッションがなく、入力スコープは読めない。分からないので `None`（今の値を保つ。ADR 0073 §2）。
+                // secure は打鍵のたびに `Key` で伝える（`shell-core` は打鍵のたびに見る）
+                secure: None,
             },
         );
         if activated.is_none() {
@@ -851,7 +851,7 @@ impl ITfThreadMgrEventSink_Impl for TextService_Impl {
                         context.as_ref(),
                         ShellEvent::InputModeChanged {
                             mode_id: InputMode::Japanese.mode_id().to_owned(),
-                            secure: false,
+                            secure: None,
                         },
                         Mode::Async,
                     );
@@ -938,8 +938,8 @@ impl TextService_Impl {
             context.as_ref(),
             ShellEvent::InputModeChanged {
                 mode_id: mode.mode_id().to_owned(),
-                // TODO(S8、W4): secure な入力欄
-                secure: false,
+                // 入力スコープは読まない。分からないので今の値を保つ（ADR 0073 §2）
+                secure: None,
             },
             Mode::Deferred,
         );

@@ -26,6 +26,10 @@
     <StartupHookSupport>false</StartupHookSupport>
     <!-- LibraryImport（ソースの生成）と、核のバイト列のポインタに要る -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- NuGet の依存を packages.lock.json で固定する（候補窓と同じ。ADR 0069 §4.1）。CI（CI=true）はロックの通りでなければ失敗する。
+         版を上げたら、Windows で dotnet restore を流してロックを更新する -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
     <IkariCoreDll Condition="'$(IkariCoreDll)' == ''">$(MSBuildThisFileDirectory)..\..\target\release\ikari_settings_core.dll</IkariCoreDll>
   </PropertyGroup>
   <ItemGroup>

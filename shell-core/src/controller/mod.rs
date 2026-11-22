@@ -250,6 +250,8 @@ impl Shell {
             ShellEvent::BridgeFrame { conn, frame } => self.bridge_frame(conn, &frame),
             ShellEvent::InputModeChanged { mode_id, secure } => {
                 if let Some(client) = &mut self.client {
+                    // 分からなければ今の値を保つ（ADR 0073 §2。判断は shell-core に置く）
+                    let secure = secure.unwrap_or(client.machine.session().secure);
                     client.machine.set_secure(secure);
                 }
                 self.change_input_mode(&mode_id)
@@ -403,7 +405,7 @@ impl Shell {
         id
     }
 
-    fn activate(&mut self, bundle_id: &str, secure: bool) -> Vec<ShellAction> {
+    fn activate(&mut self, bundle_id: &str, secure: Option<bool>) -> Vec<ShellAction> {
         // 手で編集した settings.tsv に気づく（stat 1 回）。idle のときに反映する
         self.reload_settings();
         let needs_client = self
@@ -415,6 +417,8 @@ impl Shell {
         }
         self.sync_settings();
         if let Some(client) = &mut self.client {
+            // 分からなければ今の値を保つ（同じアプリのクライアントを使い回したときは前の値）
+            let secure = secure.unwrap_or(client.machine.session().secure);
             client.machine.activate_with_secure(secure);
         }
         // 絵文字の表と、エンジンの起動の前倒し・メニューの状態の取り直し。主スレッドは止めない

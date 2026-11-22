@@ -7,6 +7,10 @@
 //!     PE の import 表に ASCII で入っているので、名前の有無で見る）
 //!
 //! 開発用の口を付けたビルド（`dev-knobs`）には流さない（入っていて正しい）。
+//!
+//! `--stage <フォルダ>` は、インストーラに入れる配置の形（ADR 0067 §3.1）のフォルダを、置き場所ごとの検査で調べる（`stage.rs`）。
+
+mod stage;
 
 use std::path::{Path, PathBuf};
 
@@ -49,12 +53,22 @@ const DYNAMIC_CRT: &[&str] = &[
 #[derive(Debug, clap::Args)]
 pub struct Args {
     /// 調べるファイル（TIP の DLL、エンジンの exe など）
-    #[arg(required = true)]
+    #[arg(required_unless_present = "stage")]
     files: Vec<PathBuf>,
+    /// インストーラに入れる配置の形（ADR 0067 §3.1）に並べたフォルダ。あるべき物と、置き場所ごとの検査を見る
+    #[arg(long, value_name = "フォルダ")]
+    stage: Option<PathBuf>,
 }
 
 pub fn run(args: Args) -> Result<(), XtaskError> {
     let mut problems = Vec::new();
+    if let Some(dir) = &args.stage {
+        log(&format!(
+            "配置の形 {} を調べる（ADR 0067 §3.1）",
+            dir.display()
+        ));
+        problems.extend(stage::check_stage(dir).map_err(XtaskError)?);
+    }
     for file in &args.files {
         log(&format!("{} を調べる", file.display()));
         let bytes = std::fs::read(file)

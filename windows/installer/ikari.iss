@@ -107,14 +107,21 @@ Source: "{#StageDir}\ikari-setup-helper.exe"; DestDir: "{code:SetupWorkDir}"; Fl
 Source: "{#StageDir}\ikari-setup-helper.exe"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion
 Source: "{#StageDir}\ikari-engine-host.exe"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion
 Source: "{#StageDir}\ikari-lm-host.exe"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion
+; 取得の子（ADR 0076。設定画面の核がインストール先の直下のこれを起動する）。送信ブロックの規則はかけない（ADR 0076、0071 §3.1）
+Source: "{#StageDir}\ikari-data.exe"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion
 Source: "{#StageDir}\*.dll"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#StageDir}\backends\*"; DestDir: "{app}\backends"; Check: AppDirReady; Flags: ignoreversion recursesubdirs skipifsourcedoesntexist
 ; 候補窓（ADR 0062。W3 でできるまで無い）
 Source: "{#StageDir}\candidate\*"; DestDir: "{app}\candidate"; Check: AppDirReady; Flags: ignoreversion recursesubdirs skipifsourcedoesntexist
+; 設定画面（ADR 0071 §2。engine-host は <インストール先>\settings\ikari-settings.exe だけを相手にする。pipe/src/peer.rs）
+Source: "{#StageDir}\settings\*"; DestDir: "{app}\settings"; Check: AppDirReady; Flags: ignoreversion recursesubdirs skipifsourcedoesntexist
 ; TIP は版ごとのフォルダ（ADR 0063 §3 の 1）。同じ版で中身が同じなら置き直さない（使用中で上書きできない。§5）
 Source: "{#StageDir}\tip\ikari_tip.dll"; DestDir: "{app}\tip\{#AppVersion}"; Check: TipNeedsCopy; Flags: ignoreversion uninsrestartdelete
 Source: "{#StageDir}\tip\resources\*"; DestDir: "{app}\tip\{#AppVersion}\resources"; Check: TipNeedsCopy; Flags: ignoreversion recursesubdirs uninsrestartdelete
 Source: "{#StageDir}\LICENSE"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion
+; Apache-2.0 の NOTICE と、同梱する他社の部品（llama.cpp、.NET、Windows App SDK など）の表示
+Source: "{#StageDir}\NOTICE"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#StageDir}\THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#StageDir}\THIRD_PARTY_LICENSES_RUST.md"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion skipifsourcedoesntexist
 
 [Code]

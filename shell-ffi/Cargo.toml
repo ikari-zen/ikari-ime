@@ -12,3 +12,7 @@ ikari-proto.workspace = true
 ikari-runmark.workspace = true
 ikari-shell-core.workspace = true
 prost.workspace = true
+
+# 取得の子の起動（`posix_spawn`。`src/fetch_launcher/apple.rs` だけが使う。ADR 0068 §6.1）
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"

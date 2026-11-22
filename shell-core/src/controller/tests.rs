@@ -133,7 +133,7 @@ fn activate(shell: &mut Shell) -> Vec<ShellAction> {
     shell.dispatch(
         ShellEvent::Activate {
             bundle_id: "com.apple.TextEdit".into(),
-            secure: false,
+            secure: Some(false),
         },
         &mut NoText,
     )
@@ -245,7 +245,7 @@ fn a_new_bundle_gets_a_new_session_and_the_same_bundle_keeps_it() {
     shell.dispatch(
         ShellEvent::Activate {
             bundle_id: "com.apple.Safari".into(),
-            secure: false,
+            secure: Some(false),
         },
         &mut NoText,
     );
@@ -258,7 +258,7 @@ fn activate_app(shell: &mut Shell, bundle_id: &str) -> u64 {
     shell.dispatch(
         ShellEvent::Activate {
             bundle_id: bundle_id.into(),
-            secure: false,
+            secure: Some(false),
         },
         &mut NoText,
     );
@@ -796,7 +796,7 @@ mod lane_e {
         let actions = shell.dispatch(
             ShellEvent::InputModeChanged {
                 mode_id: crate::english::input_mode_id::ENGLISH.into(),
-                secure: false,
+                secure: Some(false),
             },
             &mut NoText,
         );
@@ -908,7 +908,7 @@ mod secure_session {
         shell.dispatch(
             ShellEvent::Activate {
                 bundle_id: bundle_id.into(),
-                secure,
+                secure: Some(secure),
             },
             &mut NoText,
         );

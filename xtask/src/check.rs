@@ -127,6 +127,7 @@ fn steps(root: &Path, plan: &Plan) -> Result<(), Failure> {
     docs::adr_status(root)?;
     supply::net_crates(root)?;
     supply::actions_pinned(root)?;
+    supply::nuget_locked(root)?;
     product::crt_static(root)?;
     product::dev_knobs_wiring(root)?;
     product::startup_hook_off(root)?;
@@ -142,6 +143,8 @@ fn steps(root: &Path, plan: &Plan) -> Result<(), Failure> {
         "scripts/test-diag-report.sh",
         "scripts/test-hooks.sh",
         "scripts/test-clean.sh",
+        // ikari-data の entitlement の検査が外れ方を落とすか（#489。plutil が無い OS では飛ばす）
+        "macos/scripts/test-data-entitlements.sh",
     ] {
         docs::run_script(root, script)?;
     }

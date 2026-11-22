@@ -65,3 +65,36 @@ render_identity() {
   sed -i '' "s/@IKARI_ID_PREFIX@/$IKARI_ID_PREFIX/g" "$file"
   if grep -q '@IKARI_' "$file"; then die "$file に埋まっていない印が残っています"; fi
 }
+
+# ikari-data の entitlement が決定のとおりか（ADR 0079 §3.3、§3.7 の 4・5）。標準入力に plist（XML）を受け取る。
+# 合っていれば何も出さず 0、外れていれば理由を 1 行出して 1 を返す（build.sh の verify_data と、
+# macos/scripts/test-data-entitlements.sh が使う。検査そのものをテストで確かめられるよう、ここに置く）
+readonly DATA_EXCEPTION_KEY='com.apple.security.temporary-exception.files.home-relative-path.read-write'
+readonly DATA_EXCEPTION_FETCH='/Library/Application Support/ikari-ime/fetch/'
+readonly DATA_EXCEPTION_INBOX='/Library/Application Support/ikari-ime/inbox/'
+readonly DATA_ENTITLEMENT_KEYS=3
+data_entitlements_error() {
+  local ents xml keys key_exc="${DATA_EXCEPTION_KEY//./\\.}"
+  ents="$(cat)"
+  [[ -n "$ents" ]] || { echo "entitlement を読めません"; return 1; }
+  xml="$(printf '%s' "$ents" | plutil -convert xml1 -o - - 2>/dev/null)" || { echo "entitlement を plist として読めません"; return 1; }
+  keys="$(printf '%s\n' "$xml" | grep -c '<key>' || true)"
+  [[ "$keys" -eq "$DATA_ENTITLEMENT_KEYS" ]] || { echo "entitlement が $DATA_ENTITLEMENT_KEYS つではありません（キーが $keys 個）"; return 1; }
+
+  local key_sandbox key_client
+  key_sandbox="$(printf '%s' "$xml" | plutil -extract 'com\.apple\.security\.app-sandbox' raw - 2>/dev/null || true)"
+  key_client="$(printf '%s' "$xml" | plutil -extract 'com\.apple\.security\.network\.client' raw - 2>/dev/null || true)"
+  [[ "$key_sandbox" == true ]] || { echo "com.apple.security.app-sandbox が true ではありません: '$key_sandbox'"; return 1; }
+  [[ "$key_client" == true ]] || { echo "com.apple.security.network.client が true ではありません: '$key_client'"; return 1; }
+
+  # 一時例外の配列は、fetch/ と inbox/ の 2 つの文字列に厳密に一致する（型も数も並びも）
+  local type count first second
+  type="$(printf '%s' "$xml" | plutil -type "$key_exc" - 2>/dev/null || true)"
+  [[ "$type" == array ]] || { echo "一時例外が配列ではありません: '$type'"; return 1; }
+  count="$(printf '%s' "$xml" | plutil -extract "$key_exc" raw - 2>/dev/null || true)"
+  [[ "$count" == 2 ]] || { echo "一時例外が 2 つではありません: '$count'"; return 1; }
+  first="$(printf '%s' "$xml" | plutil -extract "$key_exc.0" raw - 2>/dev/null || true)"
+  second="$(printf '%s' "$xml" | plutil -extract "$key_exc.1" raw - 2>/dev/null || true)"
+  [[ "$first" == "$DATA_EXCEPTION_FETCH" ]] || { echo "一時例外の 1 つめが fetch/ ではありません: '$first'"; return 1; }
+  [[ "$second" == "$DATA_EXCEPTION_INBOX" ]] || { echo "一時例外の 2 つめが inbox/ ではありません: '$second'"; return 1; }
+}

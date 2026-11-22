@@ -142,7 +142,7 @@ fn run(
     shell.dispatch(
         ShellEvent::Activate {
             bundle_id: setup.client.bundle_id.clone(),
-            secure: false,
+            secure: Some(false),
         },
         &mut text,
     );

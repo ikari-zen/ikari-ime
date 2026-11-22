@@ -398,7 +398,7 @@ fn press(spec: &str) -> Result<ShellEvent, String> {
 fn activate() -> ShellEvent {
     ShellEvent::Activate {
         bundle_id: "com.apple.TextEdit".into(),
-        secure: false,
+        secure: Some(false),
     }
 }
 
@@ -565,7 +565,7 @@ fn measure_keys(options: &Options) -> Result<Measured, String> {
                         &mut shell,
                         ShellEvent::Activate {
                             bundle_id: setup.client.bundle_id.clone(),
-                            secure: false,
+                            secure: Some(false),
                         },
                         &mut text,
                     );
@@ -684,7 +684,7 @@ fn measure_startup(options: &Options) -> Result<Measured, String> {
         let actions = shell.dispatch(
             ShellEvent::Activate {
                 bundle_id: "com.apple.TextEdit".into(),
-                secure: false,
+                secure: Some(false),
             },
             &mut text,
         );

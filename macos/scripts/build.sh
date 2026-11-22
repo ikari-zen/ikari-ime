@@ -492,25 +492,9 @@ verify_data() {
     | plutil -extract CFBundleIdentifier raw - 2>/dev/null || true)"
   [[ "$embedded" == "$DATA_ID" ]] || die "ikari-data の埋めた Info.plist の CFBundleIdentifier が $DATA_ID ではありません: '$embedded'"
 
-  # entitlement: キーはちょうど 3 つ
-  local ents keys key_sandbox key_client key_exc="com\\.apple\\.security\\.temporary-exception\\.files\\.home-relative-path\\.read-write"
-  ents="$(entitlements_of "$DATA_DEST")"
-  [[ -n "$ents" ]] || die "ikari-data の entitlement を読めません"
-  keys="$(printf '%s' "$ents" | plutil -convert xml1 -o - - | grep -c '<key>')"
-  [[ "$keys" -eq 3 ]] || die "ikari-data の entitlement が 3 つではありません（キーが $keys 個）"
-  key_sandbox="$(printf '%s' "$ents" | plutil -extract 'com\.apple\.security\.app-sandbox' raw - 2>/dev/null || true)"
-  key_client="$(printf '%s' "$ents" | plutil -extract 'com\.apple\.security\.network\.client' raw - 2>/dev/null || true)"
-  [[ "$key_sandbox" == true ]] || die "ikari-data に com.apple.security.app-sandbox がありません"
-  [[ "$key_client" == true ]] || die "ikari-data に com.apple.security.network.client がありません"
-
-  # 一時例外の配列は、fetch/ と inbox/ の 2 つの文字列に厳密に一致する（数も並びも）
-  local count first second
-  count="$(printf '%s' "$ents" | plutil -extract "$key_exc" raw - 2>/dev/null || true)"
-  [[ "$count" == 2 ]] || die "ikari-data の一時例外が 2 つではありません: '$count'"
-  first="$(printf '%s' "$ents" | plutil -extract "$key_exc.0" raw - 2>/dev/null || true)"
-  second="$(printf '%s' "$ents" | plutil -extract "$key_exc.1" raw - 2>/dev/null || true)"
-  [[ "$first" == "/Library/Application Support/ikari-ime/fetch/" ]] || die "ikari-data の一時例外の 1 つめが fetch/ ではありません: '$first'"
-  [[ "$second" == "/Library/Application Support/ikari-ime/inbox/" ]] || die "ikari-data の一時例外の 2 つめが inbox/ ではありません: '$second'"
+  # entitlement: キーはちょうど 3 つ、一時例外は fetch/ と inbox/ だけ（検査は lib.sh。test-data-entitlements.sh で外れ方を確かめている）
+  local problem
+  problem="$(entitlements_of "$DATA_DEST" | data_entitlements_error)" || die "ikari-data の $problem"
   echo "data entitlements: app-sandbox=true, network.client=true, temporary-exception=fetch/ and inbox/ only (3 keys)"
 
   # 束の中で network.* を持つのは ikari-data だけ。一覧は手で並べず、Contents/ の下の Mach-O を全部見る

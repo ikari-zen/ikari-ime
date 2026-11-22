@@ -54,6 +54,12 @@ struct SocketConnector: BridgeConnecting {
     func makeTransport() throws -> any BridgeTransport {
         let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
         guard descriptor >= 0 else { throw SocketConnectError.io(errno) }
+        // 子（取得の ikari-data など）に渡さない（ADR 0068 §6.1。起こす側の守りと二重にする）
+        guard fcntl(descriptor, F_SETFD, FD_CLOEXEC) == 0 else {
+            let code = errno
+            Darwin.close(descriptor)
+            throw SocketConnectError.io(code)
+        }
         var address = sockaddr_un()
         address.sun_family = sa_family_t(AF_UNIX)
         let capacity = MemoryLayout.size(ofValue: address.sun_path)
