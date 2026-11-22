@@ -1,6 +1,6 @@
 # ADR 0080: 配布物にモデルと辞書を同梱する（通常版）と、通信を持たないオフライン版。置き場所、パッケージの形、版の分け方、更新
 
-- 状態: 提案（2026-11-22。macOS の配布の形（dmg）はユーザーが決定済み。末尾 §12 の Q1〜Q3 をユーザーに聞く）
+- 状態: 提案（2026-11-22。macOS の配布の形（dmg）と §12 の Q1〜Q3 はユーザーが決定済み。ADR 全体の承認はユーザーが行う）
 - 日付: 2026-11-22
 - 対象: `engine`（辞書とモデルの解決）、`stack`、`ikari-resource`、`shell-core`・`shell-ffi`・`windows/settings`（版の機能の判断）、`xtask`（検査、辞書のビルド）、`macos/scripts/build.sh`、`windows/installer/`、`.github/workflows/release.yml`、`THIRD_PARTY_NOTICES.md`
 - 前提: ADR 0058（inbox と束）、0060（モデルの選択。更新 2026-11-19）、0066（前提。R1〜R6、通信しない）、0067（Windows の置き場所）、0069（真正性）、0070（更新）、0072（檻の段）、0076（ikari-data の契約）、0077（macOS の LM の檻）、0079（macOS の ikari-data）。調査は [license-redistribution-2026-11.md](../research/license-redistribution-2026-11.md)（#242）
@@ -12,6 +12,7 @@
 - 2026-11-19: 通常版も、公式のままの zenz-v3.2-small と、デプロイ時点の辞書を、配布物に同梱する。通常版の通信は、自由指定のモデルの取得と版の確認だけ（ボタンを押したときだけ）。最初のセットアップの取得の同意画面は作らない。オフライン版は、通信のロジック（`ikari-data` と通信ライブラリ）を持たない版。ソースは 1 つで、コンパイル時とパッケージ作成時の指定で作る。オフライン版に通信の部品が入っていないことを CI で検査する。通信の機能を出すかの判断は Rust 側。ファイルからの取り込み（#246）が要る。オフライン版の更新はパッケージの入手し直し。
 - 2026-11-22: 辞書とモデルは 0.1.0 から同梱する（取得の手順だけで出す案は取らない）。配布は先に GitHub Release、そのあとで Homebrew と winget（#479）。未署名の配布（ADR 0069）。
 - 2026-11-22: **macOS の配布の形は dmg。** dmg の中に `~/Library/Input Methods` へのショートカットと案内を入れる。pkg は管理者の権限でスクリプトが走る点を懸念して見送り。未署名の警告の越え方は #241 の実機の確認で確かめる。
+- 2026-11-22（§12 の Q1〜Q3）: dmg の案内は `~/Library/Input Methods` だけ（`/Library/Input Methods` は並べない。利用者が束を差し替えられる限界を `SECURITY.md` に書く）。外来語の一覧を含む `system.dict` を CC BY-SA 4.0 として示す。`vectors.bin` の同梱は、先に評価で無い場合と比べてから決める。
 
 ## 1. 分かったこと（2026-11-22）
 
@@ -102,7 +103,7 @@
    - Windows: `{app}\THIRD_PARTY_NOTICES.md` を `[Files]` に足す（今は無い）。`{app}\data\NOTICE.txt` と `{app}\data\licenses\`。設定画面の「このソフトについて」で表示する。
 3. データのファイルのそばに `NOTICE.txt` を置く理由: 辞書やモデルのファイルだけを写して持ち出す人にも表示が届くようにする（CC BY-SA 4.0 §3(a)(2) の「合理的な方法」の側に倒す）。
 4. Release のノートに、同梱したデータの一覧（名前、版、ライセンス、出典）を載せる（版を出す手順に足す）。
-5. 外来語の一覧を含む `system.dict` の扱いは Q2 で決める。
+5. **外来語の一覧を含む `system.dict` は、そのまま同梱し、`system.dict` のファイルを CC BY-SA 4.0（と SudachiDict・chiVe・ABR の各表示）として示す**（2026-11-22 ユーザー決定。§12 の Q2。調査 §3.2 の案 A）。本体（Apache-2.0）とは別のファイルで、本体には及ばない。`THIRD_PARTY_NOTICES.md` と `NOTICE.txt` にそう書く。
 
 ## 5. 決定 3: macOS の配布の形は dmg（2026-11-22 ユーザー決定）
 
@@ -132,9 +133,12 @@
 | 証拠との相性 | 1 ファイル。SHA256SUMS、証明、作者の鍵の署名にそのまま載る | 同じ | 同じ | cask に sha256。Release の物を指す |
 | 採らない理由 | — | 置き場所と手順の案内を配る物の中に持てない | 管理者の権限でスクリプトが走りうる点の懸念（ユーザー決定。スクリプトなしでも、入れる処理は root で動く） | 署名が付くまで後（#479） |
 
-### 5.4 ADR 0069 §6 の 3 との関係
+### 5.4 ADR 0069 §6 の 3 との関係（2026-11-22 ユーザー決定で整理）
 
-- ADR 0069 §6 の 3 は、`~/Library/Input Methods` は利用者が書けるので同じ利用者のプログラムが束を差し替えられる（R1 を満たさない）とし、`/Library/Input Methods` を試して動けば既定にする、としていた。dmg で `~/Library/Input Methods` を案内する決定は、この限界を受け入れることになる。限界は `SECURITY.md` に書く（ADR 0069 §6 の 3 の「動かなければ」の扱いと同じ）。`/Library/Input Methods` の扱いは §12 の Q1。
+- ADR 0069 §6 の 3 は、`~/Library/Input Methods` は利用者が書けるので同じ利用者のプログラムが束を差し替えられる（R1 を満たさない）とし、`/Library/Input Methods` を #241 で試して、動けば既定にする、としていた。
+- **決定: dmg の案内は `~/Library/Input Methods` だけにし、`/Library/Input Methods` は並べない**（§12 の Q1）。これで 0069 §6 の 3 の「動けば既定にする」は取りやめ、「動かなければ今の場所のまま、この限界を `SECURITY.md` に書く」の側を採る。#241 では `/Library/Input Methods` を試す必要がなくなる（`~/Library/Input Methods` での確認だけ）。
+- 受け入れる限界: 同じ利用者の別のプログラムが `ikari.app` を差し替えられる。差し替えられた入力メソッドは、打鍵の読み取りの許可なしで打鍵を受ける道になりうる（0069 §6 の 3 の P2 の論点）。同梱の場所のデータ（§3.1）も同じく書き換えられるので、検査（P5）は省かない。
+- 実施事項: (1) `SECURITY.md` に、この限界（どこに置かれ、だれが書けるか、何が起きうるか）を書く。(2) ADR 0069 §6 の 3 の末尾に、この ADR の決定で改めた旨の追記を足す（本文は書き換えない。ほかの ADR と同じ流儀）。(3) `security-design.md` の該当の行を合わせる。どれも実装の PR（§11 のレーン 7）で行う。
 - Homebrew は #479 で、Release の dmg を指す自前の tap から始める案を調べる（今は決めない）。
 
 ## 6. 決定 4: Windows のインストーラへの同梱
@@ -218,6 +222,7 @@
 
 | 順 | レーン | 中身 | 持つファイル |
 | --- | --- | --- | --- |
+| — | 評価（`vectors.bin`。ほかと並べてよい） | `vectors.bin` あり・なしで全セットの 1 位を比べる（`eval/scripts/snapshot.sh`。LM あり・なしの両方）。結果を `eval/reports/` に置き、同梱するかをユーザーに聞く（§12 の Q3）。線は数字を見てから決める | `eval/reports/` だけ |
 | 0 | 契約（リード） | 同梱の場所を決める関数のシグネチャ、場所の候補の列の型、`Capabilities` と `Edition`、各 crate の `online` の宣言だけ（中身はスタブ） | `engine/src/` の新しいモジュール 1 つ、`shell-core` の 1 ファイル、該当の `Cargo.toml` |
 | 1 | 解決（Rust） | §3.2 の選び方、落ちたときの 2 番目、状態の返し方、共通のシナリオ | `engine/src/lib.rs`・`model_select.rs`、`stack/src/lib.rs`、`shell-core/scenarios/` |
 | 2 | 版の分け方（Rust） | `online` で取得の核を囲う、`Capabilities` の中身、`net_crates` の版の引数 | `shell-core`、`shell-ffi`、`windows/settings`、`xtask/src/check/supply.rs` |
@@ -225,32 +230,25 @@
 | 4 | macOS のパッケージ | `build.sh --edition`、同梱の場所への配置と封印の検査、dmg の作成（ショートカットと案内は C3 のあと） | `macos/scripts/` |
 | 5 | Windows のインストーラ | `data\` の項目、`/DEdition`、`THIRD_PARTY_NOTICES.md`、検査 | `windows/installer/`、`xtask/src/check/installer.rs` |
 | 6 | リリースの workflow | `build-dict` の job、モデルの取得、4 つの成果物（2 OS × 2 版）、配る物の検査 | `.github/workflows/release.yml`、`xtask/src/check/product.rs` |
-| 7 | 表示と文書 | `THIRD_PARTY_NOTICES.md`、`NOTICE.txt`・`licenses/` の元、`fetch.rs`・`fetch-data.sh` のコメント（CC BY-SA 4.0 に）、README、SECURITY.md、publish-checklist §4、spec NFR-17、security-design（オフライン版の行）、ADR 0060・0067・0071・0072・0076 の備考 | 文書だけ |
+| 7 | 表示と文書 | `THIRD_PARTY_NOTICES.md`（`system.dict` を CC BY-SA 4.0 として示す）、`NOTICE.txt`・`licenses/` の元、`SECURITY.md` の置き場所の限界（§5.4）、ADR 0069 §6 の 3 への追記、`fetch.rs`・`fetch-data.sh` のコメント（CC BY-SA 4.0 に）、README、SECURITY.md、publish-checklist §4、spec NFR-17、security-design（オフライン版の行）、ADR 0060・0067・0071・0072・0076 の備考 | 文書だけ |
 
+- `vectors.bin` を同梱するかは評価のあとで決まる。レーン 4・5・6 は、同梱の物の一覧を 1 か所（`xtask` の表）から読む形にして、決まる前に進められるようにする。
 - 1 と 2 は並べられる（持つファイルが重ならない）。3 は 0 のあと。4・5 は 1 のあと。6 は 4・5 のあと。7 は最後（実装が入るまで「配らない」の記述は今の事実として正しい。ADR 0060 更新の「事実と未確認」）。
 - 先にスパイク: C1（macOS の読み）と C2（署名の時間）。捨てるコード。
 
-## 12. ユーザーに聞くこと（選択肢と推奨）
+## 12. ユーザーの決定（2026-11-22。§5 の dmg と合わせて）
 
-### Q1. `/Library/Input Methods`（管理者だけが書ける）を、dmg の案内に並べるか（§5.4）
+| # | 問い | 決定 | 反映した節 |
+| --- | --- | --- | --- |
+| Q1 | dmg の案内に `/Library/Input Methods` も並べるか | 並べない。`~/Library/Input Methods` だけを案内し、利用者が束を差し替えられる限界を `SECURITY.md` に書く。ADR 0069 §6 の 3 の「動けば既定にする」は取りやめる | §5.4、§11 のレーン 7 |
+| Q2 | 外来語の一覧を含む `system.dict` の表示 | 含めて同梱し、`system.dict` を CC BY-SA 4.0（と各表示）として示す（調査 §3.2 の案 A） | §4 の 5、§11 のレーン 7 |
+| Q3 | `vectors.bin`（337MB）を同梱するか | 先に評価で「無い場合」と比べてから決める。どの程度の差なら外すかは、数字を見てから決める | §11 の評価のレーン |
 
-- (a) **`~/Library/Input Methods` だけを案内し、同じ利用者のプログラムが束を差し替えられる限界を `SECURITY.md` に書く**。
-- (b) dmg に `/Library/Input Methods` への別名も置き、「この Mac の全員で使う・差し替えに強い置き方」として並べる（動くかは #241 で確かめる。Finder が管理者のパスワードを求める）。
-- **推奨: (a)**。ユーザーの決定（`~/Library/Input Methods` への案内）どおりで、道が 1 つのほうが迷わない。(b) は #241 で `/Library` で動くと分かってから、改めて足せる。
+### （記録）決定の前の選択肢
 
-### Q2. 外来語の一覧（CC BY-SA 4.0）を含む `system.dict` の扱い（調査 §3.2）
-
-- (a) **含めて同梱し、`system.dict` のファイルを CC BY-SA 4.0（と SudachiDict・chiVe・ABR の表示）として示す**。本体は Apache-2.0 のまま。
-- (b) 同梱の `system.dict` は外来語の一覧なしで作る（外来語のセットの精度が下がる。ADR 0055 §4.5）。
-- (c) 含めるが CC BY-SA 4.0 を示さない。
-- **推奨: (a)**（調査の推奨と同じ）。変換の質を保ち、Release の一覧の表示とも食い違わない。失うのは `system.dict` 単体に ShareAlike がかかることで、本体には及ばない（別ファイル）。
-
-### Q3. `vectors.bin`（337MB。配る物の約半分）を同梱するか
-
-- (a) **先に評価で「`vectors.bin` なし」と比べて決める**（全セットで 1 位の差。`eval/scripts/snapshot.sh`）。差が小さければ外し、配る物を約 360MB から約 150MB（xz 相当）にする。
-- (b) 測らずに同梱する（約 360MB）。
-- (c) 測らずに外す。
-- **推奨: (a)**。大きさの判断を数字で行う（値は測って決める）。どの程度の差なら外すかの線は、数字を見てからユーザーに聞く。
+- Q1: (a) `~/Library/Input Methods` だけ（推奨）、(b) `/Library/Input Methods` の別名も並べる。
+- Q2: (a) 含めて CC BY-SA 4.0 を示す（推奨）、(b) 外来語の一覧なしで作る、(c) 含めて示さない。
+- Q3: (a) 先に評価する（推奨）、(b) 測らずに同梱、(c) 測らずに外す。
 
 ## 13. 検討した案（採らなかったもの）
 
@@ -264,12 +262,12 @@
 ## 14. 結果
 
 - 得るもの: 取得の手順なしで、入れればすぐ LM つきで変換できる。ネットワークを隔離した環境向けに、通信の部品を持たないことを検査で示せる版を出せる。壊れた辞書でエンジンが起動しない事態が、同梱の辞書で救われる。
-- 失うもの: 配る物が数百 MB になる（Q3 しだい）。版を出すたびに辞書のビルドが workflow に乗り、元データの取得先に依る。リリースの成果物が 2 OS × 2 版の 4 つになる。macOS は `~/Library/Input Methods` に置くため、ADR 0069 §6 の 3 の限界（R1）が残る。
-- 改める文書（実装の PR で直す。今は直さない）: ADR 0058 §1.3（起動の失敗）、0060（更新の実装の参照）、0067 §3.1（配置の図）、0070 §6 の 2（辞書とモデル）、0071 §3・0076 §2・§7（取得の範囲）、0072（配る条件）、`security-design.md`、spec NFR-17、`publish-checklist.md` §4、`SECURITY.md`、README、`windows/installer/README.md`、`release.yml` の冒頭の「未完了」。
+- 失うもの: 配る物が数百 MB になる（`vectors.bin` の評価しだい）。版を出すたびに辞書のビルドが workflow に乗り、元データの取得先に依る。リリースの成果物が 2 OS × 2 版の 4 つになる。macOS は `~/Library/Input Methods` に置くため、ADR 0069 §6 の 3 の限界（R1）が残る。
+- 改める文書（実装の PR で直す。今は直さない）: ADR 0058 §1.3（起動の失敗）、0060（更新の実装の参照）、0067 §3.1（配置の図）、0069 §6 の 3（`/Library` を既定にする案の取りやめ。§5.4）、0070 §6 の 2（辞書とモデル）、0071 §3・0076 §2・§7（取得の範囲）、0072（配る条件）、`security-design.md`、spec NFR-17、`publish-checklist.md` §4、`SECURITY.md`、README、`windows/installer/README.md`、`release.yml` の冒頭の「未完了」。
 
 ## 15. 推測と未確認（まとめ）
 
-- 未確認: §3.4 の XPC の束の読み（C1）、署名と起動の時間（C2）、#241 の 3 点と dmg のショートカットの形（C3）、dmg の圧縮の方式ごとの大きさとマウントの時間、AppContainer からの読み（C4）、Homebrew の公式の cask の条件（#479）、辞書のビルドの再現性、workflow の時間とディスク、`vectors.bin` なしの質の差（Q3）、実行物を含めた配る物の大きさ。
+- 未確認: §3.4 の XPC の束の読み（C1）、署名と起動の時間（C2）、#241 の 3 点と dmg のショートカットの形（C3）、dmg の圧縮の方式ごとの大きさとマウントの時間、AppContainer からの読み（C4）、Homebrew の公式の cask の条件（#479）、辞書のビルドの再現性、workflow の時間とディスク、`vectors.bin` なしの質の差（§11 の評価）、実行物を含めた配る物の大きさ。
 - 推測: dmg から写した物に隔離の印が引き継がれる、隔離の印のある入力メソッドを OS がどう扱うか、`vectors.bin` が縮まない理由。
 
 ## 参考
