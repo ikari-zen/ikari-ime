@@ -13,15 +13,22 @@
 #   - リリースのビルドは、キャッシュを読まない（rust-cache などを使わない）。
 #   - cargo build --locked。ツールチェーンは rust-toolchain.toml の版。ビルド機のパスは --remap-path-prefix で成果物に残さない。
 #
+# 試しのビルド（workflow_dispatch）: タグを打たずに、ビルドの job だけを流す（Windows だけ。証明と下書きの Release は作らない）。
+#   成果物は artifact（release-windows、7 日）に残る。インストーラの版は DRY_RUN_VERSION（0.0.0）。
+#   dispatch はリポジトリに書ける者だけが起こせる。ビルドの job の権限はタグのときと同じ（contents: read）。
+#
 # 未完了（この workflow の中身が、まだ仮の部分）:
-#   - Windows の成果物は、インストーラ（ADR 0067。レーン C-2）ができるまで、exe と DLL を zip にしただけ。LM つき（Vulkan）の
-#     ビルドの組み込みも、インストーラの形が決まってから足す（ci.yml の windows-artifact にある手順が元）。
-#   - 開発用の口が入っていないことの検査、取り込む DLL の検査（ADR 0067 §4.4・§6）は、段 A（A-4）の検査ができたら、build-windows に足す。
+#   - Windows の VC++ の再頒布パッケージ（LM の子が使う。ADR 0067 §4.5 の (a)）は、まだ同梱しない（インストーラの側が未実装）。
+#   - Windows の THIRD_PARTY_LICENSES_RUST.md は、今は macOS の成果物の一覧（cargo xtask licenses の対象が macOS だけ）。
+#   - 版の付け方: Windows のインストーラの版は数字だけ（VersionInfoVersion と tip\<版>\）。プレリリースのタグ（v1.2.3-rc.1）は、
+#     付け方が決まるまで verify-tag で止める。セキュリティの修正の印（ikari.iss の SecurityUpdate）は、まだ渡す口が無い。
 #   - macOS の置き場所と配布の形（zip か dmg か pkg か）は #241 の実機の確認で決まる。今は zip。
 name: Release
 on:
   push:
     tags: ["v*"]
+  # 試しのビルド（上の「試しのビルド」）。入力は持たない
+  workflow_dispatch:
 permissions: {}
 concurrency:
   group: release-${{ github.ref }}
@@ -29,12 +36,14 @@ concurrency:
 env:
   CARGO_INCREMENTAL: "0"
 jobs:
-  # 形の正しいタグで、そのコミットが main に入っているものだけ、先へ進める
+  # 形の正しいタグで、そのコミットが main に入っているものだけ、先へ進める。インストーラの版を決める
   verify-tag:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       # actions/checkout v7（コミットの SHA で固定）。履歴が要る（main に入っているかを調べる）
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -42,6 +51,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: タグの形と、main に入っていることを確かめる
+        if: github.event_name == 'push'
         env:
           TAG: ${{ github.ref_name }}
         run: |
@@ -55,15 +65,50 @@ jobs:
             echo "tag commit $GITHUB_SHA is not on main" >&2
             exit 1
           fi
+      # Windows のインストーラの版（ikari.iss の AppVersion）は数字の 3 つだけにする。VersionInfoVersion は数字しか受けず、
+      # 同じ版で中身の違う TIP の DLL は、使用中で置き直せない（ADR 0063 §5）。プレリリースの版の付け方が決まるまで止める
+      - name: インストーラの版を決める
+        id: version
+        env:
+          EVENT: ${{ github.event_name }}
+          TAG: ${{ github.ref_name }}
+          # 試しのビルドの版（Release にはならない）
+          DRY_RUN_VERSION: "0.0.0"
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "push" ]; then
+            version="${TAG#v}"
+            if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "the Windows installer takes only MAJOR.MINOR.PATCH (got '$TAG'); pre-release versions are not decided yet" >&2
+              exit 1
+            fi
+          else
+            version="$DRY_RUN_VERSION"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "installer version: $version"
 
+  # 配置の形（ADR 0067 §3.1）のフォルダを作り、検査して、Inno Setup でインストーラにする。手順の元は ci.yml の windows-artifact
+  # （から開発用のビルドとキャッシュを除いたもの）と windows/installer/README.md
   build-windows:
     needs: verify-tag
     runs-on: windows-latest
-    timeout-minutes: 75
+    timeout-minutes: 120
     permissions:
       contents: read
     env:
-      TAG: ${{ github.ref_name }}
+      APP_VERSION: ${{ needs.verify-tag.outputs.version }}
+      # LunarG の Vulkan SDK。版と sha256 は ci.yml の windows-artifact と同じにする（sha256 は LunarG が公開する値）
+      VULKAN_SDK_VERSION: "1.4.363.1"
+      VULKAN_SDK_SHA256: "c02932bd9a968b22d404536108adaacac908c081cd6b0113f5bfefc523dd0a6a"
+      # Inno Setup。下限は ikari.iss の先頭の検査（6.6.0）。sha256 は jrsoftware/issrc の Release（is-6_7_4）の資産の digest と、
+      # 取り直した値が同じ
+      INNO_VERSION: "6.7.4"
+      INNO_SHA256: "a549929319f9120716677c685535ca4671e4b937b5fdc87e2585f32d8eb30e8c"
+      # vulkan-shaders-gen（内側の CMake）のビルドのフォルダが深いと rc.exe が RC2136 で落ちる（ci.yml の windows-artifact と同じ理由）
+      CARGO_TARGET_DIR: D:\t
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -74,30 +119,156 @@ jobs:
         run: |
           rustc --version
           cargo --version
-      # RUSTFLAGS を設定すると .cargo/config.toml の rustflags（crt-static）は無視されるので、ここにも同じ指定を足す（xtask check が両方を見る）
+      # RUSTFLAGS を設定すると .cargo/config.toml の rustflags（crt-static）は無視されるので、ここにも同じ指定を足す（xtask check が両方を見る）。
+      # target は workspace の外（CARGO_TARGET_DIR）なので、それも外す
       - name: ビルド機のパスを成果物に残さない設定
         shell: pwsh
         run: |
-          "RUSTFLAGS=--remap-path-prefix=$($env:GITHUB_WORKSPACE)=/src --remap-path-prefix=$($env:USERPROFILE)\.cargo=/cargo -C target-feature=+crt-static" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-      # 仮: LM なし。LM つき（Vulkan）とインストーラは、形が決まってから足す（上の「未完了」）
-      - name: release ビルド（--locked）
+          "RUSTFLAGS=--remap-path-prefix=$($env:GITHUB_WORKSPACE)=/src --remap-path-prefix=$($env:USERPROFILE)\.cargo=/cargo --remap-path-prefix=$($env:CARGO_TARGET_DIR)=/target -C target-feature=+crt-static" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      # 取得したインストーラは、sha256 を照合してから実行する（キャッシュは読まない）。無人のオプションは LunarG の Getting Started（Windows）のとおり
+      - name: Vulkan SDK を入れる
         shell: pwsh
-        run: cargo build --release --locked -p ikari-engine-host -p ikari-candidate -p ikari-tip
-      # 製品のビルドに、開発用の文字列と動的な C ランタイムの取り込みが無いこと（ADR 0067 §4.4・§6）
-      - name: 製品のビルドの検査
-        shell: pwsh
+        timeout-minutes: 20
         run: |
-          cargo xtask scan-product target\release\ikari-engine-host.exe target\release\ikari_candidate.dll target\release\ikari_tip.dll
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: 成果物を zip にする
+          $ErrorActionPreference = 'Stop'
+          $v = $env:VULKAN_SDK_VERSION
+          $file = "vulkansdk-windows-X64-$v.exe"
+          $installer = Join-Path $env:RUNNER_TEMP $file
+          Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/$v/windows/$file" -OutFile $installer
+          $actual = (Get-FileHash -Algorithm SHA256 $installer).Hash.ToLowerInvariant()
+          if ($actual -ne $env:VULKAN_SDK_SHA256) {
+            throw "Vulkan SDK sha256 mismatch: expected $env:VULKAN_SDK_SHA256, got $actual"
+          }
+          $p = Start-Process -FilePath $installer -Wait -PassThru -ArgumentList @(
+            '--root', "C:\VulkanSDK\$v", '--accept-licenses', '--default-answer', '--confirm-command', 'install')
+          if ($p.ExitCode -ne 0) { throw "Vulkan SDK installer exited with $($p.ExitCode)" }
+          $sdk = "C:\VulkanSDK\$v"
+          if (-not (Test-Path "$sdk\Bin\glslc.exe")) { throw "glslc.exe not found under $sdk\Bin" }
+          "VULKAN_SDK=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "$sdk\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+      # vulkan-shaders-gen（内側の CMake）がコンパイラの環境を受け取れるよう、vcvars64 の環境を job に書き出す（ci.yml と同じ）
+      - name: MSVC の環境を設定する（vcvars64）
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $stage = "stage\ikari-$env:TAG-windows-x64"
-          New-Item -ItemType Directory -Force $stage | Out-Null
-          Copy-Item target\release\ikari-engine-host.exe, target\release\ikari_candidate.dll, target\release\ikari_tip.dll $stage
-          New-Item -ItemType Directory -Force out | Out-Null
-          Compress-Archive -Path $stage -DestinationPath "out\ikari-$env:TAG-windows-x64.zip"
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $vcvars = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'
+          if (-not (Test-Path $vcvars)) { throw "vcvars64.bat not found: $vcvars" }
+          $lines = cmd /c "`"$vcvars`" >nul && set"
+          if ($LASTEXITCODE -ne 0) { throw "vcvars64.bat failed" }
+          foreach ($line in $lines) {
+            if ($line -match '^(INCLUDE|LIB|LIBPATH|PATH|VCINSTALLDIR|VCToolsInstallDir|VCToolsVersion|WindowsSdkDir|WindowsSDKVersion|WindowsSdkBinPath|UCRTVersion|UniversalCRTSdkDir|VSINSTALLDIR|Platform)=(.*)$') {
+              "$($Matches[1])=$($Matches[2])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            }
+          }
+      # 製品のビルド（dev-knobs なし）。エンジンは窓なし（hide-console。ログオンの Run で起動する。ADR 0067 §4.1）
+      - name: release ビルド（エンジン、TIP、候補窓と設定画面の核、helper。--locked）
+        shell: pwsh
+        run: |
+          cargo build --release --locked -p ikari-engine-host -p ikari-tip -p ikari-candidate -p ikari-settings-core -p ikari-setup-helper --features ikari-engine-host/hide-console
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      # LM の子（Vulkan。ADR 0059）。llama.cpp と ggml は DLL になり、バックエンドは exe の隣の backends\ から読む。
+      # エンジンには llama.cpp を入れない（ADR 0072 §5）。Visual Studio のジェネレータでは vulkan-shaders-gen のインストールが落ちるので Ninja
+      - name: release ビルド（LM の子 ikari-lm-host。Vulkan。--locked）
+        shell: pwsh
+        env:
+          CMAKE_GENERATOR: Ninja
+        run: |
+          ninja --version
+          cargo build --release --locked -p ikari-lm --bin ikari-lm-host --features vulkan
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      # actions/setup-dotnet v6.1.0（コミットの SHA で固定）。.NET SDK の版は windows/candidate-ui/global.json（設定画面も同じ版）
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73
+        with:
+          global-json-file: windows/candidate-ui/global.json
+      # 配置の形（ADR 0067 §3.1、windows/installer/README.md）に並べる。候補窓と設定画面は自己完結で発行し、核は上の製品のビルドの DLL。
+      # NuGet は候補窓がロックのとおり（CI=true で RestoreLockedMode）。PDB は作らない（ビルド機のパスを残さない）
+      - name: 配置の形のフォルダを作る
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $rel = Join-Path $env:CARGO_TARGET_DIR 'release'
+          $stage = Join-Path $PWD 'stage\ikari-ime'
+          if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
+          New-Item -ItemType Directory -Force $stage, "$stage\backends", "$stage\tip\resources\keymap" | Out-Null
+          Copy-Item "$rel\ikari-engine-host.exe", "$rel\ikari-lm-host.exe", "$rel\ikari-setup-helper.exe" $stage
+          # llama.cpp（Vulkan）の DLL: backends に ggml-vulkan を持つ OUT_DIR（ci.yml の windows-artifact と同じ探し方）
+          $sysout = Get-ChildItem "$rel\build" -Directory -Filter 'llama-cpp-sys-2-*' |
+            ForEach-Object { Join-Path $_.FullName 'out' } |
+            Where-Object { Get-ChildItem (Join-Path $_ 'backends') -Filter 'ggml-vulkan*.dll' -ErrorAction SilentlyContinue } |
+            Select-Object -Last 1
+          if (-not $sysout) { throw "no ggml-vulkan DLL under $rel\build\llama-cpp-sys-2-*\out\backends" }
+          Write-Host "OUT_DIR: $sysout"
+          Copy-Item "$sysout\bin\*.dll" $stage
+          Copy-Item "$sysout\backends\*.dll" "$stage\backends"
+          # TIP と、TIP が DLL の隣で読むリソース（windows/tip/src/deploy.rs）
+          Copy-Item "$rel\ikari_tip.dll" "$stage\tip"
+          Copy-Item shell-core\resources\keymap\*.tsv "$stage\tip\resources\keymap"
+          foreach ($ui in @(
+              @{ Project = 'windows\candidate-ui'; Out = 'candidate'; Core = 'ikari_candidate.dll' },
+              @{ Project = 'windows\settings-ui'; Out = 'settings'; Core = 'ikari_settings_core.dll' })) {
+            $out = Join-Path $stage $ui.Out
+            Push-Location $ui.Project
+            dotnet publish -c Release -o $out "-p:IkariCoreDll=$rel\$($ui.Core)" -p:DebugType=None
+            $code = $LASTEXITCODE
+            Pop-Location
+            if ($code -ne 0) { exit $code }
+          }
+          Copy-Item LICENSE, NOTICE, THIRD_PARTY_NOTICES.md, THIRD_PARTY_LICENSES_RUST.md $stage
+          "STAGE_DIR=$stage" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      # インストーラに入れる物の全部を、置き場所ごとの検査で見る（cargo xtask scan-product --stage。xtask/src/scan/stage.rs）:
+      # あるべき物、開発用の文字列と動的な C ランタイムが無いこと（ADR 0067 §4.4・§6）、開発用の exe や測定ツールが無いこと
+      - name: 製品のビルドの検査（インストーラに入れる物）
+        shell: pwsh
+        run: |
+          cargo xtask scan-product --stage $env:STAGE_DIR
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 配置の形の中身と大きさを表示する
+        shell: pwsh
+        run: |
+          Get-ChildItem $env:STAGE_DIR -Recurse -File |
+            ForEach-Object { "{0}`t{1}" -f $_.Length, $_.FullName.Substring($env:STAGE_DIR.Length + 1) } |
+            Sort-Object { $_.Split("`t")[1] }
+      # 取得したインストーラは、sha256 を照合してから、ランナーの一時の場所に無人で入れる（キャッシュは読まない）
+      - name: Inno Setup を入れる
+        shell: pwsh
+        timeout-minutes: 10
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $v = $env:INNO_VERSION
+          $file = "innosetup-$v.exe"
+          $installer = Join-Path $env:RUNNER_TEMP $file
+          $tag = 'is-' + $v.Replace('.', '_')
+          Invoke-WebRequest -Uri "https://github.com/jrsoftware/issrc/releases/download/$tag/$file" -OutFile $installer
+          $actual = (Get-FileHash -Algorithm SHA256 $installer).Hash.ToLowerInvariant()
+          if ($actual -ne $env:INNO_SHA256) {
+            throw "Inno Setup sha256 mismatch: expected $env:INNO_SHA256, got $actual"
+          }
+          $dir = Join-Path $env:RUNNER_TEMP 'innosetup'
+          $p = Start-Process -FilePath $installer -Wait -PassThru -ArgumentList @(
+            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/ALLUSERS', "/DIR=$dir")
+          if ($p.ExitCode -ne 0) { throw "Inno Setup installer exited with $($p.ExitCode)" }
+          $iscc = Join-Path $dir 'ISCC.exe'
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found under $dir" }
+          if (-not (Test-Path (Join-Path $dir 'Languages\Japanese.isl'))) { throw "Languages\Japanese.isl not found under $dir" }
+          Write-Host "ISCC: $((Get-Item $iscc).VersionInfo.ProductVersion)"
+          "ISCC=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      # windows/installer/README.md の手順。TipSha256 は、同じ版の入れ直しで使用中の DLL を置き直さないため（ADR 0063 §5）。
+      # セキュリティの修正の印（/DSecurityUpdate=1。ADR 0070 §4 の 1）は、まだ渡さない（上の「未完了」）
+      - name: インストーラを作る（ISCC）
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sha = (Get-FileHash (Join-Path $env:STAGE_DIR 'tip\ikari_tip.dll') -Algorithm SHA256).Hash
+          $out = Join-Path $PWD 'out'
+          New-Item -ItemType Directory -Force $out | Out-Null
+          & $env:ISCC /Qp "/DAppVersion=$env:APP_VERSION" "/DStageDir=$env:STAGE_DIR" "/DTipSha256=$sha" "/O$out" windows\installer\ikari.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $setup = @(Get-ChildItem $out -File)
+          if ($setup.Count -ne 1 -or $setup[0].Name -ne "ikari-ime-$env:APP_VERSION-windows-x64-setup.exe") {
+            throw "unexpected installer output: $($setup.Name -join ', ')"
+          }
+          "{0}`t{1}" -f $setup[0].Length, $setup[0].Name
       # actions/upload-artifact（コミットの SHA で固定）
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
@@ -108,6 +279,8 @@ jobs:
 
   build-macos:
     needs: verify-tag
+    # 試しのビルド（workflow_dispatch）では流さない
+    if: github.event_name == 'push'
     runs-on: macos-latest
     timeout-minutes: 75
     permissions:
@@ -146,6 +319,8 @@ jobs:
   # SHA256SUMS を作り、成果物の証明（attestation）を付ける。権限が要るのはこの job だけ（id-token、attestations）
   provenance:
     needs: [build-windows, build-macos]
+    # 証明と下書きの Release は、タグのビルドにだけ作る（試しのビルドでは作らない）
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -180,6 +355,7 @@ jobs:
   # 下書きの Release を作る。公開はしない（ユーザーが、中身を見て、鍵の署名を足してから公開する）
   draft-release:
     needs: provenance
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
