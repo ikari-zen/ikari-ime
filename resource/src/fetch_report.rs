@@ -13,9 +13,9 @@
 //! 1 行は [`MAX_LINE_BYTES`] まで。読む側（[`ReportReader`]）は、知らない行、長すぎる行、終わりの行
 //! （`done`・`latest`・`error`）のあとの行を捨てる。
 //!
-//! `box` は、Windows の `ikari-data` が取得の子（`transfer`）をどの檻で起こしたか（ADR 0078 §3.2 の 5）。`low` は、
-//! AppContainer で起こせず、低い整合性だけに落としたことを表す（設定画面に印を出す）。子を起こしたあと、
-//! 進み具合の行より前に 1 回だけ出す。macOS（子を作らない）は出さない。終わりの行ではない。
+//! `box` は、Windows の `ikari-data` が通信する子（モデルの取得の `transfer`、版の確認の `version-probe`）をどの檻で
+//! 起こしたか（ADR 0078 §3.2 の 5）。`low` は、AppContainer で起こせず、低い整合性だけに落としたことを表す（設定画面に
+//! 印を出す）。子を起こしたあと、進み具合と `latest` の行より前に 1 回だけ出す。macOS（子を作らない）は出さない。終わりの行ではない。
 
 use std::io::{self, BufRead, Read};
 
