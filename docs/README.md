@@ -39,3 +39,4 @@ ikari-ime（日本語入力メソッド）の文書の索引です。文書は�
 - [accuracy-breakdown-2026-10-16.md](accuracy-breakdown-2026-10-16.md)、[homophone-analysis-2026-10-17.md](homophone-analysis-2026-10-17.md)、[lm-regression-2026-10-16.md](lm-regression-2026-10-16.md): 変換の精度の調査
 - [phase2-contract.md](phase2-contract.md)、[phase3a-checklist.md](phase3a-checklist.md)、[b28-lanes.md](b28-lanes.md)、[refactor-plan-2026-10.md](refactor-plan-2026-10.md): 開発の途中の契約、確認、計画
 - [research/](research/steno-survey-2026-10.md): 入力方式の調査
+- [research/license-redistribution-2026-11.md](research/license-redistribution-2026-11.md): 配布物同梱に向けた辞書・モデル・一覧のライセンスと再配布の調査（#242）
