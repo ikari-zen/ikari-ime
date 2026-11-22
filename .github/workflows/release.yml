@@ -19,7 +19,6 @@
 #
 # 未完了（この workflow の中身が、まだ仮の部分）:
 #   - Windows の VC++ の再頒布パッケージ（LM の子が使う。ADR 0067 §4.5 の (a)）は、まだ同梱しない（インストーラの側が未実装）。
-#   - Windows の THIRD_PARTY_LICENSES_RUST.md は、今は macOS の成果物の一覧（cargo xtask licenses の対象が macOS だけ）。
 #   - 版の付け方: Windows のインストーラの版は数字だけ（VersionInfoVersion と tip\<版>\）。プレリリースのタグ（v1.2.3-rc.1）は、
 #     付け方が決まるまで verify-tag で止める。セキュリティの修正の印（ikari.iss の SecurityUpdate）は、まだ渡す口が無い。
 #   - macOS の置き場所と配布の形（zip か dmg か pkg か）は #241 の実機の確認で決まる。今は zip。
@@ -107,6 +106,9 @@ jobs:
       INNO_SHA256: "a549929319f9120716677c685535ca4671e4b937b5fdc87e2585f32d8eb30e8c"
       # vulkan-shaders-gen（内側の CMake）のビルドのフォルダが深いと rc.exe が RC2136 で落ちる（ci.yml の windows-artifact と同じ理由）
       CARGO_TARGET_DIR: D:\t
+      # .NET SDK（下の「.NET SDK を入れる」。出典はそこのコメント）
+      DOTNET_SDK_VERSION: "10.0.404"
+      DOTNET_SDK_SHA256: "f94f02eb8451605a893164bbd9c14e7f00ac8914c370c322822e6ac91b106bcc"
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
       DOTNET_NOLOGO: "1"
     steps:
@@ -185,10 +187,31 @@ jobs:
           ninja --version
           cargo build --release --locked -p ikari-lm --bin ikari-lm-host --features vulkan
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      # actions/setup-dotnet v6.1.0（コミットの SHA で固定）。.NET SDK の版は windows/candidate-ui/global.json（設定画面も同じ版）
-      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73
-        with:
-          global-json-file: windows/candidate-ui/global.json
+      # .NET SDK は、版と sha256 で固定した zip を取得して使う（setup-dotnet は使わない）。windows/candidate-ui/global.json
+      # （10.0.100、rollForward は latestFeature。設定画面も同じ版）を満たす版。zip は Microsoft の公式の配布元
+      # （https://builds.dotnet.microsoft.com/dotnet/Sdk/<版>/dotnet-sdk-<版>-win-x64.zip）から取る。
+      # 公式のリリースの一覧（https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/10.0/releases.json）が載せるのは sha512 なので、
+      # sha256 は取り直した値で、同じ zip の sha512（330ddd26…632ee）が一覧の値と一致することを確かめてある
+      - name: .NET SDK を入れる
+        shell: pwsh
+        timeout-minutes: 10
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $v = $env:DOTNET_SDK_VERSION
+          $file = "dotnet-sdk-$v-win-x64.zip"
+          $zip = Join-Path $env:RUNNER_TEMP $file
+          Invoke-WebRequest -Uri "https://builds.dotnet.microsoft.com/dotnet/Sdk/$v/$file" -OutFile $zip
+          $actual = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
+          if ($actual -ne $env:DOTNET_SDK_SHA256) {
+            throw ".NET SDK sha256 mismatch: expected $env:DOTNET_SDK_SHA256, got $actual"
+          }
+          $dir = Join-Path $env:RUNNER_TEMP 'dotnet'
+          Expand-Archive -Path $zip -DestinationPath $dir
+          if (-not (Test-Path (Join-Path $dir 'dotnet.exe'))) { throw "dotnet.exe not found under $dir" }
+          "DOTNET_ROOT=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          # 先頭に置いて、ランナーに入っている別の版より先に使う
+          $dir | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          & (Join-Path $dir 'dotnet.exe') --version
       # 配置の形（ADR 0067 §3.1、windows/installer/README.md）に並べる。候補窓と設定画面は自己完結で発行し、核は上の製品のビルドの DLL。
       # NuGet は候補窓がロックのとおり（CI=true で RestoreLockedMode）。PDB は作らない（ビルド機のパスを残さない）
       - name: 配置の形のフォルダを作る
@@ -222,7 +245,9 @@ jobs:
             Pop-Location
             if ($code -ne 0) { exit $code }
           }
-          Copy-Item LICENSE, NOTICE, THIRD_PARTY_NOTICES.md, THIRD_PARTY_LICENSES_RUST.md $stage
+          Copy-Item LICENSE, NOTICE, THIRD_PARTY_NOTICES.md $stage
+          # Windows の依存の一覧（cargo xtask licenses が作る）は、配置では THIRD_PARTY_LICENSES_RUST.md の名前で置く
+          Copy-Item THIRD_PARTY_LICENSES_RUST_WINDOWS.md (Join-Path $stage 'THIRD_PARTY_LICENSES_RUST.md')
           "STAGE_DIR=$stage" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       # インストーラに入れる物の全部を、置き場所ごとの検査で見る（cargo xtask scan-product --stage。xtask/src/scan/stage.rs）:
       # あるべき物、開発用の文字列と動的な C ランタイムが無いこと（ADR 0067 §4.4・§6）、開発用の exe や測定ツールが無いこと

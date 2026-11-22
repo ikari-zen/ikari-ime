@@ -502,14 +502,16 @@ fn helper_exes(stop: &str) -> Vec<String> {
     };
     let mut out = Vec::new();
     for line in stop.lines() {
-        let line = line.trim();
-        if let Some(rest) = line.strip_prefix("pub const ENGINE_EXE: &str =") {
+        if let Some(rest) = line.trim().strip_prefix("pub const ENGINE_EXE: &str =") {
             out.insert(0, literal(rest).unwrap_or_default());
         }
-        if let Some(rest) = line.strip_prefix("pub const CHILD_EXES: &[&str] = &[") {
-            let inner = rest.trim_end_matches("];");
-            out.extend(inner.split(',').filter_map(literal));
-        }
+    }
+    // CHILD_EXES は rustfmt が複数行に折ることがあるので、`];` まで通しで読む
+    const CHILD_START: &str = "pub const CHILD_EXES: &[&str] = &[";
+    if let Some(start) = stop.find(CHILD_START) {
+        let rest = &stop[start + CHILD_START.len()..];
+        let inner = rest.split("];").next().unwrap_or_default();
+        out.extend(inner.split(',').filter_map(literal));
     }
     out.retain(|s| !s.is_empty());
     out
@@ -703,6 +705,11 @@ mod tests {
             &with("    1: Result := 'ikari-lm-host.exe';\n", ""),
             "BlockedExe の並び"
         ));
+        // 設定画面（settings\ikari-settings.exe）を外すと、helper の止める相手と食い違う（#575）
+        assert!(has(
+            &with("    3: Result := 'settings\\ikari-settings.exe';\n", ""),
+            "BlockedExe の並び"
+        ));
         assert!(has(
             &with(
                 "FirewallRulePrefix = 'ikari-ime: block outbound ';",
@@ -731,6 +738,8 @@ mod tests {
     fn helper_exes_are_read_in_order() {
         let stop = "pub const ENGINE_EXE: &str = \"a.exe\";\npub const CHILD_EXES: &[&str] = &[\"b.exe\", r\"c\\d.exe\"];\n";
         assert_eq!(helper_exes(stop), vec!["a.exe", "b.exe", r"c\d.exe"]);
+        let folded = "pub const ENGINE_EXE: &str = \"a.exe\";\npub const CHILD_EXES: &[&str] = &[\n    \"b.exe\",\n    r\"c\\d.exe\",\n];\n";
+        assert_eq!(helper_exes(folded), vec!["a.exe", "b.exe", r"c\d.exe"]);
     }
 
     #[test]

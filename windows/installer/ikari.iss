@@ -199,14 +199,14 @@ begin
 end;
 
 { ファイアウォールの規則とエラー報告の除外を入れる exe（インストール先からの相対。ADR 0066 §6.2）。
-  helper の ENGINE_EXE と CHILD_EXES と同じ並び（xtask が照らす）。
-  TODO(ADR 0071): 設定画面の exe の名前が決まったら足す。 }
+  helper の ENGINE_EXE と CHILD_EXES と同じ並び（xtask が照らす）。 }
 function BlockedExe(I: Integer): String;
 begin
   case I of
     0: Result := 'ikari-engine-host.exe';
     1: Result := 'ikari-lm-host.exe';
     2: Result := 'candidate\ikari-candidate.exe';
+    3: Result := 'settings\ikari-settings.exe';
   else
     Result := '';
   end;

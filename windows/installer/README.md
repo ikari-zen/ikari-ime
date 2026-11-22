@@ -21,7 +21,7 @@ Inno Setup のスクリプト（`ikari.iss`）と、インストーラが管理�
    <stage>\tip\ikari_tip.dll、tip\resources\keymap\*.tsv
    <stage>\ikari-setup-helper.exe
    <stage>\ikari-data.exe（取得の子。送信ブロックの規則はかけない）
-   <stage>\LICENSE、NOTICE、THIRD_PARTY_NOTICES.md、THIRD_PARTY_LICENSES_RUST.md
+   <stage>\LICENSE、NOTICE、THIRD_PARTY_NOTICES.md、THIRD_PARTY_LICENSES_RUST.md（元は THIRD_PARTY_LICENSES_RUST_WINDOWS.md。cargo xtask licenses が作る）
    ```
 
 3. `cargo xtask scan-product --stage <stage>` で検査する（あるべき物、開発用の文字列、動的な C ランタイム、開発用の exe や測定ツールが無いこと。`xtask/src/scan/stage.rs`）。

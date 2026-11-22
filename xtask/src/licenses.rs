@@ -1,8 +1,11 @@
-//! `cargo xtask licenses`（issue #242）。配るバイナリが静的に含む Rust の依存クレートのライセンス一覧
-//! （`THIRD_PARTY_LICENSES_RUST.md`）を、cargo-about で作る。
+//! `cargo xtask licenses`（issue #242、#573）。配るバイナリが静的に含む Rust の依存クレートのライセンス一覧を、cargo-about で作る。
+//! 一覧は OS ごとに 1 つ: macOS は `THIRD_PARTY_LICENSES_RUST.md`、Windows は `THIRD_PARTY_LICENSES_RUST_WINDOWS.md`
+//! （インストーラの配置では `THIRD_PARTY_LICENSES_RUST.md` の名前で置く。release.yml）。
 //!
-//! - 配るもの: macOS の ikari.app に入る Rust の成果物（`ikari-lm-host`（`ikari-lm` の `metal`。llama.cpp はここだけ。ADR 0072 §5）、`ikari-engine-ffi`、`ikari-shell-ffi`）。
+//! - 配るもの（macOS）: ikari.app に入る Rust の成果物（`ikari-lm-host`（`ikari-lm` の `metal`。llama.cpp はここだけ。ADR 0072 §5）、`ikari-engine-ffi`、`ikari-shell-ffi`）。
 //!   ビルドの引数は `macos/scripts/build.sh` と合わせる。xtask、評価、cli、dict-builder などは含めない
+//! - 配るもの（Windows）: インストーラの配置に入る成果物（エンジン、TIP、候補窓と設定画面の核、helper、取得の子 `ikari-data`、LM の子（Vulkan））。
+//!   ビルドの引数は `.github/workflows/release.yml` と合わせる。依存の絞り込みは `--target x86_64-pc-windows-msvc`
 //! - 設定は `about.toml`（許可するライセンスを `accepted` に明記。想定外のライセンスが入ると cargo-about が失敗する。
 //!   build.rs だけが使うもの、dev-dependencies は、成果物に入らないので除く）
 //! - 道具は cargo-about（`cargo install cargo-about --locked --features cli`。自動では入れない）
@@ -19,11 +22,47 @@ use serde_json::Value;
 use crate::XtaskError;
 use crate::data::run::repo_root;
 
-/// 生成物（リポジトリ直下）
+/// 配る成果物の組（OS ごとに 1 つ）
+struct Platform {
+    /// 生成物（リポジトリ直下）
+    output: &'static str,
+    /// 依存の絞り込みに使う target。空なら about.toml の `targets`
+    target: &'static str,
+    /// 配る Rust の成果物（パッケージのフォルダ、機能）
+    shipped: &'static [(&'static str, &'static str)],
+    /// 本文の説明（配る物の名前）
+    what: &'static str,
+}
+
+/// macOS の生成物（`macos/scripts/build.sh` が読む）
 pub const OUTPUT_FILE: &str = "THIRD_PARTY_LICENSES_RUST.md";
-/// 配る Rust の成果物（パッケージ、機能）。`macos/scripts/build.sh` の `cargo build -p …` と合わせる。
-/// `shell-ffi` は通常版（`online`。ADR 0080 §7.1）で数える（オフライン版の依存はその部分集合）
-const SHIPPED: [(&str, &str); 3] = [("lm", "metal"), ("engine-ffi", ""), ("shell-ffi", "online")];
+/// Windows の生成物
+pub const OUTPUT_FILE_WINDOWS: &str = "THIRD_PARTY_LICENSES_RUST_WINDOWS.md";
+
+/// 配る物の組。macOS は `macos/scripts/build.sh` の `cargo build -p …`、Windows は release.yml の `cargo build -p …` と合わせる。
+/// `shell-ffi`、`settings` は通常版（`online`。ADR 0080 §7.1）で数える（オフライン版の依存はその部分集合）
+const PLATFORMS: [Platform; 2] = [
+    Platform {
+        output: OUTPUT_FILE,
+        target: "",
+        shipped: &[("lm", "metal"), ("engine-ffi", ""), ("shell-ffi", "online")],
+        what: "ikari.app に入る Rust の成果物（`ikari-engine-ffi`、`ikari-shell-ffi`、LM の子 `ikari-lm-host`）",
+    },
+    Platform {
+        output: OUTPUT_FILE_WINDOWS,
+        target: "x86_64-pc-windows-msvc",
+        shipped: &[
+            ("windows/engine-host", "hide-console"),
+            ("windows/tip", ""),
+            ("windows/candidate", ""),
+            ("windows/settings", "online"),
+            ("windows/installer/helper", ""),
+            ("fetch", ""),
+            ("lm", "vulkan"),
+        ],
+        what: "Windows のインストーラに入る Rust の成果物（エンジン、TIP、候補窓と設定画面の核、helper、取得の子 `ikari-data`、LM の子 `ikari-lm-host`）",
+    },
+];
 /// 生成物の先頭の見出し
 const TITLE: &str = "# Rust 依存クレートのライセンス";
 
@@ -42,20 +81,23 @@ pub fn run(args: Args) -> Result<(), XtaskError> {
             "cargo-about がありません（cargo install cargo-about --locked --features cli）".into(),
         ));
     }
-    let markdown = generate(&root)?;
-    let path = root.join(OUTPUT_FILE);
-    if args.check {
-        let current = std::fs::read_to_string(&path).unwrap_or_default();
-        if current == markdown {
-            return Ok(());
+    for platform in &PLATFORMS {
+        let markdown = generate(&root, platform)?;
+        let path = root.join(platform.output);
+        if args.check {
+            let current = std::fs::read_to_string(&path).unwrap_or_default();
+            if current != markdown {
+                return Err(XtaskError(format!(
+                    "{} が古いか、ありません（cargo xtask licenses で作り直してください）",
+                    platform.output
+                )));
+            }
+            continue;
         }
-        return Err(XtaskError(format!(
-            "{OUTPUT_FILE} が古いか、ありません（cargo xtask licenses で作り直してください）"
-        )));
+        std::fs::write(&path, markdown)
+            .map_err(|e| XtaskError(format!("{} に書けません: {e}", path.display())))?;
+        eprintln!("{} を書きました", platform.output);
     }
-    std::fs::write(&path, markdown)
-        .map_err(|e| XtaskError(format!("{} に書けません: {e}", path.display())))?;
-    eprintln!("{OUTPUT_FILE} を書きました");
     Ok(())
 }
 
@@ -75,11 +117,11 @@ struct Group {
     crates: BTreeMap<(String, String), String>,
 }
 
-fn generate(root: &Path) -> Result<String, XtaskError> {
+fn generate(root: &Path, platform: &Platform) -> Result<String, XtaskError> {
     // 本文 → 集まり。本文が同じなら（著作権表示も同じなので）まとめる
     let mut groups: BTreeMap<String, Group> = BTreeMap::new();
-    for (package, features) in SHIPPED {
-        let json = about_json(root, package, features)?;
+    for (package, features) in platform.shipped {
+        let json = about_json(root, package, features, platform.target)?;
         let licenses = json
             .get("licenses")
             .and_then(Value::as_array)
@@ -102,7 +144,7 @@ fn generate(root: &Path) -> Result<String, XtaskError> {
             }
         }
     }
-    Ok(render(&groups))
+    Ok(render(&groups, platform.what))
 }
 
 fn str_field(value: &Value, key: &str) -> String {
@@ -113,13 +155,21 @@ fn str_field(value: &Value, key: &str) -> String {
         .to_owned()
 }
 
-fn about_json(root: &Path, package: &str, features: &str) -> Result<Value, XtaskError> {
+fn about_json(
+    root: &Path,
+    package: &str,
+    features: &str,
+    target: &str,
+) -> Result<Value, XtaskError> {
     let mut command = Command::new("cargo");
     command
         .current_dir(root)
         .args(["about", "generate", "--locked", "--offline", "--fail"])
         .args(["--format", "json", "--manifest-path"])
         .arg(format!("{package}/Cargo.toml"));
+    if !target.is_empty() {
+        command.args(["--target", target]);
+    }
     if !features.is_empty() {
         command.args(["--features", features]);
     }
@@ -137,7 +187,7 @@ fn about_json(root: &Path, package: &str, features: &str) -> Result<Value, Xtask
 }
 
 /// Markdown にする。順序は（ライセンスの種類、最初のクレートの名前）で決め、実行のたびに変わらないようにする
-fn render(groups: &BTreeMap<String, Group>) -> String {
+fn render(groups: &BTreeMap<String, Group>, what: &str) -> String {
     let mut sorted: Vec<(&String, &Group)> = groups.iter().collect();
     sorted.sort_by(|a, b| {
         (&a.1.id, a.1.crates.keys().next()).cmp(&(&b.1.id, b.1.crates.keys().next()))
@@ -150,7 +200,7 @@ fn render(groups: &BTreeMap<String, Group>) -> String {
     out.push_str(TITLE);
     out.push_str("\n\n");
     out.push_str(&format!(
-        "ikari.app に入る Rust の成果物（`ikari-engine-ffi`、`ikari-shell-ffi`、LM の子 `ikari-lm-host`）が含む依存クレート（{total} 個）のライセンスです。\
+        "{what}が含む依存クレート（{total} 個）のライセンスです。\
          `cargo xtask licenses` で作ります（cargo-about。設定は `about.toml`）。手で書き換えないでください。\n\n\
          ビルドのときだけ使うもの、テストだけで使うもの、配らない道具（cli、dict-builder、評価、xtask）は含みません。\
          同じ本文のライセンスはまとめてあります。\n\n"
