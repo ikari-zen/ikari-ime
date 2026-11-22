@@ -114,6 +114,7 @@
 - [ ] Releases を immutable（公開したら資産とタグを変えられない）にしたこと。**要確認**: GitHub 側にこの機能があるか、どこで設定するかは、まだ確かめていない。無ければ、無いことをここに書く。
 - [ ] 「最新の Release」の扱い（ADR 0076 §18.2）: アプリの Release は `gh release create … --latest` で明示して最新にする。データの Release（`webwords-*`）は `--latest=false` で作り、最新にしない。公開のあと、`gh release view --json tagName` の最新のタグが `v<数>.<数>.<数>` であることを確かめる。
 - [ ] [security-design.md](security-design.md) §5.2 の「版を出す前」の検査が済んでいること（製品のビルドであること、インストーラの確認、送信の記録、他社の部品の版、3 つの証拠）。
+- [ ] Windows のインストーラを、タグの前にリリースの workflow の試しのビルド（`workflow_dispatch`。証明と Release は作らない）で作り、VM で入れて確かめたこと（[windows-real-device-check.md](windows-real-device-check.md) の項目 47〜55）。
 - [ ] 配る物は、GitHub のランナーで、タグから作ったものだけ（作者や利用者の機械で作ったものは配らない）。Release は下書きにし、作者が中身を見てから公開する。
 - [ ] Release に 3 つの証拠が付いていること: `SHA256SUMS`、GitHub の成果物の証明（`gh attestation verify <ファイル> -R ikari-zen/ikari-ime` で確かめられる）、作者の鍵による `SHA256SUMS` の署名。
 - [ ] README の冒頭（「ビルド済みのアプリは、まだ配っていません」）と SECURITY.md の「配布」の節の同じ行を、配布に合わせて書き直す。README には、配布元が Releases だけであること、sha256 の比べ方、証明と署名の確かめ方、OS の警告の案内（実機で確かめた手順だけ。守りを切る手順は書かない）、Watch の案内を書く。
