@@ -63,6 +63,17 @@
       ]
     },
     {
+      "name": "mode change without a secure value keeps the current one",
+      "from": "ADR 0073 §2",
+      "rust_only": "殻の判断（IkariInputController・AppContext。Swift は IkariIME にありテストから呼べない）",
+      "setup": {"client": {"secure": true}},
+      "steps": [
+        {"press": "a", "expect": [{"type": "pass_through"}], "engine": [{"type": "begin_session", "client_bundle_id": "", "secure": true}]},
+        {"event": {"type": "input_mode_changed", "mode_id": "com.apple.inputmethod.Roman"}, "engine": []},
+        {"event": {"type": "input_mode_changed", "mode_id": "io.github.ikari-zen.inputmethod.ikari.Japanese", "secure": false}, "engine": [{"type": "begin_session", "secure": false}]}
+      ]
+    },
+    {
       "name": "english mode secure passes through",
       "from": "IkariInputController.swift handleEnglish (secure)",
       "rust_only": "殻の判断（IkariInputController・AppContext。Swift は IkariIME にありテストから呼べない）",

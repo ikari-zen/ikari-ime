@@ -456,9 +456,9 @@ pub enum ShellEvent {
     Activate {
         /// 入力先のアプリの bundle ID（Windows は実行ファイルの名前など）
         bundle_id: String,
-        /// secure な入力（パスワード欄）。L-E で追加
-        #[serde(default, skip_serializing_if = "is_false")]
-        secure: bool,
+        /// secure な入力（パスワード欄）。`None` は「分からない」で、今の値を保つ（ADR 0073 §2）
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        secure: Option<bool>,
     },
     Deactivate,
     MenuCommand {
@@ -479,8 +479,9 @@ pub enum ShellEvent {
     /// OS が入力モードを替えた（macOS の `kTextServiceInputModePropertyTag`。値はモードの ID）
     InputModeChanged {
         mode_id: String,
-        #[serde(default, skip_serializing_if = "is_false")]
-        secure: bool,
+        /// `None` は「分からない」で、今の値を保つ（`Activate` と同じ）
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        secure: Option<bool>,
     },
     /// 外から確定させられた（IMK の `commitComposition`。クリックなど）
     CommitComposition,
