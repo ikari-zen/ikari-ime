@@ -20,6 +20,7 @@ pub mod context_limits;
 mod convert;
 mod ctx_trace;
 mod data;
+pub mod data_location;
 mod diag;
 mod diag_schema;
 mod dispatch;
