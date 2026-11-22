@@ -320,7 +320,7 @@ error <理由の語>
 
 ### 18.2 「最新の Release」がデータのタグを指すこと（§6）
 - **決定: データの Release は「最新」にしない運用にする。アプリの Release は、作るときに明示して最新にする。** チェックリストの文だけにせず、作るスクリプトと手順書に書く。
-  - データの Release を作るスクリプト（`cargo xtask webwords publish`。`xtask/src/webwords/publish.rs` の `release_args`）は、`gh release create` に `--latest=false` を付ける（実装の課題。§18.3）。手順書は [webwords-update.md](../webwords-update.md) §5 に書いた。
+  - データの Release を作るスクリプト（`cargo xtask webwords publish`。`xtask/src/webwords/publish.rs` の `release_args`）は、`gh release create` に `--latest=false` を付ける（実装済み）。手順書は [webwords-update.md](../webwords-update.md) §5 に書いた。
   - アプリの Release は `--latest` を明示して作る（[publish-checklist.md](../publish-checklist.md) §4 に書いた）。
 - 版の確認は `v<数>.<数>.<数>` の形のタグだけを見る。ほかの形（データのタグ、`v` のない形、`-rc` などの付いた形）は `bad-reply` にする（「最新です」と出さず、確認できない側に倒す）。
 - 版の各数字に桁の上限を置き、超えたら `bad-reply`（比べるときの桁あふれを避ける）。上限の値は契約のレーンで決め、PR に書いてユーザーに確かめる（今は決めていない）。
@@ -329,6 +329,6 @@ error <理由の語>
   - 推測: 版の確認は表示だけで、取得と導入に結びつけない（§6）ので、害は「偽の Release のページに誘う」まで。そこから先は、利用者が ADR 0069 の証拠（作者の鍵の署名など）で確かめるかに懸かる。アカウントを取られた場合に、どの証拠が偽物を見分けられるかは確かめていない。
 
 ### 18.3 実装の課題（issue はリードが切る）
-1. `publish.rs` の `release_args` に `--latest=false` を足し、テストで引数を確かめる。
+1. （済）`publish.rs` の `release_args` に `--latest=false` を足し、テストで引数を確かめた。
 2. `version-check` の形の検査（`v<数>.<数>.<数>` だけ、桁の上限）と、`bad-reply` のときの設定画面の表示。
 3. 自由指定の警告の文（OS で分けない）と、sha256 なしで取ったあとの sha256 の表示（D-2c、D-4）。
