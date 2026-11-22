@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
   Copies ikari_tip.dll (and the keymap tables) to a NEW version folder $TipVersionsDir\<time>\ and registers it with
-  regsvr32. Run it in an ADMINISTRATOR 64-bit PowerShell: DllRegisterServer writes HKCR (= HKLM\Software\Classes).
+  regsvr32. Run it in an ADMINISTRATOR 64-bit PowerShell: DllRegisterServer writes HKLM\Software\Classes\CLSID\{...}.
 .PARAMETER DryRun
   Show the plan only.
 .PARAMETER Force
@@ -9,7 +9,7 @@
 .NOTES
   Changes made on the machine (shown before they are done, and undone by unregister.ps1):
     1. a new folder $TipVersionsDir\<time>\ (ikari_tip.dll, resources\keymap\*.tsv)
-    2. registry + TSF profile, written by the DLL itself (DllRegisterServer): HKCR\CLSID\{...}, the Japanese
+    2. registry + TSF profile, written by the DLL itself (DllRegisterServer): HKLM\Software\Classes\CLSID\{...}, the Japanese
        (0x0411) input profile "ikari", and the TIP keyboard category.
   Updating (ADR 0063 s3): the old version is NOT unregistered and its folder is not touched (an app that has it loaded
   could not let it be overwritten anyway). The new DllRegisterServer re-points InprocServer32 to the new folder; apps
@@ -41,10 +41,10 @@ Write-Note "copy   $TipDllBuilt"
 Write-Note "  to   $dllDest"
 Write-Note "copy   $KeymapSource\*.tsv"
 Write-Note "  to   $keymapDest"
-Write-Note "run    $Regsvr32 /s `"$dllDest`"   (points HKCR\CLSID\$TipClsid to the new DLL, writes the TSF profile)"
+Write-Note "run    $Regsvr32 /s `"$dllDest`"   (points HKLM\Software\Classes\CLSID\$TipClsid to the new DLL, writes the TSF profile)"
 if ($DryRun) { Write-Step 'Dry run: nothing was changed.'; return }
 
-if (-not (Test-IsAdmin)) { throw 'Run this script in an administrator PowerShell (regsvr32 writes HKCR).' }
+if (-not (Test-IsAdmin)) { throw 'Run this script in an administrator PowerShell (regsvr32 writes HKLM\Software\Classes).' }
 if (Test-Path -LiteralPath $versionDir) { throw "Already exists: $versionDir. Run the script again." }
 if (-not (Confirm-Action 'Go ahead?' $Force.IsPresent)) { Write-Step 'Cancelled.'; return }
 

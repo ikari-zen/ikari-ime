@@ -37,9 +37,10 @@ ikari-ime（1.0.0）は、権限の境界を守るため（[ADR 0067](adr/0067-w
 1. **公式の配布元は GitHub Releases だけです**（[ADR 0069](adr/0069-distribution-authenticity.md) §3.1）。
    - 配布ページ: `https://github.com/ikari-zen/ikari-ime/releases`
    - インストーラのファイル名: `ikari-ime-<版>-windows-x64-setup.exe`（例: `ikari-ime-1.0.0-windows-x64-setup.exe`）
+   - Windows 版の配布はインストーラ（Inno Setup による exe）のみで、zip 配布はありません。プレリリース（`-rc` 等）の配布はなく、数字のみの正式版（`MAJOR.MINOR.PATCH`）で配布されます（`.github/workflows/release.yml`。CI でのインストーラ作成は `workflow_dispatch` で確認中）。
    - ミラーサイトや第三者のパッケージ集積所にあるものは、作者が [README](../README.md) に明記するまで公式ではありません。
-2. **本物かどうかの確認（任意）**（[ADR 0069](adr/0069-distribution-authenticity.md) §3.2・§3.4。リリース用の workflow は未作成のため **（未確認）**）:
-   - Release には、成果物のハッシュ一覧 `SHA256SUMS`、GitHub の成果物の証明（attestation）、作者の鍵による `SHA256SUMS` の署名（minisign 形式）を添付する設計です。
+2. **本物かどうかの確認（任意）**（[ADR 0069](adr/0069-distribution-authenticity.md) §3.2・§3.4。リリース手順と実機での確認は **（未確認）**）:
+   - Release には、成果物のハッシュ一覧 `SHA256SUMS`、GitHub の成果物の証明（attestation）、作者の鍵による `SHA256SUMS` の署名（minisign 形式）を添付する設計です（`.github/workflows/release.yml` の `provenance` / `draft-release`）。
    - Windows 標準の `certutil` で SHA-256 を確かめるには、コマンドプロンプトまたは PowerShell で次を実行し、`SHA256SUMS` の値と比べます:
 
      ```powershell
@@ -79,10 +80,12 @@ ikari-ime の最初の配布版には、Authenticode のコード署名が付い
      - `C:\Program Files\ikari-ime\ikari-engine-host.exe`（常駐の変換エンジン）
      - `C:\Program Files\ikari-ime\ikari-lm-host.exe`、`llama*.dll`、`ggml*.dll`、`backends\`（言語モデル推論の子プロセスと DLL）
      - `C:\Program Files\ikari-ime\candidate\ikari-candidate.exe`（候補窓）
+     - `C:\Program Files\ikari-ime\settings\`（設定画面）
+     - `C:\Program Files\ikari-ime\ikari-data.exe`（辞書・モデル取得用の子プロセス）
      - `C:\Program Files\ikari-ime\tip\<版>\ikari_tip.dll`、`resources\`（各アプリに読み込まれる TIP の DLL とキーマップ等の資源。版ごとのフォルダに置きます）
      - `C:\Program Files\ikari-ime\ikari-setup-helper.exe`、`LICENSE`、`THIRD_PARTY_LICENSES_RUST.md`
-     - （設計上の追加予定: 設定画面 `settings\ikari-settings.exe`、取得の道具 `ikari-data.exe`、および VC++ 再頒布パッケージ `vc_redist` の同梱は [ADR 0067](adr/0067-windows-install-layout-and-launch-chain.md) §3.1・§4.5 で決定済みですが、現在の `ikari.iss` には未組み込みです）
-   - **TIP の COM / TSF 登録**: `C:\Program Files\ikari-ime\tip\<版>\ikari_tip.dll` を `regsvr32.exe /s` で登録します（**（未確認）**: 項目 48）。
+     - （設計上の追加予定: VC++ 再頒布パッケージ `vc_redist` の同梱は [ADR 0067](adr/0067-windows-install-layout-and-launch-chain.md) §4.5 で決定済みですが、現在の `ikari.iss` には未組み込みです）
+   - **TIP の COM / TSF 登録**: `C:\Program Files\ikari-ime\tip\<版>\ikari_tip.dll` を `regsvr32.exe /s` で登録します（`HKLM\Software\Classes\CLSID\{...}`、日本語の入力プロファイル、TIP の分類）（**（未確認）**: 項目 48）。
    - **ファイアウォールの送信ブロック規則の追加**: `ikari-engine-host.exe`、`ikari-lm-host.exe`、`candidate\ikari-candidate.exe` が外部へ通信しないよう、Windows ファイアウォールに送信ブロックの規則（`ikari-ime: block outbound <exe名>`）を登録します（**（未確認）**: 項目 49）。
    - **自動起動の登録**: ログオン時にエンジンが自動起動するよう、`HKLM\Software\Microsoft\Windows\CurrentVersion\Run`（値の名前 `ikari-ime`）に `"C:\Program Files\ikari-ime\ikari-engine-host.exe"` を登録します（**（未確認）**: 項目 50）。
    - **OS のエラー報告（WER）からの除外**: エンジン等が異常終了した際に、入力中の読みや文脈・学習データを含むメモリダンプが Microsoft へ送信されないよう、機械全体の除外リスト（`ExcludedApplications`）に登録します（[ADR 0073](adr/0073-secret-input-and-user-data.md) §4.4）（**（未確認）**: 項目 53）。
@@ -132,7 +135,7 @@ Windows の入力メソッド（TIP）の DLL（`ikari_tip.dll`）は、文字�
    - 動いているエンジン（`ikari-engine-host.exe`）および子プロセス（`ikari-lm-host.exe`、`ikari-candidate.exe`）にすべてのセッションで終了の合図を送り、学習データを保存して終了させてから、固定のパスの実行ファイルを新しい版で上書きします（**（未確認）**: 項目 51）。
 2. **新しい版のフォルダへの配置と COM 登録の向け直し**:
    - 新しい `ikari_tip.dll`（と `resources\`）を、版ごとの新しいフォルダ `C:\Program Files\ikari-ime\tip\<新しい版>\` に置きます。
-   - 既存の登録を解除せずに（入力方式の一覧から ikari が外れないようにするため）、新しい DLL に対して `regsvr32.exe /s` を実行し、`HKCR\CLSID\...\InprocServer32` の参照先を新しい版のパスへ向け直します（**（未確認）**: 項目 29・48）。
+   - 既存の登録を解除せずに（入力方式の一覧から ikari が外れないようにするため）、新しい DLL に対して `regsvr32.exe /s` を実行し、`HKLM\Software\Classes\CLSID\...\InprocServer32` の参照先を新しい版のパスへ向け直します（**（未確認）**: 項目 29・48）。
    - ※同じ版のインストーラを入れ直す場合（修復など）で、既存の `tip\<版>\ikari_tip.dll` の SHA-256 が同じときは、使用中のファイルへの上書きエラーを避けるため DLL のコピーを飛ばして登録だけを行います（[ADR 0063](adr/0063-windows-tip-dll-update.md) §5、`ikari.iss` の `TipNeedsCopy`）（**（未確認）**: 項目 48）。
 3. **古い版の `tip\<旧版>\` の掃除**:
    - 今の版より前の `C:\Program Files\ikari-ime\tip\<旧版>\` フォルダを削除します。開いているアプリが使用中でその場で消せなかったファイルは、次の OS 再起動時に削除するよう予約（`MOVEFILE_DELAY_UNTIL_REBOOT`）します（**（未確認）**: 項目 48）。

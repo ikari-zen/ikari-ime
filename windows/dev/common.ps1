@@ -170,7 +170,7 @@ function Get-PipeName([string]$Prefix) {
 
 # ---------------------------------------------------------------- TIP versions (ADR 0063)
 
-# The DLL that HKCR\CLSID\{TIP}\InprocServer32 points to, or $null when the TIP is not registered. Read only.
+# The DLL that HKLM\Software\Classes\CLSID\{TIP}\InprocServer32 points to, or $null when the TIP is not registered. Read only.
 function Get-RegisteredTipDll {
     $key = "Registry::HKEY_CLASSES_ROOT\CLSID\$TipClsid\InprocServer32"
     if (-not (Test-Path -LiteralPath $key)) { return $null }
