@@ -2,7 +2,7 @@
 
 use windows_core::GUID;
 
-/// テキストサービスの COM のクラス（`HKCR\CLSID\{…}`、`DllGetClassObject` で照合する）
+/// テキストサービスの COM のクラス（`HKLM\Software\Classes\CLSID\{…}`、`DllGetClassObject` で照合する）
 pub const CLSID_TEXT_SERVICE: GUID = GUID::from_u128(0x83a140be_decb_4358_867b_7b77d6541276);
 
 /// 日本語の入力プロファイル（`ITfInputProcessorProfileMgr::RegisterProfile`）

@@ -116,11 +116,11 @@ pub fn create_private_new(path: &Path) -> std::io::Result<fs::File> {
     options.open(path)
 }
 
-/// フォルダの中の通常ファイルの権限を 0600 に直す（best effort。起動時に既存ファイルを閉じる）。
-/// Windows では、フォルダの ACL を付け直す（中のファイルは継承で追従する）。
+/// フォルダと直下の通常ファイル・サブフォルダの権限を本人だけに直す（best effort。起動時に既存ファイルを閉じる）。
+/// Windows では、フォルダと直下の通常ファイル・サブフォルダに保護済み DACL を付け直す（既存に残る余分な明示的 ACE も除く）。
 #[cfg(windows)]
 pub fn tighten_files(dir: &Path) {
-    let _ = super::acl::secure_dir(dir);
+    super::acl::tighten_dir(dir);
 }
 
 /// 何もしない（Unix でも Windows でもない環境）。

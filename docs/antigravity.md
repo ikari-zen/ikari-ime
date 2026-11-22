@@ -59,6 +59,8 @@ git config user.name "Antigravity (<作業するモデルの名前>)"   # 例: A
 - `gh api` での設定の変更、`gh secret`、`gh auth`、ブランチ保護や ruleset の変更。
 - **`scripts/check.sh` を流さない。** 合格の記録は、リードのマージの条件に使われる。あなたの clone は別のリポジトリなので、記録は混ざらないが、リードが流し直すので不要。文書だけの変更の確認は、リンクの検査（`scripts/check.sh --docs-only`）まで。
 - ユーザーデータ（`~/Library/Application Support/ikari-ime/`）と `data/raw/` の書き換え。署名鍵、証明書、`~/.ssh` に触らない。
+- **GitHub の読み取りの権限**（2026-11-23 ユーザー決定）: Antigravity には、**専用の fine-grained トークン**を `GH_TOKEN` で渡す（リードやユーザーの `gh` の権限とは別にする）。対象はこのリポジトリだけ、有効期限を付ける（30〜90 日）。権限は**読み取りだけ**: Code scanning alerts、Dependabot alerts、Secret scanning alerts、Actions（CI のログ）、Metadata。Issues と Pull requests は今の運用の範囲（コメントと PR）。**Contents の書き込みと Administration は付けない。**
+- **アラート（Code scanning など）の内容も、ADR 0070 §5 の非公開の扱いに含める**: issue・PR・コミットに、問題の中身を書かない。件数と場所（ファイルと行）、対応の有無だけを書く。アラートの却下・再開（状態の変更）は、リードが行う。
 - ikari の install、smoke、アプリの起動し直し（リードが行う）。システムのプロセスを kill しない。入力ソースの設定を変えない。
 - Windows の VM の操作（リードが行う）。
 - 評価の測定（`ikari-eval` の LM あり、`--perf`、snapshot）。Mac の CPU を占有し、リードの測定を揺らす。必要なら §5 の形で依頼する。

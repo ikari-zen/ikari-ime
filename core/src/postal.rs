@@ -25,6 +25,10 @@ use ikari_dict_format::reading::fold_fullwidth_digits;
 
 pub use ikari_dict_format::postal::POSTAL_TSV_FILE_NAME;
 
+/// `postal.tsv` を読む量の上限（バイト。ADR 0073 §5）。
+/// 実データは約 24 MiB（ADR 0030）。将来の増加に余裕を持たせた仮置き値。
+pub const MAX_POSTAL_FILE_BYTES: u64 = 64 * 1024 * 1024;
+
 /// `postal.tsv` の読み込みの失敗
 #[derive(Debug)]
 pub enum PostalError {
@@ -35,7 +39,7 @@ pub enum PostalError {
     },
     /// ファイルが読めない（なかった場合は `load` が空の表を返すのでここには来ない）
     Io(io::Error),
-    /// 文字列の領域が 4GiB を超える（壊れたファイル）
+    /// 上限（`MAX_POSTAL_FILE_BYTES`）を超える大きさのファイル、または文字列の領域が 4GiB を超える
     TooLarge,
 }
 
@@ -90,11 +94,17 @@ impl PostalTable {
     }
 
     /// ファイルから読む。ファイルがなければ空の表（エラーにしない。ADR 0032 §3）。
+    /// 通常のファイル以外や上限（`MAX_POSTAL_FILE_BYTES`）を超えるファイルはエラー（ADR 0073 §5）。
     /// 行の形が違えばエラー（呼び出し側は警告を出して空の表で続ける）。
     pub fn load(path: &Path) -> Result<PostalTable, PostalError> {
-        match std::fs::read_to_string(path) {
+        Self::load_with_limit(path, MAX_POSTAL_FILE_BYTES)
+    }
+
+    fn load_with_limit(path: &Path, max_bytes: u64) -> Result<PostalTable, PostalError> {
+        match ikari_textfile::read_to_string_limited(path, max_bytes) {
             Ok(text) => PostalTable::from_tsv_str(&text),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(PostalTable::empty()),
+            Err(e) if e.kind() == io::ErrorKind::FileTooLarge => Err(PostalError::TooLarge),
             Err(e) => Err(PostalError::Io(e)),
         }
     }
@@ -276,5 +286,41 @@ mod tests {
     fn crlf_is_accepted() {
         let t = PostalTable::from_tsv_str("あ\tア\t1000001\tf\r\n").unwrap();
         assert_eq!(t.by_code(1_000_001), ["ア"]);
+    }
+
+    #[test]
+    fn load_reads_valid_file_with_bom_and_checks_limit_and_regular_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("postal.tsv");
+        let content =
+            "\u{feff}# ikari-ime postal table v1\r\nちよだくちよだ\t千代田区千代田\t1000001\tf\r\n";
+        std::fs::write(&path, content).unwrap();
+
+        let loaded = PostalTable::load(&path).unwrap();
+        assert_eq!(loaded.by_code(1_000_001), ["千代田区千代田"]);
+
+        // 上限ちょうどは通り、1 バイト超えは TooLarge
+        let len = content.len() as u64;
+        assert!(PostalTable::load_with_limit(&path, len).is_ok());
+        assert!(matches!(
+            PostalTable::load_with_limit(&path, len - 1),
+            Err(PostalError::TooLarge)
+        ));
+
+        // 既定上限（MAX_POSTAL_FILE_BYTES）を超える疎なファイルも読まずに TooLarge
+        let huge = dir.path().join("huge.tsv");
+        let f = std::fs::File::create(&huge).unwrap();
+        f.set_len(MAX_POSTAL_FILE_BYTES + 1).unwrap();
+        assert!(matches!(
+            PostalTable::load(&huge),
+            Err(PostalError::TooLarge)
+        ));
+
+        // 通常ファイル以外（ディレクトリ）は InvalidInput
+        let err = PostalTable::load(dir.path()).unwrap_err();
+        assert!(
+            matches!(err, PostalError::Io(ref e) if e.kind() == io::ErrorKind::InvalidInput),
+            "{err:?}"
+        );
     }
 }

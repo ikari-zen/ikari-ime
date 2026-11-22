@@ -18,6 +18,28 @@ use crate::transfer::{DownloadRequest, download};
 use crate::url::HttpsUrl;
 use crate::workspace::Dirs;
 
+/// `SetDefaultDllDirectories` に渡す DLL 探索の範囲（ADR 0067 §4.4: system32 と自分の exe のフォルダだけ）。
+/// `LOAD_LIBRARY_SEARCH_APPLICATION_DIR` (0x200) | `LOAD_LIBRARY_SEARCH_SYSTEM32` (0x800)。
+pub const DLL_SEARCH_FLAGS: u32 = 0x0000_0200 | 0x0000_0800;
+
+/// 以後の DLL の読み込みを system32 と自分のフォルダに限る（ADR 0067 §4.4）。
+/// 起動の最初（引数の解釈や他の DLL の読み込みの前）に呼ぶ。Windows 以外では何もしない。
+pub fn restrict_dll_search() {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::System::LibraryLoader::{
+            LOAD_LIBRARY_SEARCH_APPLICATION_DIR, LOAD_LIBRARY_SEARCH_SYSTEM32,
+            SetDefaultDllDirectories,
+        };
+        const _: () = assert!(
+            DLL_SEARCH_FLAGS
+                == (LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32)
+        );
+        // SAFETY: 引数は定数のフラグの組み合わせ。失敗しても既定の探索のまま続ける
+        unsafe { SetDefaultDllDirectories(DLL_SEARCH_FLAGS) };
+    }
+}
+
 /// `args`（実行ファイルの名前を除く）を実行して、終了コードを返す。行は `out` へ
 pub fn run(args: &[String], out: &mut dyn Write) -> i32 {
     let command = match parse(args) {
@@ -375,5 +397,13 @@ mod tests {
             FetchErrorCode::Internal
         );
         drop(writer);
+    }
+
+    #[test]
+    fn dll_search_flags_allow_only_application_dir_and_system32() {
+        // LOAD_LIBRARY_SEARCH_APPLICATION_DIR (0x200) | LOAD_LIBRARY_SEARCH_SYSTEM32 (0x800)
+        assert_eq!(DLL_SEARCH_FLAGS, 0x0000_0200 | 0x0000_0800);
+        assert_eq!(DLL_SEARCH_FLAGS & !0x0000_0a00, 0);
+        restrict_dll_search();
     }
 }

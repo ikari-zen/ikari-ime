@@ -6,7 +6,8 @@ use std::path::Path;
 
 use ikari_resource::{
     Component, ComponentKind, Created, FileEntry, Freshness, KnownModel, MANIFEST_FILE_NAME,
-    Manifest, Origin, ResourceError, SupportedFormats, VerifyOptions, sha256_reader, verify_bundle,
+    MODEL_MAX_SIZE, Manifest, Origin, ResourceError, SupportedFormats, VerifyOptions,
+    sha256_reader, verify_bundle,
 };
 
 const DICT_FORMAT: u32 = ikari_dict_format::FORMAT_VERSION;
@@ -494,5 +495,54 @@ fn user_models_pass_only_with_a_known_format_and_a_name_from_their_sha256() {
     assert!(matches!(
         verify_bundle(&renamed, &opts),
         Err(ResourceError::UnknownModel { .. })
+    ));
+}
+
+#[test]
+fn known_model_with_wrong_manifest_size_is_rejected_before_reading_files() {
+    let expected = MODEL_BYTES.len() as u64;
+    for declared in [expected + 1, expected - 1] {
+        let dir = tempfile::tempdir().unwrap();
+        let mut m = good_bundle(dir.path());
+        m.components.get_mut("model").unwrap().files[0].size = declared;
+        write_manifest(dir.path(), &m);
+        // ファイルを読む段階より前に、表の大きさとの違いで拒む
+        fs::remove_file(dir.path().join(MODEL_NAME)).unwrap();
+        assert!(matches!(
+            verify(dir.path(), None),
+            Err(ResourceError::SizeMismatch { name, expected: exp, actual })
+                if name == MODEL_NAME && exp == expected && actual == declared
+        ));
+    }
+}
+
+#[test]
+fn user_model_exceeding_max_size_is_rejected_before_reading_files() {
+    let inbox = tempfile::tempdir().unwrap();
+    let dir = user_bundle(inbox.path(), None, Origin::User);
+    let opts = VerifyOptions {
+        user_model_formats: &["zenz-v3"],
+        ..VerifyOptions::default()
+    };
+
+    // ちょうど上限なら部品の検査は通り、実ファイルの長さの検査に進む
+    let mut m = Manifest::read(&dir.join(MANIFEST_FILE_NAME)).unwrap();
+    let file_name = m.components["model"].files[0].name.clone();
+    m.components.get_mut("model").unwrap().files[0].size = MODEL_MAX_SIZE;
+    write_manifest(&dir, &m);
+    assert!(matches!(
+        verify_bundle(&dir, &opts),
+        Err(ResourceError::Truncated { name, expected, actual })
+            if name == file_name && expected == MODEL_MAX_SIZE && actual == MODEL_BYTES.len() as u64
+    ));
+
+    // 上限を超えれば、ファイルを読む前に拒む
+    m.components.get_mut("model").unwrap().files[0].size = MODEL_MAX_SIZE + 1;
+    write_manifest(&dir, &m);
+    fs::remove_file(dir.join(&file_name)).unwrap();
+    assert!(matches!(
+        verify_bundle(&dir, &opts),
+        Err(ResourceError::SizeMismatch { name, expected, actual })
+            if name == file_name && expected == MODEL_MAX_SIZE && actual == MODEL_MAX_SIZE + 1
     ));
 }

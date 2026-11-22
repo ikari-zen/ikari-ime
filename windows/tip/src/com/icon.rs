@@ -43,18 +43,31 @@ const LIGHT_THEME_VALUE: windows_core::PCWSTR = w!("SystemUsesLightTheme");
 const DARK_GLYPH: [u8; 3] = [0, 0, 0];
 const LIGHT_GLYPH: [u8; 3] = [255, 255, 255];
 
+/// アイコンの文字の配色を決める方法。
+/// 素通しのプロセスでは、利用者が書ける設定（HKCU）を読まず固定の配色を使う（ADR 0066 R4、ADR 0067 §5）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IconTheme {
+    /// タスクバーの色（HKCU の `SystemUsesLightTheme`）に合わせる
+    Taskbar,
+    /// 固定の配色（暗いタスクバー向け。Windows 11 の既定。HKCU を読まない）
+    Fixed,
+}
+
+fn glyph_color(theme: IconTheme, read_taskbar_is_light: impl FnOnce() -> bool) -> [u8; 3] {
+    match theme {
+        IconTheme::Taskbar if read_taskbar_is_light() => DARK_GLYPH,
+        IconTheme::Taskbar | IconTheme::Fixed => LIGHT_GLYPH,
+    }
+}
+
 /// `label` を描いたアイコンを作る。受け取った側が `DestroyIcon` で捨てる
-pub fn mode_icon(label: &str) -> windows_core::Result<HICON> {
+pub fn mode_icon(label: &str, theme: IconTheme) -> windows_core::Result<HICON> {
     // SAFETY: 引数のない問い合わせ
     let size = match unsafe { GetSystemMetrics(SM_CXSMICON) } {
         0 => DEFAULT_ICON_SIZE,
         size => size,
     };
-    let glyph = if taskbar_is_light() {
-        DARK_GLYPH
-    } else {
-        LIGHT_GLYPH
-    };
+    let glyph = glyph_color(theme, taskbar_is_light);
     // SAFETY: 画面と互換のメモリの DC を作るだけ
     let dc = Dc(unsafe { CreateCompatibleDC(None) });
     if dc.0.is_invalid() {
@@ -232,5 +245,24 @@ impl Drop for Dc {
     fn drop(&mut self) {
         // SAFETY: `CreateCompatibleDC` で作ったもの
         let _ = unsafe { DeleteDC(self.0) };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fixed_theme_uses_default_glyph_without_reading_registry() {
+        let color = glyph_color(IconTheme::Fixed, || {
+            panic!("fixed theme must not read taskbar registry")
+        });
+        assert_eq!(color, LIGHT_GLYPH);
+    }
+
+    #[test]
+    fn taskbar_theme_follows_light_and_dark_taskbar() {
+        assert_eq!(glyph_color(IconTheme::Taskbar, || true), DARK_GLYPH);
+        assert_eq!(glyph_color(IconTheme::Taskbar, || false), LIGHT_GLYPH);
     }
 }

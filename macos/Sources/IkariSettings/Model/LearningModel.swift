@@ -4,6 +4,7 @@
 // ファイルの受け渡し: エンジンは Sandbox の中にいて、利用者が選んだパスを開かない。選ぶのも読み書きするのも
 // 設定アプリで、エンジンにはバイト列で渡す（NSSavePanel / NSOpenPanel は `DialogPresenting` の向こう）。
 // 学習の中身は特徴量だけなので、画面には件数だけを出す（原文を作り出さない）。
+import Darwin
 import Foundation
 import IkariProto
 import Observation
@@ -76,6 +77,95 @@ enum DataFiles {
         guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { throw DataFileError.unreadable }
         try check(size: data.count)  // 読む間に変わった場合
         return data
+    }
+
+    /// 書き出し先と同じディレクトリに最初から `0o600` で一時ファイルを作り、書き込み・`fsync` のあと `rename` で置き換える。
+    static func writeExport(_ data: Data, to destination: URL) throws {
+        guard destination.isFileURL else {
+            throw POSIXError(.EINVAL)
+        }
+        let directory = destination.deletingLastPathComponent()
+        let baseName = destination.lastPathComponent
+        let (tempURL, openedFD) = try createPrivateTempFile(in: directory, baseName: baseName)
+        var fd = openedFD
+        var completed = false
+        defer {
+            if fd >= 0 {
+                _ = Darwin.close(fd)
+            }
+            if !completed {
+                _ = tempURL.withUnsafeFileSystemRepresentation { tempPath in
+                    tempPath.map { Darwin.unlink($0) } ?? 0
+                }
+            }
+        }
+        try writeAll(data, to: fd)
+        while Darwin.fsync(fd) != 0 {
+            if errno == EINTR { continue }
+            throw posixError(errno)
+        }
+        let closeResult = Darwin.close(fd)
+        fd = -1
+        if closeResult != 0 {
+            throw posixError(errno)
+        }
+        let renameResult = tempURL.withUnsafeFileSystemRepresentation { tempPath in
+            destination.withUnsafeFileSystemRepresentation { destPath in
+                guard let tempPath, let destPath else {
+                    errno = EINVAL
+                    return Int32(-1)
+                }
+                return Darwin.rename(tempPath, destPath)
+            }
+        }
+        if renameResult != 0 {
+            throw posixError(errno)
+        }
+        completed = true
+    }
+
+    private static func createPrivateTempFile(in directory: URL, baseName: String) throws -> (URL, Int32) {
+        let flags = O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW
+        let mode: mode_t = 0o600
+        for _ in 0..<4 {
+            let candidate = directory.appendingPathComponent(".\(baseName).ikari-tmp-\(UUID().uuidString)")
+            let fd = candidate.withUnsafeFileSystemRepresentation { path -> Int32 in
+                guard let path else {
+                    errno = EINVAL
+                    return -1
+                }
+                return Darwin.open(path, flags, mode)
+            }
+            if fd >= 0 {
+                return (candidate, fd)
+            }
+            if errno != EEXIST {
+                throw posixError(errno)
+            }
+        }
+        throw POSIXError(.EEXIST)
+    }
+
+    private static func writeAll(_ data: Data, to fd: Int32) throws {
+        try data.withUnsafeBytes { rawBuffer in
+            guard let base = rawBuffer.baseAddress else { return }
+            var written = 0
+            while written < rawBuffer.count {
+                let n = Darwin.write(fd, base.advanced(by: written), rawBuffer.count - written)
+                if n < 0 {
+                    if errno == EINTR { continue }
+                    throw posixError(errno)
+                }
+                if n == 0 {
+                    throw POSIXError(.EIO)
+                }
+                written += n
+            }
+        }
+    }
+
+    private static func posixError(_ code: Int32) -> POSIXError {
+        POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
     }
 
     private static func check(size: Int) throws {
@@ -232,10 +322,8 @@ final class LearningModel {
                 throw BridgeClientError.unexpectedReply
             }
             do {
-                try reply.content.write(to: destination, options: .atomic)
-                // 学習データには確定文字列が入るので、本人だけが読めるようにする
-                try FileManager.default.setAttributes(
-                    [.posixPermissions: 0o600], ofItemAtPath: destination.path)
+                // 学習データには確定文字列が入るので、最初から本人だけが読める権限で一時ファイルに書き出して置き換える
+                try DataFiles.writeExport(reply.content, to: destination)
             } catch {
                 message = "ファイルを書き込めませんでした"
                 return

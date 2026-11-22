@@ -123,7 +123,7 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 | 1 | `.\build.ps1` | `cargo build --release -p ikari-engine-host -p ikari-tip`（LM なし）。窓を出さないエンジンは `-HideConsole`（項目 6 で使う） |
 | 2 | `.\install-data.ps1 -Src <持ち込み先> -DryRun`、次に `-DryRun` なしで | `<データ>\dict\` と `<データ>\models\` にだけ置く。同じファイルは飛ばし、違うファイルを置き換えるときは確認する。学習、ユーザー辞書、プロファイル、`settings.tsv` には触らない。エンジンが動いていると止まる |
 | 3 | `.\start-engine.ps1` | エンジンを `<導入先>\ikari-engine-host.exe` に写してから（同じなら写さない。窓なしの exe も、この名前で写す）、別のコンソールで起動し、パイプができるまで最大 10 秒待つ。`-Foreground` はこのコンソールで動かす（Ctrl+C の確認用） |
-| 4 | `.\register.ps1 -DryRun`、次に**管理者の** PowerShell で `.\register.ps1` | 計画を表示し、確認を取ってから、DLL とキーマップの表を新しいフォルダ `<導入先>\tip\<日時>\` にコピーし、`regsvr32 /s` で登録する（`HKCR\CLSID\{83A140BE-…}`、日本語の入力プロファイル、TIP の分類）。前の版の登録は解除せず、新しいフォルダに向け直す。古い版のフォルダは `.\clean-tip.ps1` で消す（使用中のものは残る） |
+| 4 | `.\register.ps1 -DryRun`、次に**管理者の** PowerShell で `.\register.ps1` | 計画を表示し、確認を取ってから、DLL とキーマップの表を新しいフォルダ `<導入先>\tip\<日時>\` にコピーし、`regsvr32 /s` で登録する（`HKLM\Software\Classes\CLSID\{83A140BE-…}`、日本語の入力プロファイル、TIP の分類）。前の版の登録は解除せず、新しいフォルダに向け直す。古い版のフォルダは `.\clean-tip.ps1` で消す（使用中のものは残る） |
 | 5 | 設定アプリで入力方式を足す | 「設定 > 時刻と言語 > 言語と地域 > 日本語 > 言語のオプション > キーボードを追加する」で「ikari」を足し、入力方式の切り替えで選ぶ（名前と場所は Windows の版で違います） |
 | 往復時間の表 | `.\latency.ps1` | `<データ>\logs\tip-latency.log`（TIP の測定。`latency.on` があるときだけ書かれる。項目 18）を、中央値と p95 の表にする（読むだけ） |
 | 状態 | `.\status.ps1` | エンジンのプロセス、パイプの名前、登録、データのファイル、ログの末尾を表示する（何も変えない） |
@@ -306,7 +306,7 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 
 #### 項目 12: 登録と解除（S9）
 
-- やること: 管理者の PowerShell で、`.\register.ps1`（先に `-DryRun`）。`.\status.ps1` で確認。解除は `.\unregister.ps1`（登録中の DLL を registry から読んで解除する。`-RemoveFiles` を付けると `tip\<日時>\` のフォルダも消す。使用中のものは残る。確認が出る）。登録したまま HKCU だけで足りるか、という S9 の問いは、**この手順では試せない**（今の DLL は HKCR にだけ書く。`register.rs` の `TODO(S9)`）。記録だけする。
+- やること: 管理者の PowerShell で、`.\register.ps1`（先に `-DryRun`）。`.\status.ps1` で確認。解除は `.\unregister.ps1`（登録中の DLL を registry から読んで解除する。`-RemoveFiles` を付けると `tip\<日時>\` のフォルダも消す。使用中のものは残る。確認が出る）。登録したまま HKCU だけで足りるか、という S9 の問いは、**この手順では試せない**（今の DLL は HKLM（`Software\Classes`）にだけ書く。`register.rs` の `TODO(S9)`）。記録だけする。
 - 期待する結果: `regsvr32` の終了コードが 0。`status.ps1` の「CLSID registered」に、コピーした DLL のパス（`…\tip\<日時>\ikari_tip.dll`）が出る（`ThreadingModel=Apartment`）。版のフォルダの一覧で、そのフォルダに「registered」が付く。解除のあと、CLSID が消え、入力方式の一覧から「ikari」が消える（開いているアプリは、アプリを開き直すまで残ることがある。**どうなったかを記録する**）。登録が途中で失敗したら、初めての登録なら書いたものを消し、前の版の登録があれば消さずに残す作りになっている（`windows/tip/src/deploy.rs`。ADR 0063 §3 の 2）。
 - うまくいかないとき: 終了コード 3 は DLL が読めない（DLL の依存、x64 の PowerShell かどうか）、5 は `DllRegisterServer` の失敗（`HRESULT` を、DebugView で見る）。登録が半端になったら、`.\unregister.ps1` を試し、だめなら VM のスナップショットに戻す。
 
@@ -585,7 +585,7 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 
 #### 項目 48: 登録、更新、古い版の掃除
 
-- やること: (a) 入れたあと `reg query "HKCR\CLSID" /s /f ikari_tip.dll` で `InprocServer32` が `C:\Program Files\ikari-ime\tip\<版>\ikari_tip.dll` を指すこと。入力方式の一覧に ikari を足して、メモ帳で打つ。(b) 版を上げたインストーラを、メモ帳を開いたまま流す。`tip\` の下と `InprocServer32`、入力方式の一覧と既定の入力方式が変わらないこと。開いていたメモ帳と新しく開いたメモ帳で打つ。(c) 同じ版を、メモ帳を開いたまま入れ直す（使用中の DLL を置き直さず、登録だけし直す）。(d) 再起動のあと、古い版のフォルダが消えていること。
+- やること: (a) 入れたあと `reg query "HKLM\Software\Classes\CLSID" /s /f ikari_tip.dll` で `InprocServer32` が `C:\Program Files\ikari-ime\tip\<版>\ikari_tip.dll` を指すこと。入力方式の一覧に ikari を足して、メモ帳で打つ。(b) 版を上げたインストーラを、メモ帳を開いたまま流す。`tip\` の下と `InprocServer32`、入力方式の一覧と既定の入力方式が変わらないこと。開いていたメモ帳と新しく開いたメモ帳で打つ。(c) 同じ版を、メモ帳を開いたまま入れ直す（使用中の DLL を置き直さず、登録だけし直す）。(d) 再起動のあと、古い版のフォルダが消えていること。
 - 期待する結果（**見込み**）: (a) 指す。打てる。(b) 新しい版のフォルダができ、登録が向き直る。古い版のフォルダは、使用中なら残る。一覧は変わらない。開いていたメモ帳は古い版、新しいメモ帳は新しい版（項目 29 と同じ）。使用中のファイルの画面は出ない。(c) 「ファイルが使用中」の画面が出ずに終わる。(d) 消えている。
 - うまくいかないとき: 画面の文、`tip\` の下の一覧、`Get-Process | ForEach-Object { $_.Modules } | Where-Object FileName -like '*ikari_tip*'` の出力を残す。
 

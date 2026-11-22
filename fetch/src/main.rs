@@ -5,6 +5,8 @@ use std::io::stdout;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
+    // 起動の最初に DLL の探索を固定する（引数の解釈や他の DLL を読む前。ADR 0067 §4.4）
+    ikari_data::restrict_dll_search();
     // 親が終わったら止まる（ADR 0079 §3.6。Windows の Job Object に当たる）
     #[cfg(target_os = "macos")]
     ikari_data::macos::watch_parent();

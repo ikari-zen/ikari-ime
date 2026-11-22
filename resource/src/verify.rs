@@ -6,6 +6,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::fs::{self, File};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use ikari_dict_format::{
@@ -16,9 +17,9 @@ use crate::error::ResourceError;
 use crate::manifest::{
     Component, ComponentKind, Freshness, MANIFEST_FILE_NAME, Manifest, check_file_name,
 };
-use crate::model_list::{UserModelId, profile_format};
+use crate::model_list::{MODEL_MAX_SIZE, UserModelId, profile_format};
 use crate::models::{KNOWN_MODELS, KnownModel};
-use crate::sha256::{sha256_file, sha256_reader};
+use crate::sha256::sha256_reader;
 
 /// 表（postal、emoji）とモデルの形式の版
 pub const TABLE_FORMAT_VERSION: u32 = 1;
@@ -140,12 +141,28 @@ fn check_component(
                 let known = opts
                     .known_models
                     .iter()
-                    .any(|m| m.file_name == f.name && m.sha256 == f.sha256);
+                    .find(|m| m.file_name == f.name && m.sha256 == f.sha256);
                 let user = profile_format(component)
                     .is_some_and(|w| opts.user_model_formats.contains(&w))
                     && UserModelId::from_sha256(&f.sha256)
                         .is_some_and(|id| id.file_name() == f.name);
-                if !known && !user {
+                if let Some(m) = known {
+                    if f.size != m.size {
+                        return Err(ResourceError::SizeMismatch {
+                            name: f.name.clone(),
+                            expected: m.size,
+                            actual: f.size,
+                        });
+                    }
+                } else if user {
+                    if f.size > MODEL_MAX_SIZE {
+                        return Err(ResourceError::SizeMismatch {
+                            name: f.name.clone(),
+                            expected: MODEL_MAX_SIZE,
+                            actual: f.size,
+                        });
+                    }
+                } else {
                     return Err(ResourceError::UnknownModel {
                         name: f.name.clone(),
                         sha256: f.sha256.clone(),
@@ -259,7 +276,9 @@ fn check_sizes(dir: &Path, manifest: &Manifest) -> Result<(), ResourceError> {
 fn check_digests(dir: &Path, manifest: &Manifest) -> Result<(), ResourceError> {
     for f in manifest.components.values().flat_map(|c| &c.files) {
         let path = dir.join(&f.name);
-        let actual = sha256_file(&path).map_err(|e| ResourceError::io(&path, e))?;
+        let file = File::open(&path).map_err(|e| ResourceError::io(&path, e))?;
+        let actual = sha256_reader(file.take(f.size.saturating_add(1)))
+            .map_err(|e| ResourceError::io(&path, e))?;
         if actual != f.sha256 {
             return Err(ResourceError::Sha256Mismatch {
                 name: f.name.clone(),
