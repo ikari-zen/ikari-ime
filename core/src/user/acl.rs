@@ -413,7 +413,8 @@ mod tests {
             let _text_guard = os::LocalMem(text.cast());
             // SAFETY: text は len 文字以上の NUL 終端 UTF-16。
             let units = unsafe { std::slice::from_raw_parts(text, len as usize) };
-            String::from_utf16(units).unwrap()
+            let end = units.iter().position(|&c| c == 0).unwrap_or(units.len());
+            String::from_utf16(&units[..end]).unwrap()
         }
 
         use std::os::windows::ffi::OsStrExt;
@@ -442,9 +443,17 @@ mod tests {
 
         let file_after = read_dacl_sddl(&file);
         let sub_after = read_dacl_sddl(&sub);
+        let has_user = |sddl: &str| {
+            sddl.contains(&format!(";;;{sid})"))
+                || (sid.ends_with("-500") && sddl.contains(";;;LA)"))
+        };
         assert!(!file_after.contains(";;;WD)"), "{file_after}");
-        assert!(file_after.contains(&format!(";;;{sid})")), "{file_after}");
+        assert!(has_user(&file_after), "{file_after}");
+        assert!(file_after.contains(";;;SY)"), "{file_after}");
+        assert!(file_after.contains(";;;BA)"), "{file_after}");
         assert!(!sub_after.contains(";;;WD)"), "{sub_after}");
-        assert!(sub_after.contains(&format!(";;;{sid})")), "{sub_after}");
+        assert!(has_user(&sub_after), "{sub_after}");
+        assert!(sub_after.contains(";;;SY)"), "{sub_after}");
+        assert!(sub_after.contains(";;;BA)"), "{sub_after}");
     }
 }
