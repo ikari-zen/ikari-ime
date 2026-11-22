@@ -1,6 +1,6 @@
 //! Windows: 自分（`ikari-data`）を、絞った子（`ikari-data transfer …`、`version-probe`）として起こす
-//! （ADR 0076 §3.2、ADR 0078 §3.1・§3.2）。`transfer` は取得の子だけの AppContainer（能力は `internetClient` だけ）、
-//! `version-probe` は低い整合性。
+//! （ADR 0076 §3.2、ADR 0078 §3.1・§3.2）。`transfer` と `version-probe` は、どちらも取得の子だけの AppContainer
+//! （能力は `internetClient` だけ）。
 //!
 //! 起動の作りは `ikari-sandbox`（止めた状態で作り、Job Object に入れてから動かす。継承するハンドルを限る。整合性を
 //! 低くする。窓を出さない。実行ファイルは絶対パスで明示し、PATH から探さない。シェルを通さない）。
@@ -35,7 +35,9 @@ use windows_sys::Win32::Security::{GetTokenInformation, TOKEN_QUERY, TokenIsAppC
 use windows_sys::Win32::Storage::FileSystem::{FILE_APPEND_DATA, SYNCHRONIZE};
 use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
-use crate::child::{SizeWatch, filter_env, watch_size, with_box, with_out_handle};
+use crate::child::{
+    SizeWatch, filter_env, version_probe_args, watch_size, with_box, with_out_handle,
+};
 use crate::error::FetchError;
 use crate::limits::SIZE_WATCH_INTERVAL;
 
@@ -79,10 +81,11 @@ impl Confine {
     }
 }
 
-/// `program args…` を低い整合性で起こす（`version-probe`。書く先を渡さない）。子の標準出力の読み取り側を返す。
-/// 子は、捨てると（Job を閉じると）終わる
-pub fn spawn_low(program: &Path, args: &[String]) -> io::Result<(Confined, PipeReader)> {
-    spawn_confined(program, args, &[], Confine::Low)
+/// `version-probe` を `confine` の檻で起こす（書く先を渡さない）。`--box <檻>` を引数に足す。子の標準出力の読み取り側を
+/// 返す。子は、捨てると（Job を閉じると）終わる
+pub fn spawn_version_probe(program: &Path, confine: Confine) -> io::Result<(Confined, PipeReader)> {
+    let args = version_probe_args(confine.child_box());
+    spawn_confined(program, &args, &[], confine)
 }
 
 /// `transfer` を起こす。`out`（親が作った `download.bin`）の追記だけの写しを作って継承させ、`--box <檻>` と
