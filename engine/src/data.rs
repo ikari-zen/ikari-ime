@@ -137,7 +137,8 @@ impl Inner {
         watch.last_check = Instant::now();
         // 絵文字の表は辞書と別に読み直す（Stack は組み立て直さない）
         if watch.emoji_changed() {
-            let reply = load_emoji_reply(Some(&watch.emoji_path));
+            // 利用者のデータの場所に無ければ同梱の場所の表（ADR 0080 §3.2）
+            let reply = load_emoji_reply(Some(&self.emoji_table_path(&watch.emoji_path)));
             *self.emoji.write().unwrap_or_else(|e| e.into_inner()) = Arc::new(reply);
         }
         let Some(rebuild) = &self.rebuild else {
