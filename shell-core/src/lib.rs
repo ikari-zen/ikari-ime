@@ -11,6 +11,7 @@
 //! - L-A2: `machine`、`controller`
 //! - L-B: `engine`、`bridge`
 //! - L-C: `settings`
+//! - ADR 0080 レーン 0 の契約: `edition`（シグネチャ。中身はレーン 2）
 //!
 //! # 約束（ADR 0041 §4.2）
 //! - 位置と長さは UTF-16 の単位（`Utf16Len`、`Utf16Range`）。
@@ -22,6 +23,7 @@ pub mod bridge;
 pub mod clause;
 pub mod controller;
 pub mod diag;
+pub mod edition;
 pub mod engine;
 pub mod english;
 pub mod host;
