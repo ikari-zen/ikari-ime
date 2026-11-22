@@ -301,7 +301,7 @@ begin
   WorkDirCreated := True;
 end;
 
-{ ---- インストール先の準備（最初の {app} の項目の Check から 1 回だけ） ---- }
+{ ---- インストール先の準備（最初の app の項目の Check から 1 回だけ） ---- }
 
 procedure StopEngines(Helper: String);
 var
