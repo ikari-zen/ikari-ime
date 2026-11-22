@@ -290,18 +290,18 @@ jobs:
       # `Not a file: …/vulkan-shaders-gen-build/cmake_install.cmake` で落ちた（スパイクの最初の run）。Ninja にする。
       # 評価ツールは項目 38（LM の 1 回の時間）、devices は登録されたデバイスの確認（モデルは要らない）で使う
       # LM の子（ikari-lm-host.exe。ADR 0060 Q4）は、エンジンの exe の隣に置く。エンジンは隣にあれば、推論をそれに頼む（エンジン自身は llama.cpp を持たない）
-      - name: release ビルド（評価ツール、Vulkan の LM の子、devices）
+      - name: release ビルド（評価ツール、Vulkan の LM の子、devices、NPU の測定ツール）
         env:
           CMAKE_GENERATOR: Ninja
         run: |
           ninja --version
-          # エンジンには llama.cpp を入れない（ADR 0072 §5。上の dev-knobs つきのビルドと同じ）。評価ツールは同じプロセスで LM を動かす（計測用）。
-          # 別々に流す（同じ cargo の呼び出しにすると、feature がそろってエンジンにも llama.cpp が入る）
-          cargo build --release -p ikari-eval --features lm-vulkan
-          cargo build --release -p ikari-lm --bin ikari-lm-host --features vulkan,dev-knobs
-          cargo build --release -p ikari-lm --example devices --features vulkan,dev-knobs
+          # エンジンには llama.cpp を入れない（ADR 0072 §5。上の dev-knobs つきのビルドと同じ）。ここで選ぶ crate は、評価ツール、LM の子、
+          # NPU の測定ツールだけで、ikari-engine-host と ikari-tip は含めない（feature がそろっても、エンジンの exe は変わらない）。
+          # 評価ツールは同じプロセスで LM を動かす（計測用）。ikari-lm には dev-knobs が入る（ikari-npu-probe の LM も同じ）。
+          # 1 回の cargo の呼び出しにまとめ、llama-cpp-sys-2（llama.cpp の CMake ビルド）を 1 回で済ませる。
+          cargo build --release -p ikari-eval -p ikari-lm -p ikari-npu-probe --bin ikari-eval --bin ikari-lm-host --example devices --bin ikari-npu-probe --features ikari-eval/lm-vulkan,ikari-lm/vulkan,ikari-lm/dev-knobs,ikari-npu-probe/vulkan
       # NPU の測定ツール（ADR 0075 §4。製品には入らない）。会社 PC に zip で持ち込み、手で動かす。llama.cpp は上と同じ Vulkan の
-      # ビルド（OUT_DIR を共有する）。OpenVINO Runtime は Windows のアーカイブ（版と sha256 を固定。sha256 は配布元の .sha256 と
+      # ビルド（上の 1 回の cargo build に含めてある）。OpenVINO Runtime は Windows のアーカイブ（版と sha256 を固定。sha256 は配布元の .sha256 と
       # 手元で取り直した値が同じ）から、使う DLL だけを exe の隣に置く（runtime-linking なのでビルドに SDK は要らない）。
       # モデル（GGUF・IR）は入れない（zenz は cc-by-sa-4.0。再配布は別途確認。tools/npu-probe/USAGE.md）
       - name: NPU の測定ツールを組み立てる
@@ -314,8 +314,6 @@ jobs:
           OPENVINO_SHA256: 501edf3a46210ded7d78a6d7d630f5ee4def80598b8aa0ef358a6cd435264084
         run: |
           $ErrorActionPreference = 'Stop'
-          cargo build --release -p ikari-npu-probe --features vulkan
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $rel = Join-Path $env:CARGO_TARGET_DIR 'release'
           $out = Join-Path $PWD 'probe-dist\ikari-npu-probe'
           New-Item -ItemType Directory -Force $out, "$out\backends", "$out\models", "$out\licenses\openvino" | Out-Null
