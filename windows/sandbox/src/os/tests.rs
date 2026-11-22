@@ -796,6 +796,17 @@ const ENV_TEST_PROFILE: crate::appcontainer::ContainerProfile =
         display_name: "ikari sandbox test",
     };
 
+/// AppContainer のプロファイルを使うテストを、1 つずつ流す鍵（#522）。テストは並べて流れるので、同じプロファイルを
+/// 2 つのテストが同時に作る・消すと、片方の `spawn` が `ERROR_FILE_NOT_FOUND`（プロファイルが無い）で落ちる
+/// （CI の windows ジョブで 3 回とも、`TEST_PROFILE` を使う 2 つのテストが同じ時刻に流れていた）。名前を分けても、
+/// プロファイルの作成と削除が同時に流れることは変わらないので、AppContainer を使うテストは全部この鍵を持つ。
+/// テストが落ちて鍵が汚れても（poison）、次のテストは流す
+fn appcontainer_serial() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 /// GitHub Actions の runner では、AppContainer のプロファイルが作れない（`CreateAppContainerProfile` が一定しない
 /// エラーで失敗する。VM と実機では動く。ADR 0072 §12、`lm` の段 2 のテストと同じ扱い）。CI（`GITHUB_ACTIONS` が
 /// 立っている）で作れないときだけ `None`（テストを飛ばす）。手元・VM・実機では、作れなければ落とす
@@ -842,6 +853,7 @@ fn is_appcontainer(process: HANDLE) -> bool {
 
 #[test]
 fn an_appcontainer_child_writes_to_the_inherited_handle_and_runs_in_the_job() {
+    let _serial = appcontainer_serial();
     let Some(container) = test_container(&TEST_PROFILE) else {
         return;
     };
@@ -910,6 +922,7 @@ fn env_with(names: &[&str], extra: &[(&str, &str)]) -> Vec<u16> {
 /// どれかの形が期待と違えば、全部の結果をつけて落とす
 #[test]
 fn which_environment_an_appcontainer_child_needs() {
+    let _serial = appcontainer_serial();
     let Some(container) = test_container(&ENV_TEST_PROFILE) else {
         return;
     };
@@ -964,6 +977,7 @@ fn which_environment_an_appcontainer_child_needs() {
 
 #[test]
 fn an_appcontainer_child_must_be_low_integrity() {
+    let _serial = appcontainer_serial();
     let Some(container) = test_container(&TEST_PROFILE) else {
         return;
     };
@@ -980,4 +994,6 @@ fn an_appcontainer_child_must_be_low_integrity() {
     .err()
     .map(|e| e.kind());
     assert_eq!(err, Some(io::ErrorKind::InvalidInput));
+    drop(container);
+    crate::appcontainer::delete_profile(&TEST_PROFILE).unwrap();
 }
