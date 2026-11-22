@@ -1,6 +1,6 @@
 # ADR 0080: 配布物にモデルと辞書を同梱する（通常版）と、通信を持たないオフライン版。置き場所、パッケージの形、版の分け方、更新
 
-- 状態: 提案（2026-11-22。macOS の配布の形（dmg）と §12 の Q1〜Q3 はユーザーが決定済み。ADR 全体の承認はユーザーが行う）
+- 状態: 承認（2026-11-22 ユーザー。macOS の配布の形（dmg）と §12 の Q1〜Q3 もユーザーが決定済み）
 - 日付: 2026-11-22
 - 対象: `engine`（辞書とモデルの解決）、`stack`、`ikari-resource`、`shell-core`・`shell-ffi`・`windows/settings`（版の機能の判断）、`xtask`（検査、辞書のビルド）、`macos/scripts/build.sh`、`windows/installer/`、`.github/workflows/release.yml`、`THIRD_PARTY_NOTICES.md`
 - 前提: ADR 0058（inbox と束）、0060（モデルの選択。更新 2026-11-19）、0066（前提。R1〜R6、通信しない）、0067（Windows の置き場所）、0069（真正性）、0070（更新）、0072（檻の段）、0076（ikari-data の契約）、0077（macOS の LM の檻）、0079（macOS の ikari-data）。調査は [license-redistribution-2026-11.md](../research/license-redistribution-2026-11.md)（#242）
