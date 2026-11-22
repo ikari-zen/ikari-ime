@@ -12,6 +12,11 @@ description = "Windows の設定画面（ikari-settings.exe）の核（ADR 0071 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+# 通常版（取得の核を持つ。ADR 0080 §7.1）。既定では付けない（足すと機能が増える形）。
+# レーン 0（#579）は宣言だけ。取得のコードを囲うのと、build.sh・release.yml・xtask で明示するのはレーン 2
+online = ["ikari-shell-core/online"]
+
 [dependencies]
 ikari-shell-core.workspace = true
 ikari-pipe.workspace = true
