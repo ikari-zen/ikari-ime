@@ -45,6 +45,7 @@ validate_signing
 [[ "$FRAMEWORKS_ONLY" -eq 0 || "$SKIP_RUST" -eq 0 ]] || die "--frameworks-only と --skip-rust は同時に使えません"
 
 [[ "$DISTRIBUTION" -eq 0 || "$SIGNING" == adhoc ]] || die "--distribution は --signing adhoc と一緒に使います（配布物は未署名。team の署名は開発用）"
+[[ "$DISTRIBUTION" -eq 0 || "$ALLOW_STUB" -eq 0 ]] || die "--distribution は --allow-stub と一緒に使えません（配布物に FFI なしのスタブを入れない）"
 OUT="$(bundle_out_dir)"
 # 開発用の adhoc のビルドと混ざらないよう、出力先を分ける
 [[ "$DISTRIBUTION" -eq 0 ]] || OUT="$OUT-dist"
@@ -142,7 +143,7 @@ make_xcframework() { # <.a> <ヘッダのディレクトリ> <ヘッダ名> <モ
 # 檻役の bin（llama.cpp なし。ADR 0077 §3.4）。LM の子と feature が違うので、target のディレクトリを分ける
 build_cage() {
   log "cargo build: ${LM_CAGE_NAME}（llama.cpp なし）"
-  (cd "$IKARI_ROOT" && CARGO_TARGET_DIR="$IKARI_ROOT/target/lm-cage" cargo build --release \
+  (cd "$IKARI_ROOT" && CARGO_TARGET_DIR="$IKARI_ROOT/target/lm-cage" cargo build --release --locked \
     --target "$RUST_TARGET" -p ikari-lm --bin "$LM_CAGE_NAME") || die "$LM_CAGE_NAME をビルドできません"
   [[ -x "$LM_CAGE_BUILT" ]] || die "$LM_CAGE_BUILT がありません"
 }
@@ -159,7 +160,7 @@ build_data() {
   [[ "$(plutil -extract CFBundleIdentifier raw "$plist")" == "$DATA_ID" ]] \
     || die "$plist の CFBundleIdentifier が $DATA_ID ではありません（templates/$DATA_NAME.Info.plist と lib.sh の DATA_ID を揃える）"
   log "cargo rustc: ${DATA_NAME}（Info.plist を埋め込む）"
-  (cd "$IKARI_ROOT" && CARGO_TARGET_DIR="$IKARI_ROOT/target/data" cargo rustc --release \
+  (cd "$IKARI_ROOT" && CARGO_TARGET_DIR="$IKARI_ROOT/target/data" cargo rustc --release --locked \
     --target "$RUST_TARGET" -p ikari-data --bin "$DATA_NAME" -- \
     -C "link-arg=-Wl,-sectcreate,__TEXT,__info_plist,$plist") || die "$DATA_NAME をビルドできません"
   [[ -x "$DATA_BUILT" ]] || die "$DATA_BUILT がありません"
@@ -168,11 +169,11 @@ build_data() {
 build_rust() {
   # 通常版（取得の核を持つ。ADR 0080 §7.1）。online を付けないとオフライン版の中身になる（版の指定はレーン 4）
   log "cargo build: ikari-shell-ffi (features: online)"
-  (cd "$IKARI_ROOT" && cargo build --release --target "$RUST_TARGET" -p ikari-shell-ffi --features online)
+  (cd "$IKARI_ROOT" && cargo build --release --locked --target "$RUST_TARGET" -p ikari-shell-ffi --features online)
 
   log "cargo rustc: ikari-engine-ffi（llama.cpp なし）"
   local output
-  output="$(cd "$IKARI_ROOT" && CARGO_TARGET_DIR="$IKARI_ROOT/target/lm" cargo rustc --release \
+  output="$(cd "$IKARI_ROOT" && CARGO_TARGET_DIR="$IKARI_ROOT/target/lm" cargo rustc --release --locked \
     --target "$RUST_TARGET" -p ikari-engine-ffi \
     --lib --crate-type staticlib -- --print native-static-libs 2>&1)" || { printf '%s\n' "$output" >&2; die "cargo rustc が失敗しました"; }
   printf '%s\n' "$output" | tail -3
@@ -183,7 +184,7 @@ build_rust() {
 
   if [[ "$WITH_LM" == 1 ]]; then
     log "cargo build: $LM_HOST_NAME (features: metal)"
-    (cd "$IKARI_ROOT" && CARGO_TARGET_DIR="$IKARI_ROOT/target/lm" cargo build --release \
+    (cd "$IKARI_ROOT" && CARGO_TARGET_DIR="$IKARI_ROOT/target/lm" cargo build --release --locked \
       --target "$RUST_TARGET" -p ikari-lm --bin "$LM_HOST_NAME" --features metal)
     [[ -x "$LM_HOST_BUILT" ]] || die "$LM_HOST_BUILT がありません"
   fi
@@ -203,6 +204,8 @@ build_rust() {
 # ---------------------------------------------------------------- Swift とバンドル
 
 build_swift() {
+  # Package.resolved の版だけを使う（解き直さない）
+  local SWIFT_LOCK_FLAGS=(--only-use-versions-from-resolved-file)
   "$IKARI_SCRIPTS_DIR/gen-identity.sh"
   log "swift build ($CONFIG)"
   mkdir -p "$OUT"
@@ -212,11 +215,11 @@ build_swift() {
   local product
   : >"$build_log"
   for product in ikari IkariEngine ikari-smoke IkariSettings; do
-    swift build -c "$CONFIG" --manifest-cache none --package-path "$IKARI_MACOS_DIR" --product "$product" >>"$build_log" 2>&1 \
+    swift build -c "$CONFIG" --manifest-cache none "${SWIFT_LOCK_FLAGS[@]}" --package-path "$IKARI_MACOS_DIR" --product "$product" >>"$build_log" 2>&1 \
       || { tail -40 "$build_log" >&2; die "swift build が失敗しました（${build_log}）"; }
   done
   tail -1 "$build_log"
-  BIN_DIR="$(swift build -c "$CONFIG" --manifest-cache none --package-path "$IKARI_MACOS_DIR" --show-bin-path)"
+  BIN_DIR="$(swift build -c "$CONFIG" --manifest-cache none "${SWIFT_LOCK_FLAGS[@]}" --package-path "$IKARI_MACOS_DIR" --show-bin-path)"
   for product in ikari IkariEngine ikari-smoke IkariSettings; do
     [[ -x "$BIN_DIR/$product" ]] || die "$BIN_DIR/$product がありません"
   done
