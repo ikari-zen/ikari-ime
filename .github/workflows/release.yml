@@ -496,6 +496,18 @@ jobs:
           hdiutil attach -readonly -nobrowse -noautoopen -mountpoint "$mnt" "$dmg" >/dev/null
           trap 'hdiutil detach "$mnt" -quiet || hdiutil detach "$mnt" -force -quiet || true' EXIT
           codesign --verify --deep --strict --verbose=2 "$mnt/ikari.app"
+          # 束の全 Mach-O の entitlement に network.* が無い（通常版は ikari-data だけに許す）。build.sh の検査と同じ関数を、
+          # 配る物（dmg の中の束）にかけ直す（lib-data.sh の network_entitlement_error。外れ方は test-package.sh が見ている）
+          source macos/scripts/lib.sh
+          source macos/scripts/lib-data.sh
+          app="$mnt/ikari.app"
+          allowed=""
+          if [ "$EDITION" = normal ]; then allowed="$app/Contents/Helpers/ikari-data"; fi
+          scanned="$(network_entitlement_error "$app" "$allowed" "$app/Contents/MacOS/ikari" \
+            "$app/Contents/XPCServices/IkariEngine.xpc/Contents/MacOS/IkariEngine" \
+            "$app/Contents/Helpers/IkariSettings.app/Contents/MacOS/IkariSettings" \
+            "$app/Contents/XPCServices/IkariLMCage.xpc/Contents/MacOS/ikari-lm-cage")" || { echo "$scanned" >&2; exit 1; }
+          echo "network.* entitlements: allowed only for ${allowed:-nothing} (scanned $scanned Mach-O files)"
           cargo run --locked --quiet --package xtask -- scan-product --macos-app "$mnt/ikari.app" --edition "$EDITION"
           mkdir -p out
           cp "$dmg" out/
