@@ -106,7 +106,8 @@ ikari-ime 本体のソースコード・バイナリ（Apache License 2.0）と�
 この節のライセンス条件はモデルファイル単体にのみ適用され、ikari-ime 本体の
 ソフトウェア（Apache License 2.0）には適用されません。
 
-- 作者: Keita Miwa（Hugging Face: Miwa-Keita）
+- 作者: Miwa-Keita（Hugging Face アカウント名。Keita Miwa の表記は同一作者の
+  zenz-v2.5-small のモデルカードに基づく）
 - ライセンス: クリエイティブ・コモンズ 表示-継承 4.0 国際（CC BY-SA 4.0）
   - 概要: https://creativecommons.org/licenses/by-sa/4.0/
   - 日本語: https://creativecommons.org/licenses/by-sa/4.0/deed.ja

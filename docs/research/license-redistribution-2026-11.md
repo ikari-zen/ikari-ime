@@ -22,7 +22,7 @@
 
 | データ | 配布物での形 | ライセンス | 再配布の可否 | 表示などの義務 | 根拠の URL（確認日: 2026-11-22） |
 | --- | --- | --- | --- | --- | --- |
-| **zenz-v3.2-small** | `models/zenz-v3.2-small-Q5_K_M.gguf`（公式ファイルを無改変で同梱） | CC BY-SA 4.0 | 可（条件つき） | 作者表示（Keita Miwa）、ライセンス名と URL、取得元 URL、変更なし（公式のまま）、無保証の言及、追加制限の禁止。改変・再配布時は ShareAlike（§2.2・§2.3） | [HF モデルページ](https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf)（commit `ef3e66e3665fe6a19598e6578e9b88a994b647fd`）、[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)、[Legal Code](https://creativecommons.org/licenses/by-sa/4.0/legalcode.txt) |
+| **zenz-v3.2-small** | `models/zenz-v3.2-small-Q5_K_M.gguf`（公式ファイルを無改変で同梱） | CC BY-SA 4.0 | 可（条件つき） | 作者表示（`Miwa-Keita`。`Keita Miwa` は `zenz-v2.5-small` のモデルカードに基づく）、ライセンス名と URL、取得元 URL、変更なし（公式のまま）、無保証の言及、追加制限の禁止。改変・再配布時は ShareAlike（§2.2・§2.3） | [HF モデルページ](https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf)（commit `ef3e66e3665fe6a19598e6578e9b88a994b647fd`）、[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)、[Legal Code](https://creativecommons.org/licenses/by-sa/4.0/legalcode.txt) |
 | *（参考）ku-nlp/gpt2-small-japanese-char* | v2.5 の元モデル（v3.2 での使用は未記載・未確認） | CC BY-SA 4.0 | 可（条件つき） | v3.2 への引き継ぎは不明。参考情報として注記するか、記載がない事実を明記する（§2.4） | [ku-nlp/gpt2-small-japanese-char](https://huggingface.co/ku-nlp/gpt2-small-japanese-char)、[zenz-v2.5-small](https://huggingface.co/Miwa-Keita/zenz-v2.5-small) |
 | **SudachiDict Full 20260723** | `small_lex.csv` / `core_lex.csv` / `notcore_lex.csv` / `matrix.def` → `dict/grammar.bin`・`dict/system.dict` | Apache-2.0（`LEGAL` に UniDic BSD-3-Clause、NEologd Apache-2.0 + 5 出典付記を含む） | 可 | Apache-2.0 本文の同梱、著作権表示（`Copyright (c) 2017-2023 Works Applications Co., Ltd.`）、改変の明記（コスト調整・バイナリ変換）、`LEGAL`（UniDic BSD-3-Clause 全文・NEologd 出典表示）の保持 | [SudachiDict](https://github.com/WorksApplications/SudachiDict)（develop `830bf9e1…`）、[LICENSE-2.0.txt](https://github.com/WorksApplications/SudachiDict/blob/develop/LICENSE-2.0.txt)、[LEGAL](https://github.com/WorksApplications/SudachiDict/blob/develop/LEGAL)、[配布元](http://sudachi.s3-website-ap-northeast-1.amazonaws.com/sudachidict-raw/) |
 | **chiVe 1.3 mc90** | `chive-1.3-mc90.txt` → `dict/vectors.bin` および `system.dict` 構築時の頻度順位 | Apache-2.0 | 可 | Apache-2.0 本文の同梱、著作権表示（`Copyright (c) 2024 Works Applications Co., Ltd. All rights reserved.`）、改変の明記（300 次元ベクトルの量子化・頻度利用） | [chiVe](https://github.com/WorksApplications/chiVe)（master `0cb4961e…`）、[LICENSE](https://github.com/WorksApplications/chiVe/blob/master/LICENSE)、[配布元](https://sudachi.s3-ap-northeast-1.amazonaws.com/chive/chive-1.3-mc90.tar.gz) |
@@ -70,7 +70,7 @@
 CC BY-SA 4.0 Legal Code Section 3(a)(1)〜(2) および Section 2(a)(5)(C) にもとづく要件:
 
 1. **表示する内容**（提供者が供給した情報がある場合その保持が必須。無い場合は合理的範囲で記載）:
-   - 作者・帰属先（Section 3(a)(1)(A)(i)）: `Keita Miwa`（Hugging Face 上の公開アカウント名 `Miwa-Keita`）
+   - 作者・帰属先（Section 3(a)(1)(A)(i)）: `Miwa-Keita`（`zenz-v3.2-small-gguf` のモデルページ上のアカウント名。`Keita Miwa` の表記は同一作者の `zenz-v2.5-small` のモデルカードに基づく）
    - 著作権表示・無保証（Section 3(a)(1)(A)(ii), (iv)）: 原文の無保証・責任制限への言及（Section 5 の趣旨）
    - ライセンス言及とリンク（Section 3(a)(1)(A)(iii), Section 3(a)(1)(C)）: `CC BY-SA 4.0`（`https://creativecommons.org/licenses/by-sa/4.0/` および日本語概要 `https://creativecommons.org/licenses/by-sa/4.0/deed.ja`）
    - 元の著作物への URI（Section 3(a)(1)(A)(v)）: `https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf`（確認時点のコミットハッシュも併記）
@@ -86,7 +86,7 @@ CC BY-SA 4.0 Legal Code Section 3(a)(1)〜(2) および Section 2(a)(5)(C) に�
 ### zenz-v3.2 small（モデルファイル単体）
 
 - **適用対象**: 同梱するモデルファイル `zenz-v3.2-small-Q5_K_M.gguf`（この節のライセンス条件はこのモデルファイルにのみ適用され、ikari-ime 本体のソフトウェア（Apache License 2.0）には適用されません）
-- **作者**: Keita Miwa（Hugging Face: Miwa-Keita）
+- **作者**: Miwa-Keita（Hugging Face アカウント名。`Keita Miwa` の表記は同一作者の `zenz-v2.5-small` のモデルカードに基づく）
 - **ライセンス**: クリエイティブ・コモンズ 表示-継承 4.0 国際（CC BY-SA 4.0。https://creativecommons.org/licenses/by-sa/4.0/ / 日本語: https://creativecommons.org/licenses/by-sa/4.0/deed.ja ）
 - **出典**: https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf （確認日: 2026-11-22、commit `ef3e66e3665fe6a19598e6578e9b88a994b647fd`、元ファイル名 `ggml-model-Q5_K_M.gguf`、sha256 `29c223d4c23327b80fd13ebb5ab2555057a46317997d5da391584ffbef0db673`）
 - **変更の有無**: 変更なし（配布元のファイルを無改変のまま同梱）

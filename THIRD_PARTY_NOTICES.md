@@ -253,7 +253,7 @@ SOFTWARE.
 ### zenz-v3.2 small（モデルファイル単体）
 
 - **適用対象**: 同梱するモデルファイル `zenz-v3.2-small-Q5_K_M.gguf`（この節のライセンス条件はこのモデルファイルにのみ適用され、ikari-ime 本体のソフトウェア（Apache License 2.0）には適用されません）
-- **作者**: Keita Miwa（Hugging Face: Miwa-Keita）
+- **作者**: Miwa-Keita（Hugging Face アカウント名。`Keita Miwa` の表記は同一作者の `zenz-v2.5-small` のモデルカードに基づく）
 - **ライセンス**: クリエイティブ・コモンズ 表示-継承 4.0 国際（CC BY-SA 4.0。https://creativecommons.org/licenses/by-sa/4.0/ / 日本語: https://creativecommons.org/licenses/by-sa/4.0/deed.ja ）
 - **出典**: https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf （確認日: 2026-11-22、commit `ef3e66e3665fe6a19598e6578e9b88a994b647fd`、元ファイル名 `ggml-model-Q5_K_M.gguf`、sha256 `29c223d4c23327b80fd13ebb5ab2555057a46317997d5da391584ffbef0db673`）
 - **変更の有無**: 変更なし（配布元のファイルを無改変のまま同梱）
