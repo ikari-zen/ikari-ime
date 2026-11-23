@@ -6,18 +6,38 @@ use super::*;
 fn warm_up_runs_on_another_thread_at_start_and_on_the_first_prefetch_after_unload() {
     let (e, mock) = engine(0);
     begin(&e, 1, false);
-    wait_until(|| mock.warm_ups.load(Ordering::Relaxed) == 1);
     let caller = std::thread::current().id();
+    let startup_deadline = Instant::now() + Duration::from_secs(60);
+    while !mock.loaded.load(Ordering::Acquire) {
+        assert!(
+            Instant::now() < startup_deadline,
+            "startup warm-up stalled for 60 seconds"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert_eq!(mock.warm_ups.load(Ordering::Relaxed), 1);
     assert_ne!(*mock.warm_thread.lock().unwrap(), Some(caller));
+
     // アイドル解放の再現: 読み込み済みでなくなる。次の Prefetch で warm_up が再び呼ばれる
-    wait_until(|| mock.loaded.load(Ordering::Acquire));
     mock.loaded.store(false, Ordering::Release);
     let mut rev = 0;
-    wait_until(|| {
+    let rewarm_deadline = Instant::now() + Duration::from_secs(60);
+    while mock.warm_ups.load(Ordering::Relaxed) < 2 {
+        assert!(
+            Instant::now() < rewarm_deadline,
+            "warm-up after unload stalled for 60 seconds"
+        );
         rev += 1;
         prefetch(&e, 1, READING, rev);
-        mock.warm_ups.load(Ordering::Relaxed) >= 2
-    });
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    while !mock.loaded.load(Ordering::Acquire) {
+        assert!(
+            Instant::now() < rewarm_deadline,
+            "warm-up after unload stalled for 60 seconds"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
     assert_ne!(*mock.warm_thread.lock().unwrap(), Some(caller));
 }
 
