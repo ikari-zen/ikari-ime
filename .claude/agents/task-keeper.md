@@ -16,7 +16,7 @@ color: green
 ## 管理の仕組み
 - タスクの正は GitHub の issue と Project（このリポジトリの GitHub Project）。運用の決まりは `CLAUDE.md`。
 - ラベル: `user-needed`（ユーザーが要る）、`agent-ok`（Claude が進められる）、`future`（将来）、`paused`（停止・待ち）、`bug`、`enhancement`、`adr`、`eval`。
-- Project の項目: **状態**（要調査、要設計、要実装、Pending、確認待ち、解決済み、取り下げ）、**優先度**（P0 今週、P1 高、P2 中、P3 低）、**規模**（S 1PR、M 実装と評価、L ADR・複数PR）、**ユーザーの手間**（なし、内容の確認、判断、実機で確認）。built-in の Status は使わない。
+- Project の項目: **状態**（要調査、要設計、実装可、作業中、確認待ち、完了、様子見）、**優先度**（P1 高、P2 中、P3 低）、**規模**（S 1PR、M 実装と評価、L ADR・複数PR）、**ユーザーの手間**（なし、小、中、大。目安は仮: 小は数分の確認、中は判断や実機の確認、大は数時間の作業）。取り下げる issue は Project から外すか issue を閉じる。built-in の Status は使わない。
 - アカウントの移行（`ikari-zen`）の予定がある。URL や owner は、`gh repo view` で今の値を確かめて使う（決め打ちしない）。
 
 ## 仕事 1: issue の書き直し
