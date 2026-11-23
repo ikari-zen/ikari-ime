@@ -287,8 +287,8 @@ AI にビルドや入れ替えを任せるときは、次の点を確かめて�
 
 ## 7. プライバシー
 
-- **IME は外部と通信しません。** 変換の本体は App Sandbox の中で動き、ネットワークの権限を持ちません。ビルドのときに、この設定を検査しています。
-- **通信するのは、取得の段階だけです。** 元データの取得（`--fetch`）、Cargo と Swift の依存パッケージの取得、初回のビルドです。
+- **IME は、利用者の操作なしに外部と通信しません。** 変換の本体は App Sandbox の中で動き、ネットワークの権限を持ちません。ビルドのときに、この設定を検査しています。
+- **通信するのは、取得の段階と、設定画面のボタンを押したときだけです。** 取得の段階は、元データの取得（`--fetch`）、Cargo と Swift の依存パッケージの取得、初回のビルドです。ボタンのときは、取得の部品 `ikari-data` がモデルの取得と版の確認だけを行います（[SECURITY.md](SECURITY.md)）。
 - **学習の記録とユーザー辞書は、自分の Mac に置きます。** 場所は `~/Library/Application Support/ikari-ime/` です。設定アプリで、エクスポート、インポート、リセットができます。
 - **ログに入力の中身は書きません。** エンジンのログには、時刻と種類、処理にかかった時間などを書きます。読みや候補、文脈は書きません。
 - **ログの保持は 180 日、合計 100MB までです。** どちらか先に来た方で、古い順に消します（回した古い分は gzip で残ります）。場所は `~/Library/Application Support/ikari-ime/logs/` です。いつでも手で消せます。
@@ -300,6 +300,7 @@ AI にビルドや入れ替えを任せるときは、次の点を確かめて�
 flowchart LR
     S[ikari.app<br/>入力メソッドの殻<br/>Swift / InputMethodKit] -->|XPC| E[IkariEngine.xpc<br/>App Sandbox / 通信なし]
     E --> R[engine-ffi<br/>Rust の変換エンジン]
+    E -->|匿名の口| C[IkariLMCage.xpc<br/>ikari-lm-host<br/>LM の推論だけ]
     R --> D[(辞書、学習、LM)]
 ```
 
@@ -316,6 +317,16 @@ ikari-ime/
   dict-builder/  SudachiDict と chiVe から辞書を作る
   import/        取り込み（JSONL）と初期学習
   proto/         殻とエンジンの間のメッセージ（protobuf）
+  resource/      辞書・表・モデルの束の契約と検証
+  shell-core/    殻の OS に依存しない処理（入力の状態機械、キー割り当て、メニューなど）
+  runmark/       起動中の印と、前回の終わり方の判定
+  textfile/      テキストファイル形式の共通部分
+  testtime/      時間に依存するテストの倍率
+  pipe/          Windows の TIP とエンジンをつなぐ枠つきの流れ
+  fetch/         取得の部品 ikari-data（通信してよい唯一の crate）
+  windows/       Windows 版（TIP、常駐のエンジン、候補窓、設定画面、インストーラ）
+  xtask/         ビルド・検証の道具（cargo xtask）
+  tools/         測定ツール（製品には入らない）
   cli/           コマンド ikari（CLI で変換を試す）
   eval/          評価ツール ikari-eval、評価セット、レポート
   macos/         macOS 版（Swift。殻、XPC サービス、設定アプリ、smoke、ビルドとインストールのスクリプト）

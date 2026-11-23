@@ -1,4 +1,4 @@
-//! ikari-engine.exe: Windows の常駐のエンジン（ADR 0040 §2.2、§7 の W5-a）。
+//! ikari-engine-host.exe: Windows の常駐のエンジン（ADR 0040 §2.2、§7 の W5-a）。
 //!
 //! 起動と終了の手順は `ikari_engine_host::run`（OS に依存しない。Mac でテストする）。ここは、`cfg(windows)` の
 //! 部分（パイプの受け口、Ctrl+C の受け取り）をつなぐだけ。判断の置き場所: Rust。判断は engine。

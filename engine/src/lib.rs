@@ -7,11 +7,13 @@
 //!   間に合わなければ LM を使わずにその場で変換する。
 //! - 返したページは差し替えない（NFR-05。`Conversion` の性質のまま）。
 //! - 学習はメモリに記録し、5 秒ごとと `EndSession`、`Shutdown`、`Drop` で保存する。
-//! - データのディレクトリは `engine.lock` を flock で持つ（CLI の学習ファイルの書き込みとの排他）。
+//! - データのディレクトリは `engine.lock` を OS のファイルロック（Unix は flock、Windows は `LockFileExW`）で持つ（CLI の学習ファイルの書き込みとの排他）。
 //! - 管理の要求（ユーザー辞書、学習、エクスポート／インポート、プロファイル。ADR 0005 §8）は `admin.rs`。
 //!
-//! 構成: 入口は `dispatch`、セッションは `session`、変換の要求は `convert`、LM の状態は `lm`、データの監視と
-//! 保存は `data`、裏のスレッドは `workers`、文節は `segments`。このファイルは `Engine`、`Inner`、上限の定数。
+//! 構成: 入口は `dispatch`、接続は `connection`（ADR 0064）、セッションは `session`、変換の要求は `convert`、LM の状態は `lm`、
+//! 檻役とのつなぎは `lm_cage`（ADR 0077）、データの監視と保存は `data`、データの場所は `data_location`（ADR 0080）、
+//! モデルの選択・取り込み・検査は `model_select`・`model_import`・`model_check`（ADR 0058、0060）、設定は `settings`、
+//! 裏のスレッドは `workers`、文節は `segments`。このファイルは `Engine`、`Inner`、上限の定数。
 
 mod admin;
 mod cache;

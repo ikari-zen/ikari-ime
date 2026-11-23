@@ -222,7 +222,7 @@ SOFTWARE.
 ### llama.cpp
 
 - **ライセンス**: MIT（Copyright (c) 2023-2026 The ggml authors）
-- **用途**: 言語モデルの推論。Rust クレート `llama-cpp-2` / `llama-cpp-sys-2`（0.1.160。MIT or Apache-2.0）経由で、エンジン（`IkariEngine.xpc`）の静的ライブラリに含まれる。Metal のシェーダは埋め込みで、ネットワークは使わない
+- **用途**: 言語モデルの推論。Rust クレート `llama-cpp-2` / `llama-cpp-sys-2`（版は `Cargo.lock` のとおり。MIT or Apache-2.0）経由で、LM の子プロセス `ikari-lm-host`（macOS は `IkariLMCage.xpc` の中、Windows は `ikari-lm-host.exe`）にだけ含まれる。変換のエンジン（`IkariEngine.xpc`、`ikari-engine-host.exe`）には入れない（ADR 0072 §5）。Metal のシェーダは埋め込みで、ネットワークは使わない
 - **リポジトリ**: https://github.com/ggml-org/llama.cpp
 - **許諾文（全文。llama-cpp-sys-2 に入っている llama.cpp の `LICENSE`）**:
 
