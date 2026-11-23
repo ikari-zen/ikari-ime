@@ -7,7 +7,7 @@
 //! - sudachi: SudachiDict の small_lex / core_lex / notcore_lex / matrix.def（zip）。small + core が Core、notcore を足したものが Full
 //!   （ADR 0012 §11.3）。配布元 sudachi.s3-website-ap-northeast-1.amazonaws.com。Apache License 2.0（WorksApplications）
 //! - chive: chiVe 1.3 mc90（tar.gz）。Apache License 2.0（Works Applications）
-//! - zenz: zenz-v3.2-small Q5_K_M（GGUF）。モデルカードでは Apache-2.0。派生物の扱いは THIRD_PARTY_NOTICES.md
+//! - zenz: zenz-v3.2-small Q5_K_M（GGUF）。CC BY-SA 4.0（2026-11-22 確認）。表示の条件は THIRD_PARTY_NOTICES.md
 //! - emoji: iamcal/emoji-data の emoji.json（コミット固定。画像は取らない。ADR 0027 §5.2）。MIT
 //! - abr: デジタル庁 ABR の町字マスター mt_town_all.csv（zip。ADR 0030）。公共データ利用規約（PDL1.0）。
 //!   配布元は日付で更新される（版番号はない）。sha256 が合わなければ捨てるので、更新されたら ADR 0030 の手順で測り直して下の表を直す
