@@ -156,7 +156,158 @@ for missing in build/dict/system.dict "raw/zenz/$MODEL_NAME"; do
 done
 if (check_data_source "$SRC") >/dev/null 2>&1; then echo "ok: 揃った元は通る"; else fail "揃った元が落ちた"; fi
 
+# ---- シンボリックリンクも一覧の対象（署名し直しても、置いたときの一覧と違えば落ちる）
+app="$(fresh symlink)"
+ln -s system.dict "$app/$BUNDLED_DATA_REL/dict/link"
+resign "$app"
+expect_ng "シンボリックリンクを足して署名し直す" "置いたときと違います" "$app" "$FAKE_MODEL_SHA"
+
+# ---- 版の印（macos/Frameworks/.edition。--skip-rust が使う）
+mark="$TMP/edition-mark"
+for want in normal offline; do
+  other=offline
+  [[ "$want" == normal ]] || other=normal
+  rm -f "$mark"
+  if problem="$(frameworks_edition_error "$mark" "$want")"; then fail "印が無いのに $want が通った"; elif [[ "$problem" == *"印（.edition）がありません"* ]]; then echo "ok: 印が無い（${want}）は落ちる"; else fail "印が無い（${want}）の理由が違う: $problem"; fi
+  printf '%s\n' "$other" >"$mark"
+  if problem="$(frameworks_edition_error "$mark" "$want")"; then fail "版が違うのに $want が通った"; elif [[ "$problem" == *"でビルドされています"* ]]; then echo "ok: 版が違う（印=${other}、要る=${want}）は落ちる"; else fail "版が違う（${want}）の理由が違う: $problem"; fi
+  : >"$mark"
+  if problem="$(frameworks_edition_error "$mark" "$want")"; then fail "空の印で $want が通った"; else echo "ok: 空の印（${want}）は落ちる"; fi
+  printf '%s\n' "$want" >"$mark"
+  if frameworks_edition_error "$mark" "$want" >/dev/null; then echo "ok: 版が合う（${want}）は通る"; else fail "版が合うのに $want が落ちた"; fi
+done
+# build_rust は、先頭で前の版の印を消す（途中で失敗しても印が残らない）
+if awk '/^build_rust\(\) \{/{f=1; next} f&&/rm -f "\$FRAMEWORKS_EDITION_MARK"/{found=1} f&&/cargo build/{exit} END{exit !found}' "$IKARI_SCRIPTS_DIR/build.sh"; then
+  echo "ok: build_rust は cargo の前に印を消す"
+else
+  fail "build_rust が cargo の前に印を消していない"
+fi
+
+# ---- network.* の検査（fail-closed。本物の束の代わりに、署名した小さな実行ファイルを並べる）
+NET_ENT="$TMP/net.entitlements"
+cat >"$NET_ENT" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>com.apple.security.network.client</key><true/></dict></plist>
+PLIST
+SANDBOX_ENT="$TMP/sandbox.entitlements"
+cat >"$SANDBOX_ENT" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>com.apple.security.app-sandbox</key><true/></dict></plist>
+PLIST
+# 実行ファイルを置いて署名する（<パス> [entitlement のファイル]）
+put_exe() {
+  mkdir -p "$(dirname "$1")"
+  cp /usr/bin/true "$1"
+  if [[ -n "${2:-}" ]]; then
+    codesign --force -s - --entitlements "$2" "$1" >/dev/null 2>&1
+  else
+    codesign --force -s - "$1" >/dev/null 2>&1
+  fi
+}
+# 必須の 4 つ（殻、エンジン、設定アプリ、檻役）を置いた束
+scan_app() { # <名前>
+  local app="$TMP/scan-$1/ikari.app"
+  put_exe "$app/Contents/MacOS/ikari"
+  put_exe "$app/$BUNDLED_XPC_REL/Contents/MacOS/IkariEngine" "$SANDBOX_ENT"
+  put_exe "$app/Contents/Helpers/IkariSettings.app/Contents/MacOS/IkariSettings"
+  put_exe "$app/Contents/XPCServices/IkariLMCage.xpc/Contents/MacOS/ikari-lm-cage" "$SANDBOX_ENT"
+  printf '%s' "$app"
+}
+scan_required() { # <app>
+  printf '%s\n' "$1/Contents/MacOS/ikari" "$1/$BUNDLED_XPC_REL/Contents/MacOS/IkariEngine" \
+    "$1/Contents/Helpers/IkariSettings.app/Contents/MacOS/IkariSettings" "$1/Contents/XPCServices/IkariLMCage.xpc/Contents/MacOS/ikari-lm-cage"
+}
+# 検査を流す: <名前> <期待（ok か、理由に含まれる言葉）> <app> <許す実行ファイル または 空> [PATH の前に足すディレクトリ]
+scan_expect() {
+  local name="$1" want="$2" app="$3" allowed="$4" extra_path="${5:-}" req out
+  req=()
+  while IFS= read -r line; do req+=("$line"); done < <(scan_required "$app")
+  if out="$(PATH="${extra_path:+$extra_path:}$PATH" network_entitlement_error "$app" "$allowed" "${req[@]}")"; then
+    if [[ "$want" == ok ]]; then echo "ok: ${name}（見た Mach-O: ${out}）"; else fail "$name が通ってしまった"; fi
+  elif [[ "$want" == ok ]]; then
+    fail "$name が落ちた: $out"
+  elif [[ "$out" == *"$want"* ]]; then
+    echo "ok: $name -> $out"
+  else
+    fail "$name の理由が想定と違う（'$want' を含まない）: $out"
+  fi
+}
+
+app="$(scan_app good)"
+scan_expect "network.* が無い束" ok "$app" ""
+app="$(scan_app net-settings)"
+put_exe "$app/Contents/Helpers/IkariSettings.app/Contents/MacOS/IkariSettings" "$NET_ENT"
+scan_expect "設定アプリに network.client" "com.apple.security.network." "$app" ""
+app="$(scan_app net-extra)"
+put_exe "$app/Contents/Helpers/fake-fetch" "$NET_ENT"
+scan_expect "offline の束に network.* を持つ偽の実行ファイル" "com.apple.security.network." "$app" ""
+scan_expect "通常版で許した実行ファイルは通る" ok "$app" "$app/Contents/Helpers/fake-fetch"
+app="$(scan_app net-other)"
+put_exe "$app/Contents/Helpers/fake-fetch" "$NET_ENT"
+scan_expect "許した実行ファイル以外の network.* は落ちる" "com.apple.security.network." "$app" "$app/Contents/Helpers/other"
+app="$(scan_app net-symlink)"
+put_exe "$app/Contents/Helpers/real-fetch" "$NET_ENT"
+ln -s real-fetch "$app/Contents/Helpers/link-fetch"
+scan_expect "リンクの先の network.*（実体で落ちる）" "com.apple.security.network." "$app" ""
+app="$(scan_app missing)"
+rm "$app/$BUNDLED_XPC_REL/Contents/MacOS/IkariEngine"
+scan_expect "名指しした対象（エンジン）が束に無い" "検査の対象が束にありません" "$app" ""
+app="$(scan_app not-macho)"
+printf '#!/bin/sh\n' >"$app/Contents/MacOS/ikari"
+scan_expect "名指しした対象が Mach-O でない" "Mach-O として見ていません" "$app" ""
+app="$(scan_app unsigned)"
+cp /usr/bin/true "$app/Contents/Helpers/unsigned-exe"
+codesign --remove-signature "$app/Contents/Helpers/unsigned-exe" >/dev/null 2>&1 || true
+scan_expect "署名の無い実行ファイル" "読めません" "$app" ""
+# plutil / codesign が失敗する入力（偽のコマンドを PATH の先頭に置く）
+mkdir -p "$TMP/fakebin-plutil" "$TMP/fakebin-codesign"
+printf '#!/bin/sh\nexit 1\n' >"$TMP/fakebin-plutil/plutil"
+chmod +x "$TMP/fakebin-plutil/plutil"
+cat >"$TMP/fakebin-codesign/codesign" <<'SH'
+#!/bin/sh
+# entitlement の取得だけ、壊れた出力にする（plist として読めない）。それ以外は本物
+case "$*" in
+  *"-d --entitlements"*) printf 'this is not a plist'; exit 0 ;;
+esac
+exec /usr/bin/codesign "$@"
+SH
+chmod +x "$TMP/fakebin-codesign/codesign"
+app="$(scan_app plutil-fail)"
+scan_expect "壊れた entitlement（plist として読めない）" "plist として読めません" "$app" "" "$TMP/fakebin-codesign"
+scan_expect "plutil が失敗する" "plist として読めません" "$app" "" "$TMP/fakebin-plutil"
+
+# ---- make-dmg.sh は Smoke を含む束を断る
+app="$(fresh smoke)"
+cp /usr/bin/true "$app/Contents/MacOS/ikari-smoke"
+if out="$("$IKARI_SCRIPTS_DIR/make-dmg.sh" --app "$app" --out "$TMP/smoke.dmg" 2>&1)"; then
+  fail "Smoke を含む束が dmg になってしまった"
+elif [[ "$out" == *"ikari-smoke があります"* && ! -e "$TMP/smoke.dmg" ]]; then
+  echo "ok: Smoke を含む束は dmg にしない"
+else
+  fail "Smoke を含む束の断り方が想定と違う: $out"
+fi
+
 # ---- build.sh の引数（ビルドの前に落ちる）
+# 値の無いオプションは、使い方を出して 64 で終わる
+for opt in --edition --data-dir --signing; do
+  rc=0
+  out="$("$IKARI_SCRIPTS_DIR/build.sh" "$opt" 2>&1)" || rc=$?
+  if [[ "$rc" -eq 64 && "$out" == *"$opt に値がありません"* ]]; then echo "ok: $opt に値が無いと 64"; else fail "$opt に値が無い: 終了コード ${rc}（64 のはず）: $out"; fi
+done
+rc=0
+out="$("$IKARI_SCRIPTS_DIR/build.sh" --edition "" 2>&1)" || rc=$?
+[[ "$rc" -eq 64 ]] && echo "ok: --edition に空の値は 64" || fail "--edition に空の値: 終了コード $rc"
+# --dmg は --distribution が要る
+if out="$("$IKARI_SCRIPTS_DIR/build.sh" --signing adhoc --dmg 2>&1)"; then
+  fail "--dmg だけが通ってしまった"
+elif [[ "$out" == *"--dmg は --distribution と一緒に使います"* ]]; then
+  echo "ok: --dmg だけは落ちる"
+else
+  fail "--dmg の理由が想定と違う: $out"
+fi
+
 if out="$("$IKARI_SCRIPTS_DIR/build.sh" --edition nope 2>&1)"; then
   fail "--edition nope が通ってしまった"
 elif [[ "$out" == *"--edition は normal か offline"* ]]; then

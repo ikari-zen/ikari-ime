@@ -20,8 +20,8 @@ FORMAT="$DEFAULT_FORMAT"
 VOLNAME="$DEFAULT_VOLNAME"
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --app) APP="${2:-}"; shift ;;
-    --out) OUT_DMG="${2:-}"; shift ;;
+    --app) [[ $# -ge 2 ]] || { echo "error: --app に値がありません" >&2; exit 64; }; APP="$2"; shift ;;
+    --out) [[ $# -ge 2 ]] || { echo "error: --out に値がありません" >&2; exit 64; }; OUT_DMG="$2"; shift ;;
     --format) FORMAT="${2:-}"; shift ;;
     --volname) VOLNAME="${2:-}"; shift ;;
     -h | --help) sed -n '2,11p' "${BASH_SOURCE[0]}"; exit 0 ;;
@@ -36,6 +36,9 @@ case "$FORMAT" in
 esac
 [[ "$(basename "$APP")" == "$APP_NAME" && -d "$APP" ]] || die "--app は $APP_NAME のディレクトリです: $APP"
 [[ "$OUT_DMG" == *.dmg ]] || die "--out は .dmg で終わる名前です: $OUT_DMG"
+# 配る物に Smoke（開発用の確認の道具）を入れない（ADR 0069 §6）。単体で呼ばれても守る
+smoke_found="$(find "$APP" -name 'ikari-smoke*' -print -quit)" || die "$APP を調べられません"
+[[ -z "$smoke_found" ]] || die "$APP に ikari-smoke があります（--distribution でビルドした束だけを dmg にする）: $smoke_found"
 codesign --verify --deep --strict "$APP" || die "$APP の署名を検証できません（署名してから dmg にする）"
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/ikari-dmg.XXXXXX")"

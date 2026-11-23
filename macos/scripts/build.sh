@@ -17,7 +17,7 @@
 #   --data-dir <data>  同梱するデータ（辞書とモデル）の元（cargo xtask data install の --src と同じ並び。<data>/build/dict/、<data>/raw/zenz/）。
 #                    束の中のエンジンの XPC の Resources/data/ に置き、署名のあと、封印とモデルの sha256 を検査する（ADR 0080 §3.4）。
 #                    付けなければデータなしの束（開発用。今までどおり）
-#   --dmg            署名と検査のあと、dmg を作る（macos/scripts/make-dmg.sh。出力は <出力先>/<名前>.dmg）
+#   --dmg            署名と検査のあと、dmg を作る。--distribution が要る（配る物だけ。macos/scripts/make-dmg.sh。出力は <出力先>/<名前>.dmg）
 #   --frameworks-only  XCFramework（macos/Frameworks/）だけ作って終わる。Swift のビルド、組み立て、署名はしない（CI の swift test 用）
 #
 # 出力: target/macos/<release|debug>-<team|adhoc>/ikari.app
@@ -39,21 +39,29 @@ DISTRIBUTION=0
 EDITION=normal
 DATA_DIR=""
 MAKE_DMG=0
+# 値を取るオプションに値が無いときは、使い方を出して 64（EX_USAGE）で終わる（shift で黙って終わらせない）
+need_value() {
+  if [[ $# -lt 2 || -z "$2" ]]; then
+    printf 'error: %s に値がありません\n' "$1" >&2
+    sed -n '2,24p' "${BASH_SOURCE[0]}" >&2
+    exit 64
+  fi
+}
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --signing) SIGNING="${2:-}"; shift ;;
+    --signing) need_value "$@"; SIGNING="$2"; shift ;;
     --signing=*) SIGNING="${1#--signing=}" ;;
     --no-lm) WITH_LM=0 ;;
     --skip-rust) SKIP_RUST=1 ;;
     --allow-stub) ALLOW_STUB=1 ;;
     --frameworks-only) FRAMEWORKS_ONLY=1 ;;
     --distribution) DISTRIBUTION=1 ;;
-    --edition) EDITION="${2:-}"; shift ;;
+    --edition) need_value "$@"; EDITION="$2"; shift ;;
     --edition=*) EDITION="${1#--edition=}" ;;
-    --data-dir) DATA_DIR="${2:-}"; shift ;;
+    --data-dir) need_value "$@"; DATA_DIR="$2"; shift ;;
     --data-dir=*) DATA_DIR="${1#--data-dir=}" ;;
     --dmg) MAKE_DMG=1 ;;
-    -h | --help) sed -n '2,25p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h | --help) sed -n '2,24p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) parse_common_flag "$1" || die "不明な引数: $1" ;;
   esac
   shift
@@ -63,6 +71,7 @@ case "$EDITION" in
   normal | offline) ;;
   *) die "--edition は normal か offline です: $EDITION" ;;
 esac
+[[ "$MAKE_DMG" -eq 0 || "$DISTRIBUTION" -eq 1 ]] || die "--dmg は --distribution と一緒に使います（dmg は配る物。Smoke の無い束だけを入れる。ADR 0069 §6）"
 [[ -z "$DATA_DIR" || -d "$DATA_DIR" ]] || die "--data-dir がディレクトリではありません: $DATA_DIR"
 [[ "$FRAMEWORKS_ONLY" -eq 0 || "$SKIP_RUST" -eq 0 ]] || die "--frameworks-only と --skip-rust は同時に使えません"
 
@@ -98,6 +107,9 @@ LM_CAGE_BUILT="$IKARI_ROOT/target/lm-cage/$RUST_TARGET/release/$LM_CAGE_NAME"
 DATA_NAME=ikari-data
 DATA_BUILT="$IKARI_ROOT/target/data/$RUST_TARGET/release/$DATA_NAME"
 DATA_DEST="$APP/Contents/Helpers/$DATA_NAME"
+# network.* の検査で、見たことを確かめる実行ファイル（殻、エンジン、設定アプリ、檻役。--no-lm のときは檻役なし）
+NETWORK_SCAN_REQUIRED=("$APP/Contents/MacOS/ikari" "$XPC/Contents/MacOS/IkariEngine" "$SETTINGS/Contents/MacOS/IkariSettings")
+[[ "$WITH_LM" == 0 ]] || NETWORK_SCAN_REQUIRED+=("$CAGE/Contents/MacOS/$LM_CAGE_NAME")
 # 同梱するデータ（ADR 0080 §3.1）と、置いた物の一覧（封印の検査が使う。束の外に置く）
 BUNDLED_DATA_DEST="$APP/$BUNDLED_DATA_REL"
 BUNDLED_DATA_LIST="$OUT/bundled-data.sha256"
@@ -198,6 +210,8 @@ build_data() {
 }
 
 build_rust() {
+  # 途中で失敗しても、前の版の印が残らないようにする（作り終えたところで書く）
+  rm -f "$FRAMEWORKS_EDITION_MARK"
   # 通常版は取得の核を持つ（online。ADR 0080 §7.1）。オフライン版は付けない（付け忘れも通信の少ない側に倒れる）
   local shell_features=()
   [[ "$EDITION" == offline ]] || shell_features=(--features online)
@@ -396,7 +410,7 @@ sign_bundle() {
   codesign "${common[@]}" "$APP"
 }
 
-entitlements_of() { codesign -d --entitlements - --xml "$1" 2>/dev/null; }
+# entitlements_of は lib-data.sh
 
 verify_bundle() {
   log "検証"
@@ -565,17 +579,10 @@ verify_data() {
   problem="$(entitlements_of "$DATA_DEST" | data_entitlements_error)" || die "ikari-data の $problem"
   echo "data entitlements: app-sandbox=true, network.client=true, temporary-exception=fetch/ and inbox/ only (3 keys)"
 
-  # 束の中で network.* を持つのは ikari-data だけ。一覧は手で並べず、Contents/ の下の Mach-O を全部見る
-  local file file_ents scanned=0
-  while IFS= read -r -d '' file; do
-    file -b "$file" | grep -q 'Mach-O' || continue
-    scanned=$((scanned + 1))
-    [[ "$file" != "$DATA_DEST" ]] || continue
-    file_ents="$(entitlements_of "$file")"
-    [[ -z "$file_ents" ]] || ! printf '%s' "$file_ents" | plutil -convert xml1 -o - - | grep -q '<key>com\.apple\.security\.network\.' \
-      || die "$file に com.apple.security.network.* があります（束の中で持てるのは ikari-data の network.client だけ）"
-  done < <(find "$APP/Contents" -type f -print0)
-  [[ "$scanned" -ge 2 ]] || die "束の中の署名されたコードを見つけられません（検査が空振りしている）"
+  # 束の中で network.* を持つのは ikari-data だけ。束の下の全ファイルを見る。名指しした実行ファイルは、見たことまで確かめる（lib-data.sh）。
+  # 限界: Sandbox の entitlement だけを見る（殻と設定アプリは Sandbox の外）
+  local scanned
+  scanned="$(network_entitlement_error "$APP" "$DATA_DEST" "${NETWORK_SCAN_REQUIRED[@]}")" || die "$scanned"
   echo "network.*: only ikari-data (scanned $scanned Mach-O files)"
 
   grep -q "Helpers/$DATA_NAME" "$APP/Contents/_CodeSignature/CodeResources" || die "ikari.app の署名が Helpers/$DATA_NAME を封印していません"
@@ -588,20 +595,16 @@ verify_data() {
   fi
 }
 
-# オフライン版（ADR 0080 §7.3、§7.4）: 取得の部品が束のどこにも無く、束の中のどの実行ファイルにも network.* の entitlement が無い
+# オフライン版（ADR 0080 §7.3、§7.4）: 取得の部品が束のどこにも無く、束の中のどの実行ファイルにも network.* の entitlement が無い。
+# 限界（ここで保証するのは ADR 0080 §7.4 の「束のどこにも network.* が無い」まで）: 殻（ikari）と設定アプリは Sandbox の外なので、
+# entitlement が無くても通信できる。この検査が保証するのは「Sandbox の中のコード（エンジン、檻役、LM の子）は通信しない」ことだけ。
+# 残りの保証は、版の印（macos/Frameworks/.edition）と、レーン 6 の scan-product（実行ファイルに取得の印が無いこと）が持つ。
 verify_offline() {
   [[ ! -e "$DATA_DEST" ]] || die "オフライン版の束に $DATA_NAME があります"
   [[ ! -e "$APP/Contents/Helpers/$DATA_NAME" ]] || die "オフライン版の束に Helpers/$DATA_NAME があります"
   ! grep -q "Helpers/$DATA_NAME" "$APP/Contents/_CodeSignature/CodeResources" || die "オフライン版の ikari.app の署名が Helpers/$DATA_NAME を指しています"
-  local file file_ents scanned=0
-  while IFS= read -r -d '' file; do
-    file -b "$file" | grep -q 'Mach-O' || continue
-    scanned=$((scanned + 1))
-    file_ents="$(entitlements_of "$file")"
-    [[ -z "$file_ents" ]] || ! printf '%s' "$file_ents" | plutil -convert xml1 -o - - | grep -q '<key>com\.apple\.security\.network\.' \
-      || die "オフライン版の $file に com.apple.security.network.* があります"
-  done < <(find "$APP/Contents" -type f -print0)
-  [[ "$scanned" -ge 2 ]] || die "束の中の署名されたコードを見つけられません（検査が空振りしている）"
+  local scanned
+  scanned="$(network_entitlement_error "$APP" "" "${NETWORK_SCAN_REQUIRED[@]}")" || die "オフライン版: $scanned"
   echo "offline edition: no $DATA_NAME, no network.* in any of $scanned Mach-O files"
 }
 
@@ -674,16 +677,9 @@ if [[ "$SKIP_RUST" -eq 0 ]]; then
   build_rust
   [[ "$EDITION" == offline ]] || build_data
 else
-  # XCFramework の版が違うと、オフライン版に通信の核が入る（逆なら通常版に入らない）。作ったときの印と合わせる。
-  # 印が無い（この印を足す前に作った）物は、通常版なら警告だけ、オフライン版なら止める
+  # XCFramework の版が違うと、オフライン版に通信の核が入る（逆なら通常版に入らない）。作ったときの印と合わせる。印が無くても止める
   if [[ -d "$FRAMEWORKS/IkariShellFFI.xcframework" ]]; then
-    built_edition="$(cat "$FRAMEWORKS_EDITION_MARK" 2>/dev/null || true)"
-    if [[ -n "$built_edition" && "$built_edition" != "$EDITION" ]]; then
-      die "--skip-rust ですが、macos/Frameworks は edition=$built_edition でビルドされています（要るのは ${EDITION}）。--skip-rust を外してください"
-    elif [[ -z "$built_edition" ]]; then
-      [[ "$EDITION" == normal ]] || die "--skip-rust ですが、macos/Frameworks の edition が分かりません。オフライン版は --skip-rust を外してください"
-      warn "macos/Frameworks に edition の印（.edition）がありません。通常版（online）でビルドした物と見なします"
-    fi
+    problem="$(frameworks_edition_error "$FRAMEWORKS_EDITION_MARK" "$EDITION")" || die "--skip-rust ですが、${problem}。--skip-rust を外してください"
   fi
   # XCFramework がないと Package.swift が FFI なしの形になり、動かない「スタブのエンジン」の ikari.app ができる
   for framework in IkariShellFFI IkariEngineFFI; do
