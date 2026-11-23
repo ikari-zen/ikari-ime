@@ -379,7 +379,7 @@ impl<'a> Builder<'a> {
     }
 
     fn build_builder(&self) -> Result<(), Failure> {
-        exec(cargo(self.root).args(["build", "--release", "-p", BUILDER_PACKAGE]))?;
+        exec(cargo(self.root).args(["build", "--release", "--locked", "-p", BUILDER_PACKAGE]))?;
         if self.builder.is_file() {
             Ok(())
         } else {

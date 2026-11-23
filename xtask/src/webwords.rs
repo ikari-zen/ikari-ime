@@ -596,7 +596,7 @@ fn run_build(
     let report = out_dir.join(format!("webwords-{date}-report.md"));
 
     log("ikari-dict-builder をビルド");
-    exec(cargo(&root).args(["build", "--release", "-p", BUILDER_PACKAGE]))?;
+    exec(cargo(&root).args(["build", "--release", "--locked", "-p", BUILDER_PACKAGE]))?;
     let builder = root.join("target").join("release").join(format!(
         "ikari-dict-builder{}",
         std::env::consts::EXE_SUFFIX
