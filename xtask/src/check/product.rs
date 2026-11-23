@@ -167,23 +167,20 @@ const MAC_GATE_FN: &str = "pub(super) fn direct_spawn_allowed() -> bool {";
 const MAC_GATE_CALL: &str = "if !direct_spawn_allowed() {";
 /// 自分で起こしてよいのは、テストと開発用のビルドだけ
 const MAC_GATE_BODY: &str = "cfg!(any(test, feature = \"dev-knobs\"))";
-/// 移行の間だけ足してよい定数（D-3-mac で消す）
-const MAC_GATE_TRANSITION: &str = "|| DIRECT_SPAWN_TRANSITION";
 
 /// 製品の macOS で、エンジンが自分で LM の子を起こす口が、テストと開発用のビルドに閉じていること（FC-4）
 pub fn mac_direct_spawn_closed(root: &Path) -> Result<(), Failure> {
     log("macOS の製品のビルドで、エンジンが自分で LM の子を起こさないこと（ADR 0077 §6）");
     let text = read(root, MAC_DIRECT_SPAWN_FILE)?;
     finish(
-        mac_direct_spawn_problems(&text, true)
+        mac_direct_spawn_problems(&text)
             .into_iter()
             .map(|p| format!("{MAC_DIRECT_SPAWN_FILE}: {p}"))
             .collect(),
     )
 }
 
-/// `strict` なら、移行の間の定数も認めない（D-3-mac のあと）
-fn mac_direct_spawn_problems(text: &str, strict: bool) -> Vec<String> {
+fn mac_direct_spawn_problems(text: &str) -> Vec<String> {
     let lines: Vec<&str> = text.lines().map(str::trim).collect();
     let first_after = |head: &str| {
         let at = lines.iter().position(|l| l.starts_with(head))?;
@@ -198,9 +195,7 @@ fn mac_direct_spawn_problems(text: &str, strict: bool) -> Vec<String> {
         ));
     }
     let body = first_after(MAC_GATE_FN);
-    let transition = format!("{MAC_GATE_BODY} {MAC_GATE_TRANSITION}");
-    let ok = body == Some(MAC_GATE_BODY) || (!strict && body == Some(transition.as_str()));
-    if !ok {
+    if body != Some(MAC_GATE_BODY) {
         problems.push(format!(
             "`{MAC_GATE_FN}` の中身が `{MAC_GATE_BODY}` ではありません: {}",
             body.unwrap_or("（見つからない）")
@@ -525,32 +520,24 @@ mod tests {
 
     #[test]
     fn mac_direct_spawn_must_be_gated_to_tests_and_dev_knobs() {
-        assert!(mac_direct_spawn_problems(MAC_OK, true).is_empty());
-        let transition = MAC_OK.replace(
+        assert!(mac_direct_spawn_problems(MAC_OK).is_empty());
+        let widened_gate = MAC_OK.replace(
             "\"dev-knobs\"))\n",
-            "\"dev-knobs\")) || DIRECT_SPAWN_TRANSITION\n",
+            "\"dev-knobs\")) || ALLOW_DIRECT_SPAWN\n",
         );
-        assert!(mac_direct_spawn_problems(&transition, false).is_empty());
-        assert_eq!(mac_direct_spawn_problems(&transition, true).len(), 1);
+        assert_eq!(mac_direct_spawn_problems(&widened_gate).len(), 1);
         let ungated = MAC_OK.replace("    if !direct_spawn_allowed() {\n", "");
-        assert_eq!(mac_direct_spawn_problems(&ungated, false).len(), 1);
+        assert_eq!(mac_direct_spawn_problems(&ungated).len(), 1);
         let widened = MAC_OK.replace("any(test, feature = \"dev-knobs\")", "any(test, unix)");
-        assert_eq!(mac_direct_spawn_problems(&widened, false).len(), 1);
-        assert_eq!(mac_direct_spawn_problems("", false).len(), 2);
+        assert_eq!(mac_direct_spawn_problems(&widened).len(), 1);
+        assert_eq!(mac_direct_spawn_problems("").len(), 2);
     }
 
     #[test]
     fn the_repository_passes_the_mac_direct_spawn_check() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
         let text = read(&root, MAC_DIRECT_SPAWN_FILE).unwrap();
-        assert!(mac_direct_spawn_problems(&text, false).is_empty());
-    }
-
-    #[test]
-    fn mac_direct_spawn_has_no_transition() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-        let text = read(&root, MAC_DIRECT_SPAWN_FILE).unwrap();
-        assert!(mac_direct_spawn_problems(&text, true).is_empty());
+        assert!(mac_direct_spawn_problems(&text).is_empty());
     }
 
     #[test]
