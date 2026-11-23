@@ -640,6 +640,38 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 - 期待する結果（**見込み**）: 未確認。(a)〜(c) が起動する想定だが、確かめていない（ADR 0081 §3 の 1・2）。(e) は ADR 0067 §4.5 の 2 と ADR 0072 §5 の仕様どおり。
 - うまくいかないとき: 失敗したときの画面の写真、イベントビューアの該当行、終了コードを残す。`dumpbin /dependents` の出力が取れていれば、それも残す。
 
+#### 項目 75: 検査に落ちたとき、削除の入口と新しい `unins000.*` が残らない（#609 D-06）
+
+- 状態: **確認済み（2026-11-23。VM。stage はリリースの試しのビルド（run 45147748391）の導入物から組み直した版で、設定画面と候補窓を除いたもの。`ISCC` 6.7.4 の警告なし）**。
+- やること: (a) 項目 47 の (c) の方法（`C:\Program Files\ikari-ime` を先に作り、`icacls … /grant *S-1-5-32-545:(OI)(CI)M`）で、空のフォルダに入れる。(b) 項目 47 の (d) の方法（正常に入れた版の `NOTICE` だけに Users の書き込みを足し、版を上げて入れる）。(c) 検査に通る普通の導入では、`reg query "HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\{1CE51AC3-4849-442B-BFBE-36FA3EEC855B}_is1" /v DisplayVersion` が出る。いずれも `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART` で流し、終了コードと、`reg query` と `dir C:\Program Files\ikari-ime\unins*` を見る。
+- 期待する結果: (a) 終了コード 10。削除の入口（上の `reg query`）が無い。`unins000.exe`・`.dat` が無い。`tip\`、`HKLM\…\Run`、ファイアウォールの規則、エラー報告の除外、作業用の `ikari-ime.setup` も無い。(b) 終了コード 10。前の版の削除の入口と `unins000.*` はそのまま。新しい版は置かれず、登録も向き直らない。(c) 入口が登録される。
+- 結果: (a) 期待どおり（空のフォルダと、別のファイルが残っているフォルダの両方。終了コード 10、入口・`unins000.*` ともに無し）。(b) 期待どおり（終了コード 10。`tip\` は前の版のまま、`InprocServer32` も前の版）。(c) 期待どおり。注意: (a) と (b) の検査は**置く前**の検査で落ちるため、「置いたあとの検査だけが落ちる」道（`RemoveNewUninstaller` が実際に消す道）は、VM では作れず**未確認**。
+- 備考: 確認用の `/LOG=` は、管理者だけが書ける場所（`C:\t609\logs`）へ渡した。
+
+#### 項目 76: 手順の途中の失敗で打ち切る、helper が使えないときの通知（#609 D-08）
+
+- 状態: **×（2026-11-23。VM。不具合を 1 件確認。`ikari.iss` は直していない）**。
+- やること: (a) 偽の helper（引数を記録し、`stop` だけ終了コード 3 を返す）を stage に入れた版で、更新を流す。(b) 壊れた `ikari_tip.dll`（11 バイトの文字列。`regsvr32 /s` を直接流すと終了コード 3）を入れた版を、新規と更新で流す。終了コードと、`Run`・ファイアウォールの規則・エラー報告の除外・前の版の `tip\` を見る。
+- 期待する結果: (a) 「動いているエンジンを止めきれませんでした」の通知が出る（`/SUPPRESSMSGBOXES` では、ログに `Defaulting to OK for suppressed message box` が出る）。導入は続く。(b) `DllRegisterServer` の手順で打ち切り、終了コード 11。後ろの手順（規則、`Run`、エラー報告、前の版の掃除）は走らない。
+- 結果: (a) 期待どおり（`stop` の直後に通知。導入は続き、終了コード 0）。**(b) 期待と違う。新規でも更新でも、終了コード 0 で終わり、規則 4 つ、`Run`、エラー報告の除外まで書かれた。更新では、前の版の `tip\` が消され、`InprocServer32` は消えた前の版を指したまま（削除の入口の版は新しい版）**。
+- 原因（**推測を確かめたもの**）: `RegisterTip` が `StepOk(RunTrusted(…, Code), Code, …)` と書いてあり、`Code`（var 引数）の値が、`RunTrusted` の実行より**前**に渡されて 0 になる（引数の評価の順）。`RegisterTip` だけを `Result := RunTrusted(…, Code); Result := StepOk(Result, Code, …);` に分けたコピーでは、終了コード 11 になり、規則・`Run`・エラー報告は書かれなかった。同じ書き方の `AddFirewallRules`（`netsh`）と `ExcludeFromErrorReporting`（helper）にも当たる見込み（**未確認**。ファイアウォールのサービスは SSH から止められず、`netsh` を落とせなかった）。`AppDirReady` 側の `CheckAppDir`（`and (Code = HelperOk)`）は別の式で、正しく動く（項目 75）。
+- うまくいかないとき: `ikari.iss` の `StepOk(RunTrusted(` を検索する。
+
+#### 項目 77: 更新で、前の版の LM の部品を置く前に掃除する（#609 D-10 の (a)）
+
+- 状態: **確認済み（2026-11-23。VM）**。
+- やること: 導入済みの状態で、`llama-old.dll`、`ggml-old-extra.dll`（直下）、`backends\ggml-stale-backend.dll`、`backends\sub\deep.dll`、対象外の `other-keep.dll` を置き、同じ版を入れ直す。
+- 期待する結果: `llama*`・`ggml*` の古い物と、`backends\` の中の古い物（部分フォルダを含む）は消え、同梱の物は置き直される。`other-keep.dll` は残る。
+- 結果: 期待どおり。直下は `ggml-base.dll`、`ggml.dll`、`llama-common.dll`、`llama.dll` と `other-keep.dll` だけになり、`backends\` は `ggml-vulkan.dll` などの同梱の物だけ（`sub\` も消えた）。終了コード 0。
+
+#### 項目 78: 更新が「信頼できない」と判定されない（新規、同じ版、新しい版、古い版）
+
+- 状態: **確認済み（2026-11-23。VM）**。
+- やること: 順に `/VERYSILENT` で流す: 0.0.1（新規）→ 0.0.1（同じ版）→ 0.0.2（新しい版）→ 0.0.1（古い版）。そのたびに終了コード、`DisplayVersion`、`tip\` の一覧、`InprocServer32` を見る。
+- 期待する結果: 最初の 3 回は終了コード 0（10 にならない）で、`tip\` と登録が新しい版に向く。古い版は、`/VERYSILENT` では確かめの既定（いいえ）で止まる。
+- 結果: 期待どおり。0、0、0 で、`tip\0.0.1`、`0.0.1`、`0.0.2`（前の版のフォルダは消えた）。古い版は終了コード 1 で、`DisplayVersion`・`tip\`・登録は 0.0.2 のまま。
+- 備考: 通常の導入と削除（項目 48、54 の範囲の最小限）も、このとき通った。試しのビルド（0.0.0）の導入、`unins000.exe /VERYSILENT` での削除（フォルダ、削除の入口、`Run`、規則 4 つ、エラー報告の除外が消え、`InprocServer32` も無くなる）。画面の確認（最後の案内、削除の再起動の画面）は **未確認**（SSH のみ）。
+
 ### 5.10 候補窓の本体（W3。ADR 0062、ADR 0068 §5）
 
 第 1 段で入ったのは、候補窓の exe（`dist\target\release\candidate\ikari-candidate.exe`。WinUI 3、自己完結。第 2 段で `dist\candidate` から移した）と、確認用の送り手（`dist\target\release\ikari-candidate-send.exe`）です。項目 59〜61 は、窓を手で起動し、送り手で出して確かめます（engine-host を止めておく。動いていると、engine-host が起動した窓が先にパイプを取る）。第 2 段（項目 62〜66）で、TIP が窓に送り、engine-host が窓を起動して見張るようになりました。**第 2 段の Rust の COM の層、engine-host の起動の層、C# と CI の変更は、Windows で 1 度もビルド・実行していません**（Mac の `cargo clippy --target x86_64-pc-windows-msvc` まで）。どちらもセッション 1 で流します（`run-in-session.ps1`。SSH のセッション 0 では窓が出ない。§1.6）。
