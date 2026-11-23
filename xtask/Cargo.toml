@@ -7,6 +7,8 @@ publish = false
 description = "ビルドと検証の道具（cargo xtask。ADR 0043）"
 
 [dependencies]
+# プリセットのモデルの名前と sha256 の表（scan-product の macOS の束の検査。表の唯一の出どころ）
+ikari-resource.workspace = true
 ikari-textfile.workspace = true
 clap.workspace = true
 serde_json.workspace = true

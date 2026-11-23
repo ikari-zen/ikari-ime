@@ -16,7 +16,7 @@
 #                    束の中のどこにも network.* の entitlement が無いことを検査する。出力先は <…>-offline/、dmg の名前に -offline が付く
 #   --data-dir <data>  同梱するデータ（辞書とモデル）の元（cargo xtask data install の --src と同じ並び。<data>/build/dict/、<data>/raw/zenz/）。
 #                    束の中のエンジンの XPC の Resources/data/ に置き、署名のあと、封印とモデルの sha256 を検査する（ADR 0080 §3.4）。
-#                    付けなければデータなしの束（開発用。今までどおり）
+#                    付けなければデータなしの束（開発用。今までどおり）。--distribution のときは必須
 #   --dmg            署名と検査のあと、dmg を作る。--distribution が要る（配る物だけ。macos/scripts/make-dmg.sh。出力は <出力先>/<名前>.dmg）
 #   --frameworks-only  XCFramework（macos/Frameworks/）だけ作って終わる。Swift のビルド、組み立て、署名はしない（CI の swift test 用）
 #
@@ -77,6 +77,8 @@ esac
 
 [[ "$DISTRIBUTION" -eq 0 || "$SIGNING" == adhoc ]] || die "--distribution は --signing adhoc と一緒に使います（配布物は未署名。team の署名は開発用）"
 [[ "$DISTRIBUTION" -eq 0 || "$ALLOW_STUB" -eq 0 ]] || die "--distribution は --allow-stub と一緒に使えません（配布物に FFI なしのスタブを入れない）"
+# 配る物は辞書とモデルを同梱する（ADR 0080 §0。0.1.0 から同梱）。データなしの束を配らない
+[[ "$DISTRIBUTION" -eq 0 || -n "$DATA_DIR" ]] || die "--distribution は --data-dir が要ります（配る物は辞書とモデルを同梱する。ADR 0080 §0）"
 OUT="$(bundle_out_dir)"
 # 開発用の adhoc のビルドと混ざらないよう、出力先を分ける
 [[ "$DISTRIBUTION" -eq 0 ]] || OUT="$OUT-dist"

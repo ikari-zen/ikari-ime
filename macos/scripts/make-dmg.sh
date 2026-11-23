@@ -7,12 +7,13 @@
 # 実機の確認（C3、#241）のあとに足す。今は入れない）。スクリプトや、利用者の操作なしに動く物は入れない。
 # 署名は ikari.app の物をそのまま使う（ad-hoc でも team でも）。dmg 自体には署名しない。
 # 作ったあと、hdiutil verify と、読み取り専用でのマウント（確認して、すぐアンマウント）で、中の ikari.app の署名を検証する。
-# 圧縮の形（--format）の既定は ULMO（lzma）。ULFO（lzfse）との比較は PR の説明の測定を参照（ADR 0080 §5.1 は測って決めるとしている）。
+# 圧縮の形（--format）の既定は ULFO（lzfse。2026-11-23 ユーザー決定）。ULMO（lzma）は、大きさとマウントの時間を測ってから決める
+# （ADR 0080 §5.1 は測って決めるとしている。測るまでは --format ULMO で選べる）。
 set -euo pipefail
 # shellcheck source=lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-readonly DEFAULT_FORMAT=ULMO
+readonly DEFAULT_FORMAT=ULFO
 readonly DEFAULT_VOLNAME=ikari
 APP=""
 OUT_DMG=""
@@ -24,7 +25,7 @@ while [[ $# -gt 0 ]]; do
     --out) [[ $# -ge 2 ]] || { echo "error: --out に値がありません" >&2; exit 64; }; OUT_DMG="$2"; shift ;;
     --format) FORMAT="${2:-}"; shift ;;
     --volname) VOLNAME="${2:-}"; shift ;;
-    -h | --help) sed -n '2,11p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h | --help) sed -n '2,12p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) die "不明な引数: $1" ;;
   esac
   shift

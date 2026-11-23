@@ -31,8 +31,13 @@ const SUDACHI_RAW_URL: &str =
     "http://sudachi.s3-website-ap-northeast-1.amazonaws.com/sudachidict-raw";
 const CHIVE_URL_BASE: &str = "https://sudachi.s3.ap-northeast-1.amazonaws.com/chive";
 const EMOJI_URL_BASE: &str = "https://raw.githubusercontent.com/iamcal/emoji-data";
-const ABR_URL: &str = "https://data.address-br.digital.go.jp/mt_town/mt_town_all.csv.zip";
-const POSTAL_URL_BASE: &str = "https://www.arcgis.com/sharing/rest/content/items";
+/// ABR の 2 つの zip は、このリポジトリの Release に置いた写しから取る（2026-11-23 ユーザー決定。ADR 0080 §9.3 の更新）。
+/// 配信元（町字: data.address-br.digital.go.jp、郵便番号: dataset.address-br.digital.go.jp の項目）は、
+/// GitHub のランナー（Azure の IP）に 403 を返す。しかも配信元は版を持たずに上書きされ、固定の sha256 と合わなくなる。
+/// 写しは固定の sha256 の中身そのもの（Release は変更できない設定）。ABR は PDL1.0 で再配布できる。
+/// 更新するときは、新しい zip を測り、`abr-mirror-<日付>` の Release を作り、下の URL と sha256 を直す
+const ABR_MIRROR_BASE: &str =
+    "https://github.com/ikari-zen/ikari-ime/releases/download/abr-mirror-20261025";
 const ZENZ_URL: &str =
     "https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf/resolve/main/ggml-model-Q5_K_M.gguf";
 
@@ -460,13 +465,14 @@ impl Fetcher<'_> {
             "{}.zip",
             csv.file_name().unwrap_or_default().to_string_lossy()
         ));
-        self.ensure_extracted(&csv, SHA_ABR_CSV, &zip, SHA_ABR_ZIP, ABR_URL, extract_zip)
+        let url = format!("{ABR_MIRROR_BASE}/mt_town_all.csv.zip");
+        self.ensure_extracted(&csv, SHA_ABR_CSV, &zip, SHA_ABR_ZIP, &url, extract_zip)
     }
 
     fn fetch_postal(&mut self) -> Result<(), Failure> {
         let dir = self.raw.join(self.get("ABR_DIR_NAME")?);
         let csv = self.raw.join(self.get("ABR_POSTAL_CSV")?);
-        let url = format!("{POSTAL_URL_BASE}/{}/data", self.get("ABR_POSTAL_ITEM_ID")?);
+        let url = format!("{ABR_MIRROR_BASE}/abr_post_code.zip");
         self.ensure_extracted(
             &csv,
             SHA_POSTAL_CSV,
