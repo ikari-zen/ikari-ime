@@ -7,6 +7,7 @@
 //! - `verify`: 束の検証（形、大きさ、sha256、形式の版、既知のモデル、古い版）
 //! - `models`: アプリに埋めた既知のモデルの表
 //! - `model_list`: 入っている自由指定のモデルの一覧（`models/MANIFEST.json`。D-4）
+//! - `platform`: この OS の製品で自由指定のモデルを出すか（エンジンと画面の出し分けが同じ値を読む）
 //! - `journal`: 入れ替えの手順の記録（`inbox/.journal.json`）
 //! - `sha256`: ストリームでの sha256
 //! - `stage`: 取得・取り込みしたモデルの束を inbox に作る（ADR 0076）
@@ -20,6 +21,7 @@ pub mod journal;
 pub mod manifest;
 pub mod model_list;
 pub mod models;
+pub mod platform;
 pub mod profile;
 pub mod sha256;
 pub mod stage;
