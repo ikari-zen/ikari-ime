@@ -180,16 +180,14 @@ jobs:
           cargo run --locked --release --quiet --package xtask -- dict --data "$DATA_DIR"
           cat "$DATA_DIR/build/dict/BUILD_INFO"
           df -h "$RUNNER_TEMP"
-      # 同梱する物だけを並べ直す（元データは渡さない）。足りない物があれば、ここで止める
+      # 同梱する物の元（辞書の出力とモデル）だけを並べ直す（元データは渡さない）。どのファイルを束に置くかは
+      # macos/scripts/lib-data.sh（足りなければ build.sh が止まる）と xtask/src/scan/macos.rs の表が決める（ここに一覧を重ねて持たない）
       - name: 同梱する物を並べ、sha256 の一覧を作る
         run: |
           set -euo pipefail
           out="$BUNDLE_DIR/data"
-          mkdir -p "$out/build/dict" "$out/raw"
-          for f in grammar.bin system.dict vectors.bin emoji.tsv postal.tsv BUILD_INFO; do
-            test -s "$DATA_DIR/build/dict/$f" || { echo "missing build/dict/$f" >&2; exit 1; }
-            cp "$DATA_DIR/build/dict/$f" "$out/build/dict/$f"
-          done
+          mkdir -p "$out/build" "$out/raw"
+          cp -R "$DATA_DIR/build/dict" "$out/build/dict"
           cp -R "$DATA_DIR/raw/zenz" "$out/raw/zenz"
           (cd "$out" && find . -type f | LC_ALL=C sort | xargs sha256sum) > "$BUNDLE_DIR/data.sha256"
           cat "$BUNDLE_DIR/data.sha256"
