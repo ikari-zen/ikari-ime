@@ -73,12 +73,14 @@
 
 ## 2. 公開の操作（作者が行う。エージェントはしない）
 
-- [ ] 作者が、GitHub のリポジトリの Settings → General → Danger Zone の **Change visibility** から、Public に切り替える。
-- [ ] 切り替えたら、ログインしていないブラウザで、リポジトリの URL が開けることを確かめる。
+- [x] 作者が、GitHub のリポジトリの Settings → General → Danger Zone の **Change visibility** から、Public に切り替える。
+- [x] 切り替えたら、ログインしていないブラウザで、リポジトリの URL が開けることを確かめる。
 
 ## 3. 公開のあと、すぐ
 
-- [ ] **外来語の一覧の固定**（PR #235、ブランチ `feat/webwords-pin-20261101`）: マージの前に、main の最新を取り込み（`gh pr update-branch 235`）、フルの `scripts/check.sh` を流して `CHECK_EXIT=0` を確かめる。マージは、作者の方針に沿って行う。
+（2026-11-23 に、GitHub の設定を `gh` で確かめて、済んだものにチェックを付けた。未確認のものは未チェックのまま）
+
+- [x] **外来語の一覧の固定**（PR #235、ブランチ `feat/webwords-pin-20261101`）: マージの前に、main の最新を取り込み（`gh pr update-branch 235`）、フルの `scripts/check.sh` を流して `CHECK_EXIT=0` を確かめる。マージは、作者の方針に沿って行う。
 - [ ] 認証なしで取得できること。公開前は認証なしの curl が 404 になるので、この確認は公開のあとにしかできない。
 
   ```sh
@@ -87,20 +89,20 @@
 
   失敗したら、固定した URL と sha256（`scripts/lib.sh`）を確かめる。
 - [ ] Settings → Code security（Advanced Security）で、次を有効にする。
-  - [ ] Dependency graph と **Dependabot alerts**（設定ファイルは `.github/dependabot.yml`。週 1 回、更新の PR を出す）
-  - [ ] **Secret scanning** と **Push protection**
-  - [ ] 依存の定期検査（`.github/workflows/audit.yml`。週 1 回の `cargo audit`）を、Actions の画面から手動で 1 回動かして、通ることを確かめる。失敗の通知が届く設定（Settings → Notifications）も見る。
-  - [ ] Code scanning（CodeQL。`.github/workflows/codeql.yml` が main への push と PR、週 1 回で動く）の最初の結果を確かめる
+  - [x] Dependency graph と **Dependabot alerts**（設定ファイルは `.github/dependabot.yml`。週 1 回、更新の PR を出す）
+  - [x] **Secret scanning** と **Push protection**
+  - [x] 依存の定期検査（`.github/workflows/audit.yml`。週 1 回の `cargo audit`）を、Actions の画面から手動で 1 回動かして、通ることを確かめる。失敗の通知が届く設定（Settings → Notifications）も見る。
+  - [x] Code scanning（CodeQL。`.github/workflows/codeql.yml` が main への push と PR、週 1 回で動く）の最初の結果を確かめる
 - [ ] **ブランチ保護**（Settings → Rules → Rulesets、または Branches）。今は、main への直接のコミットと push を、手元の `.githooks/`（`git config core.hooksPath .githooks` で有効）と、Claude Code のフックで止めている。これらは手元でしか効かないので、GitHub の設定でも止める。
-  - [ ] main への直接の push を禁止する（PR を必須にする）。
+  - [x] main への直接の push を禁止する（PR を必須にする）。
   - [x] 必要なチェックに `check`（`.github/workflows/ci.yml`。macOS ランナーで `scripts/check.sh` 全体を流す）を入れた（2026-11-11 作者決定。#290）。最新の main を取り込んだものだけ通す（strict）。Ruleset「protect main」に例外（バイパス）は置かない（作者も、`check` が通っていないものはマージできない）。手元の `CHECK_EXIT=0` の確認は、引き続き行う。
-  - [ ] マージの方法は squash だけにする（Settings → General → Pull Requests）。マージ後にブランチを自動で消す。
-  - [ ] force push と、main の削除を禁止する。
+  - [x] マージの方法は squash だけにする（Settings → General → Pull Requests）。マージ後にブランチを自動で消す。
+  - [x] force push と、main の削除を禁止する。
 - [x] **CI を足した**（#290、PR #292）。macOS ランナーで `scripts/check.sh` 全体が通る。テストの時間は `IKARI_TEST_TIME_SCALE=5`（CONTRIBUTING.md）。
 - [ ] リポジトリの説明（About）とトピックを設定する。例: 説明は「文脈を使って同音異義語を選び分ける日本語入力メソッド（macOS）」、トピックは `ime`、`japanese`、`macos`、`input-method`、`rust`、`swift`。
 - [ ] Issue テンプレート（`.github/ISSUE_TEMPLATE/`。不具合の報告、作業の項目）が、ログインしていない人にも見える形で出ること。`blank_issues_enabled` は今 `true`（テンプレートなしの Issue も可）。このままにする（2026-11-10 作者決定）。
-- [ ] **Discussions は使わない**（Settings → General → Features で Discussions がオフのまま）。質問と提案は Issue で受ける。
-- [ ] Security タブの **Private vulnerability reporting** を有効にする（[SECURITY.md](../SECURITY.md) と [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) の連絡先がこれなので、有効でないと届かない）。
+- [x] **Discussions は使わない**（Settings → General → Features で Discussions がオフのまま）。質問と提案は Issue で受ける。
+- [x] Security タブの **Private vulnerability reporting** を有効にする（[SECURITY.md](../SECURITY.md) と [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) の連絡先がこれなので、有効でないと届かない）。
 - [ ] 最初の数日は、新しい Issue と PR を見て、個人的な文章が書かれていたら、本文を編集してもらう。
 
 ## 4. ビルド済みの配布を作るとき（今回はしない）
