@@ -16,6 +16,7 @@ pub mod vectors;
 
 mod lattice;
 mod nbest;
+mod regular_file;
 
 pub use analysis::{
     AnalyzedContext, CONTEXT_WINDOW_CHARS, ContextAnalyzer, ContextToken, LatticeContextAnalyzer,

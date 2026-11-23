@@ -17,6 +17,10 @@ jiff.workspace = true
 # この crate では、データの場所の環境変数（`IKARI_USER_DIR`）。CLI と評価は、これを付けて使う
 dev-knobs = []
 
+# 通常ファイルの検査で、開くときに止まらない印（O_NONBLOCK）に使う
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 # Windows のデータのフォルダの ACL（`src/user/acl.rs`）だけが使う。Win32 の関数と型の宣言だけ
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, features = [

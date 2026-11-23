@@ -3,7 +3,6 @@
 //! 開くときはヘッダとセクション範囲、`dict_id` の照合だけを行う（O(1)）。行は触れたページだけが常駐する。
 //! 読み出しは範囲付きで、壊れたファイルでもパニックしない。
 
-use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -20,12 +19,7 @@ struct MmapVectors {
 
 /// dict_id が system.dict のものと一致しなければエラー。
 pub fn open_vectors(path: &Path, dict_id: u64) -> Result<Arc<dyn WordVectors>, DictError> {
-    let file = File::open(path).map_err(|e| {
-        DictError::Io(std::io::Error::new(
-            e.kind(),
-            format!("cannot open {}: {e}", path.display()),
-        ))
-    })?;
+    let file = crate::regular_file::open_regular_file(path).map_err(DictError::Io)?;
     if file.metadata()?.len() == 0 {
         return Err(FormatError::Truncated {
             what: "vectors.bin",
