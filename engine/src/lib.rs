@@ -75,8 +75,8 @@ use crate::cache::{
 use crate::connection::{ConnectionIds, SessionKey};
 use crate::context_limits::ContextLimits;
 use crate::convert::candidate_kind;
-use crate::data::{DataWatch, SaveState, load_emoji_reply};
-use crate::data_location::{DataLocations, DataStatus, LocationKind};
+use crate::data::{DataWatch, SaveState, emoji_table_valid, load_emoji_reply, postal_table_valid};
+use crate::data_location::{DataLocations, DataStatus, LocationKind, TableChoice};
 use crate::log::{EngineLog, LOG_DIR_NAME, RUN_MARK_FILE_NAME};
 use crate::segments::{LookJob, LookaheadQueue, RealSeam, SegEntry, SegmentSeam, layout_reply};
 use crate::session::Session;
@@ -120,6 +120,8 @@ const NEVER_UNLOAD_SECS: u64 = 315_360_000;
 const KIND_DATA_LOCATION: &str = "data_location";
 /// 辞書の組を検査に落とした行（`dict_reject location=<語> reason=<語>`。次の場所を使った）
 const KIND_DICT_REJECT: &str = "dict_reject";
+/// 表（郵便番号・絵文字）を検査に落とした行（`table_reject table=<表の名前> location=<語>`。次の場所を使った）
+const KIND_TABLE_REJECT: &str = "table_reject";
 /// `data_location` の行で、LM を読まないときの語
 const NO_MODEL_WORD: &str = "none";
 
@@ -349,12 +351,17 @@ impl Engine {
         };
         // 郵便番号の表も、上から順に置かれている最初の場所（§3.2）。組み立て直すたびに選び直す
         // （利用者が後から置いた・消した表に合わせる）
-        opts.postal_tsv = Some(locations.table_path(ikari_core::POSTAL_TSV_FILE_NAME));
+        let postal = locations.select_table(ikari_core::POSTAL_TSV_FILE_NAME, postal_table_valid);
+        opts.postal_tsv = Some(postal.path.clone());
         let stack = build_stack(&paths, &opts).map_err(|e| EngineError::Open(e.to_string()))?;
         let rebuild_locations = locations.clone();
         let rebuild: StackBuilder = Box::new(move |reuse| {
             let mut opts = opts.clone();
-            opts.postal_tsv = Some(rebuild_locations.table_path(ikari_core::POSTAL_TSV_FILE_NAME));
+            opts.postal_tsv = Some(
+                rebuild_locations
+                    .select_table(ikari_core::POSTAL_TSV_FILE_NAME, postal_table_valid)
+                    .path,
+            );
             build_stack_with(&paths, &opts, reuse)
         });
         let status = DataStatus {
@@ -376,6 +383,9 @@ impl Engine {
             loading_mark,
             Some(OpenedData { locations, status }),
         );
+        engine
+            .inner
+            .record_table_rejects(ikari_core::POSTAL_TSV_FILE_NAME, &postal);
         for (kind, reason) in &dict.rejects {
             engine.inner.record_dict_reject(*kind, *reason);
         }
@@ -436,11 +446,16 @@ impl Engine {
         };
         let watch = data_dir.as_deref().map(DataWatch::new).map(Mutex::new);
         let (locations, data_status) = opened.map(|o| (o.locations, o.status)).unzip();
-        let emoji_path = match &locations {
-            Some(locations) => Some(locations.table_path(ikari_core::EMOJI_TSV_FILE_NAME)),
-            None => data_dir.as_deref().map(dispatch::emoji_tsv_path_in),
+        let emoji_choice = match &locations {
+            Some(locations) => {
+                Some(locations.select_table(ikari_core::EMOJI_TSV_FILE_NAME, emoji_table_valid))
+            }
+            None => data_dir.as_deref().map(|dir| TableChoice {
+                path: dispatch::emoji_tsv_path_in(dir),
+                rejects: Vec::new(),
+            }),
         };
-        let emoji = load_emoji_reply(emoji_path.as_deref());
+        let emoji = load_emoji_reply(emoji_choice.as_ref().map(|c| c.path.as_path()));
         let admin_dir = data_dir.clone();
         let learning_quarantined = AtomicBool::new(stack.meta.learning_quarantined.is_some());
         let inner = Arc::new(Inner {
@@ -482,6 +497,9 @@ impl Engine {
         // 前回の終わり方は、このエンジンの最初の行にする（ワーカーを起こす前に書く）
         if let Some(prev) = &prev_exit {
             inner.note_prev_exit(prev);
+        }
+        if let Some(choice) = &emoji_choice {
+            inner.record_table_rejects(ikari_core::EMOJI_TSV_FILE_NAME, choice);
         }
         let mut workers = Vec::new();
         for (name, run) in [
@@ -774,10 +792,26 @@ impl Inner {
     /// 絵文字の表を読み直す場所。`watched` は見張っている利用者のデータの場所の `emoji.tsv`（§3.2: 置かれていれば
     /// それ、無ければ同梱の場所の物）
     pub(crate) fn emoji_table_path(&self, watched: &Path) -> PathBuf {
-        self.locations.as_ref().map_or_else(
-            || watched.to_path_buf(),
-            |l| l.table_path(ikari_core::EMOJI_TSV_FILE_NAME),
-        )
+        let Some(locations) = self.locations.as_ref() else {
+            return watched.to_path_buf();
+        };
+        let choice = locations.select_table(ikari_core::EMOJI_TSV_FILE_NAME, emoji_table_valid);
+        self.record_table_rejects(ikari_core::EMOJI_TSV_FILE_NAME, &choice);
+        choice.path
+    }
+
+    /// `table_reject table=<表の名前> location=<語>`（検査に落とした場所ごと。パスは書かない）
+    fn record_table_rejects(&self, file_name: &str, choice: &TableChoice) {
+        for kind in &choice.rejects {
+            let note = format!("table={file_name} location={}", kind.as_word());
+            self.log.record_note(
+                KIND_TABLE_REJECT,
+                0,
+                self.lm_state_name(),
+                None,
+                Some(&note),
+            );
+        }
     }
 
     /// `dict_reject location=<語> reason=<語>`（パスは書かない）

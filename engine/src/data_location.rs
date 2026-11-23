@@ -104,14 +104,33 @@ impl DataLocations {
     }
 
     /// 郵便番号や絵文字の表（`dict/` の下のファイル 1 つ）を読む場所（§3.2 の `postal.tsv`、`emoji.tsv` の行）。
-    /// 上から順に、普通のファイルがある最初の場所。どこにも無ければ利用者のデータの場所（読めば空の表。今と同じ）。
-    /// 表は読むときに行を検査し、壊れた表は空の表になる（今と同じ）ので、ここでは置かれているかだけを見る
-    pub fn table_path(&self, file_name: &str) -> PathBuf {
-        self.iter()
-            .map(|loc| loc.dict_dir().join(file_name))
-            .find(|path| path.is_file())
-            .unwrap_or_else(|| self.user.dict_dir().join(file_name))
+    /// 上から順に、普通のファイルがあり、`valid`（実際に読んで検査する）に通った最初の場所（ADR 0080 §3.2）。
+    /// 検査に落とした場所は `rejects` に入れる（呼び出し側が固定の語でログに書く。パスは書かない）。
+    /// どこにも通る物が無ければ利用者のデータの場所（読めば空の表。今と同じ）
+    pub fn select_table(&self, file_name: &str, valid: impl Fn(&Path) -> bool) -> TableChoice {
+        let mut rejects = Vec::new();
+        for loc in self.iter() {
+            let path = loc.dict_dir().join(file_name);
+            if !path.is_file() {
+                continue;
+            }
+            if valid(&path) {
+                return TableChoice { path, rejects };
+            }
+            rejects.push(loc.kind);
+        }
+        TableChoice {
+            path: self.user.dict_dir().join(file_name),
+            rejects,
+        }
     }
+}
+
+/// 表の選んだ場所と、検査に落とした場所
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TableChoice {
+    pub path: PathBuf,
+    pub rejects: Vec<LocationKind>,
 }
 
 /// どちらの場所の物を使っているか（§3.2 の状態。部品ごと）
@@ -264,25 +283,64 @@ mod tests {
         assert_eq!(bundled_data_dir_for_exe(&exe), None);
     }
 
+    /// 中身が "ok" の表だけが検査に通る、という試験用の検査
+    fn is_ok(path: &Path) -> bool {
+        std::fs::read(path).is_ok_and(|b| b == b"ok")
+    }
+
     #[test]
-    fn tables_come_from_the_first_location_that_has_them() {
+    fn tables_come_from_the_first_location_that_passes() {
         let user = tempfile::tempdir().unwrap();
         let bundled = tempfile::tempdir().unwrap();
         let locs = DataLocations::new(user.path(), Some(bundled.path()));
         let name = "postal.tsv";
         let user_path = user.path().join("dict").join(name);
         let bundled_path = bundled.path().join("dict").join(name);
-        // どこにも無い → 利用者の場所（空の表。今と同じ）
-        assert_eq!(locs.table_path(name), user_path);
-        std::fs::create_dir_all(bundled_path.parent().unwrap()).unwrap();
-        std::fs::write(&bundled_path, b"").unwrap();
-        assert_eq!(locs.table_path(name), bundled_path);
-        std::fs::create_dir_all(user_path.parent().unwrap()).unwrap();
-        std::fs::write(&user_path, b"").unwrap();
-        assert_eq!(locs.table_path(name), user_path);
+        let choice = |locs: &DataLocations| locs.select_table(name, is_ok);
+        // どこにも無い → 利用者の場所（空の表。今と同じ）。落ちた場所は無い
         assert_eq!(
-            DataLocations::new(user.path(), None).table_path("emoji.tsv"),
+            choice(&locs),
+            TableChoice {
+                path: user_path.clone(),
+                rejects: vec![]
+            }
+        );
+        std::fs::create_dir_all(bundled_path.parent().unwrap()).unwrap();
+        std::fs::write(&bundled_path, b"ok").unwrap();
+        assert_eq!(choice(&locs).path, bundled_path);
+        std::fs::create_dir_all(user_path.parent().unwrap()).unwrap();
+        std::fs::write(&user_path, b"ok").unwrap();
+        assert_eq!(choice(&locs).path, user_path);
+        assert_eq!(
+            DataLocations::new(user.path(), None)
+                .select_table("emoji.tsv", is_ok)
+                .path,
             user.path().join("dict").join("emoji.tsv")
+        );
+    }
+
+    /// 利用者の表が壊れていれば同梱の表に落ち、落とした場所を知らせる。両方壊れていれば利用者の場所
+    #[test]
+    fn a_broken_table_falls_back_and_is_reported() {
+        let user = tempfile::tempdir().unwrap();
+        let bundled = tempfile::tempdir().unwrap();
+        let locs = DataLocations::new(user.path(), Some(bundled.path()));
+        let name = "postal.tsv";
+        let user_path = user.path().join("dict").join(name);
+        let bundled_path = bundled.path().join("dict").join(name);
+        std::fs::create_dir_all(user_path.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(bundled_path.parent().unwrap()).unwrap();
+        std::fs::write(&user_path, b"broken").unwrap();
+        std::fs::write(&bundled_path, b"ok").unwrap();
+        let chosen = locs.select_table(name, is_ok);
+        assert_eq!(chosen.path, bundled_path);
+        assert_eq!(chosen.rejects, vec![LocationKind::User]);
+        std::fs::write(&bundled_path, b"broken").unwrap();
+        let chosen = locs.select_table(name, is_ok);
+        assert_eq!(chosen.path, user_path);
+        assert_eq!(
+            chosen.rejects,
+            vec![LocationKind::User, LocationKind::Bundled]
         );
     }
 }
