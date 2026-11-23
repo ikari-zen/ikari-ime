@@ -6,6 +6,10 @@ use ikari_stack::{StackPaths, build_stack};
 use super::*;
 
 const FAKE_EXE_STEM: &str = "ikari-lm-host-fake";
+const FAKE_TRACE_DIR_ENV: &str = "IKARI_LM_HOST_FAKE_TRACE_DIR";
+const FAKE_TRACE_CHILD_ENV: &str = "IKARI_LM_HOST_FAKE_TRACE_CHILD";
+const INFERENCE_STARTED: &str = "inference-started";
+const INFERENCE_COMPLETED: &str = "inference-completed";
 /// 偽の子の台本: LM が効くと `BOOSTED`（瀕死）が 1 位になる。辞書だけなら `BASE_TOP`（品詞）
 const SCRIPT: &str = "nll.瀕死=0\nnll.品詞=20\n";
 
@@ -103,6 +107,15 @@ impl HostEngine {
             .unwrap_or_default()
             .lines()
             .count()
+    }
+
+    fn inference_count(trace_dir: &Path, event: &str) -> usize {
+        let path = trace_dir.join(event);
+        match std::fs::read_to_string(&path) {
+            Ok(text) => text.bytes().filter(|b| *b == b'\n').count(),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => 0,
+            Err(error) => panic!("{} を読めません: {error}", path.display()),
+        }
     }
 
     /// 次の文脈の番号と文脈。左文脈は毎回変える（前の結果を使わせない）
@@ -215,44 +228,105 @@ fn a_single_crash_is_followed_by_a_restart_without_restarting_the_engine() {
 
 /// 偽の子の採点 1 回の時間（ms）。#429 の再現用。打鍵の間隔より長い推論（遅い機械）に見立てる
 const SLOW_INFER_MS: u64 = 300;
-/// 古い先行計算を頼んでから、最後の読みの先行計算を頼むまで（ms）。古い推論が走り出すのに足りる長さ
-const SUPERSEDE_AFTER_MS: u64 = 30;
 /// 偽の子の採点 1 回を分ける区切り（decode に見立てる。ADR 0074 §4 の段階 1 は区切りの間で止める）
 const SLOW_INFER_STEPS: u64 = 4;
 
 /// #429: 最後の読みの先行計算が来たら、走っている古い先行計算の印が立ち（ADR 0074 §5）、子の推論は次の区切りで止まる。
-/// 最後の読みは「古い推論の区切り 1 つ分 + 自分の推論」で LM が付く
+/// 最新の変換が返るまでに、最新の推論だけが完了し、古い推論は未完了であることを確かめる
 #[test]
 fn a_running_stale_inference_does_not_delay_the_newest_reading() {
+    if std::env::var_os(FAKE_TRACE_CHILD_ENV).is_some() {
+        let trace_dir = PathBuf::from(
+            std::env::var_os(FAKE_TRACE_DIR_ENV).expect("fake LM trace directory was not passed"),
+        );
+        run_stale_inference_check(&trace_dir);
+        return;
+    }
+
+    let trace_dir = temp_dir("lm-host-trace");
+    #[cfg(windows)]
+    {
+        let ok = std::process::Command::new("icacls")
+            .arg(&trace_dir)
+            .args(["/setintegritylevel", "(OI)(CI)L"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        assert!(ok, "icacls /setintegritylevel failed");
+    }
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "tests::lm_host::a_running_stale_inference_does_not_delay_the_newest_reading",
+            "--nocapture",
+        ])
+        .env(FAKE_TRACE_DIR_ENV, &trace_dir)
+        .env(FAKE_TRACE_CHILD_ENV, "1")
+        .output()
+        .unwrap();
+    let cleanup = std::fs::remove_dir_all(&trace_dir);
+    assert!(cleanup.is_ok(), "trace dir cleanup failed: {cleanup:?}");
+    assert!(
+        output.status.success(),
+        "state-based LM host test failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn run_stale_inference_check(trace_dir: &Path) {
     let h = HostEngine::with_script(&format!(
         "{SCRIPT}delay_ms={SLOW_INFER_MS}\ndelay_steps={SLOW_INFER_STEPS}\n"
     ));
-    // 子を起動して暖める（LM が効く）
-    wait_until(|| h.top() == BOOSTED);
+    let warmup_started = Instant::now();
+    loop {
+        if h.top() == BOOSTED {
+            break;
+        }
+        let elapsed = warmup_started.elapsed();
+        assert!(
+            elapsed < Duration::from_secs(60),
+            "LM warm-up stalled: started={} completed={} baseline=0 elapsed={elapsed:?}",
+            HostEngine::inference_count(trace_dir, INFERENCE_STARTED),
+            HostEngine::inference_count(trace_dir, INFERENCE_COMPLETED),
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    let baseline_started = HostEngine::inference_count(trace_dir, INFERENCE_STARTED);
+    let baseline_completed = HostEngine::inference_count(trace_dir, INFERENCE_COMPLETED);
 
-    // 古い読み（文脈）の先行計算。子が採点を始めるまで少し待つ
+    // 古い読み（文脈）の先行計算。偽ホストが推論を始めた状態を待つ
     let (old_rev, old_context) = h.next_context();
     h.prefetch(old_rev, &old_context);
-    std::thread::sleep(ikari_testtime::ms(SUPERSEDE_AFTER_MS));
+    let old_started_at = Instant::now();
+    loop {
+        let started = HostEngine::inference_count(trace_dir, INFERENCE_STARTED);
+        let completed = HostEngine::inference_count(trace_dir, INFERENCE_COMPLETED);
+        if started > baseline_started {
+            break;
+        }
+        let elapsed = old_started_at.elapsed();
+        assert!(
+            elapsed < Duration::from_secs(60),
+            "stale inference did not start: started={started} completed={completed} baseline_started={baseline_started} baseline_completed={baseline_completed} elapsed={elapsed:?}"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
 
     // 最後の読みの先行計算と、すぐの Space（計算中の先行計算を待つ）
     let (rev, context) = h.next_context();
-    let started = Instant::now();
     h.prefetch(rev, &context);
     let reply = h.convert_now(rev, context);
-    let elapsed = started.elapsed();
-    eprintln!(
-        "#429 newest reading: {elapsed:?} lm_applied={}",
-        reply.lm_applied
-    );
-    assert!(reply.lm_applied);
-    // 段階 1 の見込み: 自分の推論 1 回分 + 古い推論の区切り 1 つ分。余裕は推論の 1/4（プロセス間の往復を含む）。
-    // 止まらなければ、古い推論の残りを待って、ほぼ 2 回分になる
-    let limit =
-        ikari_testtime::ms(SLOW_INFER_MS + SLOW_INFER_MS / SLOW_INFER_STEPS + SLOW_INFER_MS / 4);
+    let elapsed = old_started_at.elapsed();
+    let started = HostEngine::inference_count(trace_dir, INFERENCE_STARTED);
+    let completed = HostEngine::inference_count(trace_dir, INFERENCE_COMPLETED);
     assert!(
-        elapsed < limit,
-        "{}",
-        ikari_testtime::report(elapsed, format_args!("< {limit:?}"))
+        reply.lm_applied,
+        "newest reading did not use LM: started={started} completed={completed} baseline_started={baseline_started} baseline_completed={baseline_completed} elapsed={elapsed:?}"
+    );
+    assert_eq!(
+        completed,
+        baseline_completed + 1,
+        "stale inference completed before the newest reply: started={started} completed={completed} baseline_started={baseline_started} baseline_completed={baseline_completed} elapsed={elapsed:?}"
     );
 }

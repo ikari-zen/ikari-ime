@@ -38,6 +38,9 @@ const NLL_PREFIX: &str = "nll.";
 const DIE_SUFFIX: &str = ".die";
 const STARTS_SUFFIX: &str = ".starts";
 const NEXT_SUFFIX: &str = ".next";
+const TRACE_DIR_ENV: &str = "IKARI_LM_HOST_FAKE_TRACE_DIR";
+const INFERENCE_STARTED: &str = "inference-started";
+const INFERENCE_COMPLETED: &str = "inference-completed";
 const FOREVER: Duration = Duration::from_secs(3600);
 
 #[derive(Default)]
@@ -70,12 +73,29 @@ struct FakeScorer {
     die_flag: PathBuf,
     /// `--gpu on` で起動し、台本が `die_on_gpu=1`
     die_now: bool,
+    trace_dir: Option<PathBuf>,
     answered: u64,
 }
 
 impl FakeScorer {
     fn reached(&self, key: &str) -> bool {
         self.script.number(key).is_some_and(|n| self.answered >= n)
+    }
+
+    fn record_inference(&self, event: &str) {
+        let Some(dir) = &self.trace_dir else {
+            return;
+        };
+        let path = dir.join(event);
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .unwrap_or_else(|error| panic!("{} を開けません: {error}", path.display()));
+        writeln!(file, "1")
+            .unwrap_or_else(|error| panic!("{} に書けません: {error}", path.display()));
+        file.flush()
+            .unwrap_or_else(|error| panic!("{} を flush できません: {error}", path.display()));
     }
 }
 
@@ -98,6 +118,7 @@ impl LmScorer for FakeScorer {
             let _ = out.flush();
             thread::sleep(FOREVER);
         }
+        self.record_inference(INFERENCE_STARTED);
         if let Some(ms) = self.script.number("delay_ms") {
             let steps = self.script.number("delay_steps").unwrap_or(1).max(1);
             for _ in 0..steps {
@@ -111,7 +132,7 @@ impl LmScorer for FakeScorer {
             return Err(LmError::Inference("fake failure".to_owned()));
         }
         self.answered += 1;
-        Ok(candidates
+        let scores = candidates
             .iter()
             .map(|c| {
                 self.script
@@ -120,7 +141,9 @@ impl LmScorer for FakeScorer {
                     .and_then(|v| v.parse().ok())
                     .unwrap_or(c.chars().count() as f32)
             })
-            .collect())
+            .collect();
+        self.record_inference(INFERENCE_COMPLETED);
+        Ok(scores)
     }
 }
 
@@ -148,6 +171,7 @@ fn main() -> ExitCode {
         path.push(DIE_SUFFIX);
         PathBuf::from(path)
     };
+    let trace_dir = std::env::var_os(TRACE_DIR_ENV).map(PathBuf::from);
     let mut starts = model.clone().into_os_string();
     starts.push(STARTS_SUFFIX);
     if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -200,6 +224,7 @@ fn main() -> ExitCode {
             script,
             die_flag,
             die_now,
+            trace_dir: trace_dir.clone(),
             answered: 0,
         };
         Ok((Box::new(scorer) as Box<dyn LmScorer>, info))

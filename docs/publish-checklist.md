@@ -95,10 +95,10 @@
   - [x] Code scanning（CodeQL。`.github/workflows/codeql.yml` が main への push と PR、週 1 回で動く）の最初の結果を確かめる
 - [ ] **ブランチ保護**（Settings → Rules → Rulesets、または Branches）。今は、main への直接のコミットと push を、手元の `.githooks/`（`git config core.hooksPath .githooks` で有効）と、Claude Code のフックで止めている。これらは手元でしか効かないので、GitHub の設定でも止める。
   - [x] main への直接の push を禁止する（PR を必須にする）。
-  - [x] 必要なチェックに `check`（`.github/workflows/ci.yml`。macOS ランナーで `scripts/check.sh` 全体を流す）を入れた（2026-11-11 作者決定。#290）。最新の main を取り込んだものだけ通す（strict）。Ruleset「protect main」に例外（バイパス）は置かない（作者も、`check` が通っていないものはマージできない）。手元の `CHECK_EXIT=0` の確認は、引き続き行う。
+  - [x] 必要なチェックに `check`（と `rust`。`.github/workflows/ci.yml`。macOS ランナーで `scripts/check.sh --swift-only`。XCFramework の鮮度、swift test、entitlement の検査。文書・Rust の検査は Ubuntu の `rust` job が `--rust-only` で流す）を入れた（2026-11-11 作者決定。#290）。最新の main を取り込んだものだけ通す（strict）。Ruleset「protect main」に例外（バイパス）は置かない（作者も、`check` が通っていないものはマージできない）。手元の `CHECK_EXIT=0` の確認は、引き続き行う。
   - [x] マージの方法は squash だけにする（Settings → General → Pull Requests）。マージ後にブランチを自動で消す。
   - [x] force push と、main の削除を禁止する。
-- [x] **CI を足した**（#290、PR #292）。macOS ランナーで `scripts/check.sh` 全体が通る。テストの時間は `IKARI_TEST_TIME_SCALE=5`（CONTRIBUTING.md）。
+- [x] **CI を足した**（#290、PR #292。#295 で分割）。`rust`（Ubuntu。`--rust-only`）と `check`（macOS。`--swift-only`）の 2 つに分けて流す。Ruleset「protect main」の必須チェックは `check` と `rust`（strict）。`deny`、`windows`、`windows-artifact` は必須外（2026-11-23 時点の Ruleset の設定）。テストの時間は `IKARI_TEST_TIME_SCALE=5`（CONTRIBUTING.md）。
 - [ ] リポジトリの説明（About）とトピックを設定する。例: 説明は「文脈を使って同音異義語を選び分ける日本語入力メソッド（macOS）」、トピックは `ime`、`japanese`、`macos`、`input-method`、`rust`、`swift`。
 - [ ] Issue テンプレート（`.github/ISSUE_TEMPLATE/`。不具合の報告、作業の項目）が、ログインしていない人にも見える形で出ること。`blank_issues_enabled` は今 `true`（テンプレートなしの Issue も可）。このままにする（2026-11-10 作者決定）。
 - [x] **Discussions は使わない**（Settings → General → Features で Discussions がオフのまま）。質問と提案は Issue で受ける。
@@ -124,7 +124,7 @@
 - [ ] README の冒頭（「ビルド済みのアプリは、まだ配っていません」）と SECURITY.md の「配布」の節の同じ行を、配布に合わせて書き直す。README には、配布元が Releases だけであること、sha256 の比べ方、証明と署名の確かめ方、OS の警告の案内（実機で確かめた手順だけ。守りを切る手順は書かない）、Watch の案内を書く。
 - [ ] 配布物と SECURITY.md の「約束すること」が合っていること（通信しない、秘密の欄、ログ）。
 - [ ] ウイルス対策ソフトの検査: 配る物（未署名）を、Windows の VM の Microsoft Defender（SmartScreen を含む）で検査し、検出や警告が出ないことを確かめる。出たら、結果を記録し、配るか決める。作者の環境の ESET では検知されなかった（2026-11-17。製品と版が限られた 1 件の参考値で、保証ではない）。守りを切る手順は書かない。
-- [ ] 誤検出の報告の窓口: 公開後にウイルス対策ソフトの誤検出の報告が来たときの対応（各社への誤検出の報告）を、SECURITY.md か README に 1 行書く。
+- [x] 誤検出の報告の窓口: 公開後にウイルス対策ソフトの誤検出の報告が来たときの対応（各社への誤検出の報告）を、SECURITY.md か README に 1 行書く。（[SECURITY.md](../SECURITY.md) の「配布」に 1 行追記し、[antivirus-false-positive.md](antivirus-false-positive.md) に案内・確かめ方・Issue 窓口を下書き済み。公開鍵のありか等の未確定事項は未定）
 - [ ] [CHANGELOG.md](../CHANGELOG.md) の 0.1.0 のリリース日を入れる。
 - [ ] 配布物に含める依存と同梱データのライセンス表示を確かめる（`cargo xtask licenses --check`、[THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)、および同梱データのそばの `NOTICE.txt`・`licenses/`。元ファイルは [dist-notices/NOTICE.txt](dist-notices/NOTICE.txt)、パッケージへの組み込み詳細はレーン 4〜6 未実装のため**未定**）。
 - [ ] 作者が、下書きの Release を確かめて公開する。
