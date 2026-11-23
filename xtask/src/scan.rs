@@ -3,6 +3,7 @@
 //!   - 開発用の口の文字列（環境変数の名前、計測の印、デバッグ出力の語）が入っていないこと
 //!   - llama.cpp が入っていないこと（LM は別プロセスの `ikari-lm-host` だけが持つ。ADR 0072 §5）
 //!   - 測定ツール（`tools/npu-probe`。ADR 0075 §4）の印が入っていないこと（製品の外の道具）
+//!   - 通信の DLL（`ws2_32`、`winhttp` など）を取り込んでいないこと（`ikari-data.exe` だけ名前で外す）。PE の import 表の解析は 2 歩目
 //!   - 動的な C ランタイムを取り込んでいないこと（`crt-static` が効いていること。取り込む DLL の名前は、
 //!     PE の import 表に ASCII で入っているので、名前の有無で見る）
 //!
@@ -48,6 +49,22 @@ const DYNAMIC_CRT: &[&str] = &[
     "concrt",
     "vcomp",
 ];
+
+/// 取り込んではいけない通信の DLL の名前の前置き（ADR 0066 §6.2 の L1。`.dll` で終わる名前のときだけ数える）。
+/// 取得の子（`ikari-data.exe`。ADR 0076）だけは、名前で検査から外す
+const NETWORK_DLLS: &[&str] = &[
+    "ws2_32",
+    "wsock32",
+    "mswsock",
+    "winhttp",
+    "wininet",
+    "dnsapi",
+    "websocket",
+    "secur32",
+];
+
+/// 通信の DLL の検査から外すファイル名（取得の子だけ。大文字小文字を区別しない）
+pub const NETWORK_EXEMPT_FILE: &str = "ikari-data.exe";
 
 /// 製品のビルドの exe と DLL に、開発用の文字列と動的な C ランタイムが無いことを調べる
 #[derive(Debug, clap::Args)]
@@ -107,7 +124,28 @@ fn check_bytes(file: &Path, bytes: &[u8]) -> Vec<String> {
             file.display()
         ));
     }
+    problems.extend(network_problems(file, bytes));
     problems
+}
+
+/// 通信の DLL を取り込んでいる問題の文（取得の子は外す）
+pub fn network_problems(file: &Path, bytes: &[u8]) -> Vec<String> {
+    let exempt = file.file_name().is_some_and(|n| {
+        n.to_string_lossy()
+            .eq_ignore_ascii_case(NETWORK_EXEMPT_FILE)
+    });
+    if exempt {
+        return Vec::new();
+    }
+    find_network_dll(bytes)
+        .into_iter()
+        .map(|name| {
+            format!(
+                "{}: 通信の DLL（`{name}`）を取り込んでいます（通信は取得の子だけが持つ。ADR 0066 §6.2・ADR 0076）",
+                file.display()
+            )
+        })
+        .collect()
 }
 
 /// 開発用の文字列のうち、`bytes` に（ASCII か UTF-16LE で）入っているもの
@@ -140,9 +178,18 @@ pub fn find_llama(bytes: &[u8]) -> Vec<&'static str> {
 /// 動的な C ランタイムの DLL 名（`vcruntime140.dll` など）で、`bytes` に（大文字小文字を区別せず）入っているもの。
 /// 名前の前置きに続く名前の文字が `.dll` で終わるときだけ数える（ほかの文字列の一部には当たらない）
 pub fn find_dynamic_crt(bytes: &[u8]) -> Vec<String> {
+    find_dll_names(bytes, DYNAMIC_CRT)
+}
+
+/// 通信の DLL の名前（`ws2_32.dll` など）で、`bytes` に入っているもの（探し方は `find_dynamic_crt` と同じ）
+pub fn find_network_dll(bytes: &[u8]) -> Vec<String> {
+    find_dll_names(bytes, NETWORK_DLLS)
+}
+
+fn find_dll_names(bytes: &[u8], prefixes: &[&str]) -> Vec<String> {
     let is_name_byte = |b: u8| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.');
     let mut found: Vec<String> = Vec::new();
-    for prefix in DYNAMIC_CRT {
+    for prefix in prefixes {
         let needle = prefix.as_bytes();
         if bytes.len() < needle.len() {
             continue;
@@ -263,6 +310,35 @@ mod tests {
         );
         assert_eq!(find_dynamic_crt(b"\0VCOMP140.DLL\0"), ["vcomp140.dll"]);
         assert_eq!(find_dynamic_crt(b"\0msvcp140_1.dll\0"), ["msvcp140_1.dll"]);
+    }
+
+    #[test]
+    fn network_dlls_are_found_ignoring_case() {
+        let bytes =
+            b"\0WS2_32.dll\0winhttp.dll\0WinInet.DLL\0dnsapi.dll\0secur32.dll\0websocket.dll\0";
+        assert_eq!(
+            find_network_dll(bytes),
+            [
+                "ws2_32.dll",
+                "winhttp.dll",
+                "wininet.dll",
+                "dnsapi.dll",
+                "websocket.dll",
+                "secur32.dll"
+            ]
+        );
+        assert!(find_network_dll(b"\0KERNEL32.dll\0 the winhttp word\0 xws2_32.dll\0").is_empty());
+    }
+
+    #[test]
+    fn only_the_data_child_may_import_network_dlls() {
+        let bytes = b"MZ WS2_32.dll secur32.dll";
+        assert_eq!(
+            check_bytes(Path::new("ikari-engine-host.exe"), bytes).len(),
+            2
+        );
+        assert!(check_bytes(Path::new("stage/IKARI-DATA.exe"), bytes).is_empty());
+        assert_eq!(check_bytes(Path::new("data.exe"), bytes).len(), 2);
     }
 
     #[test]

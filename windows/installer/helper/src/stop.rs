@@ -13,12 +13,22 @@ use ikari_pipe::name::stop_event_open_name;
 /// エンジンの exe の名前（インストール先の直下。ADR 0067 §3.1）
 pub const ENGINE_EXE: &str = "ikari-engine-host.exe";
 
-/// エンジンのあとに、残っていれば終わらせる子の exe（インストール先からの相対。ADR 0067 §3.1）。
-/// 設定画面は、利用者が開いている窓を閉じることになる（名前は `windows/settings-ui` の `AssemblyName`。ADR 0071）。
-pub const CHILD_EXES: &[&str] = &[
+/// 送信ブロック（ファイアウォールの規則とエラー報告の除外）を入れる、エンジン以外の exe（インストール先からの相対。
+/// ADR 0067 §3.1）。`ikari.iss` の `BlockedExe` と同じ並び（xtask が照らす）。取得の子は、通信するので入れない
+pub const BLOCKED_CHILD_EXES: &[&str] = &[
     "ikari-lm-host.exe",
     r"candidate\ikari-candidate.exe",
     r"settings\ikari-settings.exe",
+];
+
+/// エンジンのあとに、残っていれば終わらせる子の exe（インストール先からの相対）。送信ブロックの一覧の子に、
+/// 設定画面から短く起こされる取得の子（`ikari-data.exe`。ADR 0076）を足したもの（使用中だと置き換えが止まる）。
+/// 設定画面は、利用者が開いている窓を閉じることになる（名前は `windows/settings-ui` の `AssemblyName`。ADR 0071）。
+pub const STOP_CHILD_EXES: &[&str] = &[
+    "ikari-lm-host.exe",
+    r"candidate\ikari-candidate.exe",
+    r"settings\ikari-settings.exe",
+    "ikari-data.exe",
 ];
 
 /// 合図のあと、エンジンが自分で終わるのを待つ時間（ミリ秒）。
@@ -122,13 +132,23 @@ mod tests {
             r"C:\Users\a\AppData\Local\ikari-ime-dev\install\ikari-engine-host.exe"
         ));
         assert_eq!(
-            exe_path(r"C:\Program Files\ikari-ime\", CHILD_EXES[1]),
+            exe_path(r"C:\Program Files\ikari-ime\", STOP_CHILD_EXES[1]),
             r"C:\Program Files\ikari-ime\candidate\ikari-candidate.exe"
         );
         assert_eq!(
-            exe_path(r"C:\Program Files\ikari-ime\", CHILD_EXES[2]),
+            exe_path(r"C:\Program Files\ikari-ime\", STOP_CHILD_EXES[2]),
             r"C:\Program Files\ikari-ime\settings\ikari-settings.exe"
         );
+    }
+
+    #[test]
+    fn stop_targets_are_the_blocked_children_plus_the_data_child() {
+        for blocked in BLOCKED_CHILD_EXES {
+            assert!(STOP_CHILD_EXES.contains(blocked), "{blocked}");
+        }
+        assert!(STOP_CHILD_EXES.contains(&"ikari-data.exe"));
+        assert!(!BLOCKED_CHILD_EXES.contains(&"ikari-data.exe"));
+        assert_eq!(STOP_CHILD_EXES.len(), BLOCKED_CHILD_EXES.len() + 1);
     }
 
     #[test]

@@ -13,7 +13,7 @@
 
 - `Cargo.lock` に HTTP・TLS・ソケットの crate は無い。`deny.toml` の `[bans]` と `xtask/src/check/supply.rs` の `NET_CRATES` が同じ一覧で止めている。例外の欄 `NET_CRATES_ALLOWED` は空。`Cargo.lock` はワークスペースで 1 つなので、この検査は「どの exe に入ったか」までは見分けない。
 - `xtask/src/check/product.rs` には、「LM の子の起動は `stack/src/lm.rs` の 1 か所だけ」をソースで確かめる検査（`lm_spawn_single`）がある。同じ形で「通信の呼び出しは 1 か所だけ」を書ける。
-- `scan-product`（`xtask/src/scan.rs`）は、開発用の文字列、llama.cpp の印、動的な C ランタイムを見る。通信の DLL（`ws2_32` など）の検査は、まだ入っていない（ADR 0066 §6.2 にはある）。
+- `scan-product`（`xtask/src/scan.rs`）は、開発用の文字列、llama.cpp の印、動的な C ランタイムを見る。通信の DLL（`ws2_32`、`winhttp`、`wininet` など）は、名前の有無で見る（`ikari-data.exe` だけ名前で外す。PE の import 表の解析による許可リストは 2 歩目で、未実装）。Rust の std がほかの exe で `ws2_32` を取り込むかは、Windows の成果物で確かめる（取り込むなら、検査の形を替える）。
 - 低い整合性で子を起動するコードは `lm/src/host/os/windows.rs` にある（LM の子のため）。
 - 設定画面の核（`windows/settings`）は、書き出しと取り込みのパスを `shell-core::bridge::check_transfer_path`（絶対パスだけ、ネットワークとデバイスの場所を拒む）で確かめてから、パスだけを設定の口に送る（B-2）。
 - `resource` には、manifest の型（`Origin` は `Export`、`Release`、`Local`）、束の検証 `verify_bundle`、既知のモデルの表 `KNOWN_MODELS` がある。`Origin::User` はまだ無い（ADR 0060 §6 で足す予定）。
