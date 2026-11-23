@@ -83,6 +83,9 @@ struct FakeState: Sendable {
     var lastImportedContent = Data()
     /// 殻が `ENGINE_UNAVAILABLE` を返す（エンジンが落ちている）
     var engineUnavailable = false
+    /// `Hello` の辞書の出どころと日付（空は不明）
+    var dictSource: Ikari_Engine_V1_DictSource = .bundled
+    var dictDate = "2026-11-22"
 }
 
 final class FakeShell: @unchecked Sendable {
@@ -253,6 +256,8 @@ final class FakeShell: @unchecked Sendable {
                 reply.dictLabel = "SudachiDict Core 20260723 (fake)"
                 reply.lm = state.settings["engine.lm"] == "off" ? .lmDisabled : .lmReady
                 reply.lmDevice = state.lmDevice
+                reply.dictSource = state.dictSource
+                reply.dictDate = state.dictDate
                 $0.helloReply = reply
             }
         case .listUserDict?:

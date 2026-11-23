@@ -190,6 +190,10 @@ jobs:
           mkdir -p "$out/build" "$out/raw"
           cp -R "$DATA_DIR/build/dict" "$out/build/dict"
           cp -R "$DATA_DIR/raw/zenz" "$out/raw/zenz"
+          # 設定画面の「同梱の辞書（日付）」用に、同梱の BUILD_INFO の複製にだけ作った日付を足す（engine/src/data_location.rs の
+          # parse_build_date が読む `date=YYYY-MM-DD`）。$DATA_DIR 側の BUILD_INFO は決定的ビルドの判定に使うので変えない。
+          # 1 つの成果物を両 OS で使うので、日付も同じ（ADR 0080 §3.2・§9）
+          printf 'date=%s\n' "$(date -u +%F)" >> "$out/build/dict/BUILD_INFO"
           # ファイル以外（シンボリックリンクなど）は置かない。一覧から漏れないよう、あれば止める
           others="$(find "$out" ! -type d ! -type f)"
           test -z "$others" || { printf 'not a regular file:\n%s\n' "$others" >&2; exit 1; }

@@ -28,6 +28,45 @@ fileprivate nonisolated struct _GeneratedWithProtocGenSwiftVersion: SwiftProtobu
   typealias Version = _2
 }
 
+/// DICT_SOURCE_UNSPECIFIED: 分からない（open で開かなかったエンジン、古いエンジン）。BUNDLED: 同梱の辞書。USER: 利用者のデータの場所に入れた辞書
+public nonisolated enum Ikari_Engine_V1_DictSource: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case bundled // = 1
+  case user // = 2
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .bundled
+    case 2: self = .user
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .bundled: return 1
+    case .user: return 2
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Ikari_Engine_V1_DictSource] = [
+    .unspecified,
+    .bundled,
+    .user,
+  ]
+
+}
+
 /// LM_CAGE_NONE: 檻に届かない（macOS で檻役の口が無い・確かめに失敗した。LM なし）。LEVEL1: 段 1。LEVEL2: 段 2
 public nonisolated enum Ikari_Engine_V1_LmCage: SwiftProtobuf.Enum, Swift.CaseIterable {
   public typealias RawValue = Int
@@ -978,6 +1017,12 @@ public nonisolated struct Ikari_Engine_V1_HelloReply: Sendable {
 
   public var lmCage: Ikari_Engine_V1_LmCage = .unspecified
 
+  /// 使っている辞書の出どころと、その BUILD_INFO の日付（ADR 0080 §3.2。追加のみ）。
+  /// dict_date は YYYY-MM-DD。不明（BUILD_INFO が無い・日付の行が無い）のときは空
+  public var dictSource: Ikari_Engine_V1_DictSource = .unspecified
+
+  public var dictDate: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1914,6 +1959,10 @@ public nonisolated struct Ikari_Engine_V1_DiagTag: Sendable {
 
 fileprivate nonisolated let _protobuf_package = "ikari.engine.v1"
 
+nonisolated extension Ikari_Engine_V1_DictSource: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0DICT_SOURCE_UNSPECIFIED\0\u{1}DICT_SOURCE_BUNDLED\0\u{1}DICT_SOURCE_USER\0")
+}
+
 nonisolated extension Ikari_Engine_V1_LmCage: SwiftProtobuf._ProtoNameProviding {
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0LM_CAGE_UNSPECIFIED\0\u{1}LM_CAGE_NONE\0\u{1}LM_CAGE_LEVEL1\0\u{1}LM_CAGE_LEVEL2\0")
 }
@@ -2766,7 +2815,7 @@ nonisolated extension Ikari_Engine_V1_Hello: SwiftProtobuf.Message, SwiftProtobu
 
 nonisolated extension Ikari_Engine_V1_HelloReply: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".HelloReply"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}engine_version\0\u{3}dict_label\0\u{1}lm\0\u{3}learning_quarantined\0\u{3}lm_device\0\u{3}lm_cage\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}engine_version\0\u{3}dict_label\0\u{1}lm\0\u{3}learning_quarantined\0\u{3}lm_device\0\u{3}lm_cage\0\u{3}dict_source\0\u{3}dict_date\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2780,6 +2829,8 @@ nonisolated extension Ikari_Engine_V1_HelloReply: SwiftProtobuf.Message, SwiftPr
       case 4: try { try decoder.decodeSingularBoolField(value: &self.learningQuarantined) }()
       case 5: try { try decoder.decodeSingularEnumField(value: &self.lmDevice) }()
       case 6: try { try decoder.decodeSingularEnumField(value: &self.lmCage) }()
+      case 7: try { try decoder.decodeSingularEnumField(value: &self.dictSource) }()
+      case 8: try { try decoder.decodeSingularStringField(value: &self.dictDate) }()
       default: break
       }
     }
@@ -2804,6 +2855,12 @@ nonisolated extension Ikari_Engine_V1_HelloReply: SwiftProtobuf.Message, SwiftPr
     if self.lmCage != .unspecified {
       try visitor.visitSingularEnumField(value: self.lmCage, fieldNumber: 6)
     }
+    if self.dictSource != .unspecified {
+      try visitor.visitSingularEnumField(value: self.dictSource, fieldNumber: 7)
+    }
+    if !self.dictDate.isEmpty {
+      try visitor.visitSingularStringField(value: self.dictDate, fieldNumber: 8)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -2814,6 +2871,8 @@ nonisolated extension Ikari_Engine_V1_HelloReply: SwiftProtobuf.Message, SwiftPr
     if lhs.learningQuarantined != rhs.learningQuarantined {return false}
     if lhs.lmDevice != rhs.lmDevice {return false}
     if lhs.lmCage != rhs.lmCage {return false}
+    if lhs.dictSource != rhs.dictSource {return false}
+    if lhs.dictDate != rhs.dictDate {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

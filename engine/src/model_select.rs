@@ -78,9 +78,9 @@ pub(crate) fn user_models_offered(lm_host: bool) -> bool {
     lm_host && platform_offers_user_models()
 }
 
-/// 値は `ikari-resource` の 1 か所（画面の出し分けも同じ値を読む）。檻役だけの構成は [`crate::lm_cage::product_uses_cage`]
+/// 値は `ikari-resource` の 1 か所（画面の出し分けも同じ値を読む）。
 fn platform_offers_user_models() -> bool {
-    ikari_resource::platform::user_models_offered_on_platform(crate::lm_cage::product_uses_cage())
+    ikari_resource::platform::USER_MODELS_OFFERED
 }
 
 /// モデルの出どころ（檻の段の決め手）

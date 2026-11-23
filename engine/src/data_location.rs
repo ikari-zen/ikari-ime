@@ -143,6 +143,41 @@ pub struct DataStatus {
     pub model: Option<LocationKind>,
 }
 
+/// 辞書の組と一緒に置く、ビルドの記録のファイル名（`dict/BUILD_INFO`）
+pub const BUILD_INFO_FILE_NAME: &str = "BUILD_INFO";
+/// `BUILD_INFO` の中の、辞書を作った日の行の頭（`date=YYYY-MM-DD`。無ければ日付は不明。
+/// 今の `xtask dict` はこの行を書かない: 配る辞書を作る側（ADR 0080 §9）が足す）
+const BUILD_INFO_DATE_KEY: &str = "date=";
+/// `BUILD_INFO` を読む上限（信用しない入力。今の実物は 2KB ほど）
+const BUILD_INFO_MAX_BYTES: u64 = 64 * 1024;
+/// 日付の形 `YYYY-MM-DD` の長さ
+const BUILD_DATE_LEN: usize = 10;
+
+/// `BUILD_INFO` の本文から、辞書を作った日（`date=YYYY-MM-DD`）を取り出す。形が違えば None
+pub fn parse_build_date(text: &str) -> Option<String> {
+    let value = text
+        .lines()
+        .find_map(|l| l.strip_prefix(BUILD_INFO_DATE_KEY))?
+        .trim();
+    let ok = value.len() == BUILD_DATE_LEN
+        && value.bytes().enumerate().all(|(i, b)| match i {
+            4 | 7 => b == b'-',
+            _ => b.is_ascii_digit(),
+        });
+    ok.then(|| value.to_owned())
+}
+
+/// 辞書の置き場所（`dict/`）の `BUILD_INFO` から、辞書を作った日を読む。無い・大きすぎる・読めない・形が違うときは None（不明）
+pub fn build_date_in(dict_dir: &Path) -> Option<String> {
+    use std::io::Read;
+    let file = std::fs::File::open(dict_dir.join(BUILD_INFO_FILE_NAME)).ok()?;
+    let mut text = String::new();
+    file.take(BUILD_INFO_MAX_BYTES)
+        .read_to_string(&mut text)
+        .ok()?;
+    parse_build_date(&text)
+}
+
 /// このエンジンの同梱の場所（実行ファイルのパスから決める。R2）。見つからなければ None
 pub fn bundled_data_dir() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
@@ -191,6 +226,38 @@ pub fn data_locations(user_data_dir: &Path) -> DataLocations {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn build_date_is_read_only_in_its_exact_form() {
+        assert_eq!(
+            parse_build_date("format=1\ndate=2026-11-22\nx=1\n"),
+            Some("2026-11-22".into())
+        );
+        assert_eq!(parse_build_date("format=1\n"), None);
+        for bad in [
+            "date=",
+            "date=2026-1-2",
+            "date=2026/11/22",
+            "date=２０２６-11-22",
+            "date=2026-11-22x",
+        ] {
+            assert_eq!(parse_build_date(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn build_date_in_reads_the_file_and_is_none_when_missing() {
+        let dir = std::env::temp_dir().join(format!("ikari-build-date-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(build_date_in(&dir), None);
+        std::fs::write(
+            dir.join(BUILD_INFO_FILE_NAME),
+            "format=1\ndate=2026-11-23\n",
+        )
+        .unwrap();
+        assert_eq!(build_date_in(&dir), Some("2026-11-23".into()));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn user_location_comes_first_then_bundled() {

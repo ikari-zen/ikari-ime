@@ -61,7 +61,12 @@ message Hello { string shell_version = 1; }
 // lm_cage: LM の子の檻の段（ADR 0072 §3、ADR 0077 §6。設定画面の「檻なし」の表示と、自由指定のモデルを出すかの判断の元）。
 // 古いエンジン、まだ子を起動していないときは LM_CAGE_UNSPECIFIED（追加だけ）
 message HelloReply { string engine_version = 1; string dict_label = 2; LmState lm = 3; bool learning_quarantined = 4;
-                     LmDevice lm_device = 5; LmCage lm_cage = 6; }
+                     LmDevice lm_device = 5; LmCage lm_cage = 6;
+                     // 使っている辞書の出どころと、その BUILD_INFO の日付（ADR 0080 §3.2。追加のみ）。
+                     // dict_date は YYYY-MM-DD。不明（BUILD_INFO が無い・日付の行が無い）のときは空
+                     DictSource dict_source = 7; string dict_date = 8; }
+// DICT_SOURCE_UNSPECIFIED: 分からない（open で開かなかったエンジン、古いエンジン）。BUNDLED: 同梱の辞書。USER: 利用者のデータの場所に入れた辞書
+enum DictSource { DICT_SOURCE_UNSPECIFIED = 0; DICT_SOURCE_BUNDLED = 1; DICT_SOURCE_USER = 2; }
 // LM_CAGE_NONE: 檻に届かない（macOS で檻役の口が無い・確かめに失敗した。LM なし）。LEVEL1: 段 1。LEVEL2: 段 2
 enum LmCage { LM_CAGE_UNSPECIFIED = 0; LM_CAGE_NONE = 1; LM_CAGE_LEVEL1 = 2; LM_CAGE_LEVEL2 = 3; }
 enum LmState { LM_STATE_UNSPECIFIED = 0; LM_DISABLED = 1; LM_LOADING = 2; LM_READY = 3; LM_FAILED = 4; }

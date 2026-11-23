@@ -65,6 +65,33 @@ public struct ShellHost {
     }
 }
 
+/// 版（通常版・オフライン版）と、画面に出してよい機能（`ikari_settings_edition_capabilities`。ADR 0080 §7.2）。
+/// 判断は Rust（shell-core の edition）。Swift は値でボタンを出す・出さないを決めるだけ
+public struct EditionCapabilities: Sendable, Equatable {
+    public enum Edition: Sendable, Equatable {
+        case normal
+        case offline
+    }
+
+    public let edition: Edition
+    /// 「URL から取る」（自由指定のモデルの取得）
+    public let urlModelFetch: Bool
+    /// 「新しい版を確認」
+    public let versionCheck: Bool
+    /// 「ファイルから取り込む」
+    public let fileImport: Bool
+
+    public init(edition: Edition, urlModelFetch: Bool, versionCheck: Bool, fileImport: Bool) {
+        self.edition = edition
+        self.urlModelFetch = urlModelFetch
+        self.versionCheck = versionCheck
+        self.fileImport = fileImport
+    }
+
+    /// 値を取れないとき（FFI のないビルド、呼び出しの失敗）の値。通信する機能を出さない側に倒す
+    public static let unavailable = EditionCapabilities(edition: .normal, urlModelFetch: false, versionCheck: false, fileImport: true)
+}
+
 #if IKARI_HAS_SHELL_FFI
 
 extension ShellABIStatus {
@@ -266,6 +293,19 @@ public enum ShellSettings {
         guard status == Int32(IKARI_SHELL_OK.rawValue) else { return nil }
         return try? Ikari_Shell_V1_SettingsValidation(serializedBytes: data)
     }
+
+    /// `ikari_settings_edition_capabilities`。版と、画面に出してよい機能。失敗（panic）は nil
+    public static func editionCapabilities() -> EditionCapabilities? {
+        var out = IkariEditionCapabilities()
+        let status = ikari_settings_edition_capabilities(&out)
+        guard status == Int32(IKARI_SHELL_OK.rawValue) else { return nil }
+        let edition: EditionCapabilities.Edition = out.edition == Int32(IKARI_EDITION_OFFLINE.rawValue) ? .offline : .normal
+        return EditionCapabilities(
+            edition: edition,
+            urlModelFetch: out.url_model_fetch != 0,
+            versionCheck: out.version_check != 0,
+            fileImport: out.file_import != 0)
+    }
 }
 
 #else
@@ -298,6 +338,7 @@ public final class ShellABI {
 public enum ShellSettings {
     public static func app(_ body: Ikari_Settings_V1_AppRequest.OneOf_Body) -> Ikari_Settings_V1_AppReply.OneOf_Body? { nil }
     public static func validate(_ text: String) -> Ikari_Shell_V1_SettingsValidation? { nil }
+    public static func editionCapabilities() -> EditionCapabilities? { nil }
 }
 
 /// FFI のないビルド。配置は決められない（呼び手が代わりの値を使う）。
