@@ -84,13 +84,57 @@ jobs:
           else
             version="$DRY_RUN_VERSION"
           fi
+          # タグの版と、Cargo.toml の版（macOS のアプリと Rust のバイナリの版）が違うリリースは止める
+          if [ "$EVENT" = "push" ]; then
+            # macos/scripts/lib.sh の workspace_version と同じ式
+            cargo_version="$(sed -n '/^\[workspace\.package\]/,/^\[/{s/^version[[:space:]]*=[[:space:]]*"\(.*\)"[[:space:]]*$/\1/p;}' Cargo.toml | head -1)"
+            if [ "$cargo_version" != "$version" ]; then
+              echo "tag version '$version' does not match the workspace version '$cargo_version' in Cargo.toml" >&2
+              exit 1
+            fi
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "installer version: $version"
+
+  # 供給網と製品の静的な検査（ADR 0069 §4.1）。ビルドの前に、未通過のコミットのリリースを止める。
+  # ci.yml の deny と、scripts/check.sh --docs-only（xtask の静的検査）と同じもの。キャッシュは読まない
+  source-checks:
+    needs: verify-tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      # 履歴全体が要る（gitleaks が履歴を見る）
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # ci.yml の rust job と同じ版と sha256。導入に失敗したら（sha256 の不一致を含む）job が失敗する
+      - name: gitleaks を入れる（秘密と個人情報の検査）
+        run: |
+          set -euo pipefail
+          version=8.30.1
+          archive="gitleaks_${version}_linux_x64.tar.gz"
+          curl -sSfL -o "$RUNNER_TEMP/$archive" "https://github.com/gitleaks/gitleaks/releases/download/v${version}/${archive}"
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $RUNNER_TEMP/$archive" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/gitleaks"
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/gitleaks" gitleaks
+          echo "$RUNNER_TEMP/gitleaks" >> "$GITHUB_PATH"
+      - name: gitleaks の版を表示する
+        run: gitleaks version
+      # 版は ci.yml の deny と同じにする
+      - name: cargo-deny を入れる（版を固定）
+        run: cargo install cargo-deny --version 0.20.2 --locked
+      - name: cargo deny check
+        run: cargo deny --locked check
+      - name: 静的な検査（xtask check --docs-only）
+        run: cargo run --locked --quiet --package xtask -- check --docs-only
 
   # 配置の形（ADR 0067 §3.1）のフォルダを作り、検査して、Inno Setup でインストーラにする。手順の元は ci.yml の windows-artifact
   # （から開発用のビルドとキャッシュを除いたもの）と windows/installer/README.md
   build-windows:
-    needs: verify-tag
+    needs: [verify-tag, source-checks]
     runs-on: windows-latest
     timeout-minutes: 120
     permissions:
@@ -213,7 +257,7 @@ jobs:
           $dir | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
           & (Join-Path $dir 'dotnet.exe') --version
       # 配置の形（ADR 0067 §3.1、windows/installer/README.md）に並べる。候補窓と設定画面は自己完結で発行し、核は上の製品のビルドの DLL。
-      # NuGet は候補窓がロックのとおり（CI=true で RestoreLockedMode）。PDB は作らない（ビルド機のパスを残さない）
+      # NuGet は候補窓も設定画面も、-p:RestoreLockedMode=true でロックのとおり。PDB は作らない（ビルド機のパスを残さない）
       - name: 配置の形のフォルダを作る
         shell: pwsh
         run: |
@@ -240,7 +284,7 @@ jobs:
               @{ Project = 'windows\settings-ui'; Out = 'settings'; Core = 'ikari_settings_core.dll' })) {
             $out = Join-Path $stage $ui.Out
             Push-Location $ui.Project
-            dotnet publish -c Release -o $out "-p:IkariCoreDll=$rel\$($ui.Core)" -p:DebugType=None
+            dotnet publish -c Release -o $out "-p:IkariCoreDll=$rel\$($ui.Core)" -p:DebugType=None -p:RestoreLockedMode=true
             $code = $LASTEXITCODE
             Pop-Location
             if ($code -ne 0) { exit $code }
@@ -254,7 +298,7 @@ jobs:
       - name: 製品のビルドの検査（インストーラに入れる物）
         shell: pwsh
         run: |
-          cargo xtask scan-product --stage $env:STAGE_DIR
+          cargo run --locked --quiet --package xtask -- scan-product --stage $env:STAGE_DIR
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 配置の形の中身と大きさを表示する
         shell: pwsh
@@ -311,7 +355,7 @@ jobs:
           retention-days: 7
 
   build-macos:
-    needs: verify-tag
+    needs: [verify-tag, source-checks]
     # 試しのビルド（workflow_dispatch）では流さない
     if: github.event_name == 'push'
     runs-on: macos-latest
@@ -334,14 +378,20 @@ jobs:
       - name: ビルド機のパスを成果物に残さない設定
         run: echo "RUSTFLAGS=--remap-path-prefix=${GITHUB_WORKSPACE}=/src --remap-path-prefix=${HOME}/.cargo=/cargo" >> "$GITHUB_ENV"
       # ad-hoc 署名のアプリを作る（署名の証明書は使わない）。build.sh が、エンジンと LM の子に Sandbox の権限があり、
-      # ネットワークの権限が無いことを検査する（ADR 0069 §6 の 5）。Smoke を外すのは #40（未実装）
-      - name: ikari.app をビルドする（ad-hoc）
-        run: macos/scripts/build.sh --signing adhoc --release
-      - name: zip にする
+      # ネットワークの権限が無いことを検査する（ADR 0069 §6 の 5）。
+      # --distribution で、Smoke を束に入れず、エンジンの許可リストからも外す（#40）。出力は release-adhoc-dist/
+      - name: ikari.app をビルドする（ad-hoc、配布用）
+        run: macos/scripts/build.sh --signing adhoc --release --distribution
+      - name: zip にする（Smoke が束に無いことを確かめてから）
         run: |
           set -euo pipefail
+          app=target/macos/release-adhoc-dist/ikari.app
+          if [ -e "$app/Contents/MacOS/ikari-smoke" ]; then
+            echo "ikari-smoke is in the distribution bundle" >&2
+            exit 1
+          fi
           mkdir -p out
-          ditto -c -k --keepParent target/macos/release-adhoc/ikari.app "out/ikari-${TAG}-macos-arm64-adhoc.zip"
+          ditto -c -k --keepParent "$app" "out/ikari-${TAG}-macos-arm64-adhoc.zip"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: release-macos
