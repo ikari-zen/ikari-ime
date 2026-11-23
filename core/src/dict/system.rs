@@ -6,7 +6,6 @@
 //! 不正なエントリは飛ばす。全エントリの走査は builder の `--verify` が担う。
 
 use std::borrow::Cow;
-use std::fs::File;
 use std::ops::Range;
 use std::path::Path;
 use std::sync::{Arc, OnceLock};
@@ -36,12 +35,7 @@ const PAGE_STRIDE: usize = 4096;
 ///
 /// 空のファイルは mmap できない環境があるので、ここで形式エラー（切り詰め）にする。
 pub(super) fn map_file(path: &Path, what: &'static str) -> Result<Arc<Mmap>, DictError> {
-    let file = File::open(path).map_err(|e| {
-        DictError::Io(std::io::Error::new(
-            e.kind(),
-            format!("cannot open {}: {e}", path.display()),
-        ))
-    })?;
+    let file = crate::regular_file::open_regular_file(path).map_err(DictError::Io)?;
     if file.metadata()?.len() == 0 {
         return Err(FormatError::Truncated {
             what,
@@ -467,5 +461,19 @@ mod tests {
         if let Ok(map) = fst::Map::new(bytes) {
             assert!(check_index("index", &map, 3, 3).is_err());
         }
+    }
+}
+
+#[cfg(test)]
+mod regular_file_tests {
+    use super::*;
+
+    #[test]
+    fn a_directory_is_not_mapped_as_a_dictionary() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = map_file(dir.path(), "system.dict")
+            .err()
+            .unwrap_or_else(|| panic!("must be rejected"));
+        assert!(matches!(err, DictError::Io(e) if e.kind() == std::io::ErrorKind::InvalidInput));
     }
 }
