@@ -395,6 +395,19 @@ fn problems(iss: &str, helper_lib: &str, helper_stop: &str) -> Vec<String> {
             ));
         }
     }
+    for call in code.match_indices("StepOk(").map(|(i, _)| &code[i..]) {
+        let args = &call["StepOk(".len()..];
+        if args.trim_start().starts_with("Ok:") {
+            continue; // 定義そのもの
+        }
+        let first = first_argument(args);
+        if first.contains("RunTrusted(") || first.contains("Exec(") {
+            found.push(
+                "StepOk の第 1 引数の中で RunTrusted( や Exec( を呼ばない（var 引数 Code が実行前の値で渡り、失敗を見逃す）。先に Result := RunTrusted(…, Code); と代入してから StepOk(Result, Code, …) へ"
+                    .to_string(),
+            );
+        }
+    }
     for (procedure, order) in [INSTALL_ORDER, PREPARE_ORDER, UNINSTALL_ORDER] {
         match procedure_body(&code, procedure) {
             None => found.push(format!("procedure {procedure} がありません")),
@@ -476,6 +489,23 @@ fn problems(iss: &str, helper_lib: &str, helper_stop: &str) -> Vec<String> {
 }
 
 /// ASCII の語の区切りで含むか
+/// 呼び出しの括弧の中の、最初の引数（最上位のカンマまで。文字列の中は読み飛ばす）
+fn first_argument(args: &str) -> &str {
+    let (mut depth, mut quoted) = (0usize, false);
+    for (i, c) in args.char_indices() {
+        match c {
+            '\'' => quoted = !quoted,
+            _ if quoted => {}
+            '(' => depth += 1,
+            ')' if depth == 0 => return &args[..i],
+            ')' => depth -= 1,
+            ',' if depth == 0 => return &args[..i],
+            _ => {}
+        }
+    }
+    args
+}
+
 fn contains_word(haystack: &str, word: &str) -> bool {
     haystack.match_indices(word).any(|(i, _)| {
         let before = haystack[..i].chars().next_back();
@@ -742,6 +772,25 @@ mod tests {
             ),
             "RunTrusted の相手"
         ));
+    }
+
+    #[test]
+    fn a_launch_inside_step_ok_is_refused() {
+        // 落ちる側: 第 1 引数の中で RunTrusted を呼ぶ形（Code が実行前の値になる）
+        let bad = with(
+            "  Result := RunTrusted(SysTool('regsvr32.exe'), '/s \"' + TipDll + '\"', Code);\n  Result := StepOk(Result, Code, 'DllRegisterServer');",
+            "  Result := StepOk(RunTrusted(SysTool('regsvr32.exe'), '/s \"' + TipDll + '\"', Code), Code, 'DllRegisterServer');",
+        );
+        assert!(has(&bad, "StepOk の第 1 引数"), "{bad:#?}");
+        // 通る側: 今の ikari.iss（代入してから StepOk）と、文字列の中のカンマや括弧
+        assert!(!has(
+            &with("StepOk(Started, Code,", "StepOk(Started, Code,"),
+            "StepOk の第 1 引数"
+        ));
+        assert_eq!(
+            first_argument("RegWrite(A, 'x,)'), 0, 'Run')"),
+            "RegWrite(A, 'x,)')"
+        );
     }
 
     #[test]

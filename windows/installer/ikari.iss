@@ -453,7 +453,9 @@ var
   Code: Integer;
 begin
   { Program Files に置いた DLL の DllRegisterServer。更新では解除しない（ADR 0063 §3 の 2） }
-  Result := StepOk(RunTrusted(SysTool('regsvr32.exe'), '/s "' + TipDll + '"', Code), Code, 'DllRegisterServer');
+  { Code は RunTrusted の実行のあとで読む（StepOk の引数の中で RunTrusted を呼ぶと、Code が実行前の値で渡される） }
+  Result := RunTrusted(SysTool('regsvr32.exe'), '/s "' + TipDll + '"', Code);
+  Result := StepOk(Result, Code, 'DllRegisterServer');
 end;
 
 function FirewallRuleName(I: Integer): String;
@@ -477,6 +479,7 @@ end;
 function AddFirewallRules: Boolean;
 var
   I, Code: Integer;
+  Started: Boolean;
 begin
   { 送信をブロックする規則を exe のパスごとに（ADR 0066 §6.2 の L2）。同じ名前を消してから入れる。
     1 つでも入らなければ、残りを入れずに失敗を返す }
@@ -485,9 +488,10 @@ begin
   I := 0;
   while BlockedExe(I) <> '' do
   begin
-    if not StepOk(RunTrusted(SysTool('netsh.exe'),
+    Started := RunTrusted(SysTool('netsh.exe'),
       'advfirewall firewall add rule name="' + FirewallRuleName(I) + '" dir=out action=block profile=any enable=yes program="' +
-      ExpectedAppDir + '\' + BlockedExe(I) + '"', Code), Code, FirewallRuleName(I)) then
+      ExpectedAppDir + '\' + BlockedExe(I) + '"', Code);
+    if not StepOk(Started, Code, FirewallRuleName(I)) then
     begin
       Result := False;
       exit;
@@ -525,7 +529,8 @@ var
   Code: Integer;
 begin
   { OS のエラー報告から外す（機械全体。ADR 0073 §4。WerAddExcludedApplication(名前, TRUE) を helper が呼ぶ） }
-  Result := StepOk(RunTrusted(WorkHelper, 'wer-exclude' + ErrorReportingNames, Code), Code, 'WerAddExcludedApplication');
+  Result := RunTrusted(WorkHelper, 'wer-exclude' + ErrorReportingNames, Code);
+  Result := StepOk(Result, Code, 'WerAddExcludedApplication');
 end;
 
 procedure IncludeInErrorReporting;
