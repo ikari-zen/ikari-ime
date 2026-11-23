@@ -1,7 +1,8 @@
 #!/bin/bash
 # ikari.app をビルドして署名する（ADR 0004 §9.2）。
 #
-#   macos/scripts/build.sh [--signing team|adhoc] [--release|--debug] [--no-lm] [--skip-rust] [--allow-stub] [--frameworks-only] [--distribution]
+#   macos/scripts/build.sh [--signing team|adhoc] [--release|--debug] [--edition normal|offline] [--data-dir <data>] [--dmg]
+#                          [--no-lm] [--skip-rust] [--allow-stub] [--frameworks-only] [--distribution]
 #
 #   --signing team   Apple Development 証明書（チームID（`lib.sh` の `TEAM_ID`））で署名する。既定
 #   --signing adhoc  ad-hoc 署名（署名要件は identifier の一致だけになる）
@@ -11,6 +12,12 @@
 #   --allow-stub     XCFramework がなくてもビルドする（FFI なしのスタブのエンジンになる。インストールしてはいけない）。
 #                    檻役の bin（ikari-lm-cage）が無いときは、これを付けても失敗する（--no-lm を付けるか、--skip-rust を外す）
 #   --distribution   配布用（未署名の公開物。ADR 0069 §6、#40）。--signing adhoc が要る。Smoke を同梱せず、エンジンの許可リストからも外す。出力は <種別>-adhoc-dist/
+#   --edition normal|offline  版（ADR 0080 §7.3）。既定は normal。offline は取得の部品（ikari-data）を作らず置かず、Rust の online の feature も付けない。
+#                    束の中のどこにも network.* の entitlement が無いことを検査する。出力先は <…>-offline/、dmg の名前に -offline が付く
+#   --data-dir <data>  同梱するデータ（辞書とモデル）の元（cargo xtask data install の --src と同じ並び。<data>/build/dict/、<data>/raw/zenz/）。
+#                    束の中のエンジンの XPC の Resources/data/ に置き、署名のあと、封印とモデルの sha256 を検査する（ADR 0080 §3.4）。
+#                    付けなければデータなしの束（開発用。今までどおり）
+#   --dmg            署名と検査のあと、dmg を作る（macos/scripts/make-dmg.sh。出力は <出力先>/<名前>.dmg）
 #   --frameworks-only  XCFramework（macos/Frameworks/）だけ作って終わる。Swift のビルド、組み立て、署名はしない（CI の swift test 用）
 #
 # 出力: target/macos/<release|debug>-<team|adhoc>/ikari.app
@@ -18,6 +25,8 @@
 set -euo pipefail
 # shellcheck source=lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+# shellcheck source=lib-data.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib-data.sh"
 
 SIGNING=team
 CONFIG=release
@@ -27,6 +36,9 @@ SKIP_RUST=0
 ALLOW_STUB=0
 FRAMEWORKS_ONLY=0
 DISTRIBUTION=0
+EDITION=normal
+DATA_DIR=""
+MAKE_DMG=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --signing) SIGNING="${2:-}"; shift ;;
@@ -36,12 +48,22 @@ while [[ $# -gt 0 ]]; do
     --allow-stub) ALLOW_STUB=1 ;;
     --frameworks-only) FRAMEWORKS_ONLY=1 ;;
     --distribution) DISTRIBUTION=1 ;;
-    -h | --help) sed -n '2,17p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    --edition) EDITION="${2:-}"; shift ;;
+    --edition=*) EDITION="${1#--edition=}" ;;
+    --data-dir) DATA_DIR="${2:-}"; shift ;;
+    --data-dir=*) DATA_DIR="${1#--data-dir=}" ;;
+    --dmg) MAKE_DMG=1 ;;
+    -h | --help) sed -n '2,25p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) parse_common_flag "$1" || die "不明な引数: $1" ;;
   esac
   shift
 done
 validate_signing
+case "$EDITION" in
+  normal | offline) ;;
+  *) die "--edition は normal か offline です: $EDITION" ;;
+esac
+[[ -z "$DATA_DIR" || -d "$DATA_DIR" ]] || die "--data-dir がディレクトリではありません: $DATA_DIR"
 [[ "$FRAMEWORKS_ONLY" -eq 0 || "$SKIP_RUST" -eq 0 ]] || die "--frameworks-only と --skip-rust は同時に使えません"
 
 [[ "$DISTRIBUTION" -eq 0 || "$SIGNING" == adhoc ]] || die "--distribution は --signing adhoc と一緒に使います（配布物は未署名。team の署名は開発用）"
@@ -49,6 +71,10 @@ validate_signing
 OUT="$(bundle_out_dir)"
 # 開発用の adhoc のビルドと混ざらないよう、出力先を分ける
 [[ "$DISTRIBUTION" -eq 0 ]] || OUT="$OUT-dist"
+# 通常版の出力先は今までどおり。オフライン版は別の場所に作る（混ざらないように）
+EDITION_SUFFIX=""
+[[ "$EDITION" == normal ]] || EDITION_SUFFIX="-$EDITION"
+OUT="$OUT$EDITION_SUFFIX"
 # エンジンの許可リストに Smoke を含めるか（配布用は含めない）
 SHELL_REQ_TARGET=shell
 [[ "$DISTRIBUTION" -eq 0 ]] || SHELL_REQ_TARGET=shell-distribution
@@ -72,6 +98,11 @@ LM_CAGE_BUILT="$IKARI_ROOT/target/lm-cage/$RUST_TARGET/release/$LM_CAGE_NAME"
 DATA_NAME=ikari-data
 DATA_BUILT="$IKARI_ROOT/target/data/$RUST_TARGET/release/$DATA_NAME"
 DATA_DEST="$APP/Contents/Helpers/$DATA_NAME"
+# 同梱するデータ（ADR 0080 §3.1）と、置いた物の一覧（封印の検査が使う。束の外に置く）
+BUNDLED_DATA_DEST="$APP/$BUNDLED_DATA_REL"
+BUNDLED_DATA_LIST="$OUT/bundled-data.sha256"
+# どの版の Rust でビルドした XCFramework か（--skip-rust で別の版の物を使わないための印）
+FRAMEWORKS_EDITION_MARK="$FRAMEWORKS/.edition"
 VERSION="$(workspace_version)"
 [[ -n "$VERSION" ]] || die "Cargo.toml から版を読めません"
 
@@ -167,9 +198,11 @@ build_data() {
 }
 
 build_rust() {
-  # 通常版（取得の核を持つ。ADR 0080 §7.1）。online を付けないとオフライン版の中身になる（版の指定はレーン 4）
-  log "cargo build: ikari-shell-ffi (features: online)"
-  (cd "$IKARI_ROOT" && cargo build --release --locked --target "$RUST_TARGET" -p ikari-shell-ffi --features online)
+  # 通常版は取得の核を持つ（online。ADR 0080 §7.1）。オフライン版は付けない（付け忘れも通信の少ない側に倒れる）
+  local shell_features=()
+  [[ "$EDITION" == offline ]] || shell_features=(--features online)
+  log "cargo build: ikari-shell-ffi (edition: $EDITION${shell_features[*]:+, features: online})"
+  (cd "$IKARI_ROOT" && cargo build --release --locked --target "$RUST_TARGET" -p ikari-shell-ffi ${shell_features[@]+"${shell_features[@]}"})
 
   log "cargo rustc: ikari-engine-ffi（llama.cpp なし）"
   local output
@@ -199,6 +232,7 @@ build_rust() {
     "$IKARI_ROOT/engine-ffi/include" ikari_engine.h IkariEngineFFI "$FRAMEWORKS/IkariEngineFFI.xcframework"
   # 作り終えた印。check の鮮度の検査が、Cargo.toml だけの変更（cargo が作り直さないもの）を誤検知しないために使う（#296）
   touch "$FRAMEWORKS/.built"
+  printf '%s\n' "$EDITION" >"$FRAMEWORKS_EDITION_MARK"
 }
 
 # ---------------------------------------------------------------- Swift とバンドル
@@ -246,6 +280,18 @@ assemble_settings_app() {
   cp -R "$IKARI_ROOT/shell-core/resources/keymap" "$resources/keymap"
 }
 
+# 同梱するデータ（辞書、モデル、NOTICE）を、エンジンの XPC の束の中に置く（ADR 0080 §3.1、§3.4。--data-dir のときだけ）。
+# 署名（sign_bundle のエンジンの署名）が封印する
+assemble_bundled_data() {
+  if [[ -z "$DATA_DIR" ]]; then
+    warn "--data-dir がありません: 辞書とモデルを同梱しない束です（開発用。配る物には付ける）"
+    rm -f "$BUNDLED_DATA_LIST"
+    return
+  fi
+  log "同梱のデータを置く: $DATA_DIR -> $BUNDLED_DATA_DEST"
+  stage_bundled_data "$DATA_DIR" "$BUNDLED_DATA_DEST" "$BUNDLED_DATA_LIST"
+}
+
 assemble_bundle() {
   log "バンドルの組み立て: $APP"
   rm -rf "$APP"
@@ -254,9 +300,11 @@ assemble_bundle() {
   [[ "$WITH_LM" == 0 ]] || mkdir -p "$CAGE/Contents/MacOS"
 
   cp "$BIN_DIR/ikari" "$APP/Contents/MacOS/ikari"
-  [[ -x "$DATA_BUILT" ]] || die "$DATA_BUILT がありません（--skip-rust を外してビルドする）"
   mkdir -p "$APP/Contents/Helpers"
-  cp "$DATA_BUILT" "$DATA_DEST"
+  if [[ "$EDITION" == normal ]]; then
+    [[ -x "$DATA_BUILT" ]] || die "$DATA_BUILT がありません（--skip-rust を外してビルドする）"
+    cp "$DATA_BUILT" "$DATA_DEST"
+  fi
   [[ "$DISTRIBUTION" -eq 1 ]] || cp "$BIN_DIR/ikari-smoke" "$APP/Contents/MacOS/ikari-smoke"
   cp "$BIN_DIR/IkariEngine" "$XPC/Contents/MacOS/IkariEngine"
   # 檻役と、その束の中の LM の子（檻役は自分の束の中の ikari-lm-host だけを起動する。エンジンの束には置かない。ADR 0077 §3.4）。
@@ -299,6 +347,7 @@ assemble_bundle() {
   fi
 
   assemble_settings_app
+  assemble_bundled_data
 
   # Resources: keymap のプリセット（OS 共通。shell-core/resources/keymap）と、macOS 固有のもの。icons/ は直下に平らに置く（Info.plist のアイコン名は直下を指す）
   local res="$IKARI_MACOS_DIR/Resources"
@@ -330,7 +379,9 @@ sign_bundle() {
   # 内側から
   [[ "$DISTRIBUTION" -eq 1 ]] || codesign "${common[@]}" -i "$SMOKE_ID" "$APP/Contents/MacOS/ikari-smoke"
   # 取得の部品: Hardened Runtime、App Sandbox、通信（client）、fetch/ と inbox/ の一時例外（ADR 0079 §3.2、§3.3）。ikari.app の署名が封印する
-  codesign "${common[@]}" -i "$DATA_ID" --entitlements "$TEMPLATES/$DATA_NAME.entitlements" "$DATA_DEST"
+  if [[ "$EDITION" == normal ]]; then
+    codesign "${common[@]}" -i "$DATA_ID" --entitlements "$TEMPLATES/$DATA_NAME.entitlements" "$DATA_DEST"
+  fi
   # LM の子: Hardened Runtime。entitlement は付けない（起動した檻役の Sandbox をそのまま引き継ぐ）
   if [[ -f "$CAGE/Contents/MacOS/$LM_HOST_NAME" ]]; then
     codesign "${common[@]}" -i "$LM_HOST_ID" "$CAGE/Contents/MacOS/$LM_HOST_NAME"
@@ -537,6 +588,34 @@ verify_data() {
   fi
 }
 
+# オフライン版（ADR 0080 §7.3、§7.4）: 取得の部品が束のどこにも無く、束の中のどの実行ファイルにも network.* の entitlement が無い
+verify_offline() {
+  [[ ! -e "$DATA_DEST" ]] || die "オフライン版の束に $DATA_NAME があります"
+  [[ ! -e "$APP/Contents/Helpers/$DATA_NAME" ]] || die "オフライン版の束に Helpers/$DATA_NAME があります"
+  ! grep -q "Helpers/$DATA_NAME" "$APP/Contents/_CodeSignature/CodeResources" || die "オフライン版の ikari.app の署名が Helpers/$DATA_NAME を指しています"
+  local file file_ents scanned=0
+  while IFS= read -r -d '' file; do
+    file -b "$file" | grep -q 'Mach-O' || continue
+    scanned=$((scanned + 1))
+    file_ents="$(entitlements_of "$file")"
+    [[ -z "$file_ents" ]] || ! printf '%s' "$file_ents" | plutil -convert xml1 -o - - | grep -q '<key>com\.apple\.security\.network\.' \
+      || die "オフライン版の $file に com.apple.security.network.* があります"
+  done < <(find "$APP/Contents" -type f -print0)
+  [[ "$scanned" -ge 2 ]] || die "束の中の署名されたコードを見つけられません（検査が空振りしている）"
+  echo "offline edition: no $DATA_NAME, no network.* in any of $scanned Mach-O files"
+}
+
+# 同梱のデータの封印（ADR 0080 §3.4）。署名のあとに 1 バイトでも変わると落ちる。モデルの sha256 は表（resource/src/models.rs）と照らす
+verify_bundled_data() {
+  if [[ -z "$DATA_DIR" ]]; then
+    [[ ! -e "$BUNDLED_DATA_DEST" ]] || die "--data-dir が無いのに束に data/ があります"
+    return
+  fi
+  local problem
+  problem="$(bundled_data_seal_error "$APP" "$BUNDLED_DATA_LIST")" || die "同梱のデータ: $problem"
+  echo "bundled data: sealed by the engine signature, $(wc -l <"$BUNDLED_DATA_LIST" | tr -d ' ') files match the staged sha256, model matches the pinned sha256"
+}
+
 # 設定アプリ（ADR 0005 §6.2、§10.1「署名」）: Hardened Runtime、Sandbox なし、network の権限なし（NFR-17）、
 # 殻の署名要件（SigningRequirements.settingsApp）を満たす、外側の署名に封印されている
 verify_settings_app() {
@@ -593,8 +672,19 @@ fi
 resolve_identity
 if [[ "$SKIP_RUST" -eq 0 ]]; then
   build_rust
-  build_data
+  [[ "$EDITION" == offline ]] || build_data
 else
+  # XCFramework の版が違うと、オフライン版に通信の核が入る（逆なら通常版に入らない）。作ったときの印と合わせる。
+  # 印が無い（この印を足す前に作った）物は、通常版なら警告だけ、オフライン版なら止める
+  if [[ -d "$FRAMEWORKS/IkariShellFFI.xcframework" ]]; then
+    built_edition="$(cat "$FRAMEWORKS_EDITION_MARK" 2>/dev/null || true)"
+    if [[ -n "$built_edition" && "$built_edition" != "$EDITION" ]]; then
+      die "--skip-rust ですが、macos/Frameworks は edition=$built_edition でビルドされています（要るのは $EDITION）。--skip-rust を外してください"
+    elif [[ -z "$built_edition" ]]; then
+      [[ "$EDITION" == normal ]] || die "--skip-rust ですが、macos/Frameworks の edition が分かりません。オフライン版は --skip-rust を外してください"
+      warn "macos/Frameworks に edition の印（.edition）がありません。通常版（online）でビルドした物と見なします"
+    fi
+  fi
   # XCFramework がないと Package.swift が FFI なしの形になり、動かない「スタブのエンジン」の ikari.app ができる
   for framework in IkariShellFFI IkariEngineFFI; do
     if [[ ! -d "$FRAMEWORKS/$framework.xcframework" ]]; then
@@ -612,5 +702,9 @@ assemble_bundle
 sign_bundle
 verify_bundle
 verify_settings_app
-verify_data
-log "完了: $APP"
+if [[ "$EDITION" == normal ]]; then verify_data; else verify_offline; fi
+verify_bundled_data
+log "完了: $APP（edition: $EDITION）"
+if [[ "$MAKE_DMG" -eq 1 ]]; then
+  "$IKARI_SCRIPTS_DIR/make-dmg.sh" --app "$APP" --out "$OUT/ikari-$VERSION-macos-arm64-$SIGNING$EDITION_SUFFIX.dmg"
+fi

@@ -113,6 +113,8 @@ pub fn run(args: Args) -> Result<(), XtaskError> {
 
 /// ikari-data の entitlement の検査のテスト（#489）
 const ENTITLEMENTS_TEST: &str = "macos/scripts/test-data-entitlements.sh";
+/// 同梱のデータの封印の検査と build.sh の引数のテスト（#583。codesign が無い OS では飛ばす）
+const PACKAGE_TEST: &str = "macos/scripts/test-package.sh";
 
 fn steps(root: &Path, plan: &Plan) -> Result<(), Failure> {
     if plan.swift_only {
@@ -121,6 +123,7 @@ fn steps(root: &Path, plan: &Plan) -> Result<(), Failure> {
         swift_test(root)?;
         // ikari-data の entitlement の検査（plutil だけで足りる。署名は要らない）。rust の job（Ubuntu）は plutil が無く飛ばすので、macOS の job で流す（#266）
         docs::run_script(root, ENTITLEMENTS_TEST)?;
+        docs::run_script(root, PACKAGE_TEST)?;
         log("完了（--swift-only）");
         return Ok(());
     }
@@ -151,6 +154,7 @@ fn steps(root: &Path, plan: &Plan) -> Result<(), Failure> {
         "scripts/test-clean.sh",
         // ikari-data の entitlement の検査が外れ方を落とすか（#489。plutil が無い OS では飛ばす）
         ENTITLEMENTS_TEST,
+        PACKAGE_TEST,
     ] {
         docs::run_script(root, script)?;
     }
