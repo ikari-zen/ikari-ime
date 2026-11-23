@@ -585,6 +585,7 @@ dependencies = [
  "ikari-input",
  "ikari-textfile",
  "jiff",
+ "libc",
  "memmap2",
  "tempfile",
  "windows-sys",

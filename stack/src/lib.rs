@@ -521,8 +521,14 @@ pub fn check_dictionary_set(dict_dir: &Path) -> Result<(), DictSetReject> {
     })?;
     let vectors = dict_dir.join(VECTORS_FILE_NAME);
     // 形式 v1 の辞書（`dict_id` が無い）は、組み立てでも vectors.bin を使わない（`load_vectors`）。ここでも見ない
+    // 何かが置かれているのに通常ファイルでなければ（FIFO、ディレクトリ、リンク先なし）、組ごと落とす
+    let vectors_present = match std::fs::symlink_metadata(&vectors) {
+        Ok(_) => true,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+        Err(_) => return Err(DictSetReject::Vectors),
+    };
     if let Some(dict_id) = loaded.dict.dict_id()
-        && vectors.exists()
+        && vectors_present
     {
         open_vectors(&vectors, dict_id).map_err(|_| DictSetReject::Vectors)?;
     }
