@@ -60,10 +60,15 @@ struct AboutTab: View {
                 MessageBanner(text: message, kind: .error, dismiss: nil)
             }
             Section("ikari") {
-                LabeledContent("設定アプリの版") { Text(model.appVersion) }
+                LabeledContent("設定アプリの版") {
+                    Text(model.editionName.map { "\(model.appVersion)（\($0)）" } ?? model.appVersion)
+                }
                 LabeledContent("入力メソッド（殻）の版") { Text(model.shellVersion) }
                 LabeledContent("変換エンジンの版") { Text(model.engineVersion ?? "—") }
                 LabeledContent("辞書") { Text(model.dictLabel ?? "—").textSelection(.enabled) }
+                if let source = model.dictSourceText {
+                    LabeledContent("辞書の出どころ") { Text(source) }
+                }
                 LabeledContent("言語モデル（zenz）") {
                     HStack {
                         Text(model.lmText ?? "—")
