@@ -119,10 +119,12 @@
 - [ ] Windows のインストーラを、タグの前にリリースの workflow の試しのビルド（`workflow_dispatch`。証明と Release は作らない）で作り、VM で入れて確かめたこと（[windows-real-device-check.md](windows-real-device-check.md) の項目 47〜55）。
 - [ ] 配る物は、GitHub のランナーで、タグから作ったものだけ（作者や利用者の機械で作ったものは配らない）。Release は下書きにし、作者が中身を見てから公開する。
 - [ ] Release に 3 つの証拠が付いていること: `SHA256SUMS`、GitHub の成果物の証明（`gh attestation verify <ファイル> -R ikari-zen/ikari-ime` で確かめられる）、作者の鍵による `SHA256SUMS` の署名。
+- [ ] 通常版とオフライン版の 2 OS × 2 版（4 成果物。[ADR 0080](adr/0080-bundle-model-and-dictionary.md) §7・§9。リリースの workflow への組み込み・dmg・成果物の確定名はレーン 4〜6 未実装のため**未定**）が揃っており、オフライン版に通信の部品（`ikari-data`、通信ライブラリ、`network.*` の entitlement、取得の印の文字列）が無いことを CI の検査とネットワークを切った VM で確かめたこと。
+- [ ] Release のノートに、同梱した辞書・モデルの一覧（名前、元データの版、モデルの版、ライセンス、出典、前の版から元データを上げたか）を載せたこと（ADR 0080 §4 の 4・§8 の 3）。
 - [ ] README の冒頭（「ビルド済みのアプリは、まだ配っていません」）と SECURITY.md の「配布」の節の同じ行を、配布に合わせて書き直す。README には、配布元が Releases だけであること、sha256 の比べ方、証明と署名の確かめ方、OS の警告の案内（実機で確かめた手順だけ。守りを切る手順は書かない）、Watch の案内を書く。
 - [ ] 配布物と SECURITY.md の「約束すること」が合っていること（通信しない、秘密の欄、ログ）。
 - [ ] ウイルス対策ソフトの検査: 配る物（未署名）を、Windows の VM の Microsoft Defender（SmartScreen を含む）で検査し、検出や警告が出ないことを確かめる。出たら、結果を記録し、配るか決める。作者の環境の ESET では検知されなかった（2026-11-17。製品と版が限られた 1 件の参考値で、保証ではない）。守りを切る手順は書かない。
 - [ ] 誤検出の報告の窓口: 公開後にウイルス対策ソフトの誤検出の報告が来たときの対応（各社への誤検出の報告）を、SECURITY.md か README に 1 行書く。
 - [ ] [CHANGELOG.md](../CHANGELOG.md) の 0.1.0 のリリース日を入れる。
-- [ ] 配布物に含める依存のライセンスの表示を確かめる（`cargo xtask licenses --check`、[THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)）。
+- [ ] 配布物に含める依存と同梱データのライセンス表示を確かめる（`cargo xtask licenses --check`、[THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)、および同梱データのそばの `NOTICE.txt`・`licenses/`。元ファイルは [dist-notices/NOTICE.txt](dist-notices/NOTICE.txt)、パッケージへの組み込み詳細はレーン 4〜6 未実装のため**未定**）。
 - [ ] 作者が、下書きの Release を確かめて公開する。
