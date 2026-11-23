@@ -4,6 +4,8 @@
 //!   - 通常版は取得の部品（`Contents/Helpers/ikari-data`）があり、オフライン版は束のどこにも無く、殻の署名も指していないこと
 //!   - 取得の印（`FETCH_MARKS`）: オフライン版は、束の中のどの実行ファイル（Mach-O）にも無いこと（通信の部品が入っていないことの直接の検査）。
 //!     通常版は、印のそれぞれが、どれかの実行ファイルにあること（印の表が古くなって、検査が空振りしていないことの確かめ）
+//!   - OS の通信の部品の印（`OS_NETWORK_MARKS`。Swift の `URLSession`、`Network.framework` など）: 通常版の `ikari-data` のほかは、
+//!     どの版のどの実行ファイルにも無いこと（Swift の殻や設定アプリが直接通信するコードの検査）
 //!   - 実行ファイルに、開発用の文字列と測定ツールの印が無く、LM の子のほかに llama.cpp の印が無いこと（`scan-product` と同じ語）
 //!   - 同梱のデータ（ADR 0080 §3.1）: 決まった名前のファイルだけがあり、モデルが表の sha256（`ikari_resource::ZENZ_SMALL_SHA256`）と合い、
 //!     データの全ファイルがエンジンの署名（`CodeResources`）に載っていること
@@ -54,6 +56,28 @@ const REQUIRED_EXECUTABLES: &[&str] = &[
 /// 取得の核（`shell-core` の `settings::fetch`、`shell-ffi` の `fetch_launcher`）はリンクで落ち、通常版の設定アプリにも入っていない。
 /// 短い語（`version-check` など）は、命令の即値に埋められて文字列として残らないことがある（実物で見つからなかった）ので、印にしない
 pub const FETCH_MARKS: &[&str] = &["/releases/latest", "ureq", "HTTPS_PROXY"];
+
+/// OS の通信の部品の印（Swift や C から直接通信するコードの参照。クラスとシンボルの名前、リンクする framework の道）。
+/// 通常版の取得の部品（`ikari-data`）のほかは、どの版のどの実行ファイルにも無いこと（殻・設定アプリ・エンジンは通信しない。ADR 0066 §6.2）。
+/// 2026-11-23 に測った:
+///   - 今の通常版・オフライン版の束では、`ikari-data` を除くどの実行ファイルにも、どの語も無い（偽陽性なし）。
+///     `ikari-data` には `getaddrinfo` がある（Rust の通信）。
+///   - `URLSession` を使う小さな Swift の実行ファイルには `URLSession`、`CFNetwork`、`Network.framework` が残り、
+///     `NWConnection` を使うと `NWConnection` も残る（swiftc -O。実物で確かめた語）。
+///   - `URLConnection`、`nw_connection`、`CFSocket`、`WebKit`、`getaddrinfo` は、今の束に無いことだけを確かめた（残るかは未確認）。
+///
+/// 短すぎる語（`_connect`、`_socket`）は、今の束の殻・エンジン・檻役にもあるので入れない
+pub const OS_NETWORK_MARKS: &[&str] = &[
+    "URLSession",
+    "URLConnection",
+    "CFNetwork",
+    "Network.framework",
+    "NWConnection",
+    "nw_connection",
+    "CFSocket",
+    "WebKit",
+    "getaddrinfo",
+];
 
 /// 同梱のデータの置き場所（`macos/scripts/lib-data.sh` の `BUNDLED_DATA_REL`、`engine/src/data_location.rs`）
 const DATA_REL: &str = "Contents/XPCServices/IkariEngine.xpc/Contents/Resources/data";
@@ -267,6 +291,15 @@ fn executable_problems(
                 seen_marks.push(mark);
             }
         }
+        // OS の通信の部品は、通常版の取得の部品のほかは、どの版でも参照しない
+        let network_allowed = edition == Edition::Normal && entry.rel == DATA_HELPER;
+        if !network_allowed {
+            for mark in find_os_network_marks(&bytes) {
+                problems.push(format!(
+                    "{file}: OS の通信の部品（`{mark}`）を参照しています（通信は取得の部品 {DATA_NAME} だけが持つ。ADR 0066 §6.2、ADR 0080 §7.4）"
+                ));
+            }
+        }
     }
     for required in REQUIRED_EXECUTABLES {
         if !seen_files.contains(required) {
@@ -285,6 +318,15 @@ fn executable_problems(
         }
     }
     Ok(problems)
+}
+
+/// OS の通信の部品の印のうち、`bytes` に入っているもの
+pub fn find_os_network_marks(bytes: &[u8]) -> Vec<&'static str> {
+    OS_NETWORK_MARKS
+        .iter()
+        .copied()
+        .filter(|mark| contains(bytes, mark.as_bytes()))
+        .collect()
 }
 
 /// 取得の印のうち、`bytes` に入っているもの

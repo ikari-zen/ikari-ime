@@ -9,8 +9,9 @@ const MODEL: &[u8] = b"fake-model-payload";
 const MODEL_FILE: &str = "model.gguf";
 const SETTINGS_EXE: &str = "Contents/Helpers/IkariSettings.app/Contents/MacOS/IkariSettings";
 const ENGINE_EXE: &str = "Contents/XPCServices/IkariEngine.xpc/Contents/MacOS/IkariEngine";
-/// 偽の ikari-data の中身（取得の印の 3 つ）
-const DATA_CHILD_BODY: &[u8] = b"ureq/2 HTTPS_PROXY https://github.com/x/y/releases/latest";
+/// 偽の ikari-data の中身（取得の印の 3 つと、通常版の ikari-data にだけ許す OS の通信の部品）
+const DATA_CHILD_BODY: &[u8] =
+    b"ureq/2 HTTPS_PROXY https://github.com/x/y/releases/latest getaddrinfo SecTrust";
 
 fn exe(body: &[u8]) -> Vec<u8> {
     [MACHO, body].concat()
@@ -126,8 +127,8 @@ fn not_a_bundle_is_an_error() {
 fn a_normal_bundle_checked_as_offline_fails_for_the_data_child_and_every_mark() {
     let fake = Fake::new(Edition::Normal);
     let found = fake.problems(Edition::Offline);
-    // ikari-data の実行ファイル、殻の署名、ikari-data の印 3 つ
-    assert_eq!(found.len(), 5, "{found:?}");
+    // ikari-data の実行ファイル、殻の署名、ikari-data の取得の印 3 つ、OS の通信の部品（getaddrinfo。オフライン版では許さない）
+    assert_eq!(found.len(), 6, "{found:?}");
     assert!(
         found
             .iter()
@@ -163,6 +164,66 @@ fn an_offline_bundle_with_a_fetch_mark_in_any_executable_fails() {
         &exe(b"settings HTTPS_PROXY https_proxy"),
     );
     assert_one(&fake.problems(Edition::Offline), "取得の印 `HTTPS_PROXY`");
+}
+
+#[test]
+fn os_network_parts_outside_the_normal_data_child_fail() {
+    // オフライン版の設定アプリが Swift で直接通信する（URLSession と、その framework の道）
+    let fake = Fake::new(Edition::Offline);
+    write(
+        &fake.app(),
+        SETTINGS_EXE,
+        &exe(b"settings _OBJC_CLASS_$_NSURLSession /System/Library/Frameworks/CFNetwork.framework/CFNetwork"),
+    );
+    let found = fake.problems(Edition::Offline);
+    // CFNetwork の framework の道は Network.framework にも当たる
+    assert_eq!(found.len(), 3, "{found:?}");
+    assert!(
+        found
+            .iter()
+            .any(|p| p.contains("OS の通信の部品（`URLSession`）")),
+        "{found:?}"
+    );
+    assert!(
+        found
+            .iter()
+            .any(|p| p.contains("OS の通信の部品（`CFNetwork`）")),
+        "{found:?}"
+    );
+
+    // 通常版でも、殻やエンジンは通信しない（Network.framework の NWConnection）
+    let fake = Fake::new(Edition::Normal);
+    write(
+        &fake.app(),
+        "Contents/MacOS/ikari",
+        &exe(b"shell 7Network12NWConnectionC"),
+    );
+    assert_one(
+        &fake.problems(Edition::Normal),
+        "OS の通信の部品（`NWConnection`）",
+    );
+    let fake = Fake::new(Edition::Normal);
+    write(
+        &fake.app(),
+        ENGINE_EXE,
+        &exe(b"engine /System/Library/Frameworks/Network.framework/Network"),
+    );
+    assert_one(
+        &fake.problems(Edition::Normal),
+        "OS の通信の部品（`Network.framework`）",
+    );
+
+    // 許すのは通常版の Contents/Helpers/ikari-data だけ。名前を変えて置いた物は落ちる
+    let fake = Fake::new(Edition::Normal);
+    write(
+        &fake.app(),
+        "Contents/Helpers/fetcher",
+        &exe(b"getaddrinfo"),
+    );
+    assert_one(
+        &fake.problems(Edition::Normal),
+        "OS の通信の部品（`getaddrinfo`）",
+    );
 }
 
 #[test]
