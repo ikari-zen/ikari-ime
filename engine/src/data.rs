@@ -3,7 +3,7 @@
 use super::*;
 
 use crate::dispatch::{emoji_tsv_path_in, postal_tsv_path_in};
-use ikari_core::EmojiTable;
+use ikari_core::{EmojiTable, PostalTable};
 
 pub(crate) struct SaveState {
     pub(crate) dirty: bool,
@@ -72,6 +72,18 @@ impl DataWatch {
         self.emoji_known = now;
         changed
     }
+}
+
+/// 郵便番号の表が読めて検査に通るか（表の置き場所を選ぶ検査。ADR 0080 §3.2）
+pub(crate) fn postal_table_valid(path: &Path) -> bool {
+    PostalTable::load(path).is_ok()
+}
+
+/// 絵文字の表が読めて検査に通るか（表の置き場所を選ぶ検査。ADR 0080 §3.2）
+pub(crate) fn emoji_table_valid(path: &Path) -> bool {
+    ikari_textfile::read_to_string_limited(path, ikari_textfile::MAX_TABLE_FILE_BYTES)
+        .ok()
+        .is_some_and(|text| EmojiTable::from_tsv(&text).is_ok())
 }
 
 /// `emoji.tsv` を読んで返事にする。ファイルがない、壊れている、読めないときは空の表

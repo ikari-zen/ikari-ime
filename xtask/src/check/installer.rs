@@ -9,7 +9,10 @@
 //!   - 外のプログラムの起動が 1 か所（`RunTrusted`）で、相手が system32 の道具か helper だけであること
 //!   - DLL の登録に `regserver` の印、置き換えに `restartreplace` の印を使っていないこと
 //!   - `[Files]` の置き先が、インストール先か作業用のフォルダだけで、インストール先の項目が検査（Check）を通ること
-//!   - インストールと削除の手順の順番（ADR 0067 §3.2）
+//!   - インストールと削除の手順の順番（ADR 0067 §3.2）。インストールの手順は、失敗したら後を打ち切ること
+//!   - 置く前の準備（検査 → エンジンの停止 → 前の版の LM の部品の掃除）の順番と、準備が作業用のフォルダに
+//!     道具を置いたあとに始まること（Inno は、ファイルを置く前の大きさの見積もりでも Check を呼ぶ）
+//!   - 削除の情報の登録（`CreateUninstallRegKey`）が、置いたあとの検査に通ったときだけであること
 //!   - ファイアウォールとエラー報告の対象の exe が、helper の止める相手と同じ並びで、規則の名前に版が入らないこと
 //!   - 自動起動が HKLM の Run であること
 //!   - helper の終了コードが、helper の定義と同じ値であること
@@ -36,6 +39,8 @@ const REQUIRED_SETUP: &[(&str, &str)] = &[
     ("SetupLogging", "no"),
     ("ArchitecturesAllowed", "x64compatible"),
     ("ArchitecturesInstallIn64BitMode", "x64compatible"),
+    // 検査に落ちた場所を指す削除の入口を作らない（置いたあとの検査の結果を返す関数）
+    ("CreateUninstallRegKey", "UninstallEntryAllowed"),
 ];
 /// `[Setup]` に書いてはいけないキー（利用者ごとの導入への切り替え）
 const FORBIDDEN_SETUP: &[&str] = &["PrivilegesRequiredOverridesAllowed"];
@@ -94,6 +99,15 @@ const INSTALL_ORDER: (&str, &[&str]) = (
         "RemoveOldTipVersions",
     ],
 );
+/// 置く前の準備の順（最初の `{app}` の項目の Check。ADR 0067 §3.2 の 2・3）。前の版の LM の部品は、
+/// 検査とエンジンの停止のあとに消す（`[InstallDelete]` は検査より前に動くので使わない）
+const PREPARE_ORDER: (&str, &[&str]) = (
+    "AppDirReady",
+    &["CheckAppDir", "StopEngines", "RemoveStaleLmLibraries"],
+);
+/// 作業用のフォルダに道具を置いたときに呼ぶ手続き（`[Files]` の AfterInstall）と、準備の前に見る印
+const WORK_HELPER_PLACED: &str = "WorkHelperPlaced";
+const WORK_HELPER_GUARD: &str = "if not WorkHelperReady then";
 /// 削除の手順の順（ADR 0067 §3.2 の逆順）
 const UNINSTALL_ORDER: (&str, &[&str]) = (
     "UninstallInOrder",
@@ -335,6 +349,16 @@ fn problems(iss: &str, helper_lib: &str, helper_stop: &str) -> Vec<String> {
                 line.text
             ));
         }
+        if dest.starts_with("{code:SetupWorkDir}")
+            && !params
+                .iter()
+                .any(|(k, v)| k == "afterinstall" && v == WORK_HELPER_PLACED)
+        {
+            found.push(format!(
+                "[Files] の作業用のフォルダの項目は AfterInstall: {WORK_HELPER_PLACED} を付ける（準備はそのあと）: {}",
+                line.text
+            ));
+        }
         if dest.starts_with("{app}") {
             let check = params
                 .iter()
@@ -371,13 +395,31 @@ fn problems(iss: &str, helper_lib: &str, helper_stop: &str) -> Vec<String> {
             ));
         }
     }
-    for (procedure, order) in [INSTALL_ORDER, UNINSTALL_ORDER] {
+    for (procedure, order) in [INSTALL_ORDER, PREPARE_ORDER, UNINSTALL_ORDER] {
         match procedure_body(&code, procedure) {
             None => found.push(format!("procedure {procedure} がありません")),
             Some(body) => {
                 if let Err(p) = in_order(&body, order) {
                     found.push(format!("{procedure} の順: {p}"));
                 }
+            }
+        }
+    }
+    if !procedure_body(&code, PREPARE_ORDER.0).is_some_and(|b| b.contains(WORK_HELPER_GUARD)) {
+        found.push(format!(
+            "{} は、道具を置く前に呼ばれたときは何もしない（`{WORK_HELPER_GUARD}`）",
+            PREPARE_ORDER.0
+        ));
+    }
+    // インストールの手順は、最後のもの以外、失敗したら後を打ち切る（`if not 手順 then`）
+    if let Some(body) = procedure_body(&code, INSTALL_ORDER.0) {
+        let (_, steps) = INSTALL_ORDER;
+        for step in &steps[..steps.len() - 1] {
+            if !body.contains(&format!("if not {step} then")) {
+                found.push(format!(
+                    "{} は {step} が失敗したら後を打ち切る（`if not {step} then`）",
+                    INSTALL_ORDER.0
+                ));
             }
         }
     }
@@ -456,11 +498,12 @@ fn parameters(text: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-/// `procedure Name;` から `end;`（行頭）までの本文
+/// `procedure Name;` か `function Name: …;` から `end;`（行頭）までの本文
 fn procedure_body(code: &str, name: &str) -> Option<String> {
-    let head = format!("procedure {name};");
-    let start = code.find(&head)?;
-    let rest = &code[start + head.len()..];
+    let (start, head_len) = [format!("procedure {name};"), format!("function {name}:")]
+        .iter()
+        .find_map(|head| code.find(head.as_str()).map(|i| (i, head.len())))?;
+    let rest = &code[start + head_len..];
     let end = rest.find("\nend;").unwrap_or(rest.len());
     Some(rest[..end].to_string())
 }
@@ -705,8 +748,8 @@ mod tests {
     fn orders_are_enforced() {
         assert!(has(
             &with(
-                "  RegisterTip;\n  AddFirewallRules;",
-                "  AddFirewallRules;\n  RegisterTip;"
+                "  if not RegisterTip then\n    exit;\n  if not AddFirewallRules then\n    exit;\n",
+                "  if not AddFirewallRules then\n    exit;\n  if not RegisterTip then\n    exit;\n"
             ),
             "FinishInstall の順"
         ));
@@ -718,8 +761,73 @@ mod tests {
             "UninstallInOrder の順"
         ));
         assert!(has(
-            &with("  if not VerifyAppDir then\n    exit;\n", ""),
+            &with(
+                "  if not VerifyAppDir then\n  begin\n    RemoveNewUninstaller;\n    exit;\n  end;\n",
+                ""
+            ),
             "VerifyAppDir がありません"
+        ));
+    }
+
+    #[test]
+    fn install_steps_stop_at_the_first_failure() {
+        // 規則に失敗しても自動起動まで進む形は落ちる
+        let problems = with(
+            "  if not AddFirewallRules then\n    exit;\n",
+            "  AddFirewallRules;\n",
+        );
+        assert!(
+            has(&problems, "AddFirewallRules が失敗したら"),
+            "{problems:#?}"
+        );
+        assert!(has(
+            &with("  if not RegisterTip then\n    exit;\n", "  RegisterTip;\n"),
+            "RegisterTip が失敗したら"
+        ));
+    }
+
+    #[test]
+    fn stale_lm_libraries_are_removed_after_the_check_and_the_stop() {
+        assert!(has(
+            &with(
+                "      AppDirTrusted := RemoveStaleLmLibraries;\n",
+                "      AppDirTrusted := True;\n"
+            ),
+            "AppDirReady の順: RemoveStaleLmLibraries がありません"
+        ));
+        assert!(has(
+            &with(
+                "      StopEngines(WorkHelper);\n",
+                "      RemoveStaleLmLibraries;\n      StopEngines(WorkHelper);\n"
+            ),
+            "AppDirReady の順"
+        ));
+    }
+
+    #[test]
+    fn preparation_waits_for_the_work_helper() {
+        assert!(has(
+            &with(" AfterInstall: WorkHelperPlaced;", ""),
+            "AfterInstall: WorkHelperPlaced"
+        ));
+        assert!(has(
+            &with("  if not WorkHelperReady then\n", "  if False then\n"),
+            "道具を置く前"
+        ));
+    }
+
+    #[test]
+    fn the_uninstall_entry_follows_the_final_check() {
+        assert!(has(
+            &with(
+                "CreateUninstallRegKey=UninstallEntryAllowed",
+                "CreateUninstallRegKey=yes"
+            ),
+            "CreateUninstallRegKey"
+        ));
+        assert!(has(
+            &with("CreateUninstallRegKey=UninstallEntryAllowed\n", ""),
+            "CreateUninstallRegKey"
         ));
     }
 

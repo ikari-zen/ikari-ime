@@ -9,7 +9,7 @@
 #   --no-lm          llama.cpp（Metal）を入れない（cmake が使えないとき、LM が要らないとき）。LM の子（ikari-lm-host）も、檻役（IkariLMCage.xpc）も作らない
 #   --skip-rust      cargo と XCFramework の作成を飛ばし、macos/Frameworks/ にあるものを使う（ikari-data は target/data/ のビルド済みを使う）
 #   --allow-stub     XCFramework がなくてもビルドする（FFI なしのスタブのエンジンになる。インストールしてはいけない）。
-#                    檻役の bin（ikari-lm-cage）がまだ無いときも、空のスタブで束と署名を作る（同じく、インストールしてはいけない）
+#                    檻役の bin（ikari-lm-cage）が無いときは、これを付けても失敗する（--no-lm を付けるか、--skip-rust を外す）
 #   --distribution   配布用（未署名の公開物。ADR 0069 §6、#40）。--signing adhoc が要る。Smoke を同梱せず、エンジンの許可リストからも外す。出力は <種別>-adhoc-dist/
 #   --frameworks-only  XCFramework（macos/Frameworks/）だけ作って終わる。Swift のビルド、組み立て、署名はしない（CI の swift test 用）
 #
@@ -45,6 +45,7 @@ validate_signing
 [[ "$FRAMEWORKS_ONLY" -eq 0 || "$SKIP_RUST" -eq 0 ]] || die "--frameworks-only と --skip-rust は同時に使えません"
 
 [[ "$DISTRIBUTION" -eq 0 || "$SIGNING" == adhoc ]] || die "--distribution は --signing adhoc と一緒に使います（配布物は未署名。team の署名は開発用）"
+[[ "$DISTRIBUTION" -eq 0 || "$ALLOW_STUB" -eq 0 ]] || die "--distribution は --allow-stub と一緒に使えません（配布物に FFI なしのスタブを入れない）"
 OUT="$(bundle_out_dir)"
 # 開発用の adhoc のビルドと混ざらないよう、出力先を分ける
 [[ "$DISTRIBUTION" -eq 0 ]] || OUT="$OUT-dist"
@@ -142,7 +143,7 @@ make_xcframework() { # <.a> <ヘッダのディレクトリ> <ヘッダ名> <モ
 # 檻役の bin（llama.cpp なし。ADR 0077 §3.4）。LM の子と feature が違うので、target のディレクトリを分ける
 build_cage() {
   log "cargo build: ${LM_CAGE_NAME}（llama.cpp なし）"
-  (cd "$IKARI_ROOT" && CARGO_TARGET_DIR="$IKARI_ROOT/target/lm-cage" cargo build --release \
+  (cd "$IKARI_ROOT" && CARGO_TARGET_DIR="$IKARI_ROOT/target/lm-cage" cargo build --release --locked \
     --target "$RUST_TARGET" -p ikari-lm --bin "$LM_CAGE_NAME") || die "$LM_CAGE_NAME をビルドできません"
   [[ -x "$LM_CAGE_BUILT" ]] || die "$LM_CAGE_BUILT がありません"
 }
@@ -159,7 +160,7 @@ build_data() {
   [[ "$(plutil -extract CFBundleIdentifier raw "$plist")" == "$DATA_ID" ]] \
     || die "$plist の CFBundleIdentifier が $DATA_ID ではありません（templates/$DATA_NAME.Info.plist と lib.sh の DATA_ID を揃える）"
   log "cargo rustc: ${DATA_NAME}（Info.plist を埋め込む）"
-  (cd "$IKARI_ROOT" && CARGO_TARGET_DIR="$IKARI_ROOT/target/data" cargo rustc --release \
+  (cd "$IKARI_ROOT" && CARGO_TARGET_DIR="$IKARI_ROOT/target/data" cargo rustc --release --locked \
     --target "$RUST_TARGET" -p ikari-data --bin "$DATA_NAME" -- \
     -C "link-arg=-Wl,-sectcreate,__TEXT,__info_plist,$plist") || die "$DATA_NAME をビルドできません"
   [[ -x "$DATA_BUILT" ]] || die "$DATA_BUILT がありません"
@@ -168,11 +169,11 @@ build_data() {
 build_rust() {
   # 通常版（取得の核を持つ。ADR 0080 §7.1）。online を付けないとオフライン版の中身になる（版の指定はレーン 4）
   log "cargo build: ikari-shell-ffi (features: online)"
-  (cd "$IKARI_ROOT" && cargo build --release --target "$RUST_TARGET" -p ikari-shell-ffi --features online)
+  (cd "$IKARI_ROOT" && cargo build --release --locked --target "$RUST_TARGET" -p ikari-shell-ffi --features online)
 
   log "cargo rustc: ikari-engine-ffi（llama.cpp なし）"
   local output
-  output="$(cd "$IKARI_ROOT" && CARGO_TARGET_DIR="$IKARI_ROOT/target/lm" cargo rustc --release \
+  output="$(cd "$IKARI_ROOT" && CARGO_TARGET_DIR="$IKARI_ROOT/target/lm" cargo rustc --release --locked \
     --target "$RUST_TARGET" -p ikari-engine-ffi \
     --lib --crate-type staticlib -- --print native-static-libs 2>&1)" || { printf '%s\n' "$output" >&2; die "cargo rustc が失敗しました"; }
   printf '%s\n' "$output" | tail -3
@@ -183,7 +184,7 @@ build_rust() {
 
   if [[ "$WITH_LM" == 1 ]]; then
     log "cargo build: $LM_HOST_NAME (features: metal)"
-    (cd "$IKARI_ROOT" && CARGO_TARGET_DIR="$IKARI_ROOT/target/lm" cargo build --release \
+    (cd "$IKARI_ROOT" && CARGO_TARGET_DIR="$IKARI_ROOT/target/lm" cargo build --release --locked \
       --target "$RUST_TARGET" -p ikari-lm --bin "$LM_HOST_NAME" --features metal)
     [[ -x "$LM_HOST_BUILT" ]] || die "$LM_HOST_BUILT がありません"
   fi
@@ -203,6 +204,8 @@ build_rust() {
 # ---------------------------------------------------------------- Swift とバンドル
 
 build_swift() {
+  # Package.resolved の版だけを使う（解き直さない）
+  local SWIFT_LOCK_FLAGS=(--only-use-versions-from-resolved-file)
   "$IKARI_SCRIPTS_DIR/gen-identity.sh"
   log "swift build ($CONFIG)"
   mkdir -p "$OUT"
@@ -212,11 +215,11 @@ build_swift() {
   local product
   : >"$build_log"
   for product in ikari IkariEngine ikari-smoke IkariSettings; do
-    swift build -c "$CONFIG" --manifest-cache none --package-path "$IKARI_MACOS_DIR" --product "$product" >>"$build_log" 2>&1 \
+    swift build -c "$CONFIG" --manifest-cache none "${SWIFT_LOCK_FLAGS[@]}" --package-path "$IKARI_MACOS_DIR" --product "$product" >>"$build_log" 2>&1 \
       || { tail -40 "$build_log" >&2; die "swift build が失敗しました（${build_log}）"; }
   done
   tail -1 "$build_log"
-  BIN_DIR="$(swift build -c "$CONFIG" --manifest-cache none --package-path "$IKARI_MACOS_DIR" --show-bin-path)"
+  BIN_DIR="$(swift build -c "$CONFIG" --manifest-cache none "${SWIFT_LOCK_FLAGS[@]}" --package-path "$IKARI_MACOS_DIR" --show-bin-path)"
   for product in ikari IkariEngine ikari-smoke IkariSettings; do
     [[ -x "$BIN_DIR/$product" ]] || die "$BIN_DIR/$product がありません"
   done
@@ -360,7 +363,15 @@ verify_bundle() {
   fi
   printf '%s' "$ents" | plutil -extract 'com\.apple\.security\.temporary-exception\.files\.home-relative-path\.read-write' xml1 -o - - \
     | grep -qF '<string>/Library/Application Support/ikari-ime/</string>' || die "エンジンのデータ用の一時例外がありません"
-  echo "engine entitlements: app-sandbox=true, network=none, temporary-exception=~/Library/Application Support/ikari-ime/"
+  # キーはちょうど 2 つ、一時例外は 1 要素だけ、Hardened Runtime が付いている
+  local engine_keys engine_exc_count engine_info
+  engine_keys="$(printf '%s' "$ents" | plutil -convert xml1 -o - - | grep -c '<key>' || true)"
+  [[ "$engine_keys" -eq 2 ]] || die "エンジンの entitlement が 2 つではありません（キーが $engine_keys 個）"
+  engine_exc_count="$(printf '%s' "$ents" | plutil -extract 'com\.apple\.security\.temporary-exception\.files\.home-relative-path\.read-write' raw - 2>/dev/null || true)"
+  [[ "$engine_exc_count" == 1 ]] || die "エンジンの一時例外が 1 つではありません: '$engine_exc_count'"
+  engine_info="$(codesign -dv "$XPC" 2>&1)"
+  printf "%s\n" "$engine_info" | grep -Eq '^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime' || die "エンジンに Hardened Runtime（runtime）が付いていません"
+  echo "engine entitlements: app-sandbox=true, network=none, temporary-exception=~/Library/Application Support/ikari-ime/ (2 keys)"
 
   # エンジンに llama.cpp が入っていない（ADR 0072 §5）。入っていれば、子が無くても LM がエンジンの中で動く
   if grep -aqE 'llama_model_load|ggml_backend' "$XPC/Contents/MacOS/IkariEngine"; then
@@ -377,6 +388,11 @@ verify_bundle() {
   if entitlements_of "$APP" | grep -q 'com\.apple\.security\.app-sandbox'; then
     die "殻（ikari.app）に app-sandbox が付いています"
   fi
+  local shell_info
+  # 殻は entitlement を持たず、Hardened Runtime が付いている
+  [[ -z "$(entitlements_of "$APP")" ]] || die "殻（ikari.app）に entitlement があります（付けない）"
+  shell_info="$(codesign -dv "$APP" 2>&1)"
+  printf "%s\n" "$shell_info" | grep -Eq '^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime' || die "殻に Hardened Runtime（runtime）が付いていません"
 
   # 署名要件の文字列が、実際の署名に当てはまること
   local engine_req shell_req
@@ -538,7 +554,13 @@ verify_settings_app() {
   if printf '%s' "$ents" | grep -Eq 'com\.apple\.security\.(app-sandbox|network)'; then
     die "設定アプリに com.apple.security.app-sandbox または network.* があります（Sandbox なし、通信の権限なしが決定）"
   fi
-  echo "settings entitlements: app-sandbox=none, network=none, hardened-runtime=on"
+  # キーは 0 個（templates/settings.entitlements は空の dict）
+  if [[ -n "$ents" ]]; then
+    local settings_keys
+    settings_keys="$(printf '%s' "$ents" | plutil -convert xml1 -o - - | grep -c '<key>' || true)"
+    [[ "$settings_keys" -eq 0 ]] || die "設定アプリに entitlement があります（キーが $settings_keys 個。付けない）"
+  fi
+  echo "settings entitlements: none, hardened-runtime=on"
 
   local requirement
   # ad-hoc の要件は cdhash を含む（#269）。同じバンドルから読んだ値で組み立てる

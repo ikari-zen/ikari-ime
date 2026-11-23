@@ -1,9 +1,9 @@
-//! macOS の LM の檻役の受け口（ADR 0077 §3.2、§3.5、§6）。**契約（第 4 弾）。中身はレーン D-3-mac**。
+//! macOS の LM の檻役の受け口（ADR 0077 §3.2、§3.5、§6）。
 //!
 //! - 殻が仲立ちした檻役の口は、FFI（`ikari_engine_attach_lm_cage`）から [`Engine::attach_lm_cage`] で入る。
 //!   エンジンに 1 つの [`CageSlot`] に入れ、子の起動の口（`HostLauncher::Cage`）がそれを引く。
-//! - 製品の macOS は檻役だけを使う（[`product_launcher`]）。今のスタブは、今までどおり自分で起動する。
-//! - `HelloReply.lm_cage` の値（[`hello_lm_cage`]）。今のスタブは `LM_CAGE_UNSPECIFIED`（古いエンジンと同じ）。
+//! - 製品の macOS は檻役だけを使う（[`product_launcher`]）。テストと開発用のビルド、macOS 以外は、自分で起動する。
+//! - `HelloReply.lm_cage` の値（[`hello_lm_cage`]）。檻役を使うビルドは口があれば `LEVEL2`、無ければ `NONE`。使わないビルド（テスト、`dev-knobs`、macOS 以外）は `LM_CAGE_UNSPECIFIED`（古いエンジンと同じ）。
 //!
 //! 判断の置き場所: Rust。Swift は口をエンジンに渡すだけ（XPC サービスを名前で探せるのはアプリ本体だけ。OS の制約）。
 
