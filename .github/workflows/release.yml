@@ -334,14 +334,20 @@ jobs:
       - name: ビルド機のパスを成果物に残さない設定
         run: echo "RUSTFLAGS=--remap-path-prefix=${GITHUB_WORKSPACE}=/src --remap-path-prefix=${HOME}/.cargo=/cargo" >> "$GITHUB_ENV"
       # ad-hoc 署名のアプリを作る（署名の証明書は使わない）。build.sh が、エンジンと LM の子に Sandbox の権限があり、
-      # ネットワークの権限が無いことを検査する（ADR 0069 §6 の 5）。Smoke を外すのは #40（未実装）
-      - name: ikari.app をビルドする（ad-hoc）
-        run: macos/scripts/build.sh --signing adhoc --release
-      - name: zip にする
+      # ネットワークの権限が無いことを検査する（ADR 0069 §6 の 5）。
+      # --distribution で、Smoke を束に入れず、エンジンの許可リストからも外す（#40）。出力は release-adhoc-dist/
+      - name: ikari.app をビルドする（ad-hoc、配布用）
+        run: macos/scripts/build.sh --signing adhoc --release --distribution
+      - name: zip にする（Smoke が束に無いことを確かめてから）
         run: |
           set -euo pipefail
+          app=target/macos/release-adhoc-dist/ikari.app
+          if [ -e "$app/Contents/MacOS/ikari-smoke" ]; then
+            echo "ikari-smoke is in the distribution bundle" >&2
+            exit 1
+          fi
           mkdir -p out
-          ditto -c -k --keepParent target/macos/release-adhoc/ikari.app "out/ikari-${TAG}-macos-arm64-adhoc.zip"
+          ditto -c -k --keepParent target/macos/release-adhoc-dist/ikari.app "out/ikari-${TAG}-macos-arm64-adhoc.zip"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: release-macos
