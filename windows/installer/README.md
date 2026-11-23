@@ -2,7 +2,7 @@
 
 Inno Setup のスクリプト（`ikari.iss`）と、インストーラが管理者で呼ぶ道具（`helper/`、Rust の `ikari-setup-helper`）。
 設計は [security-design.md](../../docs/security-design.md) §8.4、[ADR 0067](../../docs/adr/0067-windows-install-layout-and-launch-chain.md) §3・§4、[ADR 0068](../../docs/adr/0068-ipc-endpoints.md) §6.2、[ADR 0070](../../docs/adr/0070-update-and-vulnerability-response.md) §4、[ADR 0063](../../docs/adr/0063-windows-tip-dll-update.md)、[ADR 0073](../../docs/adr/0073-secret-input-and-user-data.md) §4。
-実機の確認は [windows-real-device-check.md](../../docs/windows-real-device-check.md) の項目 47〜55。まだ実機で流していない。
+実機の確認は [windows-real-device-check.md](../../docs/windows-real-device-check.md) の項目 47〜55、75〜78。項目 75〜78 は 2026-11-23 に VM で流した（結果は文書の項目に書いてある。項目 76 に不具合が 1 件ある）。
 
 ## 作り方（Windows で）
 
@@ -66,5 +66,6 @@ LM の子と取得の子（`ikari-data transfer`）の檻（AppContainer）の�
 ## 限界（分かっていること）
 
 - Inno Setup 自身の部品（`setup.tmp` など）は、昇格した利用者の TEMP に置かれる。名前は推測できない（6.6.0 以上）が、場所の ACL はこちらで用意できない。実機の項目 55 で見て、道具を本決定にする（ADR 0067 Q3 は仮）。
-- 既にあるインストール先が検査に落ちたとき、ファイルは置かず、削除の入口（登録）も作らない。Inno が新しく書いた削除用のファイル（`unins000.exe` など）は、検査のあとに `RemoveNewUninstaller` で消す（更新のときは、前の版の入口が指すため残す）。消せなかったときは、そのフォルダに残る（削除の結果は確かめていない）。
+- 既にあるインストール先が検査に落ちたとき、ファイルは置かず、削除の入口（登録）も作らない。Inno が新しく書いた削除用のファイル（`unins000.exe` など）は、検査のあとに `RemoveNewUninstaller` で消す（更新のときは、前の版の入口が指すため残す）。消せなかったときは、そのフォルダに残る。置く前の検査に落ちる道は、VM で確かめた（削除の入口も `unins000.*` も残らない。項目 75）。置いたあとの検査だけが落ちる道は、VM では作れず未確認。
+- 登録、規則、自動起動、エラー報告の除外のどれかの手順が失敗すると、そこで打ち切り（終了コード 11）、後ろの手順は走らない。巻き戻しはしない: 置いたファイルと削除の入口（新しい版の表示）は残る。登録に失敗した更新では、前の版の `tip\<版>\` と登録は消えずに残る（VM で確認。項目 76）。`StepOk` の第 1 引数の中で `RunTrusted(` を呼ばない（`Code` が実行前の値で渡るため）。静的検査が禁じる。
 - 削除のときは、インストール先の中の helper を使う（インストールの最後に検査したもの）。
