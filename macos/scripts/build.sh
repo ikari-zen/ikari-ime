@@ -363,7 +363,14 @@ verify_bundle() {
   fi
   printf '%s' "$ents" | plutil -extract 'com\.apple\.security\.temporary-exception\.files\.home-relative-path\.read-write' xml1 -o - - \
     | grep -qF '<string>/Library/Application Support/ikari-ime/</string>' || die "エンジンのデータ用の一時例外がありません"
-  echo "engine entitlements: app-sandbox=true, network=none, temporary-exception=~/Library/Application Support/ikari-ime/"
+  # キーはちょうど 2 つ、一時例外は 1 要素だけ、Hardened Runtime が付いている
+  local engine_keys engine_exc_count
+  engine_keys="$(printf '%s' "$ents" | plutil -convert xml1 -o - - | grep -c '<key>' || true)"
+  [[ "$engine_keys" -eq 2 ]] || die "エンジンの entitlement が 2 つではありません（キーが $engine_keys 個）"
+  engine_exc_count="$(printf '%s' "$ents" | plutil -extract 'com\.apple\.security\.temporary-exception\.files\.home-relative-path\.read-write' raw - 2>/dev/null || true)"
+  [[ "$engine_exc_count" == 1 ]] || die "エンジンの一時例外が 1 つではありません: '$engine_exc_count'"
+  codesign -dv "$XPC" 2>&1 | grep -Eq '^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime' || die "エンジンに Hardened Runtime（runtime）が付いていません"
+  echo "engine entitlements: app-sandbox=true, network=none, temporary-exception=~/Library/Application Support/ikari-ime/ (2 keys)"
 
   # エンジンに llama.cpp が入っていない（ADR 0072 §5）。入っていれば、子が無くても LM がエンジンの中で動く
   if grep -aqE 'llama_model_load|ggml_backend' "$XPC/Contents/MacOS/IkariEngine"; then
@@ -380,6 +387,9 @@ verify_bundle() {
   if entitlements_of "$APP" | grep -q 'com\.apple\.security\.app-sandbox'; then
     die "殻（ikari.app）に app-sandbox が付いています"
   fi
+  # 殻は entitlement を持たず、Hardened Runtime が付いている
+  [[ -z "$(entitlements_of "$APP")" ]] || die "殻（ikari.app）に entitlement があります（付けない）"
+  codesign -dv "$APP" 2>&1 | grep -Eq '^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime' || die "殻に Hardened Runtime（runtime）が付いていません"
 
   # 署名要件の文字列が、実際の署名に当てはまること
   local engine_req shell_req
@@ -541,7 +551,13 @@ verify_settings_app() {
   if printf '%s' "$ents" | grep -Eq 'com\.apple\.security\.(app-sandbox|network)'; then
     die "設定アプリに com.apple.security.app-sandbox または network.* があります（Sandbox なし、通信の権限なしが決定）"
   fi
-  echo "settings entitlements: app-sandbox=none, network=none, hardened-runtime=on"
+  # キーは 0 個（templates/settings.entitlements は空の dict）
+  if [[ -n "$ents" ]]; then
+    local settings_keys
+    settings_keys="$(printf '%s' "$ents" | plutil -convert xml1 -o - - | grep -c '<key>' || true)"
+    [[ "$settings_keys" -eq 0 ]] || die "設定アプリに entitlement があります（キーが $settings_keys 個。付けない）"
+  fi
+  echo "settings entitlements: none, hardened-runtime=on"
 
   local requirement
   # ad-hoc の要件は cdhash を含む（#269）。同じバンドルから読んだ値で組み立てる
