@@ -679,7 +679,7 @@ else
   if [[ -d "$FRAMEWORKS/IkariShellFFI.xcframework" ]]; then
     built_edition="$(cat "$FRAMEWORKS_EDITION_MARK" 2>/dev/null || true)"
     if [[ -n "$built_edition" && "$built_edition" != "$EDITION" ]]; then
-      die "--skip-rust ですが、macos/Frameworks は edition=$built_edition でビルドされています（要るのは $EDITION）。--skip-rust を外してください"
+      die "--skip-rust ですが、macos/Frameworks は edition=$built_edition でビルドされています（要るのは ${EDITION}）。--skip-rust を外してください"
     elif [[ -z "$built_edition" ]]; then
       [[ "$EDITION" == normal ]] || die "--skip-rust ですが、macos/Frameworks の edition が分かりません。オフライン版は --skip-rust を外してください"
       warn "macos/Frameworks に edition の印（.edition）がありません。通常版（online）でビルドした物と見なします"
@@ -704,7 +704,7 @@ verify_bundle
 verify_settings_app
 if [[ "$EDITION" == normal ]]; then verify_data; else verify_offline; fi
 verify_bundled_data
-log "完了: $APP（edition: $EDITION）"
+log "完了: ${APP}（edition: ${EDITION}）"
 if [[ "$MAKE_DMG" -eq 1 ]]; then
   "$IKARI_SCRIPTS_DIR/make-dmg.sh" --app "$APP" --out "$OUT/ikari-$VERSION-macos-arm64-$SIGNING$EDITION_SUFFIX.dmg"
 fi

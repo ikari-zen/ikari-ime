@@ -36,9 +36,9 @@ check_data_source() { # <data のディレクトリ>
   model="$(pinned_model_file)"
   [[ -n "$model" ]] || die "$BUNDLED_MODELS_RS からモデルのファイル名を読めません"
   for file in "${BUNDLED_DICT_REQUIRED[@]}"; do
-    [[ -s "$src/build/dict/$file" ]] || die "辞書がありません: $src/build/dict/$file（scripts/build-dict.sh）"
+    [[ -s "$src/build/dict/$file" ]] || die "辞書がありません: ${src}/build/dict/${file}（scripts/build-dict.sh）"
   done
-  [[ -s "$src/raw/zenz/$model" ]] || die "モデルがありません: $src/raw/zenz/$model（cargo xtask data fetch）"
+  [[ -s "$src/raw/zenz/$model" ]] || die "モデルがありません: ${src}/raw/zenz/${model}（cargo xtask data fetch）"
 }
 
 # データの元を、束の中に置き、置いた物の一覧（sha256 と相対パス。元のファイルから数える）を <一覧> に書く。
