@@ -9,7 +9,7 @@
 #   --no-lm          llama.cpp（Metal）を入れない（cmake が使えないとき、LM が要らないとき）。LM の子（ikari-lm-host）も、檻役（IkariLMCage.xpc）も作らない
 #   --skip-rust      cargo と XCFramework の作成を飛ばし、macos/Frameworks/ にあるものを使う（ikari-data は target/data/ のビルド済みを使う）
 #   --allow-stub     XCFramework がなくてもビルドする（FFI なしのスタブのエンジンになる。インストールしてはいけない）。
-#                    檻役の bin（ikari-lm-cage）がまだ無いときも、空のスタブで束と署名を作る（同じく、インストールしてはいけない）
+#                    檻役の bin（ikari-lm-cage）が無いときは、これを付けても失敗する（--no-lm を付けるか、--skip-rust を外す）
 #   --distribution   配布用（未署名の公開物。ADR 0069 §6、#40）。--signing adhoc が要る。Smoke を同梱せず、エンジンの許可リストからも外す。出力は <種別>-adhoc-dist/
 #   --frameworks-only  XCFramework（macos/Frameworks/）だけ作って終わる。Swift のビルド、組み立て、署名はしない（CI の swift test 用）
 #
