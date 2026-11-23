@@ -10,7 +10,9 @@
 //! 開発用の口を付けたビルド（`dev-knobs`）には流さない（入っていて正しい）。
 //!
 //! `--stage <フォルダ>` は、インストーラに入れる配置の形（ADR 0067 §3.1）のフォルダを、置き場所ごとの検査で調べる（`stage.rs`）。
+//! `--macos-app <ikari.app> --edition normal|offline` は、配る macOS の束を、版ごとに調べる（`macos.rs`。ADR 0080 §7.4）。
 
+mod macos;
 mod stage;
 
 use std::path::{Path, PathBuf};
@@ -70,11 +72,17 @@ pub const NETWORK_EXEMPT_FILE: &str = "ikari-data.exe";
 #[derive(Debug, clap::Args)]
 pub struct Args {
     /// 調べるファイル（TIP の DLL、エンジンの exe など）
-    #[arg(required_unless_present = "stage")]
+    #[arg(required_unless_present_any = ["stage", "macos_app"])]
     files: Vec<PathBuf>,
     /// インストーラに入れる配置の形（ADR 0067 §3.1）に並べたフォルダ。あるべき物と、置き場所ごとの検査を見る
     #[arg(long, value_name = "フォルダ")]
     stage: Option<PathBuf>,
+    /// 配る macOS の束（ikari.app。dmg の中の物）。--edition と一緒に使う（ADR 0080 §7.4）
+    #[arg(long, value_name = "ikari.app", requires = "edition")]
+    macos_app: Option<PathBuf>,
+    /// --macos-app の束の版（build.sh --edition と同じ）
+    #[arg(long, value_enum, requires = "macos_app")]
+    edition: Option<macos::Edition>,
 }
 
 pub fn run(args: Args) -> Result<(), XtaskError> {
@@ -85,6 +93,13 @@ pub fn run(args: Args) -> Result<(), XtaskError> {
             dir.display()
         ));
         problems.extend(stage::check_stage(dir).map_err(XtaskError)?);
+    }
+    if let (Some(app), Some(edition)) = (&args.macos_app, args.edition) {
+        log(&format!(
+            "macOS の束 {}（{edition:?}）を調べる（ADR 0080 §7.4）",
+            app.display()
+        ));
+        problems.extend(macos::check_macos_app(app, edition).map_err(XtaskError)?);
     }
     for file in &args.files {
         log(&format!("{} を調べる", file.display()));

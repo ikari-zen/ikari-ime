@@ -2002,6 +2002,7 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "ikari-resource",
  "ikari-textfile",
  "jiff",
  "serde_json",
