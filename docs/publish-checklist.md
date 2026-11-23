@@ -117,6 +117,8 @@
 - [ ] 「最新の Release」の扱い（ADR 0076 §18.2）: アプリの Release は `gh release create … --latest` で明示して最新にする。データの Release（`webwords-*`）は `--latest=false` で作り、最新にしない。公開のあと、`gh release view --json tagName` の最新のタグが `v<数>.<数>.<数>` であることを確かめる。
 - [ ] [security-design.md](security-design.md) §5.2 の「版を出す前」の検査が済んでいること（製品のビルドであること、インストーラの確認、送信の記録、他社の部品の版、3 つの証拠）。
 - [ ] Windows のインストーラを、タグの前にリリースの workflow の試しのビルド（`workflow_dispatch`。証明と Release は作らない）で作り、VM で入れて確かめたこと（[windows-real-device-check.md](windows-real-device-check.md) の項目 47〜55）。
+- [ ] インストーラの失敗時の手動の復旧手順（[windows-user-guide.md](windows-user-guide.md) の「インストールに失敗したとき」）が書かれ、VM で確かめられていること（実機確認の項目 79 以降）。**Windows 版の公開前。macOS 版の公開前は不要**。
+- [ ] インストーラの失敗時の自動の巻き戻しを作るか、ADR で決めたこと（#646）。**Windows 版の公開前。macOS 版の公開前は不要**。
 - [ ] 配る物は、GitHub のランナーで、タグから作ったものだけ（作者や利用者の機械で作ったものは配らない）。Release は下書きにし、作者が中身を見てから公開する。
 - [ ] Release に 3 つの証拠が付いていること: `SHA256SUMS`、GitHub の成果物の証明（`gh attestation verify <ファイル> -R ikari-zen/ikari-ime` で確かめられる）、作者の鍵による `SHA256SUMS` の署名。
 - [ ] 通常版とオフライン版の 2 OS × 2 版（4 成果物。[ADR 0080](adr/0080-bundle-model-and-dictionary.md) §7・§9。リリースの workflow への組み込み・dmg・成果物の確定名はレーン 4〜6 未実装のため**未定**）が揃っており、オフライン版に通信の部品（`ikari-data`、通信ライブラリ、`network.*` の entitlement、取得の印の文字列）が無いことを CI の検査とネットワークを切った VM で確かめたこと。
