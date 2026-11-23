@@ -34,8 +34,8 @@ ikari-ime 本体のソースコード・バイナリ（Apache License 2.0）と�
      - 加工: コスト調整およびバイナリ辞書形式への変換
   2) chiVe 1.3 mc90（語彙頻度順位）
      - ライセンス: Apache License 2.0（licenses/APACHE-2.0.txt）
-     - 著作権: Copyright (c) 2024 Works Applications Co., Ltd.
-     - 出典: https://sudachi.s3.ap-northeast-1.amazonaws.com/chive/chive-1.3-mc90.tar.gz
+     - 著作権: Copyright (c) 2024 Works Applications Co., Ltd. All rights reserved.
+     - 出典: https://sudachi.s3-ap-northeast-1.amazonaws.com/chive/chive-1.3-mc90.tar.gz
      - 加工: 頻度順位の辞書構築への利用
   3) アドレス・ベース・レジストリ 町字マスター（デジタル庁）
      - ライセンス: 公共データ利用規約（第1.0版。PDL1.0）
@@ -65,9 +65,9 @@ ikari-ime 本体のソースコード・バイナリ（Apache License 2.0）と�
 3. dict/vectors.bin（話題の手がかり用 単語ベクトル）
 ----------------------------------------------------------------------
 - ライセンス: Apache License 2.0（licenses/APACHE-2.0.txt）
-- 著作権: Copyright (c) 2024 Works Applications Co., Ltd.
+- 著作権: Copyright (c) 2024 Works Applications Co., Ltd. All rights reserved.
 - 出典: chiVe 1.3 mc90
-  https://sudachi.s3.ap-northeast-1.amazonaws.com/chive/chive-1.3-mc90.tar.gz
+  https://sudachi.s3-ap-northeast-1.amazonaws.com/chive/chive-1.3-mc90.tar.gz
 - 加工: 300 次元単語ベクトルの量子化・バイナリ変換
 
 ----------------------------------------------------------------------
@@ -83,7 +83,9 @@ ikari-ime 本体のソースコード・バイナリ（Apache License 2.0）と�
 - 出典:
   - アドレス・ベース・レジストリ 町字・郵便番号変換表（デジタル庁）
     https://dataset.address-br.digital.go.jp/
-    （項目 1098a4f61dab4f52997839d04245132a）
+    （項目 1098a4f61dab4f52997839d04245132a。取得日 2026-10-23、取得時点の
+    郵便番号データの版 2609・更新日 2026-09-24。配信元のメタデータは随時上書き
+    更新されるため、過去の版番号は後から配信元では追認できない）
   - 日本郵便株式会社 郵便番号データ
 - 加工: デジタル庁「アドレス・ベース・レジストリ 町字・郵便番号変換表」（元は
   日本郵便の郵便番号データ）をもとに ikari-ime が加工して作成（国や日本郵便が
@@ -104,7 +106,8 @@ ikari-ime 本体のソースコード・バイナリ（Apache License 2.0）と�
 この節のライセンス条件はモデルファイル単体にのみ適用され、ikari-ime 本体の
 ソフトウェア（Apache License 2.0）には適用されません。
 
-- 作者: Keita Miwa（Hugging Face: Miwa-Keita）
+- 作者: Miwa-Keita（Hugging Face アカウント名。Keita Miwa の表記は同一作者の
+  zenz-v2.5-small のモデルカードに基づく）
 - ライセンス: クリエイティブ・コモンズ 表示-継承 4.0 国際（CC BY-SA 4.0）
   - 概要: https://creativecommons.org/licenses/by-sa/4.0/
   - 日本語: https://creativecommons.org/licenses/by-sa/4.0/deed.ja

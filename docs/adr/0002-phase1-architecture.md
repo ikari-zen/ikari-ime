@@ -61,6 +61,8 @@ BOS の右IDを左文脈の最後の語にするだけで、a-03（なった）�
 | llama-cpp-2（Rust） | crates.io 0.1.159（2026-10-07） | — | MIT OR Apache-2.0 | feature `metal` あり。**ビルドに cmake が必要だが、この機械には未導入**（Xcode は導入済み） |
 | sudachi.rs | GitHub `WorksApplications/sudachi.rs`（2026-10-02 更新） | — | Apache-2.0 | **crates.io には公式に公開されていない**（非公式の再配布 `suiko-sudachi` があるだけ）。別途 Sudachi のバイナリ辞書（core 72MB zip）が要る |
 
+注（2026-11-23）: 上の表は 2026-10-11 時点の記録（ADR は当時の記録なので、表の中身は書き換えない）。`zenz-v3.2-small-gguf` の Hugging Face 上のライセンス表示は、その後 `cc-by-sa-4.0` になった（2026-11-07 更新）。現在の扱いは [`docs/research/license-redistribution-2026-11.md`](../research/license-redistribution-2026-11.md) と [`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md) を参照。
+
 - zenz の v3 系のプロンプト形式は、AzooKeyKanaKanjiConverter の `ZenzPromptBuilder.swift` で確認した。
   - `[ プロフィール][ 話題][ 文体][ 好み]` + ` 左文脈（末尾40文字）` + ` 読み（カタカナ）` + `` のあとに、出力の表記が続く。
   - **話題とプロフィールの条件（、）がそのまま属性プロファイルに対応する。**

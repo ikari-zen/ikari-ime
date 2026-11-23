@@ -153,9 +153,9 @@ limitations under the License.
 ### chiVe
 
 - **ライセンス**: Apache License 2.0
-- **著作権**: Copyright (c) 2024 Works Applications Co., Ltd.
+- **著作権**: Copyright (c) 2024 Works Applications Co., Ltd. All rights reserved.
 - **説明**: Sudachi の単語分割で学習した日本語の単語ベクトル（v1.3 mc90）。語の頻度順位（ポリシーの `lemma_rank`）と、話題スコア用の `vectors.bin` の元になる
-- **出典**: https://sudachi.s3.ap-northeast-1.amazonaws.com/chive/chive-1.3-mc90.tar.gz（`scripts/fetch-data.sh` が取得）
+- **出典**: https://sudachi.s3-ap-northeast-1.amazonaws.com/chive/chive-1.3-mc90.tar.gz（`scripts/fetch-data.sh` が取得）
 - **使用方法**: リポジトリには `chiVe` 本体およびビルド済みファイルを含めません。`dict-builder` が語彙頻度順位（`system.dict` に反映）と `vectors.bin`（語ごとの 300 次元ベクトルを量子化したもの）を生成します。ビルド済み配布物（ADR 0080。レーン 4〜6 未実装のため詳細は**未定**）では `vectors.bin` を同梱し（`chiVe` 本体は同梱しない）、ソースからビルドする場合は手元のユーザーデータディレクトリ（macOS: `~/Library/Application Support/ikari-ime/dict/`、Windows: `%LOCALAPPDATA%\ikari-ime\dict\`）に配置します
 
 ### アドレス・ベース・レジストリ 町字マスター（デジタル庁）
@@ -168,7 +168,7 @@ limitations under the License.
 ### アドレス・ベース・レジストリ 町字・郵便番号変換表（デジタル庁。元は日本郵便の郵便番号データ）
 
 - **ライセンス**: 公共データ利用規約（第1.0版。PDL1.0）。出典の記載と、編集・加工したことおよびその主体の記載が要る。変換表のメタデータ（licenseInfo）はアドレス・ベース・レジストリの利用規約（https://www.digital.go.jp/policies/base_registry_address_tos 、PDL1.0）を指し、説明文は郵便番号について日本郵便株式会社の「郵便番号データの説明」（https://www.post.japanpost.jp/service/search/zipcode/download/readme.html ）を参照している。日本郵便の同説明ページには「郵便番号データに限っては日本郵便株式会社は著作権を主張しません。自由に配布していただいて結構です。」と記載されている（2026-11-22 確認。再配布可能と整理し、参考情報・無保証の前提で扱う）
-- **出典**: 「アドレス・ベース・レジストリ 町字・郵便番号変換表」（デジタル庁）（カタログ https://dataset.address-br.digital.go.jp/ の項目 `1098a4f61dab4f52997839d04245132a`。取得は https://www.arcgis.com/sharing/rest/content/items/1098a4f61dab4f52997839d04245132a/data ）。郵便番号データの版 2609（更新日 2026-09-24）、取得日 2026-10-23。利用規約: アドレス・ベース・レジストリの利用規約（デジタル庁。https://www.digital.go.jp/policies/base_registry_address_tos ）
+- **出典**: 「アドレス・ベース・レジストリ 町字・郵便番号変換表」（デジタル庁）（カタログ https://dataset.address-br.digital.go.jp/ の項目 `1098a4f61dab4f52997839d04245132a`。取得は https://www.arcgis.com/sharing/rest/content/items/1098a4f61dab4f52997839d04245132a/data ）。取得日 2026-10-23（取得時点の郵便番号データの版 2609、更新日 2026-09-24。配信元のメタデータは随時上書き更新されるため、過去の版番号は後から配信元では追認できない）。利用規約: アドレス・ベース・レジストリの利用規約（デジタル庁。https://www.digital.go.jp/policies/base_registry_address_tos ）
 - **加工**: 「アドレス・ベース・レジストリ 町字・郵便番号変換表」（デジタル庁。元は日本郵便の郵便番号データ）をもとに ikari-ime が加工して作成した。国や日本郵便が作成した未加工のデータではない。変換表の各行を町字マスターと (lg_code, machiaza_id) で結び、大字・町名に畳み（丁目と小字の違いは消える）、上の町字マスターと同じ方法で読みを付け、都道府県つき・郡つき、都道府県や郡を省いた形ごとに住所の表記と読み、郵便番号を並べた表（`postal.tsv`）にしている。廃止された町字の行は使わない。町名に畳めない行（表記に数字を含む町など）は表に入れない（ADR 0032）
 - **使用方法**: `scripts/fetch-data.sh --only postal` で `data/raw/abr/` に置き、dict-builder の `town` が `postal.tsv` を作る。変換表本体はリポジトリにも配布物にも含めない。ビルド済み配布物（ADR 0080。レーン 4〜6 未実装のため詳細は**未定**）ではビルド済みの `postal.tsv` をアプリ内に同梱する
 
@@ -253,7 +253,7 @@ SOFTWARE.
 ### zenz-v3.2 small（モデルファイル単体）
 
 - **適用対象**: 同梱するモデルファイル `zenz-v3.2-small-Q5_K_M.gguf`（この節のライセンス条件はこのモデルファイルにのみ適用され、ikari-ime 本体のソフトウェア（Apache License 2.0）には適用されません）
-- **作者**: Keita Miwa（Hugging Face: Miwa-Keita）
+- **作者**: Miwa-Keita（Hugging Face アカウント名。`Keita Miwa` の表記は同一作者の `zenz-v2.5-small` のモデルカードに基づく）
 - **ライセンス**: クリエイティブ・コモンズ 表示-継承 4.0 国際（CC BY-SA 4.0。https://creativecommons.org/licenses/by-sa/4.0/ / 日本語: https://creativecommons.org/licenses/by-sa/4.0/deed.ja ）
 - **出典**: https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf （確認日: 2026-11-22、commit `ef3e66e3665fe6a19598e6578e9b88a994b647fd`、元ファイル名 `ggml-model-Q5_K_M.gguf`、sha256 `29c223d4c23327b80fd13ebb5ab2555057a46317997d5da391584ffbef0db673`）
 - **変更の有無**: 変更なし（配布元のファイルを無改変のまま同梱）
