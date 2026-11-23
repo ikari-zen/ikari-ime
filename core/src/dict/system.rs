@@ -474,6 +474,7 @@ mod regular_file_tests {
         let err = map_file(dir.path(), "system.dict")
             .err()
             .unwrap_or_else(|| panic!("must be rejected"));
-        assert!(matches!(err, DictError::Io(e) if e.kind() == std::io::ErrorKind::InvalidInput));
+        // Windows ではディレクトリを開く段階で PermissionDenied になるので、種類は問わない
+        assert!(matches!(err, DictError::Io(_)));
     }
 }
