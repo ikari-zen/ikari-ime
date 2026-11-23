@@ -1,10 +1,10 @@
-//! 取得する部品 `ikari-data`（ADR 0076。モデルの取得。ADR 0071 §3）。
+//! 取得する部品 `ikari-data`（ADR 0076。モデルの取得と版の確認。ADR 0071 §3）。
 //!
 //! **通信してよいのはこの crate だけ**（依存、ソース、OS の規則、実機の記録の 4 つで言える。ADR 0076 §14）。
 //! 別の実行ファイル（`ikari-data`）で、1 回の起動で 1 つの仕事をして終わる。常駐しない。
 //!
 //! - `args`: コマンドの引数。`url`: 取得先の URL を厳しく読む。`limits`: 仮置きの値
-//! - `transfer`: 通信（`ureq`。設定は 1 か所）。`child`、`spawn_windows`: Windows の低い整合性の子
+//! - `transfer`: 通信（`ureq`。設定は 1 か所）。`child`、`spawn_windows`: Windows の AppContainer の子（起こせなければ低い整合性。ADR 0078）
 //! - `workspace`: 作業の場所、錠、片づけ、ディスクの見積もり
 //! - `job`: 流れ（落とす → 信じずに数え直して写す → rename）。`run`: 入口
 //! - `macos`: macOS だけ（Sandbox の中のデータの場所、`fetch/`・`inbox/` の作成、親の終わりの見張り。ADR 0079）

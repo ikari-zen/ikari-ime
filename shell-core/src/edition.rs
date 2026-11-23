@@ -10,8 +10,10 @@
 //! - 自由指定のモデルを読める構成か（檻の段。自由指定は段 2 のある OS だけ。ADR 0072 Q1。決めるのはエンジン）
 //!
 //! [`edition_capabilities`]（引数なし）は、このビルドで分かる値だけで [`capabilities_for`] を呼ぶ。分からない 2 つは、
-//! 「通常版の束には `ikari-data` がある」「檻の段はエンジンが読むときに確かめる」として出す側に置く（今の画面の挙動）。
-//! 実際の有無で絞るのは FFI の入口（`ikari_settings_edition_capabilities`）。
+//! 「通常版の束には `ikari-data` がある」として出す側に置く。自由指定は、エンジンと同じ値（`ikari-resource` の `platform`）を読み、
+//! 不明なときは出さない側に倒す。`ikari-data` の実際の有無で絞るのは FFI の入口（`ikari_settings_edition_capabilities`）。
+
+use ikari_resource::platform::user_models_offered_on_platform;
 
 /// 取得の核をビルドに持つか（`online` の feature。ADR 0080 §7.1）
 const ONLINE: bool = cfg!(feature = "online");
@@ -54,12 +56,12 @@ pub struct EditionInputs {
 }
 
 impl EditionInputs {
-    /// このビルドで分かる値（`online`）と、分からない 2 つを出す側に置いた値（モジュールの説明）
+    /// このビルドで分かる値（`online`、この OS で自由指定を出すか）と、`ikari-data` の有無を出す側に置いた値（モジュールの説明）
     pub const fn this_build() -> EditionInputs {
         EditionInputs {
             online: ONLINE,
             data_tool_present: ONLINE,
-            user_models_offered: true,
+            user_models_offered: user_models_offered_on_platform(cfg!(target_vendor = "apple")),
         }
     }
 }
@@ -150,14 +152,24 @@ mod tests {
         assert!(!c.url_model_fetch && c.version_check && c.file_import);
     }
 
-    /// 引数なしの関数は、ビルドの feature で版が決まる
+    /// 引数なしの関数は、ビルドの feature で版が決まる。自由指定は、エンジンと同じ値を読む
     #[test]
     fn this_build_follows_the_online_feature() {
+        let user = user_models_offered_on_platform(cfg!(target_vendor = "apple"));
         let c = edition_capabilities();
         if cfg!(feature = "online") {
-            assert_eq!(c, capabilities_for(inputs(true, true, true)));
+            assert_eq!(c, capabilities_for(inputs(true, true, user)));
         } else {
-            assert_eq!(c, capabilities_for(inputs(false, false, true)));
+            assert_eq!(c, capabilities_for(inputs(false, false, user)));
+        }
+    }
+
+    /// 段 2 の檻を解放していない OS（Windows 以外）では、自由指定の取得を出さない
+    #[test]
+    fn url_fetch_is_hidden_where_user_models_are_not_offered() {
+        if !cfg!(windows) {
+            assert!(!EditionInputs::this_build().user_models_offered);
+            assert!(!edition_capabilities().url_model_fetch);
         }
     }
 

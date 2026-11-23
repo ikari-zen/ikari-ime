@@ -1,8 +1,8 @@
 # ADR 0063: Windows の TIP の DLL（`ikari_tip.dll`）の更新。版ごとのフォルダに新しい DLL を置き、COM の登録だけを新しい場所に向け直す。古い版は次の更新か再起動で消す
 
-- 状態: 提案
+- 状態: 承認（Q1〜Q4 は 2026-11-14 にユーザーが決定。§9。実装は `windows/tip/src/deploy.rs`、`windows/installer/ikari.iss` に入っている）
 - 日付: 2026-11-14
-- 対象: W5 のインストーラ（未作成。`windows/installer/`）、`windows/tip/src/com/register.rs`（登録）と `com/host.rs`（資源の場所）、`windows/dev/register.ps1`・`unregister.ps1`（開発用の導入）、`docs/windows-real-device-check.md` の項目 29、`proto/ikari/engine/v1/engine.proto`（`schema_version` の運用）
+- 対象: W5 のインストーラ（`windows/installer/`）、`windows/tip/src/com/register.rs`（登録）と `com/host.rs`（資源の場所）、`windows/dev/register.ps1`・`unregister.ps1`（開発用の導入）、`docs/windows-real-device-check.md` の項目 29、`proto/ikari/engine/v1/engine.proto`（`schema_version` の運用）
 - 前提: main = 0ab78cd。#377（項目 29 の実機の結果）、#331 のコメント（2026-11-14 の VM の確認）、ADR 0040 §2.7・§6 の S9・§7 の W5、ADR 0058（データの束）、ADR 0062（候補窓は別プロセス）、#99（未署名の 0.x の配布）
 - 判断の置き場所: Rust とインストーラ。どの版を登録するかは、新しい DLL の `DllRegisterServer`（Rust。自分のパスを書く）。古い版の掃除と再起動の案内はインストーラ（OS の配布の道具。判断は「消せるものを消す」だけ）。TIP とエンジンの版の食い違いは、今の `schema_version` と `shell-core` の「エンジンなし」の動き（Rust）で扱う。Swift は関わらない
 - この ADR ではコードを変えない。「分かったこと」はコード、公式の文書、他の IME の公開のソース、実機の結果で確かめたもの。「推測」は確かめていないもの。推測は §7 のスパイクで確かめてから本決定にする
