@@ -170,6 +170,7 @@ CC BY-SA 4.0 Legal Code Section 3(a)(1)〜(2) および Section 2(a)(5)(C) に�
 1. **ArcGIS メタデータ**（`https://www.arcgis.com/sharing/rest/content/items/1098a4f61dab4f52997839d04245132a?f=json`）:
    - `licenseInfo` は空ではなく、`https://www.digital.go.jp/policies/base_registry_address_tos`（アドレス・ベース・レジストリの利用規約）へのリンクが設定されている。
    - 説明文（`description`）に「郵便番号については、日本郵便株式会社がウェブサイトに掲載される郵便番号データの説明（`https://www.post.japanpost.jp/service/search/zipcode/download/readme.html`）をご参照ください。アドレス・ベース・レジストリについては、デジタル庁のアドレス・ベース・レジストリの利用規約に従って利用してください。」と明記されている。
+   - 補足（2026-11-23 照合）: ArcGIS 側の公開説明文は月次更新で上書きされるため、2026-10-23 取得時点の版番号（郵便番号データの版 2609、更新日 2026-09-24）は後から配信元では追認できない。表示には取得日と、取得時点の版である旨（配信元の上書きにより後から追認できない旨）を併記する。
 2. **日本郵便「郵便番号データの説明」**（`https://www.post.japanpost.jp/service/search/zipcode/download/readme.html` および `https://www.post.japanpost.jp/zipcode/dl/readme.html`）:
    - 「使用・再配布・移植・改良について: **郵便番号データに限っては日本郵便株式会社は著作権を主張しません。自由に配布していただいて結構です。**」と明記されている。
 3. **結論**: `postal.tsv` は日本郵便側・デジタル庁側（PDL1.0）のいずれの規約からも**再配布が可能**（条件: PDL1.0 に従い出典・加工・主体を明記し、国の未加工データに見せないこと、また日本郵便データの出典も併記すること。参考情報・無保証の前提）。ただし約 21.8MB の容量と月次更新の性質から、同梱に含めるか各自取得に残すかは #490 で設計上の採否を決める。
