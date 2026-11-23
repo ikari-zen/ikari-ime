@@ -13,7 +13,7 @@
 //! 「通常版の束には `ikari-data` がある」として出す側に置く。自由指定は、エンジンと同じ値（`ikari-resource` の `platform`）を読み、
 //! 不明なときは出さない側に倒す。`ikari-data` の実際の有無で絞るのは FFI の入口（`ikari_settings_edition_capabilities`）。
 
-use ikari_resource::platform::user_models_offered_on_platform;
+use ikari_resource::platform::USER_MODELS_OFFERED;
 
 /// 取得の核をビルドに持つか（`online` の feature。ADR 0080 §7.1）
 const ONLINE: bool = cfg!(feature = "online");
@@ -61,7 +61,7 @@ impl EditionInputs {
         EditionInputs {
             online: ONLINE,
             data_tool_present: ONLINE,
-            user_models_offered: user_models_offered_on_platform(cfg!(target_vendor = "apple")),
+            user_models_offered: USER_MODELS_OFFERED,
         }
     }
 }
@@ -155,7 +155,7 @@ mod tests {
     /// 引数なしの関数は、ビルドの feature で版が決まる。自由指定は、エンジンと同じ値を読む
     #[test]
     fn this_build_follows_the_online_feature() {
-        let user = user_models_offered_on_platform(cfg!(target_vendor = "apple"));
+        let user = USER_MODELS_OFFERED;
         let c = edition_capabilities();
         if cfg!(feature = "online") {
             assert_eq!(c, capabilities_for(inputs(true, true, user)));

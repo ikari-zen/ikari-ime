@@ -6,34 +6,39 @@
 /// （既定の判断はリードの確認待ち）
 pub const MACOS_USER_MODELS_RELEASED: bool = false;
 
-/// この OS の製品で、自由指定のモデルを出すか（コンパイル時の値）。
-/// `cage_only`: 檻役だけを使う構成か（macOS の製品）。Windows は段 2 があるので出す。ほかは段 2 が無いので出さない
-pub const fn user_models_offered_on_platform(cage_only: bool) -> bool {
-    if cfg!(windows) {
-        true
-    } else if cage_only {
-        MACOS_USER_MODELS_RELEASED
-    } else {
-        false
-    }
-}
+/// この OS の製品で、自由指定のモデルを出すか（コンパイル時の値。エンジンと画面の出し分けは、この 1 か所を読む）。
+/// Windows は段 2 があるので出す。macOS（Apple の OS）は檻役の解放（[`MACOS_USER_MODELS_RELEASED`]）に従う。
+/// ほかは段 2 が無いので出さない。開発用のビルド（テスト、`dev-knobs`）でも値は変えない（画面と食い違わせない）
+pub const USER_MODELS_OFFERED: bool = if cfg!(windows) {
+    true
+} else if cfg!(target_vendor = "apple") {
+    MACOS_USER_MODELS_RELEASED
+} else {
+    false
+};
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// 檻役だけの構成は、解放の値に従う。段 2 の無い構成（Windows 以外）は出さない
+    /// Windows は出す。macOS は解放の値に従う（既定は出さない）。ほかは出さない
     #[test]
     fn follows_release_flag_and_defaults_to_hidden() {
-        if cfg!(windows) {
-            assert!(user_models_offered_on_platform(false));
-            assert!(user_models_offered_on_platform(true));
-        } else {
-            assert!(!user_models_offered_on_platform(false));
-            assert_eq!(
-                user_models_offered_on_platform(true),
-                MACOS_USER_MODELS_RELEASED
-            );
+        const {
+            assert!(
+                USER_MODELS_OFFERED
+                    == (cfg!(windows)
+                        || (cfg!(target_vendor = "apple") && MACOS_USER_MODELS_RELEASED))
+            )
+        };
+        if !cfg!(windows) {
+            // 解放前の macOS と、段 2 の無い OS は出さない
+            const {
+                assert!(
+                    USER_MODELS_OFFERED == MACOS_USER_MODELS_RELEASED
+                        || !cfg!(target_vendor = "apple")
+                )
+            };
         }
     }
 }
