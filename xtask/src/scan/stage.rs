@@ -51,12 +51,15 @@ const TOP_LEVEL_EXES: &[&str] = &[
 ];
 /// 直下に置いてよい DLL の名前の前置き（llama.cpp と ggml の部品だけ。ikari の DLL は各フォルダに置く）
 const TOP_LEVEL_DLL_PREFIXES: &[&str] = &["llama", "ggml"];
-/// サブフォルダに置いてよい exe（配置の形の中の小文字の相対パス。.NET の自己完結の配布が持つ `createdump.exe` を含む）
+/// サブフォルダに置いてよい exe（配置の形の中の小文字の相対パス。.NET の自己完結の配布が持つ `createdump.exe` と、
+/// Windows App SDK の自己完結の出力が持つ `RestartAgent.exe`（通知の再起動の部品。microsoft/WindowsAppSDK#3843）を含む）
 const SUBDIR_EXES: &[&str] = &[
     "candidate/ikari-candidate.exe",
     "candidate/createdump.exe",
+    "candidate/restartagent.exe",
     "settings/ikari-settings.exe",
     "settings/createdump.exe",
+    "settings/restartagent.exe",
 ];
 /// 直下の DLL に使ってはいけない名前の前置き（ikari の DLL は、それぞれのフォルダに置く）
 const TOP_LEVEL_DLL_FORBIDDEN_PREFIX: &str = "ikari";
@@ -285,6 +288,9 @@ mod tests {
         write(stage, "backends/ggml-cpu-haswell.dll", CLEAN);
         write(stage, "tip/resources/keymap/ms-ime.tsv", b"a\tb\n");
         write(stage, "candidate/coreclr.dll", b"OutputDebugStringW");
+        // Windows App SDK の自己完結の出力の部品（名前の大文字小文字は問わない）
+        write(stage, "candidate/RestartAgent.exe", CLEAN);
+        write(stage, "settings/RestartAgent.exe", CLEAN);
         dir
     }
 
@@ -370,6 +376,20 @@ mod tests {
         write(dir.path(), "candidate/app.pdb", CLEAN);
         let found = problems(dir.path());
         assert_eq!(found.len(), 4, "{found:?}");
+    }
+
+    #[test]
+    fn restart_agent_is_allowed_only_in_the_ui_folders() {
+        let dir = good_stage();
+        write(dir.path(), "candidate/evil.exe", CLEAN);
+        write(dir.path(), "settings/evil.exe", CLEAN);
+        write(dir.path(), "backends/RestartAgent.exe", CLEAN);
+        let found = problems(dir.path());
+        assert_eq!(found.len(), 3, "{found:?}");
+        assert!(found.iter().all(|f| !f.starts_with(&format!(
+            "{}",
+            at(dir.path(), "candidate/RestartAgent.exe").display()
+        ))));
     }
 
     #[test]
