@@ -12,7 +12,7 @@
 
 use std::path::{Path, PathBuf};
 
-use super::{check_bytes, find_dev_strings, find_probe};
+use super::{check_bytes, find_dev_strings, find_probe, network_problems};
 
 /// `scan-product` の検査の全部を効かせる、ikari の Rust の製品（配置の形の中の相対パス。区切りは `/`）
 const PRODUCT_FILES: &[&str] = &[
@@ -48,6 +48,15 @@ const TOP_LEVEL_EXES: &[&str] = &[
     "ikari-setup-helper.exe",
     DATA_EXE,
     LM_CHILD,
+];
+/// 直下に置いてよい DLL の名前の前置き（llama.cpp と ggml の部品だけ。ikari の DLL は各フォルダに置く）
+const TOP_LEVEL_DLL_PREFIXES: &[&str] = &["llama", "ggml"];
+/// サブフォルダに置いてよい exe（配置の形の中の小文字の相対パス。.NET の自己完結の配布が持つ `createdump.exe` を含む）
+const SUBDIR_EXES: &[&str] = &[
+    "candidate/ikari-candidate.exe",
+    "candidate/createdump.exe",
+    "settings/ikari-settings.exe",
+    "settings/createdump.exe",
 ];
 /// 直下の DLL に使ってはいけない名前の前置き（ikari の DLL は、それぞれのフォルダに置く）
 const TOP_LEVEL_DLL_FORBIDDEN_PREFIX: &str = "ikari";
@@ -102,7 +111,7 @@ pub fn check_stage(stage: &Path) -> Result<Vec<String>, String> {
     Ok(problems)
 }
 
-/// LM の子の検査（開発用の文字列と測定ツールの印）
+/// LM の子の検査（開発用の文字列、測定ツールの印、通信の DLL）
 fn check_lm_child(path: &Path, bytes: &[u8]) -> Vec<String> {
     let dev = find_dev_strings(bytes).into_iter().map(|word| {
         format!(
@@ -116,7 +125,9 @@ fn check_lm_child(path: &Path, bytes: &[u8]) -> Vec<String> {
             path.display()
         )
     });
-    dev.chain(probe).collect()
+    dev.chain(probe)
+        .chain(network_problems(path, bytes))
+        .collect()
 }
 
 /// 直下の exe と DLL の名前
@@ -135,6 +146,14 @@ fn top_level_problems(stage: &Path) -> Vec<String> {
             problems.push(format!(
                 "{}: ikari の DLL は直下に置かない（インストール先の直下に入ってしまう）",
                 stage.join(&name).display()
+            ));
+        } else if lower.ends_with(".dll")
+            && !TOP_LEVEL_DLL_PREFIXES.iter().any(|p| lower.starts_with(p))
+        {
+            problems.push(format!(
+                "{}: 直下に置いてよい DLL ではありません（{} で始まる名前だけ）",
+                stage.join(&name).display(),
+                TOP_LEVEL_DLL_PREFIXES.join("、")
             ));
         }
     }
@@ -157,7 +176,7 @@ fn tip_dir_problems(stage: &Path) -> Vec<String> {
         .collect()
 }
 
-/// どこにも置いてはいけない名前のファイルとフォルダ
+/// どこにも置いてはいけない名前のファイルとフォルダ（測定ツールの部品、`.pdb`）と、サブフォルダの余分な exe
 fn forbidden_names(stage: &Path) -> Vec<String> {
     let mut problems = Vec::new();
     let mut pending = vec![stage.to_path_buf()];
@@ -173,6 +192,25 @@ fn forbidden_names(stage: &Path) -> Vec<String> {
                     "{}: 測定ツールの部品（名前に `{part}`）は製品に入れない（ADR 0075 §4）",
                     path.display()
                 ));
+            }
+            if lower.ends_with(".pdb") {
+                problems.push(format!(
+                    "{}: デバッグ情報（.pdb）は製品に入れない",
+                    path.display()
+                ));
+            }
+            if path.is_file() && lower.ends_with(".exe") && dir != stage {
+                let relative = path
+                    .strip_prefix(stage)
+                    .map(|r| r.to_string_lossy().replace('\\', "/").to_ascii_lowercase())
+                    .unwrap_or_default();
+                if !SUBDIR_EXES.contains(&relative.as_str()) {
+                    problems.push(format!(
+                        "{}: サブフォルダに置いてよい exe ではありません（{}）",
+                        path.display(),
+                        SUBDIR_EXES.join("、")
+                    ));
+                }
             }
             if path.is_dir() {
                 pending.push(path);
@@ -306,6 +344,30 @@ mod tests {
         write(dir.path(), "ikari_tip.dll", CLEAN);
         write(dir.path(), "tip/ikari_tip.pdb", CLEAN);
         write(dir.path(), "backends/openvino_c.dll", CLEAN);
+        let found = problems(dir.path());
+        assert_eq!(found.len(), 5, "{found:?}");
+    }
+
+    #[test]
+    fn network_dlls_are_rejected_except_in_the_data_child() {
+        let dir = good_stage();
+        write(dir.path(), DATA_EXE, b"MZ WS2_32.dll secur32.dll");
+        assert_eq!(problems(dir.path()), Vec::<String>::new());
+        write(dir.path(), "ikari-setup-helper.exe", b"MZ winhttp.dll");
+        write(dir.path(), LM_CHILD, b"MZ llama.dll wininet.dll");
+        write(dir.path(), "tip/ikari_tip.dll", b"MZ WS2_32.dll");
+        let found = problems(dir.path());
+        assert_eq!(found.len(), 3, "{found:?}");
+    }
+
+    #[test]
+    fn stray_dlls_exes_and_pdbs_are_rejected() {
+        let dir = good_stage();
+        write(dir.path(), "evil.dll", CLEAN);
+        write(dir.path(), "candidate/other.exe", CLEAN);
+        write(dir.path(), "candidate/createdump.exe", CLEAN);
+        write(dir.path(), "backends/tool.exe", CLEAN);
+        write(dir.path(), "candidate/app.pdb", CLEAN);
         let found = problems(dir.path());
         assert_eq!(found.len(), 4, "{found:?}");
     }

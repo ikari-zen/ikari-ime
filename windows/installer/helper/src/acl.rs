@@ -29,6 +29,9 @@ pub const WRITE_MASK: u32 = 0x0000_0002
     | 0x1000_0000
     | 0x4000_0000;
 
+/// CREATOR OWNER（継承の先で、作った者の SID に置き換わる）
+pub const SID_CREATOR_OWNER: &str = "S-1-3-0";
+
 /// ACE の継承だけに使う印（INHERIT_ONLY_ACE）。この印の ACE は、その物自体には効かない
 pub const INHERIT_ONLY: u8 = 0x08;
 
@@ -105,7 +108,11 @@ pub fn problems(descriptor: &Descriptor) -> Vec<Problem> {
             Ace::Denied => {}
             Ace::Other { ace_type } => found.push(Problem::UnknownAce(*ace_type)),
             Ace::Allowed { sid, mask, flags } => {
-                if flags & INHERIT_ONLY != 0 {
+                // 継承だけの ACE を見逃してよいのは、信頼する SID と CREATOR OWNER だけ
+                // （それ以外の SID の継承は、このあと作る子に書ける権利を渡す）
+                if flags & INHERIT_ONLY != 0
+                    && (trusted(sid) || sid.eq_ignore_ascii_case(SID_CREATOR_OWNER))
+                {
                     continue;
                 }
                 if mask & WRITE_MASK != 0 && !trusted(sid) {
@@ -267,6 +274,55 @@ mod tests {
             flags: 0,
         });
         assert_eq!(problems(&d), vec![Problem::WritableBy("S-1-5-11".into())]);
+    }
+
+    #[test]
+    fn inherit_only_write_for_an_untrusted_sid_fails() {
+        let mut d = program_files_like();
+        d.dacl.as_mut().unwrap().push(Ace::Allowed {
+            sid: "S-1-5-32-545".into(),
+            mask: 0x1000_0000,
+            flags: 0x0B,
+        });
+        assert_eq!(
+            problems(&d),
+            vec![Problem::WritableBy("S-1-5-32-545".into())]
+        );
+    }
+
+    #[test]
+    fn inherit_only_write_for_trusted_sids_and_creator_owner_passes() {
+        for sid in [
+            SID_SYSTEM,
+            SID_ADMINISTRATORS,
+            SID_TRUSTED_INSTALLER,
+            "S-1-3-0",
+        ] {
+            let d = Descriptor {
+                owner: Some(SID_SYSTEM.into()),
+                dacl: Some(vec![Ace::Allowed {
+                    sid: sid.into(),
+                    mask: 0x1000_0000,
+                    flags: 0x0B,
+                }]),
+                reparse_point: false,
+            };
+            assert_eq!(problems(&d), vec![], "{sid}");
+        }
+    }
+
+    #[test]
+    fn inherit_only_read_for_an_untrusted_sid_still_passes() {
+        let d = Descriptor {
+            owner: Some(SID_SYSTEM.into()),
+            dacl: Some(vec![Ace::Allowed {
+                sid: "S-1-1-0".into(),
+                mask: 0x0012_00A9,
+                flags: 0x0B,
+            }]),
+            reparse_point: false,
+        };
+        assert_eq!(problems(&d), vec![]);
     }
 
     #[test]

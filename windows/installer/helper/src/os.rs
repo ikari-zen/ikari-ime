@@ -41,7 +41,7 @@ use windows_sys::Win32::System::Threading::{
 
 use ikari_setup_helper::acl::{Ace, Descriptor};
 use ikari_setup_helper::stop::{
-    CHILD_EXES, ENGINE_EXE, FORCED_EXIT_CODE, Outcome, SIGNAL_WAIT_MS, TERMINATE_WAIT_MS,
+    ENGINE_EXE, FORCED_EXIT_CODE, Outcome, SIGNAL_WAIT_MS, STOP_CHILD_EXES, TERMINATE_WAIT_MS,
     event_name_for, exe_path, same_path,
 };
 
@@ -423,7 +423,7 @@ pub fn stop_engines(install_dir: &str) -> io::Result<Outcome> {
     outcome.terminated += terminated;
     outcome.remaining += remaining;
 
-    for child in CHILD_EXES {
+    for child in STOP_CHILD_EXES {
         let (children, unopenable) = open_matching(&exe_path(install_dir, child), access)?;
         outcome.remaining += unopenable;
         let refs: Vec<&Owned> = children.iter().map(|(_, h)| h).collect();

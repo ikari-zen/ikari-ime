@@ -400,14 +400,23 @@ fn problems(iss: &str, helper_lib: &str, helper_stop: &str) -> Vec<String> {
 
     // exe の並び（helper の止める相手と同じ）
     let blocked = case_literals(&code, "BlockedExe");
-    let expected = helper_exes(helper_stop);
+    let expected = helper_blocked_exes(helper_stop);
     if expected.is_empty() {
         found.push(format!(
-            "{HELPER_STOP} の ENGINE_EXE と CHILD_EXES を読めません"
+            "{HELPER_STOP} の ENGINE_EXE と BLOCKED_CHILD_EXES を読めません"
         ));
     } else if blocked != expected {
         found.push(format!(
-            "BlockedExe の並び {blocked:?} が helper の止める相手 {expected:?} と違う"
+            "BlockedExe の並び {blocked:?} が helper の送信ブロックの一覧 {expected:?} と違う"
+        ));
+    }
+    // 止める相手は、送信ブロックの子に、取得の子（ikari-data.exe）を足したもの
+    let stop = helper_stop_exes(helper_stop);
+    let mut want_stop: Vec<String> = expected.iter().skip(1).cloned().collect();
+    want_stop.push(STOP_DATA_EXE.to_string());
+    if stop != want_stop {
+        found.push(format!(
+            "STOP_CHILD_EXES {stop:?} が送信ブロックの子と {STOP_DATA_EXE} の並び {want_stop:?} と違う"
         ));
     }
 
@@ -494,27 +503,42 @@ fn case_literals(code: &str, function: &str) -> Vec<String> {
         .collect()
 }
 
-/// helper の `ENGINE_EXE` と `CHILD_EXES`（`r"…"` と `"…"`）を順に
-fn helper_exes(stop: &str) -> Vec<String> {
-    let literal = |s: &str| -> Option<String> {
-        let s = s.trim().trim_start_matches('r');
-        Some(s.strip_prefix('"')?.split('"').next()?.to_string())
+/// 取得の子。停止の対象にだけ入れる（通信するので、送信ブロックには入れない。ADR 0076）
+const STOP_DATA_EXE: &str = "ikari-data.exe";
+
+/// 文字列リテラル（`r"…"` と `"…"`）
+fn literal(s: &str) -> Option<String> {
+    let s = s.trim().trim_start_matches('r');
+    Some(s.strip_prefix('"')?.split('"').next()?.to_string())
+}
+
+/// `pub const <name>: &[&str] = &[` から `];` までの文字列リテラルを順に（rustfmt が複数行に折ることがある）
+fn const_list(stop: &str, name: &str) -> Vec<String> {
+    let start_text = format!("pub const {name}: &[&str] = &[");
+    let Some(start) = stop.find(&start_text) else {
+        return Vec::new();
     };
+    let rest = &stop[start + start_text.len()..];
+    let inner = rest.split("];").next().unwrap_or_default();
+    inner.split(',').filter_map(literal).collect()
+}
+
+/// helper の `ENGINE_EXE` と `BLOCKED_CHILD_EXES` を順に（`BlockedExe` と同じ並び）
+fn helper_blocked_exes(stop: &str) -> Vec<String> {
     let mut out = Vec::new();
     for line in stop.lines() {
         if let Some(rest) = line.trim().strip_prefix("pub const ENGINE_EXE: &str =") {
             out.insert(0, literal(rest).unwrap_or_default());
         }
     }
-    // CHILD_EXES は rustfmt が複数行に折ることがあるので、`];` まで通しで読む
-    const CHILD_START: &str = "pub const CHILD_EXES: &[&str] = &[";
-    if let Some(start) = stop.find(CHILD_START) {
-        let rest = &stop[start + CHILD_START.len()..];
-        let inner = rest.split("];").next().unwrap_or_default();
-        out.extend(inner.split(',').filter_map(literal));
-    }
+    out.extend(const_list(stop, "BLOCKED_CHILD_EXES"));
     out.retain(|s| !s.is_empty());
     out
+}
+
+/// helper の `STOP_CHILD_EXES`（エンジンのあとに終わらせる子）
+fn helper_stop_exes(stop: &str) -> Vec<String> {
+    const_list(stop, "STOP_CHILD_EXES")
 }
 
 /// `prefix` のあとの数（`;` まで）
@@ -736,10 +760,47 @@ mod tests {
 
     #[test]
     fn helper_exes_are_read_in_order() {
-        let stop = "pub const ENGINE_EXE: &str = \"a.exe\";\npub const CHILD_EXES: &[&str] = &[\"b.exe\", r\"c\\d.exe\"];\n";
-        assert_eq!(helper_exes(stop), vec!["a.exe", "b.exe", r"c\d.exe"]);
-        let folded = "pub const ENGINE_EXE: &str = \"a.exe\";\npub const CHILD_EXES: &[&str] = &[\n    \"b.exe\",\n    r\"c\\d.exe\",\n];\n";
-        assert_eq!(helper_exes(folded), vec!["a.exe", "b.exe", r"c\d.exe"]);
+        let stop = "pub const ENGINE_EXE: &str = \"a.exe\";\npub const BLOCKED_CHILD_EXES: &[&str] = &[\"b.exe\", r\"c\\d.exe\"];\npub const STOP_CHILD_EXES: &[&str] = &[\"b.exe\", r\"c\\d.exe\", \"data.exe\"];\n";
+        assert_eq!(
+            helper_blocked_exes(stop),
+            vec!["a.exe", "b.exe", r"c\d.exe"]
+        );
+        assert_eq!(
+            helper_stop_exes(stop),
+            vec!["b.exe", r"c\d.exe", "data.exe"]
+        );
+        let folded = "pub const ENGINE_EXE: &str = \"a.exe\";\npub const BLOCKED_CHILD_EXES: &[&str] = &[\n    \"b.exe\",\n    r\"c\\d.exe\",\n];\n";
+        assert_eq!(
+            helper_blocked_exes(folded),
+            vec!["a.exe", "b.exe", r"c\d.exe"]
+        );
+        assert!(helper_stop_exes(folded).is_empty());
+    }
+
+    #[test]
+    fn a_stop_list_without_the_data_child_or_a_blocked_data_child_is_reported() {
+        let real = repo_file(HELPER_STOP);
+        let run = |stop: &str| problems(&repo_file(ISS), &repo_file(HELPER_LIB), stop);
+        let without_data = real.replacen("    \"ikari-data.exe\",\n", "", 1);
+        assert_ne!(without_data, real);
+        assert!(has(&run(&without_data), "STOP_CHILD_EXES"));
+        let blocked_data = real.replacen(
+            "pub const BLOCKED_CHILD_EXES: &[&str] = &[",
+            "pub const BLOCKED_CHILD_EXES: &[&str] = &[\n    \"ikari-data.exe\",",
+            1,
+        );
+        assert!(has(&run(&blocked_data), "BlockedExe の並び"));
+    }
+
+    #[test]
+    fn stop_list_must_add_only_the_data_child_to_the_blocked_children() {
+        let real = repo_file(HELPER_STOP);
+        let blocked = helper_blocked_exes(&real);
+        let stop = helper_stop_exes(&real);
+        assert_eq!(&stop[..stop.len() - 1], &blocked[1..]);
+        assert_eq!(stop.last().map(String::as_str), Some(STOP_DATA_EXE));
+        // 取得の子が送信ブロックの側に入ると、一覧の照合が落ちる
+        assert!(!blocked.iter().any(|b| b == STOP_DATA_EXE));
     }
 
     #[test]
