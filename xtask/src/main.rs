@@ -35,13 +35,13 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// fmt、clippy、cargo test、swift test（macOS のみ）、文書の検査と、結果の記録（段 X1。今は scripts/check.sh）
+    /// fmt、clippy、cargo test、swift test（macOS のみ）、文書の検査と、結果の記録（段 X1。scripts/check.sh から呼ばれる）
     Check(check::Args),
-    /// 辞書のビルド（段 X2。今は scripts/build-dict.sh）
+    /// 辞書のビルド（段 X2。scripts/build-dict.sh から呼ばれる）
     Dict(dict::Args),
-    /// データの取得と配置（段 X3。今は scripts/fetch-data.sh、scripts/install-data.sh）
+    /// データの取得と配置（段 X3。scripts/fetch-data.sh、scripts/install-data.sh から呼ばれる）
     Data(data::Args),
-    /// 評価（段 X4。今は eval/scripts/snapshot.sh）
+    /// 評価（段 X4。eval/scripts/snapshot.sh から呼ばれる）
     Eval(eval::Args),
     /// 性能の計測と基準値との比較（ADR 0041 §6.3。L-P）
     Perf(perf::Args),

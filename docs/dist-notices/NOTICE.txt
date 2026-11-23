@@ -1,0 +1,130 @@
+ikari-ime 配布データ（辞書・モデル）のライセンス表示（NOTICE）
+
+このディレクトリ（data/）に同梱される辞書データおよび言語モデルには、
+ikari-ime 本体のソースコード・バイナリ（Apache License 2.0）とは別に、
+各ファイルに対応する以下のライセンス条件が適用されます。
+
+- CC BY-SA 4.0（system.dict および zenz-v3.2-small-Q5_K_M.gguf）は、
+  それぞれのデータファイル単体にのみ適用され、ikari-ime 本体のソフトウェア
+  （Apache License 2.0）には及びません。
+- 同梱場所や設定画面への組み込み経路などの配布パッケージ仕様は、
+  ADR 0080 の対応レーン（レーン 3〜6）の実装で確定するため一部未定です。
+- 各ファイルの詳細な出典・著作権表示・加工内容・依存パッケージの一覧は、
+  アプリ本体に同梱する THIRD_PARTY_NOTICES.md も参照してください。
+
+----------------------------------------------------------------------
+1. dict/system.dict（変換用システム辞書）
+----------------------------------------------------------------------
+`system.dict` は、以下の元データを `dict-builder` で統合・加工して作成した
+ファイルです。Wikipedia 日本語版由来の一覧（`webwords`、CC BY-SA 4.0）の
+語彙を組み込んでいるため、`system.dict` ファイル単体は CC BY-SA 4.0 および
+元の各データの条件に従って提供されます。
+
+- ライセンス: クリエイティブ・コモンズ 表示-継承 4.0 国際（CC BY-SA 4.0）
+  - 概要: https://creativecommons.org/licenses/by-sa/4.0/
+  - 日本語: https://creativecommons.org/licenses/by-sa/4.0/deed.ja
+  - 条文: https://creativecommons.org/licenses/by-sa/4.0/legalcode.txt
+- 組み込み元と各表示:
+  1) SudachiDict Full（small_lex / core_lex / notcore_lex、20260723）
+     - ライセンス: Apache License 2.0（licenses/APACHE-2.0.txt）
+     - 著作権: Copyright (c) 2017-2023 Works Applications Co., Ltd.
+     - 出典: http://sudachi.s3-website-ap-northeast-1.amazonaws.com/sudachidict-raw/
+     - 含まれる表示（UniDic BSD-3-Clause・NEologd Apache-2.0 と出典一覧）:
+       licenses/SUDACHIDICT-LEGAL.txt
+     - 加工: コスト調整およびバイナリ辞書形式への変換
+  2) chiVe 1.3 mc90（語彙頻度順位）
+     - ライセンス: Apache License 2.0（licenses/APACHE-2.0.txt）
+     - 著作権: Copyright (c) 2024 Works Applications Co., Ltd.
+     - 出典: https://sudachi.s3.ap-northeast-1.amazonaws.com/chive/chive-1.3-mc90.tar.gz
+     - 加工: 頻度順位の辞書構築への利用
+  3) アドレス・ベース・レジストリ 町字マスター（デジタル庁）
+     - ライセンス: 公共データ利用規約（第1.0版。PDL1.0）
+       利用規約: https://www.digital.go.jp/policies/base_registry_address_tos
+       PDL1.0 原文: https://www.digital.go.jp/resources/open_data/public_data_license_v1.0
+     - 出典: https://data.address-br.digital.go.jp/mt_town/mt_town_all.csv.zip
+     - 加工: デジタル庁「アドレス・ベース・レジストリ 町字マスター」をもとに
+       ikari-ime が加工して作成（国等が作成した未加工データではありません）
+  4) Wikipedia 日本語版由来 外来語の一覧（webwords）
+     - ライセンス: CC BY-SA 4.0（https://creativecommons.org/licenses/by-sa/4.0/deed.ja）
+     - 出典: ウィキペディア日本語版（https://ja.wikipedia.org/）の執筆者
+       各記事の執筆者は各記事の履歴を参照。使用ダンプ版は各 Release ノートに記載
+     - 加工: ikari-ime がダンプの記事本文から片仮名の連なりと出現回数・記事数・
+       品詞区分のみを抽出（記事本文・文・記事名・カテゴリ名は含みません）
+
+----------------------------------------------------------------------
+2. dict/grammar.bin（連接表・文法テーブル）
+----------------------------------------------------------------------
+- ライセンス: Apache License 2.0（licenses/APACHE-2.0.txt）
+  （UniDic 由来の表示を含む: licenses/SUDACHIDICT-LEGAL.txt）
+- 著作権: Copyright (c) 2017-2023 Works Applications Co., Ltd.
+- 出典: SudachiDict Full 20260723（matrix.def）
+  http://sudachi.s3-website-ap-northeast-1.amazonaws.com/sudachidict-raw/
+- 加工: コスト調整およびバイナリ形式への変換
+
+----------------------------------------------------------------------
+3. dict/vectors.bin（話題の手がかり用 単語ベクトル）
+----------------------------------------------------------------------
+- ライセンス: Apache License 2.0（licenses/APACHE-2.0.txt）
+- 著作権: Copyright (c) 2024 Works Applications Co., Ltd.
+- 出典: chiVe 1.3 mc90
+  https://sudachi.s3.ap-northeast-1.amazonaws.com/chive/chive-1.3-mc90.tar.gz
+- 加工: 300 次元単語ベクトルの量子化・バイナリ変換
+
+----------------------------------------------------------------------
+4. dict/postal.tsv（住所 <-> 郵便番号 変換表）
+----------------------------------------------------------------------
+- ライセンス: 公共データ利用規約（第1.0版。PDL1.0）
+  利用規約: https://www.digital.go.jp/policies/base_registry_address_tos
+  PDL1.0 原文: https://www.digital.go.jp/resources/open_data/public_data_license_v1.0
+  （郵便番号データについて、日本郵便株式会社の「郵便番号データの説明」
+  https://www.post.japanpost.jp/service/search/zipcode/download/readme.html
+  に「郵便番号データに限っては日本郵便株式会社は著作権を主張しません」の記載あり。
+  参考情報・無保証・継続提供未保証の前提で提供）
+- 出典:
+  - アドレス・ベース・レジストリ 町字・郵便番号変換表（デジタル庁）
+    https://dataset.address-br.digital.go.jp/
+    （項目 1098a4f61dab4f52997839d04245132a）
+  - 日本郵便株式会社 郵便番号データ
+- 加工: デジタル庁「アドレス・ベース・レジストリ 町字・郵便番号変換表」（元は
+  日本郵便の郵便番号データ）をもとに ikari-ime が加工して作成（国や日本郵便が
+  作成した未加工データではありません）
+
+----------------------------------------------------------------------
+5. dict/emoji.tsv（絵文字ショートコード表）
+----------------------------------------------------------------------
+- ライセンス: MIT License（全文: licenses/MIT-EMOJI-DATA.txt）
+- 著作権: Copyright (c) 2013 Cal Henderson
+- 出典: iamcal/emoji-data（commit 13ee711e222ea17fe537bfea953c687866f16411）
+  https://github.com/iamcal/emoji-data
+- 加工: emoji.json からショートコードと文字のみを抽出（画像は含みません）
+
+----------------------------------------------------------------------
+6. models/zenz-v3.2-small-Q5_K_M.gguf（言語モデルファイル単体）
+----------------------------------------------------------------------
+この節のライセンス条件はモデルファイル単体にのみ適用され、ikari-ime 本体の
+ソフトウェア（Apache License 2.0）には適用されません。
+
+- 作者: Keita Miwa（Hugging Face: Miwa-Keita）
+- ライセンス: クリエイティブ・コモンズ 表示-継承 4.0 国際（CC BY-SA 4.0）
+  - 概要: https://creativecommons.org/licenses/by-sa/4.0/
+  - 日本語: https://creativecommons.org/licenses/by-sa/4.0/deed.ja
+  - 条文: https://creativecommons.org/licenses/by-sa/4.0/legalcode.txt
+- 出典: https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf
+  （確認日: 2026-11-22、commit ef3e66e3665fe6a19598e6578e9b88a994b647fd、
+  元ファイル名 ggml-model-Q5_K_M.gguf、
+  sha256: 29c223d4c23327b80fd13ebb5ab2555057a46317997d5da391584ffbef0db673）
+- 変更の有無: 変更なし（配布元のファイルを無改変のまま同梱）
+- 無保証: 本モデルはライセンスに基づき「現状のまま（AS-IS）」で提供され、
+  作者および配布者による保証はありません（CC BY-SA 4.0 Section 5）。
+- 追加制限の禁止: 本モデルファイルに対して技術的保護手段その他の追加制限を
+  課しません（CC BY-SA 4.0 Section 2(a)(5)(C)）。
+- 注記: 配布元のモデルページには元になったモデルおよび学習データの記載が
+  ありません（参考として、同一作者の zenz-v2.5-small では元モデルに
+  ku-nlp/gpt2-small-japanese-char（CC BY-SA 4.0）が明記されています）。
+
+----------------------------------------------------------------------
+licenses/ に同梱するライセンス原文ファイル
+----------------------------------------------------------------------
+- licenses/APACHE-2.0.txt       Apache License 2.0 全文
+- licenses/SUDACHIDICT-LEGAL.txt SudachiDict の LEGAL 原文（UniDic BSD-3-Clause / NEologd 出典を含む）
+- licenses/MIT-EMOJI-DATA.txt   iamcal/emoji-data の MIT License 全文

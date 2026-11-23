@@ -17,7 +17,7 @@
 #            ライセンス: Apache License 2.0（Works Applications。展開した LICENSE を見ること）
 #   zenz     zenz-v3.2-small Q5_K_M（GGUF）
 #            配布元: https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf
-#            ライセンス: モデルカードでは Apache-2.0。派生物の扱いは THIRD_PARTY_NOTICES.md
+#            ライセンス: CC BY-SA 4.0（2026-11-22 確認）。表示の条件は THIRD_PARTY_NOTICES.md
 #   emoji    iamcal/emoji-data の emoji.json（コミット固定。画像は取らない。ADR 0027 §5.2）
 #            配布元: https://github.com/iamcal/emoji-data
 #            ライセンス: MIT（Copyright (c) 2013 Cal Henderson。THIRD_PARTY_NOTICES.md）
