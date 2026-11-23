@@ -206,7 +206,7 @@
 
 1. リリースの workflow に `build-dict` の job（ubuntu）を足す。元データは `fetch.rs` の sha256 で照らして取り（今の `cargo xtask data fetch`）、`dict-builder` で作り、`BUILD_INFO` ごと成果物にする。macOS と Windows の job は、この 1 つの成果物を受けて同梱する（両 OS で同じバイト列）。
 2. モデルは、配布元の URL から取り、`ZENZ_SMALL_SHA256` で照らす（ikari 側で変換しない。ADR 0060 更新）。
-3. キャッシュは読まない（ADR 0069 §4.1）。元データの取得先（SudachiDict、chiVe、ABR、Hugging Face、外来語の一覧の Release）が落ちていると版を出せない。中身は sha256 で守られるが、取れるかどうかは外に依る（受け入れる。代わりの置き場所は作らない）。
+3. キャッシュは読まない（ADR 0069 §4.1）。元データの取得先（SudachiDict、chiVe、Hugging Face、外来語の一覧と ABR の写しの Release）が落ちていると版を出せない。中身は sha256 で守られるが、取れるかどうかは外に依る（受け入れる）。**ただし ABR は例外**（2026-11-23 ユーザー決定）: 配信元が GitHub のランナーに 403 を返し（CloudFront。試しのビルドとスパイクで実測。User-Agent や再試行では変わらない）、配信元は版を持たず上書きされて固定の sha256 とも合わなくなっていたため、町字マスターと郵便番号変換表の zip は、このリポジトリの Release `abr-mirror-20261025`（固定の sha256 の中身そのもの。PDL1.0 で再配布できる）から取る（`xtask/src/data/fetch.rs`）。ABR を新しくするときは、zip を測り、新しい `abr-mirror-<日付>` の Release を作って表を直す。
 4. 辞書のビルドが同じ入力で同じバイト列になるか（再現性）は確かめていない（**未確認**。両 OS で同じ物を配るのは 1 の形で足り、再現性は要件にしない）。
 5. job の時間とディスクは測っていない（元データは合わせて約 2.6GB。`BUILD_INFO` の入力の大きさから）。ランナーに収まらなければ、job を分けるか元データの扱いを見直す（測って決める）。
 

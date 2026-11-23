@@ -22,11 +22,11 @@
 #            配布元: https://github.com/iamcal/emoji-data
 #            ライセンス: MIT（Copyright (c) 2013 Cal Henderson。THIRD_PARTY_NOTICES.md）
 #   abr      デジタル庁 アドレス・ベース・レジストリ（ABR）の町字マスター mt_town_all.csv（zip。ADR 0030）。大字・町名の語彙の元
-#            配布元: https://data.address-br.digital.go.jp/mt_town/mt_town_all.csv.zip（認証なし。11.5MB、展開後 156MB）
+#            取得先: このリポジトリの Release abr-mirror-20261025 の写し（元の配信元は GitHub のランナーに 403 を返す。ADR 0080 §9.3）。11.5MB、展開後 156MB
 #            ライセンス: 公共データ利用規約（第1.0版。PDL1.0）。出典の記載と、加工したことの明記が要る（THIRD_PARTY_NOTICES.md）。
 #            配布元は日付で更新される（版番号はない）。sha256 が合わなければ捨てるので、更新されたら ADR 0030 の手順で測り直して下の表を直す
 #   postal   ABR「町字・郵便番号変換表」abr_post_code.csv（zip。ADR 0032 §7）。住所 <-> 郵便番号の表 postal.tsv の元（読みの列はない）
-#            配布元: デジタル庁 ABR のカタログ（dataset.address-br.digital.go.jp）の項目 1098a4f61dab4f52997839d04245132a
+#            取得先: 同じ Release の写し。元は デジタル庁 ABR のカタログ（dataset.address-br.digital.go.jp）の項目 1098a4f61dab4f52997839d04245132a
 #                    https://www.arcgis.com/sharing/rest/content/items/<項目 id>/data（認証なし。6.4MB、展開後 59MB、UTF-8、CRLF、14 列）
 #            ライセンス: ABR の利用規約（PDL1.0）。元は日本郵便の郵便番号データ（版は展開した metadata.txt）。THIRD_PARTY_NOTICES.md
 #            配布元は月 1 回ほど更新される（版番号はない）。sha256 が合わなければ捨てるので、更新されたら下の表を測り直して直す
