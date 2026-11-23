@@ -40,10 +40,6 @@ const LOADING_MARK_FILE_NAME: &str = ".loading";
 /// 印を読む量の上限（バイト。中身は ID 1 つ）
 const MAX_LOADING_MARK_BYTES: u64 = 64;
 
-/// macOS の製品で、自由指定のモデルを出すか。ADR 0077 §6: 檻役の実装がマージされ、§8 の実機の確認が済むまでは
-/// 出さない。**既定の判断はリードの確認待ち**（D-4 の PR の説明）
-const MACOS_USER_MODELS_RELEASED: bool = false;
-
 /// 設定 `lm.model` の値
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModelChoice {
@@ -82,16 +78,9 @@ pub(crate) fn user_models_offered(lm_host: bool) -> bool {
     lm_host && platform_offers_user_models()
 }
 
-/// Windows は段 2（AppContainer。張れなければ起動しない）。macOS の製品は檻役（[`MACOS_USER_MODELS_RELEASED`]）。
-/// ほか（Linux、macOS の開発用のビルド）は段 2 が無いので出さない
+/// 値は `ikari-resource` の 1 か所（画面の出し分けも同じ値を読む）。檻役だけの構成は [`crate::lm_cage::product_uses_cage`]
 fn platform_offers_user_models() -> bool {
-    if cfg!(windows) {
-        true
-    } else if crate::lm_cage::product_uses_cage() {
-        MACOS_USER_MODELS_RELEASED
-    } else {
-        false
-    }
+    ikari_resource::platform::user_models_offered_on_platform(crate::lm_cage::product_uses_cage())
 }
 
 /// モデルの出どころ（檻の段の決め手）

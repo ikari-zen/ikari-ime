@@ -1,6 +1,6 @@
 # ADR 0060: LM のモデルを利用者が選ぶ（候補から選ぶ、またはファイル・URL を指定する）。モデルごとの差は「モデルの記述（profile）」1 か所にまとめる
 
-- 状態: 一部承認（2026-11-15 ユーザー決定。承認したのは、ユーザーの決定の節（2026-11-13、2026-11-14）の決定、特に Q2（拒まず警告つきで許可）、Q3（最初のプリセットは zenz small だけ）、Q4（LM の推論は別プロセス `ikari-lm-host`。#423 で実装済み）。モデルの選択の本体（profile、自由指定、URL の取得、試しの採点）は未実装で、実装のときに改めて確かめる）
+- 状態: 一部承認（2026-11-15 ユーザー決定。承認したのは、ユーザーの決定の節（2026-11-13、2026-11-14）の決定、特に Q2（拒まず警告つきで許可）、Q3（最初のプリセットは zenz small だけ）、Q4（LM の推論は別プロセス `ikari-lm-host`。#423 で実装済み）。モデルの選択の本体のうち、profile、一覧、自由指定、URL の取得は実装済み（`resource/src/profile.rs`、`engine/src/model_select.rs`、`model_import.rs`、`fetch/`。2026-11-23 の点検）。試しの採点はコードに見当たらず未実装）
 - 日付: 2026-11-13
 - 対象: `lm`（`config.rs`、`prompt.rs`、`ranker.rs`、`llama.rs`）、`ikari-resource`（既知のモデルの表、manifest）、`engine`（`lib.rs` のモデルの解決、`settings.rs`）、`ikari-data`（後で）、設定アプリ（UI）
 - 前提: ADR 0058（承認。この ADR は 0058 を補い、§5.2 と §6.1 の 4（モデル）、§7.2 のモデルの行、§11 を改める）、ADR 0003 §7.1、ADR 0042、ADR 0057、spec NFR-17・NFR-33〜38
@@ -66,7 +66,7 @@
 - **§5.2**: `KNOWN_MODELS` を `MODEL_PRESETS` に替える。manifest のモデルの部品に、任意の欄 `profile { format, base_preset }` と `source`（ファイル、または URL）を足す。schema は 1 のまま（足す欄は任意）。
 - **§7.2 のモデルの行**: `models/` に複数のモデルを置けるようにし、ファイル名は `<id>.gguf`（プリセットは今の `file_name` のまま。移し替えは要らない）。`models/MANIFEST.json` に、入っているモデルの一覧を持つ。`.new` から rename、`.prev` 1 世代は同じ。取り込んでも `lm.model` は変えない。
 - **§11**: URL からの取得は Q1 の決定で上書きする。
-- 自由指定の束は、Rust が作る: `ikari-data model import --file <path> --format <f>`。設定アプリはファイルを選ばせ、`inbox/<名前>.partial/` にコピーしてから、それを呼ぶ。sha256 と manifest は Rust が書く。URL のときは `ikari-data model fetch --url <u> [--sha256 <h>] --format <f>`。sha256 は任意で、指定すれば照合する。
+- 自由指定の束は、Rust が作る: `ikari-data model import --file <path> --format <f>`。設定アプリはファイルを選ばせ、`inbox/<名前>.partial/` にコピーしてから、それを呼ぶ。sha256 と manifest は Rust が書く（**注記（2026-11-23）: ファイルからの取り込みは ADR 0076 Q1 で `ikari-data` から外れ、エンジン（`engine/src/model_import.rs`）が行う形に改まった。`model import` は `ikari-data` には無い**）。URL のときは `ikari-data model fetch --url <u> [--sha256 <h>] --format <f>`。sha256 は任意で、指定すれば照合する。
 
 ## 7. 設定と切り替え（macOS と Windows で共通）
 

@@ -6,7 +6,7 @@
 //! - [`LmScorer`]: 推論の口。ワーカー、時間切れ、解放はこの trait のモックでテストする。
 //! - [`host`]: 推論を別プロセス `ikari-lm-host` に頼む口（ADR 0060 Q4）。子が落ちても固まっても、
 //!   `ZenzRanker` は結果なし（辞書だけの順位）で戻る。子の起動、締め切り、回収、連続失敗での断念を持つ。
-//! - llama.cpp を使う実装（`LlamaScorer`）は feature `llama`（Metal は `metal`）の後ろに置く。
+//! - llama.cpp を使う実装（`LlamaScorer`）は feature `llama`（macOS の Metal は `metal`、Windows の Vulkan は `vulkan`）の後ろに置く。
 //!   cmake と Xcode のコマンドラインツールが必要で、既定のビルドには入れない。
 
 pub mod cancel;
