@@ -308,6 +308,17 @@ else
   fail "--dmg の理由が想定と違う: $out"
 fi
 
+# --distribution は --data-dir が要る（配る物にデータなしの束を入れない。ADR 0080 §0）。--dmg を付けても同じ
+for extra in "" --dmg; do
+  if out="$("$IKARI_SCRIPTS_DIR/build.sh" --signing adhoc --distribution ${extra:+"$extra"} 2>&1)"; then
+    fail "--distribution ${extra}がデータなしで通ってしまった"
+  elif [[ "$out" == *"--distribution は --data-dir が要ります"* ]]; then
+    echo "ok: --distribution ${extra:+$extra }はデータなしでは落ちる"
+  else
+    fail "--distribution ${extra}のデータなしの理由が想定と違う: $out"
+  fi
+done
+
 if out="$("$IKARI_SCRIPTS_DIR/build.sh" --edition nope 2>&1)"; then
   fail "--edition nope が通ってしまった"
 elif [[ "$out" == *"--edition は normal か offline"* ]]; then
