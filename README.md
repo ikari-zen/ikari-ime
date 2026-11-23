@@ -6,7 +6,7 @@ ikari-ime は、文脈に応じて同音異義語を選び分ける日本語の�
 
 このリポジトリはソースを公開しています。**ビルド済みのアプリは、まだ配っていません。** 使うには、Mac でソースからビルドしてください。
 
-0.x の版から、未署名のビルド済み macOS 版を GitHub Releases で配る予定です（最初の公開は 0.1.0 の予定。[ロードマップ](docs/roadmap.md)）。公開のときに、未署名のアプリを開く手順を足します（未確認のため、まだ書いていません）。
+0.x の版から、未署名のビルド済み配布物を GitHub Releases で配る予定です（最初の公開は 0.1.0 の予定。[ロードマップ](docs/roadmap.md)）。[ADR 0080](docs/adr/0080-bundle-model-and-dictionary.md) に基づき、公式のままの `zenz-v3.2-small` と辞書を同梱した**通常版**と、通信の部品を持たない**オフライン版**を用意する予定ですが、パッケージ作成と UI 切り替え・macOS dmg のショートカット形式や未署名警告の越え方は実装・実機確認待ちのため**未定**です（公開のときに、実機で確認した手順を足します）。
 
 **0.x の間は、設定の形式、学習データ、プロセス間の取り決め（パイプの命令）などを、予告なく壊すことがあります。** 互換を約束するのは 1.0.0 からです。
 
@@ -288,7 +288,7 @@ AI にビルドや入れ替えを任せるときは、次の点を確かめて�
 ## 7. プライバシー
 
 - **IME は外部と通信しません。** 変換の本体は App Sandbox の中で動き、ネットワークの権限を持ちません。ビルドのときに、この設定を検査しています。
-- **通信するのは、取得の段階だけです。** 元データの取得（`--fetch`）、Cargo と Swift の依存パッケージの取得、初回のビルドです。
+- **通信するのは、取得の段階と設定画面の操作時だけです。** ソースビルド時は元データの取得（`--fetch`）、Cargo と Swift の依存パッケージの取得、初回のビルドでのみ通信します。配布版では、通常版のみ設定画面のボタン操作で取得の部品（`ikari-data`）を起動してモデル取得・版の確認を行い、オフライン版は通信の部品を持たない予定です（[ADR 0080](docs/adr/0080-bundle-model-and-dictionary.md)。UI・パッケージ切り替えはレーン 3〜6 未実装のため詳細は**未定**）。
 - **学習の記録とユーザー辞書は、自分の Mac に置きます。** 場所は `~/Library/Application Support/ikari-ime/` です。設定アプリで、エクスポート、インポート、リセットができます。
 - **ログに入力の中身は書きません。** エンジンのログには、時刻と種類、処理にかかった時間などを書きます。読みや候補、文脈は書きません。
 - **ログの保持は 180 日、合計 100MB までです。** どちらか先に来た方で、古い順に消します（回した古い分は gzip で残ります）。場所は `~/Library/Application Support/ikari-ime/logs/` です。いつでも手で消せます。
@@ -332,12 +332,13 @@ ikari-ime/
 ikari-ime のコードは [Apache License 2.0](LICENSE) です。著作者は「The ikari-ime authors」です（[NOTICE](NOTICE)）。
 
 使っている外部のデータとソフトウェアのライセンスは、[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) にまとめてあります。
-辞書、モデル、地名のデータはこのリポジトリに含めず、各自が取得します（取得元の条件に従います）。主なものは次のとおりです。
+辞書、モデル、地名のデータはこのリポジトリには含めません。ビルド済み配布物（[ADR 0080](docs/adr/0080-bundle-model-and-dictionary.md)。レーン 4〜6 未実装のため詳細は**未定**）では、ビルド済み辞書と無改変のモデルをアプリ内に同梱し、データのそばに `NOTICE.txt` と `licenses/`（元ファイルは [docs/dist-notices/](docs/dist-notices/NOTICE.txt)）を置く方針です。`system.dict` と `zenz-v3.2-small` に適用される CC BY-SA 4.0 は各データファイル単体のものであり、ikari-ime 本体（Apache License 2.0）には及びません。主なものは次のとおりです。
 
-- SudachiDict、chiVe: Apache License 2.0
-- 町字マスター、郵便番号の変換表（デジタル庁）: 公共データ利用規約（PDL1.0）。ikari が加工して辞書に使い、データ自体は配りません
-- zenz: Hugging Face のモデルページで CC BY-SA 4.0 と表示されています（2026-11-09 に確認。2026-10-26 には Apache-2.0 でした）。モデルファイルは配りません
-- Rust と Swift の依存パッケージ: 各パッケージのライセンス（MIT、Apache-2.0 など）
+- SudachiDict、chiVe: Apache License 2.0（`grammar.bin`・`vectors.bin`、および `system.dict` 内の元データ表示）
+- 町字マスター、郵便番号の変換表（デジタル庁）: 公共データ利用規約（PDL1.0）。ikari が加工して `system.dict`・`postal.tsv` に使い、元データ自体は配りません
+- Wikipedia 日本語版由来 外来語の一覧（`webwords`）およびそれを含む `system.dict`: CC BY-SA 4.0（`system.dict` ファイル単体としての表示。ikari 本体とは別ファイル）
+- zenz: Hugging Face のモデルページで CC BY-SA 4.0（2026-11-22 に再確認）。配布物には公式ファイルを無改変のまま同梱する予定です
+- Rust、Swift、.NET / Windows App SDK の依存パッケージ: 各パッケージのライセンス（[THIRD_PARTY_LICENSES_RUST.md](THIRD_PARTY_LICENSES_RUST.md)、[THIRD_PARTY_LICENSES_RUST_WINDOWS.md](THIRD_PARTY_LICENSES_RUST_WINDOWS.md)、[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)）
 
 ## 10. 貢献の方針
 
