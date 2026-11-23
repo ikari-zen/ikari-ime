@@ -34,7 +34,7 @@
   </PropertyGroup>
   <ItemGroup>
     <!-- 版は固定する（2026-11-16 に NuGet で確かめた安定版。Windows App SDK はスパイク #368 で動いた版） -->
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.5" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.7.0" />
     <PackageReference Include="Google.Protobuf" Version="3.36.2" />
     <PackageReference Include="Grpc.Tools" Version="2.85.0" PrivateAssets="All" />
   </ItemGroup>
