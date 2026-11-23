@@ -1,6 +1,6 @@
 # ADR 0081: Windows のインストーラに VC++ の実行時ライブラリ（vc_redist）を同梱するか、不要にできるか
 
-- 状態: 提案（2026-11-23 調査・ADR 案。決定はユーザー）
+- 状態: 承認（案 A。2026-11-23 ユーザー決定）
 - 日付: 2026-11-23
 - 対象: `windows/installer/ikari.iss`、`.github/workflows/release.yml`、`xtask/src/scan.rs`、`xtask/src/scan/stage.rs`、`xtask/src/check/installer.rs`、`lm/`、`windows/candidate-ui/`、`windows/settings-ui/`
 - 前提: [ADR 0067](0067-windows-install-layout-and-launch-chain.md) §3.3・§4.4・§4.5、[ADR 0069](0069-distribution-authenticity.md) §4.1、[ADR 0070](0070-update-and-vulnerability-response.md) §6、[ADR 0072](0072-lm-cage-levels.md) §5
@@ -157,11 +157,14 @@ Windows 版を他の利用者の PC に配布する（#99、#567）にあたり�
 - **Q1. 方針の採否**:
   - [ADR 0067](0067-windows-install-layout-and-launch-chain.md) §4.5 の決定どおり **案 A（`vc_redist.x64.exe` 同梱）** をそのまま実装に進めるか。
   - それとも、先にステップ 1（PE 依存調査）を実施して `.NET`/WinUI 3 がシステム VC++ を要求しないか確認したうえで **案 B（アプリローカル DLL 同梱）** と比較してから最終決定するか。
+  - 決定: 案 A で進める（ADR 0067 §4.5 を維持し、`vc_redist.x64.exe` を sha256 と Microsoft 署名者の確認付きで同梱して導入する。2026-11-23 ユーザー決定）。
 - **Q2. 案 A を採る場合のセキュリティ制約の調整**:
   - `ikari.iss` と `xtask/src/check/installer.rs` について、`{code:SetupWorkDir}\vc_redist.x64.exe` の配置および `RunTrusted` からの実行（`release.yml` での sha256 + Microsoft 署名者検証付き）を許可リストへ追加してよいか。
   - また、`vc_redist.x64.exe` 自身が実行中に `%TEMP%` を参照しうる点について、Process Monitor で実挙動を確認したうえで許容するか（または案 B へ切り替える判断基準を置くか）。
+  - 決定: 作業用フォルダへの配置と、sha256 と Microsoft 署名者の確認付きでの `RunTrusted` からの実行は、許可リストに足す（案 A の 2 と 4 のとおり）。`%TEMP%` の扱い（Process Monitor での確認と許容、案 B へ切り替える基準）は**未決**。
 - **Q3. 着手順序**:
   - 実装 PR を切る前に、まずステップ 1（Windows ランナーでの `dumpbin /dependents` 一覧化）とステップ 2（クリーン VM での未導入挙動・`/DEPENDENTLOADFLAG` の確認）を先行させるか。
+  - 決定: 実装前の先行は必須にしない。素の Windows での実測は VM の確認項目として足す（`docs/windows-real-device-check.md` 項目 74）。ステップ 1（`dumpbin` の一覧化）を先行させるかは**未決**。
 
 ---
 
