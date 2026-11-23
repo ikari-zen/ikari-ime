@@ -22,10 +22,10 @@
 
 | データ | 配布物での形 | ライセンス | 再配布の可否 | 表示などの義務 | 根拠の URL（確認日: 2026-11-22） |
 | --- | --- | --- | --- | --- | --- |
-| **zenz-v3.2-small** | `models/zenz-v3.2-small-Q5_K_M.gguf`（公式ファイルを無改変で同梱） | CC BY-SA 4.0 | 可（条件つき） | 作者表示（Keita Miwa）、ライセンス名と URL、取得元 URL、変更なし（公式のまま）、無保証の言及、追加制限の禁止。改変・再配布時は ShareAlike（§2.2・§2.3） | [HF モデルページ](https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf)（commit `ef3e66e3665fe6a19598e6578e9b88a994b647fd`）、[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)、[Legal Code](https://creativecommons.org/licenses/by-sa/4.0/legalcode.txt) |
+| **zenz-v3.2-small** | `models/zenz-v3.2-small-Q5_K_M.gguf`（公式ファイルを無改変で同梱） | CC BY-SA 4.0 | 可（条件つき） | 作者表示（`Miwa-Keita`。`Keita Miwa` は `zenz-v2.5-small` のモデルカードに基づく）、ライセンス名と URL、取得元 URL、変更なし（公式のまま）、無保証の言及、追加制限の禁止。改変・再配布時は ShareAlike（§2.2・§2.3） | [HF モデルページ](https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf)（commit `ef3e66e3665fe6a19598e6578e9b88a994b647fd`）、[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)、[Legal Code](https://creativecommons.org/licenses/by-sa/4.0/legalcode.txt) |
 | *（参考）ku-nlp/gpt2-small-japanese-char* | v2.5 の元モデル（v3.2 での使用は未記載・未確認） | CC BY-SA 4.0 | 可（条件つき） | v3.2 への引き継ぎは不明。参考情報として注記するか、記載がない事実を明記する（§2.4） | [ku-nlp/gpt2-small-japanese-char](https://huggingface.co/ku-nlp/gpt2-small-japanese-char)、[zenz-v2.5-small](https://huggingface.co/Miwa-Keita/zenz-v2.5-small) |
 | **SudachiDict Full 20260723** | `small_lex.csv` / `core_lex.csv` / `notcore_lex.csv` / `matrix.def` → `dict/grammar.bin`・`dict/system.dict` | Apache-2.0（`LEGAL` に UniDic BSD-3-Clause、NEologd Apache-2.0 + 5 出典付記を含む） | 可 | Apache-2.0 本文の同梱、著作権表示（`Copyright (c) 2017-2023 Works Applications Co., Ltd.`）、改変の明記（コスト調整・バイナリ変換）、`LEGAL`（UniDic BSD-3-Clause 全文・NEologd 出典表示）の保持 | [SudachiDict](https://github.com/WorksApplications/SudachiDict)（develop `830bf9e1…`）、[LICENSE-2.0.txt](https://github.com/WorksApplications/SudachiDict/blob/develop/LICENSE-2.0.txt)、[LEGAL](https://github.com/WorksApplications/SudachiDict/blob/develop/LEGAL)、[配布元](http://sudachi.s3-website-ap-northeast-1.amazonaws.com/sudachidict-raw/) |
-| **chiVe 1.3 mc90** | `chive-1.3-mc90.txt` → `dict/vectors.bin` および `system.dict` 構築時の頻度順位 | Apache-2.0 | 可 | Apache-2.0 本文の同梱、著作権表示（`Copyright (c) 2024 Works Applications Co., Ltd.`）、改変の明記（300 次元ベクトルの量子化・頻度利用） | [chiVe](https://github.com/WorksApplications/chiVe)（master `0cb4961e…`）、[LICENSE](https://github.com/WorksApplications/chiVe/blob/master/LICENSE)、[配布元](https://sudachi.s3.ap-northeast-1.amazonaws.com/chive/chive-1.3-mc90.tar.gz) |
+| **chiVe 1.3 mc90** | `chive-1.3-mc90.txt` → `dict/vectors.bin` および `system.dict` 構築時の頻度順位 | Apache-2.0 | 可 | Apache-2.0 本文の同梱、著作権表示（`Copyright (c) 2024 Works Applications Co., Ltd. All rights reserved.`）、改変の明記（300 次元ベクトルの量子化・頻度利用） | [chiVe](https://github.com/WorksApplications/chiVe)（master `0cb4961e…`）、[LICENSE](https://github.com/WorksApplications/chiVe/blob/master/LICENSE)、[配布元](https://sudachi.s3-ap-northeast-1.amazonaws.com/chive/chive-1.3-mc90.tar.gz) |
 | **ABR 町字マスター（デジタル庁）** | `mt_town_all.csv` → `system.dict` の大字・町名と住所の連なり | 公共データ利用規約（第1.0版 / PDL1.0。CC BY 4.0 互換） | 可 | 出典の記載、編集・加工したことおよびその主体（ikari-ime）の記載。国等が作成した未加工データに見せない | [配布元 zip](https://data.address-br.digital.go.jp/mt_town/mt_town_all.csv.zip)、[ABR 利用規約](https://www.digital.go.jp/policies/base_registry_address_tos)（最終更新 2026-05-29）、[PDL1.0](https://www.digital.go.jp/resources/open_data/public_data_license_v1.0) |
 | **ABR 町字・郵便番号変換表（デジタル庁・元は日本郵便）** | `abr_post_code.csv` → `dict/postal.tsv` | デジタル庁 ABR 利用規約（PDL1.0）＋日本郵便「著作権を主張しない」 | 可（条件つき。参考情報・無保証・継続提供未保証の前提） | PDL1.0 の出典・加工・主体の記載（国の未加工データに見せない）。日本郵便データの出典も併記（§4） | [ArcGIS メタデータ](https://www.arcgis.com/sharing/rest/content/items/1098a4f61dab4f52997839d04245132a?f=json)、[ABR 利用規約](https://www.digital.go.jp/policies/base_registry_address_tos)、[日本郵便 説明](https://www.post.japanpost.jp/service/search/zipcode/download/readme.html) |
 | **Wikipedia 日本語版由来 外来語の一覧（`webwords`）** | GitHub Release（`webwords-20261101.tsv.xz`）および `system.dict` への組み込み | CC BY-SA 4.0 | 一覧単体は可（条件つき）。`system.dict` へ混ぜて同梱する場合の SA 範囲は §3 で要選択 | 出典（ウィキペディア日本語版の執筆者、ダンプ版）、CC BY-SA 4.0 と URL、加工の明記（本文を含まない）。`system.dict` に混ぜる場合は §3 の案 A / B に従う | [jawiki-20261101](https://dumps.wikimedia.org/jawiki/20261101/)、[Wikimedia 利用規約](https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use)、[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) |
@@ -70,7 +70,7 @@
 CC BY-SA 4.0 Legal Code Section 3(a)(1)〜(2) および Section 2(a)(5)(C) にもとづく要件:
 
 1. **表示する内容**（提供者が供給した情報がある場合その保持が必須。無い場合は合理的範囲で記載）:
-   - 作者・帰属先（Section 3(a)(1)(A)(i)）: `Keita Miwa`（Hugging Face 上の公開アカウント名 `Miwa-Keita`）
+   - 作者・帰属先（Section 3(a)(1)(A)(i)）: `Miwa-Keita`（`zenz-v3.2-small-gguf` のモデルページ上のアカウント名。`Keita Miwa` の表記は同一作者の `zenz-v2.5-small` のモデルカードに基づく）
    - 著作権表示・無保証（Section 3(a)(1)(A)(ii), (iv)）: 原文の無保証・責任制限への言及（Section 5 の趣旨）
    - ライセンス言及とリンク（Section 3(a)(1)(A)(iii), Section 3(a)(1)(C)）: `CC BY-SA 4.0`（`https://creativecommons.org/licenses/by-sa/4.0/` および日本語概要 `https://creativecommons.org/licenses/by-sa/4.0/deed.ja`）
    - 元の著作物への URI（Section 3(a)(1)(A)(v)）: `https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf`（確認時点のコミットハッシュも併記）
@@ -86,7 +86,7 @@ CC BY-SA 4.0 Legal Code Section 3(a)(1)〜(2) および Section 2(a)(5)(C) に�
 ### zenz-v3.2 small（モデルファイル単体）
 
 - **適用対象**: 同梱するモデルファイル `zenz-v3.2-small-Q5_K_M.gguf`（この節のライセンス条件はこのモデルファイルにのみ適用され、ikari-ime 本体のソフトウェア（Apache License 2.0）には適用されません）
-- **作者**: Keita Miwa（Hugging Face: Miwa-Keita）
+- **作者**: Miwa-Keita（Hugging Face アカウント名。`Keita Miwa` の表記は同一作者の `zenz-v2.5-small` のモデルカードに基づく）
 - **ライセンス**: クリエイティブ・コモンズ 表示-継承 4.0 国際（CC BY-SA 4.0。https://creativecommons.org/licenses/by-sa/4.0/ / 日本語: https://creativecommons.org/licenses/by-sa/4.0/deed.ja ）
 - **出典**: https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf （確認日: 2026-11-22、commit `ef3e66e3665fe6a19598e6578e9b88a994b647fd`、元ファイル名 `ggml-model-Q5_K_M.gguf`、sha256 `29c223d4c23327b80fd13ebb5ab2555057a46317997d5da391584ffbef0db673`）
 - **変更の有無**: 変更なし（配布元のファイルを無改変のまま同梱）
@@ -170,6 +170,7 @@ CC BY-SA 4.0 Legal Code Section 3(a)(1)〜(2) および Section 2(a)(5)(C) に�
 1. **ArcGIS メタデータ**（`https://www.arcgis.com/sharing/rest/content/items/1098a4f61dab4f52997839d04245132a?f=json`）:
    - `licenseInfo` は空ではなく、`https://www.digital.go.jp/policies/base_registry_address_tos`（アドレス・ベース・レジストリの利用規約）へのリンクが設定されている。
    - 説明文（`description`）に「郵便番号については、日本郵便株式会社がウェブサイトに掲載される郵便番号データの説明（`https://www.post.japanpost.jp/service/search/zipcode/download/readme.html`）をご参照ください。アドレス・ベース・レジストリについては、デジタル庁のアドレス・ベース・レジストリの利用規約に従って利用してください。」と明記されている。
+   - 補足（2026-11-23 照合）: ArcGIS 側の公開説明文は月次更新で上書きされるため、2026-10-23 取得時点の版番号（郵便番号データの版 2609、更新日 2026-09-24）は後から配信元では追認できない。表示には取得日と、取得時点の版である旨（配信元の上書きにより後から追認できない旨）を併記する。
 2. **日本郵便「郵便番号データの説明」**（`https://www.post.japanpost.jp/service/search/zipcode/download/readme.html` および `https://www.post.japanpost.jp/zipcode/dl/readme.html`）:
    - 「使用・再配布・移植・改良について: **郵便番号データに限っては日本郵便株式会社は著作権を主張しません。自由に配布していただいて結構です。**」と明記されている。
 3. **結論**: `postal.tsv` は日本郵便側・デジタル庁側（PDL1.0）のいずれの規約からも**再配布が可能**（条件: PDL1.0 に従い出典・加工・主体を明記し、国の未加工データに見せないこと、また日本郵便データの出典も併記すること。参考情報・無保証の前提）。ただし約 21.8MB の容量と月次更新の性質から、同梱に含めるか各自取得に残すかは #490 で設計上の採否を決める。
