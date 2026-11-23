@@ -153,9 +153,9 @@ limitations under the License.
 ### chiVe
 
 - **ライセンス**: Apache License 2.0
-- **著作権**: Copyright (c) 2024 Works Applications Co., Ltd.
+- **著作権**: Copyright (c) 2024 Works Applications Co., Ltd. All rights reserved.
 - **説明**: Sudachi の単語分割で学習した日本語の単語ベクトル（v1.3 mc90）。語の頻度順位（ポリシーの `lemma_rank`）と、話題スコア用の `vectors.bin` の元になる
-- **出典**: https://sudachi.s3.ap-northeast-1.amazonaws.com/chive/chive-1.3-mc90.tar.gz（`scripts/fetch-data.sh` が取得）
+- **出典**: https://sudachi.s3-ap-northeast-1.amazonaws.com/chive/chive-1.3-mc90.tar.gz（`scripts/fetch-data.sh` が取得）
 - **使用方法**: リポジトリには `chiVe` 本体およびビルド済みファイルを含めません。`dict-builder` が語彙頻度順位（`system.dict` に反映）と `vectors.bin`（語ごとの 300 次元ベクトルを量子化したもの）を生成します。ビルド済み配布物（ADR 0080。レーン 4〜6 未実装のため詳細は**未定**）では `vectors.bin` を同梱し（`chiVe` 本体は同梱しない）、ソースからビルドする場合は手元のユーザーデータディレクトリ（macOS: `~/Library/Application Support/ikari-ime/dict/`、Windows: `%LOCALAPPDATA%\ikari-ime\dict\`）に配置します
 
 ### アドレス・ベース・レジストリ 町字マスター（デジタル庁）
