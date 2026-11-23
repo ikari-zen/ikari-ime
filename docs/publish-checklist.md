@@ -93,10 +93,10 @@
   - [ ] Code scanning（CodeQL。`.github/workflows/codeql.yml` が main への push と PR、週 1 回で動く）の最初の結果を確かめる
 - [ ] **ブランチ保護**（Settings → Rules → Rulesets、または Branches）。今は、main への直接のコミットと push を、手元の `.githooks/`（`git config core.hooksPath .githooks` で有効）と、Claude Code のフックで止めている。これらは手元でしか効かないので、GitHub の設定でも止める。
   - [ ] main への直接の push を禁止する（PR を必須にする）。
-  - [x] 必要なチェックに `check`（`.github/workflows/ci.yml`。macOS ランナーで `scripts/check.sh --swift-only`。XCFramework の鮮度、swift test、entitlement の検査。文書・Rust の検査は Ubuntu の `rust` job が `--rust-only` で流す）を入れた（2026-11-11 作者決定。#290）。最新の main を取り込んだものだけ通す（strict）。Ruleset「protect main」に例外（バイパス）は置かない（作者も、`check` が通っていないものはマージできない）。手元の `CHECK_EXIT=0` の確認は、引き続き行う。
+  - [x] 必要なチェックに `check`（と `rust`。`.github/workflows/ci.yml`。macOS ランナーで `scripts/check.sh --swift-only`。XCFramework の鮮度、swift test、entitlement の検査。文書・Rust の検査は Ubuntu の `rust` job が `--rust-only` で流す）を入れた（2026-11-11 作者決定。#290）。最新の main を取り込んだものだけ通す（strict）。Ruleset「protect main」に例外（バイパス）は置かない（作者も、`check` が通っていないものはマージできない）。手元の `CHECK_EXIT=0` の確認は、引き続き行う。
   - [ ] マージの方法は squash だけにする（Settings → General → Pull Requests）。マージ後にブランチを自動で消す。
   - [ ] force push と、main の削除を禁止する。
-- [x] **CI を足した**（#290、PR #292。#295 で分割）。`rust`（Ubuntu。`--rust-only`）と `check`（macOS。`--swift-only`）の 2 つに分けて流す。Ruleset「protect main」の必須チェックは `check`。`rust` の追加は作者が設定する（2026-11-23 決定）。テストの時間は `IKARI_TEST_TIME_SCALE=5`（CONTRIBUTING.md）。
+- [x] **CI を足した**（#290、PR #292。#295 で分割）。`rust`（Ubuntu。`--rust-only`）と `check`（macOS。`--swift-only`）の 2 つに分けて流す。Ruleset「protect main」の必須チェックは `check` と `rust`（strict）。`deny`、`windows`、`windows-artifact` は必須外（2026-11-23 時点の Ruleset の設定）。テストの時間は `IKARI_TEST_TIME_SCALE=5`（CONTRIBUTING.md）。
 - [ ] リポジトリの説明（About）とトピックを設定する。例: 説明は「文脈を使って同音異義語を選び分ける日本語入力メソッド（macOS）」、トピックは `ime`、`japanese`、`macos`、`input-method`、`rust`、`swift`。
 - [ ] Issue テンプレート（`.github/ISSUE_TEMPLATE/`。不具合の報告、作業の項目）が、ログインしていない人にも見える形で出ること。`blank_issues_enabled` は今 `true`（テンプレートなしの Issue も可）。このままにする（2026-11-10 作者決定）。
 - [ ] **Discussions は使わない**（Settings → General → Features で Discussions がオフのまま）。質問と提案は Issue で受ける。
