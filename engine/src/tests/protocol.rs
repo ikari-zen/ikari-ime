@@ -2,6 +2,126 @@
 
 use super::*;
 
+struct NoopRanker;
+
+impl Ranker for NoopRanker {
+    fn rank(&self, _: &RankInput<'_>, _: &mut [Candidate]) {}
+
+    fn name(&self) -> &str {
+        "noop"
+    }
+}
+
+struct PanicAfterWarmupHandle {
+    mock: Arc<MockLm>,
+    panic_after_warmup: AtomicBool,
+}
+
+impl LmHandle for PanicAfterWarmupHandle {
+    fn warm_up(&self) {
+        MockHandle(Arc::clone(&self.mock)).warm_up();
+    }
+
+    fn stats(&self) -> LmStats {
+        MockHandle(Arc::clone(&self.mock)).stats()
+    }
+
+    fn is_loaded(&self) -> bool {
+        if self.mock.warm_ups.load(Ordering::Acquire) >= 2
+            && self.panic_after_warmup.swap(false, Ordering::AcqRel)
+        {
+            self.mock.loaded.store(false, Ordering::Release);
+            panic!("test panic after warm_up");
+        }
+        MockHandle(Arc::clone(&self.mock)).is_loaded()
+    }
+
+    fn device(&self) -> LmDevice {
+        MockHandle(Arc::clone(&self.mock)).device()
+    }
+}
+
+#[test]
+fn prefetch_retries_warm_up_after_postprocessing_panics() {
+    let mock = MockLm::new(Duration::ZERO);
+    let panic_handle = Arc::new(PanicAfterWarmupHandle {
+        mock: Arc::clone(&mock),
+        panic_after_warmup: AtomicBool::new(false),
+    });
+    let mut stack = mock_stack(&mock, None);
+    stack.converter = Arc::new(
+        Converter::builder(Arc::clone(&stack.dict), Arc::clone(&stack.grammar))
+            .ranker(Arc::new(NoopRanker))
+            .options(ConvertOptions {
+                page_size: 9,
+                chunk_size: 9,
+                ..ConvertOptions::default()
+            })
+            .build()
+            .unwrap(),
+    );
+    stack.lm = Some(panic_handle.clone());
+    let e = Engine::from_parts(EngineParts {
+        stack,
+        rebuild: None,
+        data_dir: None,
+        lm_requested: true,
+        lm_budget: test_budget(),
+        convert_wait: test_wait(),
+        lock: None,
+    });
+    begin(&e, 1, false);
+
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut rev = 0;
+    prefetch(&e, 1, READING, rev);
+    while mock.warm_ups.load(Ordering::Acquire) < 1 || !mock.loaded.load(Ordering::Acquire) {
+        assert!(
+            Instant::now() < deadline,
+            "initial warm-up stalled for 60 seconds"
+        );
+        rev += 1;
+        prefetch(&e, 1, READING, rev);
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert_eq!(mock.warm_ups.load(Ordering::Acquire), 1);
+
+    mock.loaded.store(false, Ordering::Release);
+    panic_handle
+        .panic_after_warmup
+        .store(true, Ordering::Release);
+    rev += 1;
+    prefetch(&e, 1, READING, rev);
+    while panic_handle.panic_after_warmup.load(Ordering::Acquire) {
+        assert!(
+            Instant::now() < deadline,
+            "post-warm-up panic did not occur within 60 seconds"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert_eq!(mock.warm_ups.load(Ordering::Acquire), 2);
+
+    while e.inner.warming.load(Ordering::Acquire) {
+        assert!(
+            Instant::now() < deadline,
+            "warming flag was not reset after the panic"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert!(!mock.loaded.load(Ordering::Acquire));
+
+    rev += 1;
+    prefetch(&e, 1, READING, rev);
+    while mock.warm_ups.load(Ordering::Acquire) < 3 || !mock.loaded.load(Ordering::Acquire) {
+        assert!(
+            Instant::now() < deadline,
+            "warm-up retry after postprocessing panic stalled for 60 seconds"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert_eq!(mock.warm_ups.load(Ordering::Acquire), 3);
+}
+
 #[test]
 fn warm_up_runs_on_another_thread_at_start_and_on_the_first_prefetch_after_unload() {
     let (e, mock) = engine(0);
