@@ -417,6 +417,18 @@ jobs:
           pattern: release-*
           path: dist
           merge-multiple: true
+      - name: 取り込んだ成果物が期待の 2 ファイルだけであることを確かめる
+        working-directory: dist
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          expected="$(printf '%s\n' "ikari-ime-${TAG#v}-windows-x64-setup.exe" "ikari-${TAG}-macos-arm64-adhoc.zip" | sort)"
+          actual="$(ls -A | sort)"
+          if [ "$actual" != "$expected" ]; then
+            printf 'unexpected release files:\n%s\nexpected:\n%s\n' "$actual" "$expected" >&2
+            exit 1
+          fi
       - name: SHA256SUMS を作る
         working-directory: dist
         run: |

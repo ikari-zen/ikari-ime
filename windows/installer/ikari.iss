@@ -63,6 +63,9 @@ OutputBaseFilename=ikari-ime-{#AppVersion}-windows-x64-setup
 Compression=lzma2
 SolidCompression=yes
 Uninstallable=yes
+; 削除の情報（設定 → アプリの入口）は、置いたあとの検査に通ったときだけ登録する。Inno は、この式を
+; ファイルを置いたあと、削除の情報を書く直前に評価する（Uninstallable はファイルを置く前に評価されるので使えない）
+CreateUninstallRegKey=UninstallEntryAllowed
 UninstallDisplayName=ikari-ime
 LicenseFile={#StageDir}\LICENSE
 
@@ -102,8 +105,9 @@ english.UninstallDataKept=Learning data and settings (%LOCALAPPDATA%\ikari-ime f
 
 [Files]
 ; 1. 道具を、作業用のフォルダ（Program Files の下に、このインストーラが新しく作る）に置く。以後の検査と停止はこれで行う
-Source: "{#StageDir}\ikari-setup-helper.exe"; DestDir: "{code:SetupWorkDir}"; Flags: ignoreversion
-; 2. インストール先。最初の項目の Check（AppDirReady）で、置き場所の検査とエンジンの停止を先に行う（ADR 0067 §3.2 の 2・3）
+Source: "{#StageDir}\ikari-setup-helper.exe"; DestDir: "{code:SetupWorkDir}"; AfterInstall: WorkHelperPlaced; Flags: ignoreversion
+; 2. インストール先。最初の項目の Check（AppDirReady）で、置き場所の検査、エンジンの停止、前の版の LM の部品の
+;    掃除を先に行う（ADR 0067 §3.2 の 2・3。[InstallDelete] は検査と停止より前に動くので使わない）
 Source: "{#StageDir}\ikari-setup-helper.exe"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion
 Source: "{#StageDir}\ikari-engine-host.exe"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion
 Source: "{#StageDir}\ikari-lm-host.exe"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion
@@ -150,10 +154,14 @@ const
   AttrDirectory = $10;
 
 var
-  InstallStarted: Boolean;
+  { 作業用のフォルダに道具を置いたか。Inno はファイルを置く前にも（大きさの見積もりで）Check を呼ぶので、
+    準備はこれが立ってから行う }
+  WorkHelperReady: Boolean;
   WorkDirCreated: Boolean;
   AppDirPrepared: Boolean;
   AppDirTrusted: Boolean;
+  AppDirVerifyDone: Boolean;
+  AppDirVerified: Boolean;
   TipChecked: Boolean;
   TipCopy: Boolean;
   IsUpdate: Boolean;
@@ -303,13 +311,52 @@ end;
 
 { ---- インストール先の準備（最初の app の項目の Check から 1 回だけ） ---- }
 
+procedure WorkHelperPlaced;
+begin
+  WorkHelperReady := True;
+end;
+
 procedure StopEngines(Helper: String);
 var
   Code: Integer;
 begin
-  { 止める口に合図し、待ち、残れば強制の終了（helper の中。ADR 0068 §6.2）。すべてのセッションが対象 }
-  if not RunTrusted(Helper, 'stop "' + ExpectedAppDir + '"', Code) or (Code = HelperRemaining) then
+  { 止める口に合図し、待ち、残れば強制の終了（helper の中。ADR 0068 §6.2）。すべてのセッションが対象。
+    残ったとき以外の失敗（起動できない、引数の誤りなど）も、止められたか分からないので同じく知らせる }
+  if not RunTrusted(Helper, 'stop "' + ExpectedAppDir + '"', Code) or (Code <> HelperOk) then
     SuppressibleMsgBox(CustomMessage('EnginesRemain'), mbInformation, MB_OK, IDOK);
+end;
+
+{ Dir の直下の Pattern に合うファイルを消す。1 つでも消せなければ False }
+function DeleteFilesMatching(Dir, Pattern: String): Boolean;
+var
+  Rec: TFindRec;
+begin
+  Result := True;
+  if FindFirst(Dir + '\' + Pattern, Rec) then
+  try
+    repeat
+      if (Rec.Attributes and AttrDirectory) = 0 then
+        if not DeleteFile(Dir + '\' + Rec.Name) then
+          Result := False;
+    until not FindNext(Rec);
+  finally
+    FindClose(Rec);
+  end;
+end;
+
+{ 前の版の LM の部品（llama.cpp と ggml。バックエンドはフォルダの中を名前で探して読まれる）を、置く前に消す。
+  名前の変わった・無くなった部品が残って読まれないようにする（ADR 0070 §6）。検査とエンジンの停止のあとに呼ぶ }
+function RemoveStaleLmLibraries: Boolean;
+var
+  Backends: String;
+begin
+  Backends := ExpectedAppDir + '\backends';
+  Result := True;
+  if DirExists(Backends) then
+    Result := DelTree(Backends, True, True, True);
+  Result := DeleteFilesMatching(ExpectedAppDir, 'llama*.dll') and Result;
+  Result := DeleteFilesMatching(ExpectedAppDir, 'ggml*.dll') and Result;
+  Result := StepOk(Result, 0, 'backends');
 end;
 
 function CheckAppDir(Helper: String): Boolean;
@@ -321,8 +368,8 @@ end;
 
 function AppDirReady: Boolean;
 begin
-  { インストールの前に呼ばれたときは何もしない（ディスクの見積もりなど） }
-  if not InstallStarted then
+  { 道具を置く前に呼ばれたときは何もしない（ディスクの見積もりなど。インストールの始まりの直後にも呼ばれる） }
+  if not WorkHelperReady then
   begin
     Result := True;
     exit;
@@ -333,7 +380,11 @@ begin
     { 既にあるときも、同じ検査を先に行う（ADR 0067 §3.1）。無ければ、Program Files から継承して作られる }
     AppDirTrusted := (not DirExists(ExpectedAppDir)) or CheckAppDir(WorkHelper);
     if AppDirTrusted then
-      StopEngines(WorkHelper)
+    begin
+      StopEngines(WorkHelper);
+      { 消しきれなければ置かない（前の版の部品と混ざった状態で登録しない） }
+      AppDirTrusted := RemoveStaleLmLibraries;
+    end
     else
       Fail(ExitUntrusted, FmtMessage(CustomMessage('Untrusted'), [ExpectedAppDir]));
   end;
@@ -343,7 +394,7 @@ end;
 function TipNeedsCopy: Boolean;
 begin
   Result := AppDirReady;
-  if not Result or not InstallStarted then
+  if not Result or not WorkHelperReady then
     exit;
   if not TipChecked then
   begin
@@ -363,18 +414,46 @@ end;
 
 function VerifyAppDir: Boolean;
 begin
-  { 最後に確かめる（ADR 0067 §3.1）。満たさなければ登録しない }
-  Result := CheckAppDir(WorkHelper);
-  if not Result then
-    Fail(ExitUntrusted, FmtMessage(CustomMessage('Untrusted'), [ExpectedAppDir]));
+  { 置いたあとに 1 回だけ確かめる（ADR 0067 §3.1）。満たさなければ登録しない。最初は削除の情報を登録する前
+    （UninstallEntryAllowed）に呼ばれ、FinishInstall はその結果を使う。準備に通っていなければ確かめずに False }
+  if not AppDirVerifyDone then
+  begin
+    AppDirVerifyDone := True;
+    AppDirVerified := AppDirTrusted and CheckAppDir(WorkHelper);
+    if AppDirTrusted and not AppDirVerified then
+      Fail(ExitUntrusted, FmtMessage(CustomMessage('Untrusted'), [ExpectedAppDir]));
+  end;
+  Result := AppDirVerified;
 end;
 
-procedure RegisterTip;
+{ [Setup] の CreateUninstallRegKey。検査に落ちた場所を指す削除の入口を作らない }
+function UninstallEntryAllowed: Boolean;
+begin
+  Result := WorkHelperReady and VerifyAppDir;
+end;
+
+{ 検査に落ちたとき、Inno がその場所に新しく書いた削除用のファイルを消す（登録はしていない）。
+  前の版の削除用のファイル（更新のとき）は、前の版の削除の入口が指しているので残す }
+procedure RemoveNewUninstaller;
+var
+  Exe: String;
+begin
+  if IsUpdate then
+    exit;
+  Exe := ExpandConstant('{uninstallexe}');
+  if Exe = '' then
+    exit;
+  DeleteFile(Exe);
+  DeleteFile(ChangeFileExt(Exe, '.dat'));
+  DeleteFile(ChangeFileExt(Exe, '.msg'));
+end;
+
+function RegisterTip: Boolean;
 var
   Code: Integer;
 begin
   { Program Files に置いた DLL の DllRegisterServer。更新では解除しない（ADR 0063 §3 の 2） }
-  StepOk(RunTrusted(SysTool('regsvr32.exe'), '/s "' + TipDll + '"', Code), Code, 'DllRegisterServer');
+  Result := StepOk(RunTrusted(SysTool('regsvr32.exe'), '/s "' + TipDll + '"', Code), Code, 'DllRegisterServer');
 end;
 
 function FirewallRuleName(I: Integer): String;
@@ -395,25 +474,31 @@ begin
   end;
 end;
 
-procedure AddFirewallRules;
+function AddFirewallRules: Boolean;
 var
   I, Code: Integer;
 begin
-  { 送信をブロックする規則を exe のパスごとに（ADR 0066 §6.2 の L2）。同じ名前を消してから入れる }
+  { 送信をブロックする規則を exe のパスごとに（ADR 0066 §6.2 の L2）。同じ名前を消してから入れる。
+    1 つでも入らなければ、残りを入れずに失敗を返す }
   RemoveFirewallRules;
+  Result := True;
   I := 0;
   while BlockedExe(I) <> '' do
   begin
-    StepOk(RunTrusted(SysTool('netsh.exe'),
+    if not StepOk(RunTrusted(SysTool('netsh.exe'),
       'advfirewall firewall add rule name="' + FirewallRuleName(I) + '" dir=out action=block profile=any enable=yes program="' +
-      ExpectedAppDir + '\' + BlockedExe(I) + '"', Code), Code, FirewallRuleName(I));
+      ExpectedAppDir + '\' + BlockedExe(I) + '"', Code), Code, FirewallRuleName(I)) then
+    begin
+      Result := False;
+      exit;
+    end;
     I := I + 1;
   end;
 end;
 
-procedure AddAutostart;
+function AddAutostart: Boolean;
 begin
-  StepOk(RegWriteStringValue(HKLM64, RunKey, RunValue, '"' + ExpectedAppDir + '\' + EngineExe + '"'), 0, 'Run');
+  Result := StepOk(RegWriteStringValue(HKLM64, RunKey, RunValue, '"' + ExpectedAppDir + '\' + EngineExe + '"'), 0, 'Run');
 end;
 
 procedure RemoveAutostart;
@@ -435,12 +520,12 @@ begin
   end;
 end;
 
-procedure ExcludeFromErrorReporting;
+function ExcludeFromErrorReporting: Boolean;
 var
   Code: Integer;
 begin
   { OS のエラー報告から外す（機械全体。ADR 0073 §4。WerAddExcludedApplication(名前, TRUE) を helper が呼ぶ） }
-  StepOk(RunTrusted(WorkHelper, 'wer-exclude' + ErrorReportingNames, Code), Code, 'WerAddExcludedApplication');
+  Result := StepOk(RunTrusted(WorkHelper, 'wer-exclude' + ErrorReportingNames, Code), Code, 'WerAddExcludedApplication');
 end;
 
 procedure IncludeInErrorReporting;
@@ -510,14 +595,21 @@ end;
 
 procedure FinishInstall;
 begin
-  if not AppDirTrusted then
-    exit;
   if not VerifyAppDir then
+  begin
+    RemoveNewUninstaller;
     exit;
-  RegisterTip;
-  AddFirewallRules;
-  AddAutostart;
-  ExcludeFromErrorReporting;
+  end;
+  { 最初に失敗した手順で打ち切る（巻き戻しはしない。失敗の画面で入れ直しを促す）。登録に失敗したら前の版の
+    TIP を消さない。送信ブロックの規則に失敗したら自動起動を書かない }
+  if not RegisterTip then
+    exit;
+  if not AddFirewallRules then
+    exit;
+  if not AddAutostart then
+    exit;
+  if not ExcludeFromErrorReporting then
+    exit;
   RemoveOldTipVersions;
   { エンジンはここで起動しない（管理者の権限で起動すると、エンジンは何もせずに終わる。ADR 0067 §4.3）。
     次のログオンの Run か、次の入力で TIP が起動する（§4.2） }
@@ -525,9 +617,7 @@ end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  if CurStep = ssInstall then
-    InstallStarted := True
-  else if CurStep = ssPostInstall then
+  if CurStep = ssPostInstall then
     FinishInstall;
 end;
 

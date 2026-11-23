@@ -193,6 +193,33 @@ fn tables_fall_back_to_the_bundled_location() {
     );
 }
 
+/// 利用者の表が壊れていれば同梱の表を使い、落としたことを固定の語でログに書く（パスは書かない）
+#[test]
+fn a_broken_user_table_falls_back_to_the_bundled_one() {
+    let l = Layout::new();
+    put_fixture_dict(&l.user);
+    put_fixture_dict(&l.bundled);
+    let bundled_dict = UserDir::new(&l.bundled).dict_dir();
+    std::fs::write(
+        bundled_dict.join(ikari_core::EMOJI_TSV_FILE_NAME),
+        "s\teyes\t👀\n",
+    )
+    .unwrap();
+    let user_emoji = crate::dispatch::emoji_tsv_path_in(&l.user);
+    std::fs::write(&user_emoji, "this is not a table\n").unwrap();
+    let e = l.open().expect("open");
+    assert_eq!(
+        e.inner.emoji_table_path(&user_emoji),
+        bundled_dict.join(ikari_core::EMOJI_TSV_FILE_NAME)
+    );
+    let log = l.log(&e);
+    assert!(
+        log.contains("table_reject") && log.contains("table=emoji.tsv location=user"),
+        "{log}"
+    );
+    assert!(!log.contains(l.user.to_string_lossy().as_ref()), "{log}");
+}
+
 /// 同梱の場所を渡さない（開発のビルド）と、今と同じ（利用者の場所の辞書だけ。無ければ起動しない）
 #[test]
 fn without_a_bundled_location_nothing_changes() {
