@@ -163,7 +163,8 @@ jobs:
           unzip -v | head -1
           xz --version | head -1
           df -h "$RUNNER_TEMP" .
-      # xtask dict は、辞書の道具が無ければ --locked なしで作るので、先に --locked で作っておく（ADR 0069 §4.1）
+      # xtask dict も辞書の道具が無ければ --locked で作る（xtask/src/dict.rs）。ここで先に作るのは、道具のビルドの失敗を
+      # 元データの取得（通信、時間がかかる）の前に分けて出すため（ADR 0069 §4.1）
       - name: 辞書の道具をビルドする（--locked）
         run: cargo build --release --locked -p ikari-dict-builder
       # 通信はここだけ。照合に落ちた物は捨てて失敗する。AJIMEE（評価のデータ）は取らない
@@ -189,15 +190,20 @@ jobs:
           mkdir -p "$out/build" "$out/raw"
           cp -R "$DATA_DIR/build/dict" "$out/build/dict"
           cp -R "$DATA_DIR/raw/zenz" "$out/raw/zenz"
-          (cd "$out" && find . -type f | LC_ALL=C sort | xargs sha256sum) > "$BUNDLE_DIR/data.sha256"
+          # ファイル以外（シンボリックリンクなど）は置かない。一覧から漏れないよう、あれば止める
+          others="$(find "$out" ! -type d ! -type f)"
+          test -z "$others" || { printf 'not a regular file:\n%s\n' "$others" >&2; exit 1; }
+          (cd "$out" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > "$BUNDLE_DIR/data.sha256"
           cat "$BUNDLE_DIR/data.sha256"
           du -sh "$out"
+      # 大きい（約 750MB）ので、artifact の圧縮を省いて時間を短くする（縮み方と時間の差は未測定）
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: bundle-data
           path: ${{ runner.temp }}/bundle
           if-no-files-found: error
           retention-days: 7
+          compression-level: 0
 
   # 配置の形（ADR 0067 §3.1）のフォルダを作り、検査して、Inno Setup でインストーラにする。手順の元は ci.yml の windows-artifact
   # （から開発用のビルドとキャッシュを除いたもの）と windows/installer/README.md
@@ -459,9 +465,17 @@ jobs:
         with:
           name: bundle-data
           path: ${{ runner.temp }}/bundle
+      # 転送と破損への備え（改ざんへの備えではない。一覧も同じ artifact に入っている）。一覧の外の物とファイル以外の物があれば止める
       - name: 同梱のデータを一覧で照らす
         working-directory: ${{ runner.temp }}/bundle/data
-        run: shasum -a 256 -c "$BUNDLE_DIR/data.sha256"
+        run: |
+          set -euo pipefail
+          others="$(find . ! -type d ! -type f)"
+          test -z "$others" || { printf 'not a regular file:\n%s\n' "$others" >&2; exit 1; }
+          listed="$(sed 's/^[0-9a-f]\{64\}  //' "$BUNDLE_DIR/data.sha256" | LC_ALL=C sort)"
+          present="$(find . -type f | LC_ALL=C sort)"
+          test "$listed" = "$present" || { printf 'files differ from data.sha256:\n%s\n---\n%s\n' "$listed" "$present" >&2; exit 1; }
+          shasum -a 256 -c "$BUNDLE_DIR/data.sha256"
       # ad-hoc 署名のアプリを作る（署名の証明書は使わない）。build.sh が、エンジンと LM の子に Sandbox の権限があり、
       # ネットワークの権限が無いこと（オフライン版は束のどこにも無いこと）、同梱のデータの封印とモデルの sha256 を検査する
       # （ADR 0069 §6 の 5、ADR 0080 §3.4・§7.3）。--distribution で、Smoke を束に入れず、エンジンの許可リストからも外す（#40）。
