@@ -3,7 +3,7 @@
 //! macOS の `IkariEngineService`（`main.swift`）に相当する。`main` は、ここの関数を呼んで、`cfg(windows)` の
 //! 部分（パイプの受け口、Ctrl+C の受け取り）をつなぐだけ。判断の置き場所: Rust。判断は engine。ここは起動と配線だけ。
 //!
-//! - データのディレクトリ: `--data-dir`（開発用の `dev-knobs` のビルドだけ。ADR 0068 §3）、`IKARI_USER_DIR`、`%LOCALAPPDATA%\ikari-ime` の順（`UserDir::resolve_with`）。
+//! - データのディレクトリ: 製品のビルドは `%LOCALAPPDATA%\ikari-ime` 固定（`--data-dir` も `IKARI_USER_DIR` も読まない）。開発用の `dev-knobs` のビルドだけ、`--data-dir`（ADR 0068 §3）、`IKARI_USER_DIR`、`%LOCALAPPDATA%\ikari-ime` の順（`UserDir::resolve_with`）。
 //!   辞書は `<データ>/dict/`、モデルは `<データ>/models/`、ログは `<データ>/logs/`、設定は `<データ>/settings.tsv`
 //!   （どれも `Engine::open` が決める配置。ここでは別の場所を持たない）。
 //! - 二重起動の防止: 起動の最初に `engine.lock`（`EngineLock`）を試しに取る（`start`。取れたらすぐ放す。ロックは
