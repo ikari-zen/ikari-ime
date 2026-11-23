@@ -650,12 +650,13 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 
 #### 項目 76: 手順の途中の失敗で打ち切る、helper が使えないときの通知（#609 D-08）
 
-- 状態: **×（2026-11-23。VM。不具合を 1 件確認。`ikari.iss` は直していない）**。
+- 状態: **直した。確認済み（2026-11-23。VM。直す前は × だった。下の「直す前の結果」）**。直し方は、`StepOk(RunTrusted(…, Code), Code, …)` を `Result := RunTrusted(…, Code); Result := StepOk(Result, Code, …);` の形に分けた（`RegisterTip`、`AddFirewallRules`、`ExcludeFromErrorReporting` の 3 か所）。`cargo xtask check` の静的検査が、この形を禁じる（`xtask/src/check/installer.rs`）。
 - やること: (a) 偽の helper（引数を記録し、`stop` だけ終了コード 3 を返す）を stage に入れた版で、更新を流す。(b) 壊れた `ikari_tip.dll`（11 バイトの文字列。`regsvr32 /s` を直接流すと終了コード 3）を入れた版を、新規と更新で流す。終了コードと、`Run`・ファイアウォールの規則・エラー報告の除外・前の版の `tip\` を見る。
 - 期待する結果: (a) 「動いているエンジンを止めきれませんでした」の通知が出る（`/SUPPRESSMSGBOXES` では、ログに `Defaulting to OK for suppressed message box` が出る）。導入は続く。(b) `DllRegisterServer` の手順で打ち切り、終了コード 11。後ろの手順（規則、`Run`、エラー報告、前の版の掃除）は走らない。
 - 結果: (a) 期待どおり（`stop` の直後に通知。導入は続き、終了コード 0）。**(b) 期待と違う。新規でも更新でも、終了コード 0 で終わり、規則 4 つ、`Run`、エラー報告の除外まで書かれた。更新では、前の版の `tip\` が消され、`InprocServer32` は消えた前の版を指したまま（削除の入口の版は新しい版）**。
-- 原因（**推測を確かめたもの**）: `RegisterTip` が `StepOk(RunTrusted(…, Code), Code, …)` と書いてあり、`Code`（var 引数）の値が、`RunTrusted` の実行より**前**に渡されて 0 になる（引数の評価の順）。`RegisterTip` だけを `Result := RunTrusted(…, Code); Result := StepOk(Result, Code, …);` に分けたコピーでは、終了コード 11 になり、規則・`Run`・エラー報告は書かれなかった。同じ書き方の `AddFirewallRules`（`netsh`）と `ExcludeFromErrorReporting`（helper）にも当たる見込み（**未確認**。ファイアウォールのサービスは SSH から止められず、`netsh` を落とせなかった）。`AppDirReady` 側の `CheckAppDir`（`and (Code = HelperOk)`）は別の式で、正しく動く（項目 75）。
-- うまくいかないとき: `ikari.iss` の `StepOk(RunTrusted(` を検索する。
+- 直したあとの再確認（2026-11-23）: (a) 壊れた `ikari_tip.dll` を新規で入れる → 終了コード 11。`Run`、ファイアウォールの規則（0 件）、エラー報告の除外は書かれない。`InprocServer32` は空。削除の入口と `unins000.*` は残る（登録の手順まで進んだあとの失敗なので、検査に落ちたときとは違う）。(b) 正常な版の上に、壊れた版を入れる → 終了コード 11。前の版の `tip\0.0.1` は消されず、`InprocServer32` は前の版を指したまま（打ち切りのあとも前の版は使える）。ただし巻き戻しはしない: 削除の入口の `DisplayVersion` は新しい版になり、新しい版の exe や DLL と、壊れた `tip\0.0.4` は置かれたまま（登録はされない）。`Run`、規則、エラー報告の除外は前の版のまま。(c) 項目 75、77、78 と通常の導入・削除は、直したあとも同じ結果。**未確認**: `AddFirewallRules`（`netsh`）と `ExcludeFromErrorReporting`（helper）の失敗は VM で落とせなかった。コードの形が直っていることは、静的検査で確かめる。
+- 直す前の結果の原因（**推測を確かめたもの**）: `RegisterTip` が `StepOk(RunTrusted(…, Code), Code, …)` と書いてあり、`Code`（var 引数）の値が、`RunTrusted` の実行より**前**に渡されて 0 になる（引数の評価の順）。`RegisterTip` だけを `Result := RunTrusted(…, Code); Result := StepOk(Result, Code, …);` に分けたコピーでは、終了コード 11 になり、規則・`Run`・エラー報告は書かれなかった。同じ書き方の `AddFirewallRules`（`netsh`）と `ExcludeFromErrorReporting`（helper）にも当たる見込み（**未確認**。ファイアウォールのサービスは SSH から止められず、`netsh` を落とせなかった）。`AppDirReady` 側の `CheckAppDir`（`and (Code = HelperOk)`）は別の式で、正しく動く（項目 75）。
+- うまくいかないとき: `ikari.iss` の `StepOk(` を検索し、第 1 引数の中に `RunTrusted(` が無いことを見る。
 
 #### 項目 77: 更新で、前の版の LM の部品を置く前に掃除する（#609 D-10 の (a)）
 
