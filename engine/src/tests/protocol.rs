@@ -27,7 +27,8 @@ impl LmHandle for PanicAfterWarmupHandle {
     }
 
     fn is_loaded(&self) -> bool {
-        if self.mock.warm_ups.load(Ordering::Acquire) >= 2
+        if std::thread::current().name() == Some("ikari-lm-warmup")
+            && self.mock.warm_ups.load(Ordering::Acquire) >= 2
             && self.panic_after_warmup.swap(false, Ordering::AcqRel)
         {
             self.mock.loaded.store(false, Ordering::Release);
