@@ -13,15 +13,22 @@
 #   - リリースのビルドは、キャッシュを読まない（rust-cache などを使わない）。
 #   - cargo build --locked。ツールチェーンは rust-toolchain.toml の版。ビルド機のパスは --remap-path-prefix で成果物に残さない。
 #
-# 試しのビルド（workflow_dispatch）: タグを打たずに、ビルドの job だけを流す（Windows だけ。証明と下書きの Release は作らない）。
-#   成果物は artifact（release-windows、7 日）に残る。インストーラの版は DRY_RUN_VERSION（0.0.0）。
+# 試しのビルド（workflow_dispatch）: タグを打たずに、ビルドの job だけを流す（辞書、Windows、macOS の 2 版。証明と下書きの Release は作らない）。
+#   成果物は artifact（release-windows、release-macos-normal、release-macos-offline、7 日）に残る。Windows のインストーラの版は
+#   DRY_RUN_VERSION（0.0.0）。macOS の dmg の名前の版は Cargo.toml の版（build.sh が決める）。
 #   dispatch はリポジトリに書ける者だけが起こせる。ビルドの job の権限はタグのときと同じ（contents: read）。
 #
+# 同梱のデータ（ADR 0080 §9）: build-dict の job が、元データとモデルを固定の sha256 で照らして取り（cargo xtask data fetch）、
+#   辞書を作り（cargo xtask dict）、1 つの成果物（bundle-data）にする。macOS の job は、それを受けて同梱する（版の間で同じバイト列）。
+#   元データの取得先が落ちていると、版を出せない（ADR 0080 §9 の 3。代わりの置き場所は作らない）。
+#
 # 未完了（この workflow の中身が、まだ仮の部分）:
+#   - Windows の通常版・オフライン版のインストーラへの同梱のデータ（ADR 0080 §6・§7.3。レーン 5、#584 のあと）。今の Windows の
+#     インストーラは、通常版だけで、辞書とモデルを入れていない。
 #   - Windows の VC++ の再頒布パッケージ（LM の子が使う。ADR 0067 §4.5 の (a)）は、まだ同梱しない（インストーラの側が未実装）。
 #   - 版の付け方: Windows のインストーラの版は数字だけ（VersionInfoVersion と tip\<版>\）。プレリリースのタグ（v1.2.3-rc.1）は、
 #     付け方が決まるまで verify-tag で止める。セキュリティの修正の印（ikari.iss の SecurityUpdate）は、まだ渡す口が無い。
-#   - macOS の置き場所と配布の形（zip か dmg か pkg か）は #241 の実機の確認で決まる。今は zip。
+#   - macOS の dmg の中の「~/Library/Input Methods へのショートカット」と案内は、#241 の実機の確認のあと（ADR 0080 §5.1）。
 name: Release
 on:
   push:
@@ -130,6 +137,69 @@ jobs:
         run: cargo deny --locked check
       - name: 静的な検査（xtask check --docs-only）
         run: cargo run --locked --quiet --package xtask -- check --docs-only
+
+  # 同梱する辞書とモデル（ADR 0080 §9）。元データとモデルは、固定の sha256（xtask/src/data/fetch.rs。モデルは resource/src/models.rs と
+  # テストで照らしてある）で照らして取る。キャッシュは読まない。出す物は `cargo xtask data install --src` と同じ並び
+  # （<data>/build/dict/、<data>/raw/zenz/）と、その sha256 の一覧。macOS の job が受けて一覧で照らす
+  build-dict:
+    needs: [verify-tag, source-checks]
+    runs-on: ubuntu-latest
+    # 時間とディスクは測っていない（ADR 0080 §9 の 5。元データは合わせて約 2.6GB）。下の「ディスクの空き」を見て決め直す
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      # 元データ（DATA_DIR）と、渡す物（BUNDLE_DIR）の場所（job の env では runner の文脈を使えないので、ここで決める）
+      - name: ツールの版とディスクの空きを表示する
+        run: |
+          echo "DATA_DIR=$RUNNER_TEMP/data" >> "$GITHUB_ENV"
+          echo "BUNDLE_DIR=$RUNNER_TEMP/bundle" >> "$GITHUB_ENV"
+          rustc --version
+          cargo --version
+          curl --version | head -1
+          unzip -v | head -1
+          xz --version | head -1
+          df -h "$RUNNER_TEMP" .
+      # xtask dict は、辞書の道具が無ければ --locked なしで作るので、先に --locked で作っておく（ADR 0069 §4.1）
+      - name: 辞書の道具をビルドする（--locked）
+        run: cargo build --release --locked -p ikari-dict-builder
+      # 通信はここだけ。照合に落ちた物は捨てて失敗する。AJIMEE（評価のデータ）は取らない
+      - name: 元データとモデルを取る（固定の sha256 で照らす）
+        timeout-minutes: 60
+        run: |
+          set -euo pipefail
+          cargo run --locked --release --quiet --package xtask -- data fetch --data "$DATA_DIR" \
+            --only sudachi --only chive --only zenz --only emoji --only abr --only postal --only webwords
+          df -h "$RUNNER_TEMP"
+      - name: 辞書を作る（cargo xtask dict）
+        run: |
+          set -euo pipefail
+          cargo run --locked --release --quiet --package xtask -- dict --data "$DATA_DIR"
+          cat "$DATA_DIR/build/dict/BUILD_INFO"
+          df -h "$RUNNER_TEMP"
+      # 同梱する物だけを並べ直す（元データは渡さない）。足りない物があれば、ここで止める
+      - name: 同梱する物を並べ、sha256 の一覧を作る
+        run: |
+          set -euo pipefail
+          out="$BUNDLE_DIR/data"
+          mkdir -p "$out/build/dict" "$out/raw"
+          for f in grammar.bin system.dict vectors.bin emoji.tsv postal.tsv BUILD_INFO; do
+            test -s "$DATA_DIR/build/dict/$f" || { echo "missing build/dict/$f" >&2; exit 1; }
+            cp "$DATA_DIR/build/dict/$f" "$out/build/dict/$f"
+          done
+          cp -R "$DATA_DIR/raw/zenz" "$out/raw/zenz"
+          (cd "$out" && find . -type f | LC_ALL=C sort | xargs sha256sum) > "$BUNDLE_DIR/data.sha256"
+          cat "$BUNDLE_DIR/data.sha256"
+          du -sh "$out"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: bundle-data
+          path: ${{ runner.temp }}/bundle
+          if-no-files-found: error
+          retention-days: 7
 
   # 配置の形（ADR 0067 §3.1）のフォルダを作り、検査して、Inno Setup でインストーラにする。手順の元は ci.yml の windows-artifact
   # （から開発用のビルドとキャッシュを除いたもの）と windows/installer/README.md
@@ -354,22 +424,32 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # 通常版とオフライン版（ADR 0080 §7.3）の dmg。同梱のデータは build-dict の成果物（両方の版で同じ物）
   build-macos:
-    needs: [verify-tag, source-checks]
-    # 試しのビルド（workflow_dispatch）では流さない
-    if: github.event_name == 'push'
+    needs: [verify-tag, source-checks, build-dict]
     runs-on: macos-latest
-    timeout-minutes: 75
+    # 同梱のデータの配置と封印、dmg の作成が足される（ランナーでの時間は測っていない。ADR 0080 §10 の C2）
+    timeout-minutes: 90
     permissions:
       contents: read
+    strategy:
+      matrix:
+        include:
+          - edition: normal
+            suffix: ""
+          - edition: offline
+            suffix: "-offline"
     env:
-      TAG: ${{ github.ref_name }}
+      EDITION: ${{ matrix.edition }}
+      SUFFIX: ${{ matrix.suffix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+      # 受け取る同梱のデータの場所（BUNDLE_DIR。job の env では runner の文脈を使えないので、ここで決める）
       - name: ツールの版を表示する
         run: |
+          echo "BUNDLE_DIR=$RUNNER_TEMP/bundle" >> "$GITHUB_ENV"
           rustc --version
           cargo --version
           swift --version
@@ -377,24 +457,40 @@ jobs:
           cmake --version
       - name: ビルド機のパスを成果物に残さない設定
         run: echo "RUSTFLAGS=--remap-path-prefix=${GITHUB_WORKSPACE}=/src --remap-path-prefix=${HOME}/.cargo=/cargo" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: bundle-data
+          path: ${{ runner.temp }}/bundle
+      - name: 同梱のデータを一覧で照らす
+        working-directory: ${{ runner.temp }}/bundle/data
+        run: shasum -a 256 -c "$BUNDLE_DIR/data.sha256"
       # ad-hoc 署名のアプリを作る（署名の証明書は使わない）。build.sh が、エンジンと LM の子に Sandbox の権限があり、
-      # ネットワークの権限が無いことを検査する（ADR 0069 §6 の 5）。
-      # --distribution で、Smoke を束に入れず、エンジンの許可リストからも外す（#40）。出力は release-adhoc-dist/
-      - name: ikari.app をビルドする（ad-hoc、配布用）
-        run: macos/scripts/build.sh --signing adhoc --release --distribution
-      - name: zip にする（Smoke が束に無いことを確かめてから）
+      # ネットワークの権限が無いこと（オフライン版は束のどこにも無いこと）、同梱のデータの封印とモデルの sha256 を検査する
+      # （ADR 0069 §6 の 5、ADR 0080 §3.4・§7.3）。--distribution で、Smoke を束に入れず、エンジンの許可リストからも外す（#40）。
+      # --dmg で dmg にする（圧縮は make-dmg.sh の既定）。出力は target/macos/release-adhoc-dist<-offline>/
+      - name: ikari.app をビルドして dmg にする（ad-hoc、配布用）
+        run: macos/scripts/build.sh --signing adhoc --release --distribution --edition "$EDITION" --data-dir "$BUNDLE_DIR/data" --dmg
+      # 配る物（dmg）の中の束を、読み取り専用でマウントして調べる: 署名の検証と、版ごとの中身の検査（cargo xtask scan-product
+      # --macos-app。xtask/src/scan/macos.rs。Smoke が無い、取得の部品と取得の印の有無、開発用の文字列、同梱のデータ）
+      - name: dmg の中の束を検査する
         run: |
           set -euo pipefail
-          app=target/macos/release-adhoc-dist/ikari.app
-          if [ -e "$app/Contents/MacOS/ikari-smoke" ]; then
-            echo "ikari-smoke is in the distribution bundle" >&2
-            exit 1
-          fi
+          # macos/scripts/lib.sh の workspace_version と同じ式
+          version="$(sed -n '/^\[workspace\.package\]/,/^\[/{s/^version[[:space:]]*=[[:space:]]*"\(.*\)"[[:space:]]*$/\1/p;}' Cargo.toml | head -1)"
+          dmg="target/macos/release-adhoc-dist${SUFFIX}/ikari-${version}-macos-arm64-adhoc${SUFFIX}.dmg"
+          test -s "$dmg" || { echo "dmg not found: $dmg" >&2; exit 1; }
+          mnt="$RUNNER_TEMP/dmg-mnt"
+          mkdir -p "$mnt"
+          hdiutil attach -readonly -nobrowse -noautoopen -mountpoint "$mnt" "$dmg" >/dev/null
+          trap 'hdiutil detach "$mnt" -quiet || hdiutil detach "$mnt" -force -quiet || true' EXIT
+          codesign --verify --deep --strict --verbose=2 "$mnt/ikari.app"
+          cargo run --locked --quiet --package xtask -- scan-product --macos-app "$mnt/ikari.app" --edition "$EDITION"
           mkdir -p out
-          ditto -c -k --keepParent "$app" "out/ikari-${TAG}-macos-arm64-adhoc.zip"
+          cp "$dmg" out/
+          ls -l out
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: release-macos
+          name: release-macos-${{ matrix.edition }}
           path: out
           if-no-files-found: error
           retention-days: 7
@@ -417,13 +513,15 @@ jobs:
           pattern: release-*
           path: dist
           merge-multiple: true
-      - name: 取り込んだ成果物が期待の 2 ファイルだけであることを確かめる
+      # macOS の 2 つの dmg（通常版とオフライン版）と、Windows のインストーラ（通常版だけ。オフライン版はレーン 5 のあと）
+      - name: 取り込んだ成果物が期待の 3 ファイルだけであることを確かめる
         working-directory: dist
         env:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          expected="$(printf '%s\n' "ikari-ime-${TAG#v}-windows-x64-setup.exe" "ikari-${TAG}-macos-arm64-adhoc.zip" | sort)"
+          expected="$(printf '%s\n' "ikari-ime-${TAG#v}-windows-x64-setup.exe" \
+            "ikari-${TAG#v}-macos-arm64-adhoc.dmg" "ikari-${TAG#v}-macos-arm64-adhoc-offline.dmg" | sort)"
           actual="$(ls -A | sort)"
           if [ "$actual" != "$expected" ]; then
             printf 'unexpected release files:\n%s\nexpected:\n%s\n' "$actual" "$expected" >&2
