@@ -59,9 +59,9 @@ LM の子と取得の子（`ikari-data transfer`）の檻（AppContainer）の�
 - `[Files]` の `regserver`、`restartreplace` の印を使わない。インストール先の項目は、検査の Check を通る。
 - 使用中のファイルを持つアプリを閉じさせない（`CloseApplications=no`）。ログを出さない（利用者の TEMP に書かれるため）。
 
-## 統合のときの作業（インストーラのレーンで足す）
+## 統合のときの作業（済）
 
-- 削除の手順に、helper の `cage-profile-delete`（引数なし）の呼び出しを足す。場所は `ikari.iss` の削除の流れで、`IncludeInErrorReporting` の隣（エンジンを止めたあと、ファイルを消す前。helper はインストール先の中の `AppHelper`）。形は `RunTrusted(AppHelper, 'cage-profile-delete', Code);`。失敗しても削除は続ける（`wer-include` と同じ扱い）。終了コードは 0 が成功、4 が OS の失敗（`hr=` を 1 行出す）。プロファイルが無くても成功。
+- `ikari.iss` の削除の流れに、helper の `cage-profile-delete` の呼び出しを入れた（`RunTrusted(AppHelper, 'cage-profile-delete', Code);`）。失敗しても削除は続ける。終了コード 0 は成功、4 は OS の失敗。
 
 ## 限界（分かっていること）
 
