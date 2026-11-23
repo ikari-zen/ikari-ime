@@ -112,8 +112,8 @@
 - [ ] #241（未署名のアプリを開く手順と、macOS の置き場所の実機確認）が済んでいること。Windows は [windows-real-device-check.md](windows-real-device-check.md) の該当の項目が済んでいること。
 - [ ] 前の節（§3）の、Private vulnerability reporting が有効であること。
 - [ ] Release を作れるアカウント（作者）に、2 要素認証（パスキーか物理キー）を設定したこと。SMS や認証アプリだけにしない（ADR 0076 §18.2。アカウントを取られると、偽の版を「新しい版」として勧めうるため）。
-- [ ] タグを守る ruleset を入れたこと（Settings → Rules → Rulesets、対象はタグ）。対象は `v*`（アプリ）と `webwords-*`（データ）。作れる者を絞り、付け替え（force push）と削除を禁じる。
-- [ ] Releases を immutable（公開したら資産とタグを変えられない）にしたこと。**要確認**: GitHub 側にこの機能があるか、どこで設定するかは、まだ確かめていない。無ければ、無いことをここに書く。
+- [x] タグを守る ruleset を入れたこと（Settings → Rules → Rulesets、対象はタグ）。対象は `v*`（アプリ）と `webwords-*`（データ）。作れる者を絞り、付け替え（force push）と削除を禁じる。（2026-11-23 確認: Ruleset「protect tags」が active。禁じるのは creation、update、non_fast_forward、deletion。バイパスは Admin のロールだけ。「protect main」と違ってバイパスがあるのは、作成を絞るとき作者自身が作れなくなるのを避けるため。）
+- [x] Releases を immutable（公開したら資産とタグを変えられない）にしたこと。機能はある。Settings → General で有効にした（2026-11-23 確認: `GET /immutable-releases` が `enabled: true`）。公開した Release から効く。すでに公開したものには遡らない。
 - [ ] 「最新の Release」の扱い（ADR 0076 §18.2）: アプリの Release は `gh release create … --latest` で明示して最新にする。データの Release（`webwords-*`）は `--latest=false` で作り、最新にしない。公開のあと、`gh release view --json tagName` の最新のタグが `v<数>.<数>.<数>` であることを確かめる。
 - [ ] [security-design.md](security-design.md) §5.2 の「版を出す前」の検査が済んでいること（製品のビルドであること、インストーラの確認、送信の記録、他社の部品の版、3 つの証拠）。
 - [ ] Windows のインストーラを、タグの前にリリースの workflow の試しのビルド（`workflow_dispatch`。証明と Release は作らない）で作り、VM で入れて確かめたこと（[windows-real-device-check.md](windows-real-device-check.md) の項目 47〜55）。
