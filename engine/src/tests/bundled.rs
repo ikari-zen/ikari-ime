@@ -240,3 +240,60 @@ fn without_a_bundled_location_nothing_changes() {
     drop(e);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// `Hello` の辞書の出どころと日付（設定画面の「同梱の辞書（日付）」。ADR 0080 §3.2）
+fn hello_dict(e: &Engine) -> (i32, String) {
+    match send(e, envelope::Body::Hello(pb::Hello::default())) {
+        envelope::Body::HelloReply(h) => (h.dict_source, h.dict_date),
+        other => panic!("{other:?}"),
+    }
+}
+
+fn put_build_info(root: &Path, text: &str) {
+    std::fs::write(UserDir::new(root).dict_dir().join("BUILD_INFO"), text).unwrap();
+}
+
+#[test]
+fn hello_reports_the_bundled_dictionary_and_its_date() {
+    let l = Layout::new();
+    put_fixture_dict(&l.bundled);
+    put_build_info(&l.bundled, "format=1\ndate=2026-11-22\n");
+    let e = l.open().expect("open");
+    assert_eq!(
+        hello_dict(&e),
+        (pb::DictSource::Bundled as i32, "2026-11-22".to_owned())
+    );
+}
+
+#[test]
+fn hello_reports_the_user_dictionary_with_its_own_date() {
+    let l = Layout::new();
+    put_fixture_dict(&l.user);
+    put_build_info(&l.user, "format=1\ndate=2026-12-01\n");
+    put_fixture_dict(&l.bundled);
+    put_build_info(&l.bundled, "format=1\ndate=2026-11-22\n");
+    let e = l.open().expect("open");
+    assert_eq!(
+        hello_dict(&e),
+        (pb::DictSource::User as i32, "2026-12-01".to_owned())
+    );
+}
+
+/// BUILD_INFO が無い、または日付の行が無いときは日付が空（画面に出さない）
+#[test]
+fn hello_leaves_the_date_empty_when_unknown() {
+    let l = Layout::new();
+    put_fixture_dict(&l.bundled);
+    let e = l.open().expect("open");
+    assert_eq!(
+        hello_dict(&e),
+        (pb::DictSource::Bundled as i32, String::new())
+    );
+    drop(e);
+    put_build_info(&l.bundled, "format=1\n");
+    let e = l.open().expect("open");
+    assert_eq!(
+        hello_dict(&e),
+        (pb::DictSource::Bundled as i32, String::new())
+    );
+}

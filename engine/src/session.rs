@@ -20,8 +20,28 @@ fn history_chars(history: &[ikari_core::Commit]) -> usize {
 }
 
 impl Inner {
+    /// `HelloReply` の辞書の出どころと日付。`open` で開いていないエンジンは「分からない」（UNSPECIFIED、空）
+    fn hello_dict_source(&self) -> (pb::DictSource, String) {
+        let (Some(status), Some(locations)) = (self.data_status, self.locations.as_ref()) else {
+            return (pb::DictSource::Unspecified, String::new());
+        };
+        let location = match status.dict {
+            LocationKind::User => Some(locations.user()),
+            LocationKind::Bundled => locations.bundled(),
+        };
+        let date = location
+            .and_then(|l| crate::data_location::build_date_in(&l.dict_dir()))
+            .unwrap_or_default();
+        let source = match status.dict {
+            LocationKind::User => pb::DictSource::User,
+            LocationKind::Bundled => pb::DictSource::Bundled,
+        };
+        (source, date)
+    }
+
     pub(crate) fn hello(&self) -> envelope::Body {
         self.ensure_warm();
+        let (dict_source, dict_date) = self.hello_dict_source();
         envelope::Body::HelloReply(pb::HelloReply {
             engine_version: env!("CARGO_PKG_VERSION").to_owned(),
             dict_label: self.stack().meta.dict_label.clone(),
@@ -29,6 +49,8 @@ impl Inner {
             learning_quarantined: self.learning_quarantined.swap(false, Ordering::AcqRel),
             lm_device: convert::proto_device(self.lm_device()) as i32,
             lm_cage: crate::lm_cage::hello_lm_cage(&self.lm_cage) as i32,
+            dict_source: dict_source as i32,
+            dict_date,
         })
     }
 
