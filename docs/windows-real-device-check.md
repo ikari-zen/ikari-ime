@@ -686,6 +686,18 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 - **未確認**: `netsh`（規則）と helper（エラー報告の除外）の失敗での 11。一般のユーザーでの確認、画面の文言（`FinishedFailed`）、`/LOG=` での調べ方、更新で終了コード 10 になったときの手順そのもの（項目 75 の (b) で、前の版が残ることは確認済み）。
 - 備考: 文書の手順どおりにやって不具合は見つからなかった。
 
+#### 項目 82: 同梱のデータ（`data\`）、`/DEdition=normal|offline`、`THIRD_PARTY_NOTICES.md` の導入・更新・削除（ADR 0080 §4・§6・§7.3、#584）
+
+- 状態: **未実施（未確認）**。静的な検査（`xtask/src/check/installer.rs`）は単体テストと `--docs-only` で確認済み。VM の `C:\t584` に試しのビルド（run 45304091723）の `ikari-ime-0.0.0-windows-x64-setup.exe`、`ikari.iss`、`NOTICE.txt`、`licenses\` と確認・撤去スクリプト（`prepare-vm.ps1`、`test-vm.ps1`、`cleanup-vm.ps1`）を配置済み（実機でのスクリプト実行と、実データ `bundle-data` 約 750MB での圧縮・展開時間はリードの確認待ち）。
+- やること:
+  (a) `ISCC` のコンパイル検査: 不正な `/DEdition=nope` が `#error` で止まること。必須の同梱データ（`data\dict\grammar.bin`・`system.dict`・`vectors.bin`、`data\models\zenz-v3.2-small-Q5_K_M.gguf`、`data\NOTICE.txt`、`data\licenses\*`）または `THIRD_PARTY_NOTICES.md` が欠けた stage で `ISCC` が失敗すること。通常版（既定、および `/DEdition=normal`）が `ikari-ime-<版>-windows-x64-setup.exe` を、オフライン版（`/DEdition=offline`）が `ikari-ime-<版>-windows-x64-setup-offline.exe` を出力すること。
+  (b) 通常版の新規導入（版 0.0.1）: `C:\Program Files\ikari-ime\data\dict\`（辞書一式）、`data\models\zenz-v3.2-small-Q5_K_M.gguf`、`data\NOTICE.txt`、`data\licenses\`（3 ファイル）、`THIRD_PARTY_NOTICES.md`、`ikari-data.exe` がすべて配置され、`ikari-setup-helper.exe check-dir "C:\Program Files\ikari-ime"` が `data\` を含めて終了コード 0 で通ること。`%LOCALAPPDATA%\ikari-ime` にインストーラが何も書かないこと。
+  (c) 更新（上書き、版 0.0.1 → 0.0.2）: `data\` の中身を変えた 0.0.2 を上から流したとき、版ごとのフォルダを作らず `C:\Program Files\ikari-ime\data\` がそのまま上書きされ、`tip\` が 0.0.2 に向き直って 0.0.1 が消え、利用者の `%LOCALAPPDATA%\ikari-ime` のファイルがそのまま残ること。
+  (d) アンインストール: `unins000.exe /VERYSILENT` で削除したとき、`C:\Program Files\ikari-ime\data\` を含むインストール先全体、削除の入口、`Run`、ファイアウォール規則、エラー報告の除外、`InprocServer32` が消え、利用者の `%LOCALAPPDATA%\ikari-ime` のデータが残ること。
+  (e) オフライン版（`/DEdition=offline`）の導入・更新・削除: 導入および更新のあと `C:\Program Files\ikari-ime\ikari-data.exe` が存在せず、ファイアウォールの規則が送信ブロックの 4 つの exe（エンジン、LM の子、候補窓、設定画面）だけで `ikari-data.exe` の規則が無いこと。同梱のデータ（`data\`）と `THIRD_PARTY_NOTICES.md` は通常版と同じく配置され、削除で `data\` ごと消えること。
+- 期待する結果（**見込み**）: (a)〜(e) すべて期待どおり（終了コード 0、不正な指定や欠落は `ISCC` が非 0 で失敗）。終わったら `C:\t584\cleanup-vm.ps1` で `C:\t584` と Inno Setup を撤去して基準の状態に戻す。
+- うまくいかないとき: `ISCC` の出力、`C:\Program Files\ikari-ime` と `data\` のファイル一覧、`check-dir` の出力、`netsh` の規則一覧を残す。
+
 ### 5.10 候補窓の本体（W3。ADR 0062、ADR 0068 §5）
 
 第 1 段で入ったのは、候補窓の exe（`dist\target\release\candidate\ikari-candidate.exe`。WinUI 3、自己完結。第 2 段で `dist\candidate` から移した）と、確認用の送り手（`dist\target\release\ikari-candidate-send.exe`）です。項目 59〜61 は、窓を手で起動し、送り手で出して確かめます（engine-host を止めておく。動いていると、engine-host が起動した窓が先にパイプを取る）。第 2 段（項目 62〜66）で、TIP が窓に送り、engine-host が窓を起動して見張るようになりました。**第 2 段の Rust の COM の層、engine-host の起動の層、C# と CI の変更は、Windows で 1 度もビルド・実行していません**（Mac の `cargo clippy --target x86_64-pc-windows-msvc` まで）。どちらもセッション 1 で流します（`run-in-session.ps1`。SSH のセッション 0 では窓が出ない。§1.6）。
