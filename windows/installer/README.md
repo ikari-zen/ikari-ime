@@ -2,7 +2,7 @@
 
 Inno Setup のスクリプト（`ikari.iss`）と、インストーラが管理者で呼ぶ道具（`helper/`、Rust の `ikari-setup-helper`）。
 設計は [security-design.md](../../docs/security-design.md) §8.4、[ADR 0067](../../docs/adr/0067-windows-install-layout-and-launch-chain.md) §3・§4、[ADR 0068](../../docs/adr/0068-ipc-endpoints.md) §6.2、[ADR 0070](../../docs/adr/0070-update-and-vulnerability-response.md) §4、[ADR 0063](../../docs/adr/0063-windows-tip-dll-update.md)、[ADR 0073](../../docs/adr/0073-secret-input-and-user-data.md) §4、[ADR 0080](../../docs/adr/0080-bundle-model-and-dictionary.md) §6・§7.3。
-実機の確認は [windows-real-device-check.md](../../docs/windows-real-device-check.md) の項目 47〜55、75〜82。項目 75〜81 は 2026-11-23 に VM で流した（結果は文書の項目に書いてある。項目 82 は未実施）。
+実機の確認は [windows-real-device-check.md](../../docs/windows-real-device-check.md) の項目 47〜55、75〜82。項目 75〜81 は 2026-11-23、項目 82 は 2026-11-24 に VM で流した（結果は文書の項目に書いてある）。
 
 ## 作り方（Windows で）
 

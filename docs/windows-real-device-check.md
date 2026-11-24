@@ -688,15 +688,20 @@ scripts/build-dict.sh          # data/build/dict/ に grammar.bin、system.dict�
 
 #### 項目 82: 同梱のデータ（`data\`）、`/DEdition=normal|offline`、`THIRD_PARTY_NOTICES.md` の導入・更新・削除（ADR 0080 §4・§6・§7.3、#584）
 
-- 状態: **未実施（未確認）**。静的な検査（`xtask/src/check/installer.rs`）は単体テストと `--docs-only` で確認済み。VM の `C:\t584` に試しのビルド（run 45304091723）の `ikari-ime-0.0.0-windows-x64-setup.exe`、`ikari.iss`、`NOTICE.txt`、`licenses\` と確認・撤去スクリプト（`prepare-vm.ps1`、`test-vm.ps1`、`cleanup-vm.ps1`）を配置済み（実機でのスクリプト実行と、実データ `bundle-data` 約 750MB での圧縮・展開時間はリードの確認待ち）。
+- 状態: **確認済み（2026-11-24。VM。stage はリリースの試しのビルド run 45304091723 の導入物から組み直した版に `docs\dist-notices\` の `NOTICE.txt`・`licenses\` と試験用の小さな `data\dict\`・`data\models\` を足したもの。`ISCC` 6.7.4 の警告なし）**。
 - やること:
   (a) `ISCC` のコンパイル検査: 不正な `/DEdition=nope` が `#error` で止まること。必須の同梱データ（`data\dict\grammar.bin`・`system.dict`・`vectors.bin`、`data\models\zenz-v3.2-small-Q5_K_M.gguf`、`data\NOTICE.txt`、`data\licenses\*`）または `THIRD_PARTY_NOTICES.md` が欠けた stage で `ISCC` が失敗すること。通常版（既定、および `/DEdition=normal`）が `ikari-ime-<版>-windows-x64-setup.exe` を、オフライン版（`/DEdition=offline`）が `ikari-ime-<版>-windows-x64-setup-offline.exe` を出力すること。
   (b) 通常版の新規導入（版 0.0.1）: `C:\Program Files\ikari-ime\data\dict\`（辞書一式）、`data\models\zenz-v3.2-small-Q5_K_M.gguf`、`data\NOTICE.txt`、`data\licenses\`（3 ファイル）、`THIRD_PARTY_NOTICES.md`、`ikari-data.exe` がすべて配置され、`ikari-setup-helper.exe check-dir "C:\Program Files\ikari-ime"` が `data\` を含めて終了コード 0 で通ること。`%LOCALAPPDATA%\ikari-ime` にインストーラが何も書かないこと。
-  (c) 更新（上書き、版 0.0.1 → 0.0.2）: `data\` の中身を変えた 0.0.2 を上から流したとき、版ごとのフォルダを作らず `C:\Program Files\ikari-ime\data\` がそのまま上書きされ、`tip\` が 0.0.2 に向き直って 0.0.1 が消え、利用者の `%LOCALAPPDATA%\ikari-ime` のファイルがそのまま残ること。
+  (c) 更新（上書き、版 0.0.1 → 0.0.2）: `data\` の中身（`BUILD_INFO` の日付）を変えた 0.0.2 を上から流したとき、版ごとのフォルダを作らず `C:\Program Files\ikari-ime\data\` がそのまま上書きされ、`tip\` が 0.0.2 に向き直って 0.0.1 が消え、利用者の `%LOCALAPPDATA%\ikari-ime` のファイルがそのまま残ること。
   (d) アンインストール: `unins000.exe /VERYSILENT` で削除したとき、`C:\Program Files\ikari-ime\data\` を含むインストール先全体、削除の入口、`Run`、ファイアウォール規則、エラー報告の除外、`InprocServer32` が消え、利用者の `%LOCALAPPDATA%\ikari-ime` のデータが残ること。
-  (e) オフライン版（`/DEdition=offline`）の導入・更新・削除: 導入および更新のあと `C:\Program Files\ikari-ime\ikari-data.exe` が存在せず、ファイアウォールの規則が送信ブロックの 4 つの exe（エンジン、LM の子、候補窓、設定画面）だけで `ikari-data.exe` の規則が無いこと。同梱のデータ（`data\`）と `THIRD_PARTY_NOTICES.md` は通常版と同じく配置され、削除で `data\` ごと消えること。
-- 期待する結果（**見込み**）: (a)〜(e) すべて期待どおり（終了コード 0、不正な指定や欠落は `ISCC` が非 0 で失敗）。終わったら `C:\t584\cleanup-vm.ps1` で `C:\t584` と Inno Setup を撤去して基準の状態に戻す。
-- うまくいかないとき: `ISCC` の出力、`C:\Program Files\ikari-ime` と `data\` のファイル一覧、`check-dir` の出力、`netsh` の規則一覧を残す。
+  (e) オフライン版（`/DEdition=offline`）の導入・更新・削除: 導入（0.0.1）および更新（0.0.2）のあと `C:\Program Files\ikari-ime\ikari-data.exe` が存在せず、ファイアウォールの規則が送信ブロックの 4 つの exe（エンジン、LM の子、候補窓、設定画面）だけで `ikari-data.exe` の規則が無いこと。同梱のデータ（`data\`）と `THIRD_PARTY_NOTICES.md` は通常版と同じく配置され、削除で `data\` ごと消えること。
+- 結果:
+  - (a) 期待どおり。`/DEdition=nope` は `Error on line 42: /DEdition は normal か offline です.`（終了コード 2）、`data\dict\vectors.bin` 欠落と `THIRD_PARTY_NOTICES.md` 欠落はいずれも `does not exist`（終了コード 2）で停止。0.0.1・0.0.2 の通常版（`ikari-ime-0.0.1-windows-x64-setup.exe`、`ikari-ime-0.0.2-windows-x64-setup.exe`）とオフライン版（`ikari-ime-0.0.1-windows-x64-setup-offline.exe`、`ikari-ime-0.0.2-windows-x64-setup-offline.exe`）の 4 本が終了コード 0 で生成された。
+  - (b) 期待どおり（終了コード 0）。`data\dict\` の 6 ファイル、`data\models\zenz-v3.2-small-Q5_K_M.gguf`、`data\NOTICE.txt`、`data\licenses\` の 3 ファイル（`APACHE-2.0.txt`、`MIT-EMOJI-DATA.txt`、`SUDACHIDICT-LEGAL.txt`）、`THIRD_PARTY_NOTICES.md`、`ikari-data.exe` がすべて配置され、`check-dir` は `checked=1264 problems=0`（終了コード 0）。ファイアウォールの送信ブロック規則は 4 件（`ikari-data.exe` の規則なし）。
+  - (c) 期待どおり（終了コード 0）。`data\dict\BUILD_INFO` が新しい版の値に上書きされ（版ごとのフォルダなし）、`tip\0.0.2` に向き直って `tip\0.0.1` は削除され、`%LOCALAPPDATA%\ikari-ime\dict\` に置いた利用者側のファイルはそのまま残った。
+  - (d) 期待どおり（終了コード 0）。`C:\Program Files\ikari-ime\data\` を含むインストール先全体、削除の入口、`Run`、ファイアウォール規則（0 件）、エラー報告の除外がすべて消え、`%LOCALAPPDATA%\ikari-ime` の利用者データは残った。
+  - (e) 期待どおり（導入・更新・削除とも終了コード 0）。0.0.1 導入・0.0.2 更新のいずれでも `C:\Program Files\ikari-ime\ikari-data.exe` は存在せず（`check-dir` は `checked=1263 problems=0` で通常版より 1 ファイル少ない）、ファイアウォール規則は送信ブロックの 4 件のみ、`data\` と `THIRD_PARTY_NOTICES.md` は通常版と同様に配置・上書きされ、削除でインストール先全体が消えた。確認後に Inno Setup と作業フォルダを撤去し、VM を基準状態に戻した。
+- **未確認**: 実データ（`bundle-data` 約 750MB）を入れたときの `ISCC`（lzma2）の圧縮時間・成果物の大きさと展開時間、および同梱された実辞書・実モデルを Windows のエンジンと LM の子が実際に読んで変換する通し確認（ADR 0080 §10 の C5・C6）。
 
 ### 5.10 候補窓の本体（W3。ADR 0062、ADR 0068 §5）
 
