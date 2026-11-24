@@ -105,28 +105,183 @@
 - [x] Security タブの **Private vulnerability reporting** を有効にする（[SECURITY.md](../SECURITY.md) と [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) の連絡先がこれなので、有効でないと届かない）。
 - [ ] 最初の数日は、新しい Issue と PR を見て、個人的な文章が書かれていたら、本文を編集してもらう。
 
-## 4. ビルド済みの配布を作るとき（今回はしない）
+## 4. ビルド済みの配布（0.1.0 タグ打ちから公開までの手順書・下書き）
 
-設計は [security-design.md](security-design.md)（[ADR 0069](adr/0069-distribution-authenticity.md)、[0070](adr/0070-update-and-vulnerability-response.md)）。タグを打つことと Release を公開することは、**作者だけが行う**（エージェントはしない）。
+設計は [security-design.md](security-design.md)（[ADR 0069](adr/0069-distribution-authenticity.md)、[ADR 0070](adr/0070-update-and-vulnerability-response.md)、[ADR 0076](adr/0076-ikari-data-contract.md) §18.2、[ADR 0080](adr/0080-bundle-model-and-dictionary.md) §9）。0.1.0 は macOS 版（Apple Silicon、通常版・オフライン版の 2 種、未署名）から配布を始め、Windows 版の配布は 1.0.0 の予定（#99、[CHANGELOG.md](../CHANGELOG.md)）。Windows 版の公開前に追加で要る項目は §4.9 に分ける。
 
-- [ ] #241（未署名のアプリを開く手順と、macOS の置き場所の実機確認）が済んでいること。Windows は [windows-real-device-check.md](windows-real-device-check.md) の該当の項目が済んでいること。
-- [ ] 前の節（§3）の、Private vulnerability reporting が有効であること。
-- [ ] Release を作れるアカウント（作者）に、2 要素認証（パスキーか物理キー）を設定したこと。SMS や認証アプリだけにしない（ADR 0076 §18.2。アカウントを取られると、偽の版を「新しい版」として勧めうるため）。
-- [x] タグを守る ruleset を入れたこと（Settings → Rules → Rulesets、対象はタグ）。対象は `v*`（アプリ）と `webwords-*`（データ）。作れる者を絞り、付け替え（force push）と削除を禁じる。（2026-11-23 確認: Ruleset「protect tags」が active。禁じるのは creation、update、non_fast_forward、deletion。バイパスは Admin のロールだけ。「protect main」と違ってバイパスがあるのは、作成を絞るとき作者自身が作れなくなるのを避けるため。）
-- [x] Releases を immutable（公開したら資産とタグを変えられない）にしたこと。機能はある。Settings → General で有効にした（2026-11-23 確認: `GET /immutable-releases` が `enabled: true`）。公開した Release から効く。すでに公開したものには遡らない。
-- [ ] 「最新の Release」の扱い（ADR 0076 §18.2）: アプリの Release は `gh release create … --latest` で明示して最新にする。データの Release（`webwords-*`）は `--latest=false` で作り、最新にしない。公開のあと、`gh release view --json tagName` の最新のタグが `v<数>.<数>.<数>` であることを確かめる。
-- [ ] [security-design.md](security-design.md) §5.2 の「版を出す前」の検査が済んでいること（製品のビルドであること、インストーラの確認、送信の記録、他社の部品の版、3 つの証拠）。
-- [ ] Windows のインストーラを、タグの前にリリースの workflow の試しのビルド（`workflow_dispatch`。証明と Release は作らない）で作り、VM で入れて確かめたこと（[windows-real-device-check.md](windows-real-device-check.md) の項目 47〜55）。
-- [x] インストーラの失敗時の手動の復旧手順（[windows-user-guide.md](windows-user-guide.md) の「インストールに失敗したとき」）が書かれ、VM で確かめられていること（実機確認の項目 79〜81。2026-11-23 に確認。画面の表示などの未確認は項目に書いた）。**Windows 版の公開前。macOS 版の公開前は不要**。
-- [ ] インストーラの失敗時の自動の巻き戻しを作るか、ADR で決めたこと（#646）。**Windows 版の公開前。macOS 版の公開前は不要**。
-- [ ] 配る物は、GitHub のランナーで、タグから作ったものだけ（作者や利用者の機械で作ったものは配らない）。Release は下書きにし、作者が中身を見てから公開する。
-- [ ] Release に 3 つの証拠が付いていること: `SHA256SUMS`、GitHub の成果物の証明（`gh attestation verify <ファイル> -R ikari-zen/ikari-ime` で確かめられる）、作者の鍵による `SHA256SUMS` の署名。
-- [ ] 通常版とオフライン版の 2 OS × 2 版（4 成果物。[ADR 0080](adr/0080-bundle-model-and-dictionary.md) §7・§9。リリースの workflow への組み込み・dmg・成果物の確定名はレーン 4〜6 未実装のため**未定**）が揃っており、オフライン版に通信の部品（`ikari-data`、通信ライブラリ、`network.*` の entitlement、取得の印の文字列）が無いことを CI の検査とネットワークを切った VM で確かめたこと。
-- [ ] Release のノートに、同梱した辞書・モデルの一覧（名前、元データの版、モデルの版、ライセンス、出典、前の版から元データを上げたか）を載せたこと（ADR 0080 §4 の 4・§8 の 3）。
-- [ ] README の冒頭（「ビルド済みのアプリは、まだ配っていません」）と SECURITY.md の「配布」の節の同じ行を、配布に合わせて書き直す。README には、配布元が Releases だけであること、sha256 の比べ方、証明と署名の確かめ方、OS の警告の案内（実機で確かめた手順だけ。守りを切る手順は書かない）、Watch の案内を書く。
-- [ ] 配布物と SECURITY.md の「約束すること」が合っていること（通信しない、秘密の欄、ログ）。
+この節は 0.1.0 の初回公開に向けた**下書き**であり、タグからの本番 workflow の実走や実機確認が済んでいない項目には**未確認**と記す。
+
+### 役割分担（AI エージェントがしてよい操作／作者だけが行う操作）
+
+| 区分 | 操作の例 |
+| --- | --- |
+| **作者のみ（AI エージェントは実行しない）** | タグの作成・push（`git tag` / `git push`）、作者の minisign 秘密鍵の作成・保管・`SHA256SUMS` への署名、下書き Release への署名添付と公開（`--draft=false --latest` / Web UI）、GitHub のアカウント（2FA）・リポジトリ設定・Ruleset の変更、`.gitleaks.local.toml` を使った走査、公開可否の最終判断 |
+| **AI エージェント可（準備・確認の補助）** | 公開規則での事前走査・`scripts/check.sh` などの検査準備、ドキュメント（README・SECURITY.md・CHANGELOG.md・リリースノート案）の下書き、workflow の実行ログ・下書き資産一覧の読み取り確認、公開後の読み取り確認（`gh release view` 等。利用可能な権限の範囲に限る） |
+
+---
+
+### 4.1 事前の前提（タグを打つ前に済ませるもの）
+
+#### アカウントとリポジトリの保護（設定変更は作者のみ）
+
+- [x] 前の節（§3）の、Private vulnerability reporting が有効であること。
+- [ ] Release を作れるアカウント（作者）に、2 要素認証（パスキーか物理キー）を設定したこと。SMS や認証アプリだけにしない（ADR 0076 §18.2。アカウントを取られると、偽の版を「新しい版」として勧めうるため）。**未確認**。
+- [x] タグを守る ruleset を入れたこと（Settings → Rules → Rulesets、対象はタグ）。対象は `v*`（アプリ）と `webwords-*`（データ）。作れる者を絞り、付け替え（force push）と削除を禁じる。（2026-11-23 確認: Ruleset「protect tags」が active。禁じるのは creation、update、non_fast_forward、deletion。バイパスは Admin のロールだけ。「protect main」と違ってバイパスがあるのは、作成を絞るとき作者自身が作れなくなるのを避けるため。なお `abr-mirror-*` が対象に含まれているかは**未確認**。）
+- [x] Releases を immutable（公開したら資産とタグを変えられない）にしたこと。Settings → General で有効にした（2026-11-23 確認: `GET /immutable-releases` が `enabled: true`）。公開した Release から効く。すでに公開したものには遡らない。
+- [ ] 作者のリリースの鍵（minisign。Ed25519）を手元で作成・保管し、公開鍵を [README.md](../README.md)・[SECURITY.md](../SECURITY.md)・リポジトリ内（および [antivirus-false-positive.md](antivirus-false-positive.md)）へ記載したこと（ADR 0069 §5。秘密鍵は CI に置かない）。鍵の作成と公開鍵の配置先は**未確認**（未作成）。
+
+#### 実機確認が前提の項目（確認は作者／リード。すべて未確認）
+
+- [ ] **#241（実機確認が前提）**: macOS の未署名（ad-hoc）配布について、別アカウントまたは別 Mac へ隔離属性が付く経路で渡した状態で、(a) dmg の開き方、(b) `~/Library/Input Methods` での入力ソース追加・エンジン・設定アプリ・LM の動作、(c) 隔離属性が付いた場合の安全な許可手順、(d) dmg 内の `~/Library/Input Methods` へのショートカットと案内の形（ADR 0080 §5.1・§5.2）を実機で確かめ、確かめた手順だけを [README.md](../README.md) と [SECURITY.md](../SECURITY.md) に書いたこと（OS やウイルス対策の守りを切る手順は書かない）。**未確認**。
+- [ ] **#459 の項目 6（実機確認が前提）**: ADR 0077 §8 の項目 6（#583 の確認項目へ移管済み。macOS の配布パッケージ構成での LM の檻の動作確認。あわせて #459 の ADR 0077 §8 項目 2 のアクティビティモニタ記録も残っている）が済んでいること。**未確認**。
+- [ ] **#502（実機確認が前提）**: macOS の App Sandbox コンテナについて、同じ識別子で署名方式を切り替えたとき（ad-hoc ⇔ team、および ad-hoc 配布の更新時）に確認ダイアログが出る条件・文面・engine と lm-cage での再現有無を確かめ、必要な案内を [README.md](../README.md) と [SECURITY.md](../SECURITY.md) に書いたこと。**未確認**。
+- [ ] **オフライン版の実機確認（ADR 0080 §10 C5・C6）**: macOS のオフライン版 dmg をネットワークを切った環境で動かし、同梱辞書と LM で変換でき、設定画面に通信機能（URL 取得・版の確認）が出ないこと、通常版でもオフライン状態で変換できることを確かめたこと。**未確認**。
+
+#### workflow・文書・ライセンスの整備（下書きは AI エージェント可、確定・反映はリード／作者）
+
+- [ ] `.github/workflows/release.yml` が 0.1.0 の配布範囲（macOS 通常版・オフライン版の 2 版）と整合し、タグからの公開経路のレビュー（#657）で挙がった修正が `main` に反映されていること。**未確認**。
+- [ ] [security-design.md](security-design.md) §5.2 の「版を出す前」の検査のうち macOS 0.1.0 に該当するものが済んでいること（製品のビルドであること、Smoke 無し、App Sandbox と `network.*` entitlement の検査、オフライン版に通信の部品と取得の印が無いこと、他社の部品の版、3 つの証拠）。**未確認**。
+- [ ] 配布物に含める依存と同梱データのライセンス表示を確かめたこと（`cargo xtask licenses --check`、[THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)、および同梱データのそばの `NOTICE.txt`・`licenses/`。元ファイルは [dist-notices/NOTICE.txt](dist-notices/NOTICE.txt)）。
+- [ ] [README.md](../README.md) の冒頭（「ビルド済みのアプリは、まだ配っていません」）と [SECURITY.md](../SECURITY.md) の「配布」の節を配布開始に合わせて書き直したこと。README には、配布元が Releases だけであること、sha256 の比べ方、証明と署名の確かめ方、実機で確かめた OS の警告の案内（守りを切る手順は書かない）、Watch の案内を書く。
+- [ ] 配布物と [SECURITY.md](../SECURITY.md) の「約束すること」（通信しない、秘密の欄、ログ）および「約束しないこと」（`~/Library/Input Methods` の限界を含む。ADR 0080 §5.4）が合っていること。
+- [x] 誤検出の報告の窓口: 公開後にウイルス対策ソフトの誤検出の報告が来たときの対応を、[SECURITY.md](../SECURITY.md) の「配布」に 1 行追記し、[antivirus-false-positive.md](antivirus-false-positive.md) に案内・確かめ方・Issue 窓口を下書き済み（公開鍵のありか・確定ファイル名・未署名警告の越え方は公開前に埋める）。
+- [ ] [CHANGELOG.md](../CHANGELOG.md) の `0.1.0` のリリース日を入れ、未定の箇所（最低対応 macOS バージョン、配布物の確定名、公開鍵のありか等）を確定したこと。
+
+---
+
+### 4.2 公開直前の走査と検査（AI エージェント可／`.gitleaks.local.toml` と最終判断は作者）
+
+タグを打つ直前の `main` 先頭コミットに対して行う。
+
+- [ ] `Cargo.toml` の `[workspace.package] version` が `0.1.0`（タグの `v` を除いた値）と一致していること（`verify-tag` が一致を検査する）。
+- [ ] §1.1 と同じ観点で、直前の差分・履歴・新規 Issue / PR に個人情報、ホームのパス、秘密情報、非公開レビューの詳細（ADR 0070 §5）が混ざっていないことを走査したこと（`.gitleaks.local.toml` の走査は作者の手元のみ）。
+- [ ] リード（または作者）の手元で、対象コミットに対してフルの `scripts/check.sh` が `CHECK_EXIT=0` で通っていること。
+- [ ] `cargo xtask licenses --check` が通ること。
+- [ ] 同梱する他社部品・モデル・辞書の元データの版とライセンスを確認し、更新の有無をリリースノートに書く準備ができたこと（ADR 0070 §6、ADR 0080 §8 の 3）。
+- [ ] タグを打つ前に、対象コミット（`main`）で `.github/workflows/release.yml` の試しのビルド（`workflow_dispatch`。証明と下書きは作らない）を流し、`verify-tag`・`source-checks`・`build-dict`・`build-macos`（normal / offline）がすべて緑であることを確かめたこと。
+
+---
+
+### 4.3 タグを打って push する（作者のみ。AI エージェントは実行しない）
+
+配る物は、GitHub のランナーでタグから作ったものだけとする（作者や利用者の機械で作ったものは配らない。ADR 0069 §4.1）。
+
+- [ ] 対象コミットが `origin/main` の最新であることを確認する。
+- [ ] **作者が**手元で `v0.1.0` のタグを打ち、`origin` へ push する（`protect tags` により Admin のみ作成でき、push 後の付け替え・削除はできない）。
+
+  ```sh
+  git fetch origin main
+  git tag -a v0.1.0 -m "v0.1.0" origin/main
+  git push origin v0.1.0
+  ```
+
+  （注: プレリリース形式 `v0.1.0-rc.1` 等は、付け方が決まるまで `verify-tag` が止める。）
+
+---
+
+### 4.4 Release workflow の実行と完了確認（閲覧は AI エージェント可／再実行・停止判断は作者）
+
+`v0.1.0` の push で `.github/workflows/release.yml` が起動する。
+
+- [ ] GitHub Actions の `Release` workflow がタグ `v0.1.0` で起動し、全 job（`verify-tag` → `source-checks` → `build-dict` → ビルド job → `provenance` → `draft-release`）が成功したことを確認する。
+  - **未確認**: `provenance` と `draft-release` は試しのビルド（`workflow_dispatch`）ではスキップされるため、タグ push での実走（所要時間・artifact 転送・`actions/attest-build-provenance` の出力・`gh release create --draft --verify-tag` の動作）は初回の実走まで**未確認**。
+  - 注意: 公開リポジトリでは、`provenance` が成功した時点で GitHub の公開 attestation 台帳に証明が記録される（下書き公開前でも記録される）。
+- [ ] 途中で失敗した場合は、原因を特定し、重複した下書き Release が残っていないか確認してから対処する（公開前の下書きは削除できる）。
+
+---
+
+### 4.5 下書き Release の確認（取得・照合の補助は AI エージェント可／採用判断は作者）
+
+`draft-release` が作るのは**下書き（draft）**であり、まだ公開されていない。
+
+- [ ] GitHub の Releases 画面で `v0.1.0` が **Draft** 状態であることを確認する。
+- [ ] 下書きに添付された資産が、期待どおりのファイル（0.1.0 の macOS 通常版・オフライン版の dmg と `SHA256SUMS`）だけであり、余計なファイルや不足が無いことを確認する。
+- [ ] 一時作業ディレクトリを作り、下書き Release の全資産をダウンロードして次を確かめる（作業後に一時ディレクトリは消す）。
+
+  ```sh
+  # 作業用の一時ディレクトリで実行
+  gh release download v0.1.0
+  shasum -a 256 -c SHA256SUMS
+  gh attestation verify ikari-0.1.0-macos-arm64-adhoc.dmg -R ikari-zen/ikari-ime
+  gh attestation verify ikari-0.1.0-macos-arm64-adhoc-offline.dmg -R ikari-zen/ikari-ime
+  ```
+
+  （注: ファイル名は確定名に合わせる。下書き段階での `gh release download` と `gh attestation verify` の実動作は**未確認**。）
+- [ ] 下書きのリリースノート本文（workflow が入れた仮の案内文）を、**本来のリリースノート**へ書き換える。次を必ず含める:
+  - 変更の概要（[CHANGELOG.md](../CHANGELOG.md) と整合）
+  - 同梱した辞書・モデルの一覧（名前、元データの版、モデルの版、ライセンス、出典、前の版から元データを上げたか。ADR 0080 §4 の 4・§8 の 3）
+  - 3 つの証拠の確かめ方への案内（[README.md](../README.md)・[antivirus-false-positive.md](antivirus-false-positive.md)）
+  - セキュリティの修正を含む版では、先頭にその旨とログアウト等の案内（ADR 0070 §4 の 1・4）
+
+---
+
+### 4.6 作者の鍵での署名（minisign）と下書きへの添付（作者のみ。AI エージェントは実行しない）
+
+3 つ目の証拠（作者の手元の鍵による `SHA256SUMS` の署名。ADR 0069 §3・§5）を付ける。**秘密鍵は作者の手元だけに置き、AI エージェントや CI には渡さない。**
+
+- [ ] §4.5 でダウンロードしてハッシュと証明を照合した `SHA256SUMS` に対して、**作者が**手元で minisign 署名を作り、`SHA256SUMS.minisig` を生成する（コマンド細部と鍵パスは鍵作成後に確定するため**未確認**）。
+
+  ```sh
+  minisign -Sm SHA256SUMS -s <作者の秘密鍵ファイル>
+  ```
+
+- [ ] 添付の前に、手元で公開鍵による検証が通ることを確かめる。
+
+  ```sh
+  minisign -Vm SHA256SUMS -p <公開鍵ファイル>
+  ```
+
+- [ ] **公開前の下書き Release に** `SHA256SUMS.minisig` を添付する（Web UI の下書き編集画面、または `gh release upload v0.1.0 SHA256SUMS.minisig`）。
+  - **重要（immutable releases）**: 一度公開すると資産を追加・変更・削除できない。必ず公開前に `SHA256SUMS.minisig` が下書きに付いていることを目視確認する。
+
+---
+
+### 4.7 下書き Release の公開（作者のみ。AI エージェントは実行しない）
+
+- [ ] 公開前の最終確認（作者）:
+  1. 下書きの資産に、配布する dmg、`SHA256SUMS`、`SHA256SUMS.minisig` がすべて揃っていること。
+  2. リリースノート本文が仮の案内文のまま残っておらず、同梱データ一覧を含む本来の文面になっていること。
+  3. 公開後は immutable releases により資産とタグを変更・削除できないことを了解していること。
+- [ ] **作者が**下書き Release を **`Latest` を明示して**公開する（ADR 0076 §18.2）。
+  - GitHub Web UI: 下書き編集画面で **「Set as the latest release」** にチェックが入っていることを確かめて **「Publish release」** を押す。
+  - CLI を使う場合:
+
+    ```sh
+    gh release edit v0.1.0 --draft=false --latest
+    ```
+
+  - 注意: 下書き作成時（`gh release create --draft`）には `Latest` に設定できないため、公開時に必ず明示する。またデータ用 Release（`webwords-*`、`abr-mirror-*` 等）は常に `--latest=false` で作り、アプリの `Latest` を上書きしない（2026-11-24 時点では `abr-mirror-20261025` が `Latest` になっていたため、0.1.0 公開時の上書きと公開後確認を必ず行う）。
+
+---
+
+### 4.8 公開のあとの確認（読み取り確認は AI エージェント可／対応判断は作者）
+
+- [ ] ログインしていないブラウザで `https://github.com/ikari-zen/ikari-ime/releases/tag/v0.1.0` を開き、タイトル・本文・全資産（dmg、`SHA256SUMS`、`SHA256SUMS.minisig`）が正しく表示されることを確かめる。
+- [ ] 「最新の Release」が `v0.1.0`（`v<数>.<数>.<数>`）であることを確かめる（ADR 0076 §18.2）。
+
+  ```sh
+  gh release view --json tagName
+  ```
+
+- [ ] 公開済み Release から資産を別の一時ディレクトリへ取り直し、利用者の手順どおり 3 つの証拠すべてが通ることを確かめる（実走**未確認**）。
+
+  ```sh
+  shasum -a 256 -c SHA256SUMS
+  gh attestation verify <ダウンロードした dmg> -R ikari-zen/ikari-ime
+  minisign -Vm SHA256SUMS -p <公開鍵ファイル>
+  ```
+
+- [ ] 通常版の設定画面の「新しい版を確認」が `v0.1.0` を正しく認識できることを確かめる（**未確認**）。
+- [ ] 署名・検証に使った一時作業ディレクトリを消す。
+
+---
+
+### 4.9 将来の 1.0.0（Windows 版を含む配布）の公開前に追加で要る項目
+
+以下は Windows 版を配布する 1.0.0 向けの項目（macOS のみの 0.1.0 公開前には不要）。
+
+- [ ] Windows の実機確認（[windows-real-device-check.md](windows-real-device-check.md) の該当項目）と、タグの前にリリースの workflow の試しのビルド（`workflow_dispatch`）で作った Windows インストーラの VM 確認（同 項目 47〜55）が済んでいること。
+- [x] インストーラの失敗時の手動の復旧手順（[windows-user-guide.md](windows-user-guide.md) の「インストールに失敗したとき」）が書かれ、VM で確かめられていること（実機確認の項目 79〜81。2026-11-23 に確認。画面の表示などの未確認は項目に書いた）。
+- [ ] インストーラの失敗時の自動の巻き戻しを作るか、ADR で決めたこと（#646）。
+- [ ] 通常版とオフライン版の 2 OS × 2 版（4 成果物。[ADR 0080](adr/0080-bundle-model-and-dictionary.md) §6・§7・§9。Windows への辞書・モデル同梱、VC++ 再頒布パッケージ、オフライン版は未完了のため**未確認**）が揃っており、オフライン版に通信の部品（`ikari-data`、通信ライブラリ、`network.*` の entitlement、取得の印の文字列）が無いことを CI の検査とネットワークを切った VM で確かめたこと。
 - [ ] ウイルス対策ソフトの検査: 配る物（未署名）を、Windows の VM の Microsoft Defender（SmartScreen を含む）で検査し、検出や警告が出ないことを確かめる。出たら、結果を記録し、配るか決める。作者の環境の ESET では検知されなかった（2026-11-17。製品と版が限られた 1 件の参考値で、保証ではない）。守りを切る手順は書かない。
-- [x] 誤検出の報告の窓口: 公開後にウイルス対策ソフトの誤検出の報告が来たときの対応（各社への誤検出の報告）を、SECURITY.md か README に 1 行書く。（[SECURITY.md](../SECURITY.md) の「配布」に 1 行追記し、[antivirus-false-positive.md](antivirus-false-positive.md) に案内・確かめ方・Issue 窓口を下書き済み。公開鍵のありか等の未確定事項は未定）
-- [ ] [CHANGELOG.md](../CHANGELOG.md) の 0.1.0 のリリース日を入れる。
-- [ ] 配布物に含める依存と同梱データのライセンス表示を確かめる（`cargo xtask licenses --check`、[THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)、および同梱データのそばの `NOTICE.txt`・`licenses/`。元ファイルは [dist-notices/NOTICE.txt](dist-notices/NOTICE.txt)、パッケージへの組み込み詳細はレーン 4〜6 未実装のため**未定**）。
-- [ ] 作者が、下書きの Release を確かめて公開する。
