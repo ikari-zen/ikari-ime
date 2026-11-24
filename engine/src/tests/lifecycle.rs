@@ -71,7 +71,7 @@ fn convert_prefetch_and_page_are_not_blocked_while_the_stack_is_rebuilt() {
     open_gate();
     let _ = worker.join();
     let elapsed = elapsed.expect("convert path was blocked by the rebuild");
-    let limit = Duration::from_secs(1);
+    let limit = ikari_testtime::scaled(Duration::from_secs(1));
     assert!(
         elapsed < limit,
         "{}",

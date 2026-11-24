@@ -41,6 +41,9 @@ const NEXT_SUFFIX: &str = ".next";
 const TRACE_DIR_ENV: &str = "IKARI_LM_HOST_FAKE_TRACE_DIR";
 const INFERENCE_STARTED: &str = "inference-started";
 const INFERENCE_COMPLETED: &str = "inference-completed";
+const INFERENCE_CANCELLED: &str = "inference-cancelled";
+const INFERENCE_HOLD: &str = "inference-hold";
+const HOLD_POLL: Duration = Duration::from_millis(2);
 const FOREVER: Duration = Duration::from_secs(3600);
 
 #[derive(Default)]
@@ -97,6 +100,12 @@ impl FakeScorer {
         file.flush()
             .unwrap_or_else(|error| panic!("{} を flush できません: {error}", path.display()));
     }
+
+    fn is_held(&self) -> bool {
+        self.trace_dir
+            .as_ref()
+            .is_some_and(|dir| dir.join(INFERENCE_HOLD).exists())
+    }
 }
 
 impl LmScorer for FakeScorer {
@@ -119,13 +128,25 @@ impl LmScorer for FakeScorer {
             thread::sleep(FOREVER);
         }
         self.record_inference(INFERENCE_STARTED);
+        while self.is_held() {
+            if cancel.is_cancelled() {
+                self.record_inference(INFERENCE_CANCELLED);
+                return Err(LmError::Cancelled);
+            }
+            thread::sleep(HOLD_POLL);
+        }
         if let Some(ms) = self.script.number("delay_ms") {
             let steps = self.script.number("delay_steps").unwrap_or(1).max(1);
             for _ in 0..steps {
                 if cancel.is_cancelled() {
+                    self.record_inference(INFERENCE_CANCELLED);
                     return Err(LmError::Cancelled);
                 }
                 thread::sleep(Duration::from_millis(ms / steps));
+            }
+            if cancel.is_cancelled() {
+                self.record_inference(INFERENCE_CANCELLED);
+                return Err(LmError::Cancelled);
             }
         }
         if self.script.is("fail_infer", "1") {

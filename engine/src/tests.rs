@@ -27,6 +27,19 @@ const BOOSTED: &str = "瀕死";
 
 const BASE_TOP: &str = "品詞";
 
+/// `prefetch_in_flight` や `hold_while` で、先行計算のワーカーとテストのスレッドを合流させる状態（#296）。
+#[derive(Default)]
+struct RankSync {
+    /// 次の `rank` でワーカーの開始を待つか
+    armed: bool,
+    /// ワーカーが `rank` に入ったか
+    entered: bool,
+    /// `hold_while` の間だけ `rank` の入り口で止めるか
+    held: bool,
+    /// `Convert` がキャッシュのエントリを引くまで `sleep(delay)` の開始を待つ対象
+    wait_for_convert: Option<(std::sync::Weak<CacheEntry>, std::sync::Weak<Inner>, u64)>,
+}
+
 /// 「瀕死」を最上位にするモックの LM。ZenzRanker と同じく、締め切りまでしか待たない。
 struct MockLm {
     delay: Duration,
@@ -40,6 +53,7 @@ struct MockLm {
     last_context: Mutex<Option<String>>,
     /// 最後の `rank` が受けた、左文脈のうち履歴から足した字数（ADR 0049）
     last_carried: Mutex<Option<usize>>,
+    sync: (Mutex<RankSync>, Condvar),
 }
 
 impl MockLm {
@@ -54,7 +68,20 @@ impl MockLm {
             warm_thread: Mutex::new(None),
             last_context: Mutex::new(None),
             last_carried: Mutex::new(None),
+            sync: (Mutex::new(RankSync::default()), Condvar::new()),
         })
+    }
+
+    /// `f` を実行している間、`rank` に入ったワーカーを入り口で止める（複数の `Prefetch` を確実に溜めるテスト用）。
+    fn hold_while(&self, f: impl FnOnce()) {
+        {
+            let (lock, _) = &self.sync;
+            lock.lock().unwrap().held = true;
+        }
+        f();
+        let (lock, cv) = &self.sync;
+        lock.lock().unwrap().held = false;
+        cv.notify_all();
     }
 }
 
@@ -63,9 +90,46 @@ impl Ranker for MockLm {
         self.calls.fetch_add(1, Ordering::Relaxed);
         *self.last_context.lock().unwrap() = Some(input.context.left_text.clone());
         *self.last_carried.lock().unwrap() = Some(input.context.left_carried_chars);
-        let now = Instant::now();
+        let wait_target = {
+            let (lock, cv) = &self.sync;
+            let mut sync = lock.lock().unwrap();
+            while sync.held {
+                sync = cv.wait(sync).unwrap();
+            }
+            if sync.armed {
+                sync.armed = false;
+                sync.entered = true;
+                cv.notify_all();
+                while sync.wait_for_convert.is_none() {
+                    sync = cv.wait(sync).unwrap();
+                }
+                sync.wait_for_convert.take()
+            } else {
+                None
+            }
+        };
+        let entered_at = Instant::now();
+        if let Some((weak_entry, weak_inner, conv_before)) = wait_target {
+            let limit = ikari_testtime::scaled(Duration::from_secs(5));
+            let wait_started = Instant::now();
+            while weak_entry.strong_count() < 4
+                && weak_inner.upgrade().is_some_and(|inner| {
+                    inner.next_conversion.load(Ordering::Acquire) == conv_before
+                        && !inner.is_stopped()
+                })
+                && wait_started.elapsed() < limit
+            {
+                std::thread::yield_now();
+                std::thread::sleep(Duration::from_micros(200));
+            }
+            // Convert 側が cache のロックを手放し、is_computing / wait_ready に進むまで待つ
+            if let Some(inner) = weak_inner.upgrade() {
+                drop(lock_mutex(&inner.cache));
+                std::thread::yield_now();
+            }
+        }
         match input.deadline {
-            Some(deadline) if now + self.delay <= deadline => {
+            Some(deadline) if entered_at + self.delay <= deadline => {
                 lm_trace::record_call(LmDevice::Cpu);
                 std::thread::sleep(self.delay);
                 lm_trace::record_reply(self.delay, self.delay);
@@ -282,6 +346,43 @@ fn prefetch(e: &Engine, session: u64, reading: &str, rev: u64) {
     assert!(matches!(r, envelope::Body::Ack(_)), "{r:?}");
 }
 
+/// 先行計算を頼み、ワーカーが `MockLm::rank` に入ったことを確かめてから戻る（#296）。
+/// ワーカーは、テスト側が次に呼ぶ `Convert` がキャッシュのエントリを引いた瞬間から `delay` の待機を始める。
+fn prefetch_in_flight(e: &Engine, mock: &Arc<MockLm>, session: u64, reading: &str, rev: u64) {
+    {
+        let (lock, _) = &mock.sync;
+        let mut sync = lock.lock().unwrap();
+        sync.armed = true;
+        sync.entered = false;
+        sync.wait_for_convert = None;
+    }
+    let conv_before = e.inner.next_conversion.load(Ordering::Acquire);
+    prefetch(e, session, reading, rev);
+    let weak_entry = {
+        let cache = lock_mutex(&e.inner.cache);
+        let entry = cache
+            .latest(sk(session), reading)
+            .expect("prefetched cache entry must exist");
+        Arc::downgrade(&entry)
+    };
+    let (lock, cv) = &mock.sync;
+    let mut sync = lock.lock().unwrap();
+    sync.wait_for_convert = Some((weak_entry, Arc::downgrade(&e.inner), conv_before));
+    cv.notify_all();
+    let limit = ikari_testtime::scaled(Duration::from_secs(5));
+    let started = Instant::now();
+    while !sync.entered {
+        let left = limit.saturating_sub(started.elapsed());
+        assert!(
+            !left.is_zero(),
+            "prefetch worker did not enter MockLm::rank in time: {}",
+            ikari_testtime::report(started.elapsed(), format_args!("< {limit:?}"))
+        );
+        let (next, _) = cv.wait_timeout(sync, left).unwrap();
+        sync = next;
+    }
+}
+
 fn convert_req(session: u64, reading: &str, rev: u64, page_size: u32) -> envelope::Body {
     envelope::Body::Convert(pb::Convert {
         session_id: session,
@@ -314,7 +415,7 @@ fn page(e: &Engine, conversion_id: u64, index: u32) -> envelope::Body {
 }
 
 fn wait_until(mut cond: impl FnMut() -> bool) {
-    let limit = Duration::from_secs(5);
+    let limit = ikari_testtime::scaled(Duration::from_secs(5));
     let started = Instant::now();
     while !cond() {
         assert!(
