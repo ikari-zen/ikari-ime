@@ -1,11 +1,11 @@
 ; ikari-ime の Windows のインストーラ（Inno Setup）。骨組み（レーン C-2）。
 ;
-; 設計: docs/security-design.md §8.4、ADR 0067 §3・§4、ADR 0068 §6.2、ADR 0070 §4、ADR 0063、ADR 0073 §4、ADR 0069 §3。
+; 設計: docs/security-design.md §8.4、ADR 0067 §3・§4、ADR 0068 §6.2、ADR 0070 §4、ADR 0063、ADR 0073 §4、ADR 0069 §3、ADR 0080 §6・§7.3。
 ; 判断の置き場所: 順番と画面はここ（Pascal）。置き場所の検査、エンジンを止める、エラー報告の除外は
 ; ikari-setup-helper.exe（Rust。windows/installer/helper）。理由は helper/src/lib.rs の冒頭。
 ;
 ; 作り方（Windows で。手順は windows/installer/README.md）:
-;   ISCC /DAppVersion=0.1.0 /DStageDir=<配置の形に並べたフォルダ> /DTipSha256=<ikari_tip.dll の sha256> [/DSecurityUpdate=1] ikari.iss
+;   ISCC /DAppVersion=0.1.0 /DStageDir=<配置の形に並べたフォルダ> /DTipSha256=<ikari_tip.dll の sha256> [/DEdition=normal|offline] [/DSecurityUpdate=1] ikari.iss
 ;
 ; 守ること（cargo xtask check が、この文書の文字列を検査する。xtask/src/check/installer.rs）:
 ;   - インストール先は固定。利用者ごとのもの（HKCU、利用者のフォルダ、入力方式の一覧）に触れない（ADR 0067 §3.3）
@@ -29,6 +29,17 @@
 #ifndef SecurityUpdate
   ; 1 にすると「セキュリティの修正を含む更新」の案内になる（ADR 0070 §4 の 1。版を出すときに作者が決める）
   #define SecurityUpdate 0
+#endif
+#ifndef Edition
+  ; 版（ADR 0080 §7.3）。normal（既定）か offline（通信の部品 ikari-data.exe を入れず、成果物の名前に -offline）
+  #define Edition "normal"
+#endif
+#if Edition == "normal"
+  #define EditionSuffix ""
+#elif Edition == "offline"
+  #define EditionSuffix "-offline"
+#else
+  #error /DEdition は normal か offline です
 #endif
 
 [Setup]
@@ -59,7 +70,7 @@ RestartApplications=no
 SetupLogging=no
 WizardStyle=modern
 OutputDir=out
-OutputBaseFilename=ikari-ime-{#AppVersion}-windows-x64-setup
+OutputBaseFilename=ikari-ime-{#AppVersion}-windows-x64-setup{#EditionSuffix}
 Compression=lzma2
 SolidCompression=yes
 Uninstallable=yes
@@ -111,8 +122,11 @@ Source: "{#StageDir}\ikari-setup-helper.exe"; DestDir: "{code:SetupWorkDir}"; Af
 Source: "{#StageDir}\ikari-setup-helper.exe"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion
 Source: "{#StageDir}\ikari-engine-host.exe"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion
 Source: "{#StageDir}\ikari-lm-host.exe"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion
-; 取得の子（ADR 0076。設定画面の核がインストール先の直下のこれを起動する）。送信ブロックの規則はかけない（ADR 0076、0071 §3.1）
+#if Edition == "normal"
+; 取得の子（ADR 0076。設定画面の核がインストール先の直下のこれを起動する。通常版だけ。ADR 0080 §7.3）。
+; 送信ブロックの規則はかけない（ADR 0076、0071 §3.1）
 Source: "{#StageDir}\ikari-data.exe"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion
+#endif
 Source: "{#StageDir}\*.dll"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#StageDir}\backends\*"; DestDir: "{app}\backends"; Check: AppDirReady; Flags: ignoreversion recursesubdirs skipifsourcedoesntexist
 ; 候補窓（ADR 0062。W3 でできるまで無い）
@@ -122,10 +136,20 @@ Source: "{#StageDir}\settings\*"; DestDir: "{app}\settings"; Check: AppDirReady;
 ; TIP は版ごとのフォルダ（ADR 0063 §3 の 1）。同じ版で中身が同じなら置き直さない（使用中で上書きできない。§5）
 Source: "{#StageDir}\tip\ikari_tip.dll"; DestDir: "{app}\tip\{#AppVersion}"; Check: TipNeedsCopy; Flags: ignoreversion uninsrestartdelete
 Source: "{#StageDir}\tip\resources\*"; DestDir: "{app}\tip\{#AppVersion}\resources"; Check: TipNeedsCopy; Flags: ignoreversion recursesubdirs uninsrestartdelete
+; 同梱のデータ（辞書、モデル、ライセンス表示。ADR 0080 §3.1、§4、§6。一覧は xtask/src/scan/macos.rs と resource/src/models.rs）
+Source: "{#StageDir}\data\dict\grammar.bin"; DestDir: "{app}\data\dict"; Check: AppDirReady; Flags: ignoreversion
+Source: "{#StageDir}\data\dict\system.dict"; DestDir: "{app}\data\dict"; Check: AppDirReady; Flags: ignoreversion
+Source: "{#StageDir}\data\dict\vectors.bin"; DestDir: "{app}\data\dict"; Check: AppDirReady; Flags: ignoreversion
+Source: "{#StageDir}\data\dict\emoji.tsv"; DestDir: "{app}\data\dict"; Check: AppDirReady; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#StageDir}\data\dict\postal.tsv"; DestDir: "{app}\data\dict"; Check: AppDirReady; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#StageDir}\data\dict\BUILD_INFO"; DestDir: "{app}\data\dict"; Check: AppDirReady; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#StageDir}\data\models\zenz-v3.2-small-Q5_K_M.gguf"; DestDir: "{app}\data\models"; Check: AppDirReady; Flags: ignoreversion
+Source: "{#StageDir}\data\NOTICE.txt"; DestDir: "{app}\data"; Check: AppDirReady; Flags: ignoreversion
+Source: "{#StageDir}\data\licenses\*"; DestDir: "{app}\data\licenses"; Check: AppDirReady; Flags: ignoreversion recursesubdirs
 Source: "{#StageDir}\LICENSE"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion
-; Apache-2.0 の NOTICE と、同梱する他社の部品（llama.cpp、.NET、Windows App SDK など）の表示
+; Apache-2.0 の NOTICE と、同梱する他社の部品（llama.cpp、.NET、Windows App SDK、辞書、モデルなど）の表示（ADR 0080 §4）
 Source: "{#StageDir}\NOTICE"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion skipifsourcedoesntexist
-Source: "{#StageDir}\THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#StageDir}\THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion
 Source: "{#StageDir}\THIRD_PARTY_LICENSES_RUST.md"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion skipifsourcedoesntexist
 
 [Code]
