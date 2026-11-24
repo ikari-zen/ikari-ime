@@ -6,7 +6,7 @@ ikari-ime は、Claude Code が**リード**、Antigravity が**レーン**と�
 
 | | 持つもの |
 | --- | --- |
-| **リード（Claude Code）** | 優先順位、ADR と設計、ユーザーへの確認、統合、`scripts/check.sh`、PR のマージ、Mac の重い作業（XCFramework のビルド、評価の測定、smoke、install）、Windows の VM の操作 |
+| **リード（Claude Code）** | 優先順位、ADR と設計、ユーザーへの確認、統合、`scripts/check.sh`、PR のマージ、Mac の評価の測定、smoke、install（XCFramework のビルドと Windows の VM は、Antigravity も条件つきで使える。§4「条件つきで使ってよい」） |
 | **Antigravity** | 割り当てられた issue の調査・文書・テスト・実装。1 issue につき 1 ブランチ・1 PR |
 
 - **つなぎ方は GitHub だけ。** Antigravity は「issue を受け持つ別の人」として動く。ユーザーが Antigravity を起動したときに、GitHub に自分の担当の issue（ラベル `antigravity`）があれば、それをやる。
@@ -54,18 +54,23 @@ git config user.name "Antigravity (<作業するモデルの名前>)"   # 例: A
 
 **してよい（聞かなくてよい）**: 読む、調べる、文書を書く、テストを足す、自分の clone でのビルドとテスト（`cargo test -p <crate>`、`cargo clippy -p <crate> --all-targets -- -D warnings`、`cargo fmt`）、PR の作成、CI の確認。
 
+**条件つきで使ってよい**（2026-11-24 ユーザー決定。A・B・C すべて）:
+- **A. Actions の書き込み（workflow の再実行と起動）**: 自分の PR とブランチの CI の再実行（`gh run rerun`）と、`workflow_dispatch` での起動をしてよい。CI の「10 回続けて通る」の確認などに使う。条件: (1) **リリースの workflow（`release.yml`）は、issue で頼まれたときだけ起動する**（macOS のランナーを長く占有する。試しのビルドは約 35 分）。(2) タグを打たない、Release を作らない（タグはユーザーだけ。ruleset でも守っている）。(3) workflow を直す PR は、リードが見てから流す。(4) 使うには、トークンに Actions の**書き込み**が付いている必要がある（ユーザーが付ける。付くまでは、再実行を §5 の形で依頼する）。
+- **B. 自分の clone での Swift のテストと macOS のビルド**: `swift test`（ターゲットを 1 つずつ。`swift build --product` を並べると最後の 1 つしかビルドされない。#152）と、`macos/scripts/build.sh --signing adhoc`（XCFramework を含む）を流してよい。条件: (1) **署名は ad-hoc だけ**（`--signing team` は、ユーザーの Apple の証明書を使うので流さない）。(2) **install、smoke、アプリの起動し直しはしない**（リードが行う。ユーザーの ikari を止めるため）。(3) Mac の CPU を共有しているので、**重い処理は 1 度に 1 つ**にし、リードの測定を妨げないよう、評価（`ikari-eval`）が走っているときは待つ（issue にリードの測定の依頼があるときは、そちらを先にする）。(4) 大きな成果物（`target/`、`.build`）は、終わったら消す。
+- **C. Windows の VM（`ssh win11`）**: 開発・実機確認の手順（[windows-real-device-check.md](windows-real-device-check.md)）に従って使ってよい。条件: (1) **VM は 1 台なので、同時に使うのは 1 つの issue だけ。** 使い始めるときに、その issue に `ag:vm` のラベルを付け、**ほかの issue に `ag:vm` が付いていないこと**を先に確かめる（付いていたら待つ。リードが使うときも同じラベルを使う）。終わったら外す。(2) **試験の前に基準の状態へ戻せるようにする**（スナップショットか、基準へ戻す道具。Program Files、HKLM、TIP の登録を変える試験は特に）。固まったら基準へ戻す。(3) VM の外（Mac のユーザーデータ、署名鍵、`~/.ssh`、入力ソースの設定）に触らない。VM の中でも、鍵や認証情報を読まない・書かない。(4) 結果は issue のコメントに、手順と結果と「確かめていないこと」を分けて書く。VM のログの中身に個人情報や非公開の指摘が入らないよう、貼る前に確かめる。
+
 **してはいけない**:
 - main への直接コミットと push、PR のマージ（`gh pr merge`、ブラウザでも）、`--no-verify`。
 - `gh api` での設定の変更、`gh secret`、`gh auth`、ブランチ保護や ruleset の変更。
 - **`scripts/check.sh` を流さない。** 合格の記録は、リードのマージの条件に使われる。あなたの clone は別のリポジトリなので、記録は混ざらないが、リードが流し直すので不要。文書だけの変更の確認は、リンクの検査（`scripts/check.sh --docs-only`）まで。
 - ユーザーデータ（`~/Library/Application Support/ikari-ime/`）と `data/raw/` の書き換え。署名鍵、証明書、`~/.ssh` に触らない。
-- **GitHub の読み取りの権限**（2026-11-23 ユーザー決定）: Antigravity には、**専用の fine-grained トークン**を `GH_TOKEN` で渡す（リードやユーザーの `gh` の権限とは別にする）。対象はこのリポジトリだけ、有効期限を付ける（30〜90 日）。権限は**読み取りだけ**: Code scanning alerts、Dependabot alerts、Secret scanning alerts、Actions（CI のログ）、Metadata。Issues と Pull requests は今の運用の範囲（コメントと PR）。**Contents の書き込みと Administration は付けない。**
+- **GitHub の読み取りの権限**（2026-11-23 ユーザー決定）: Antigravity には、**専用の fine-grained トークン**を `GH_TOKEN` で渡す（リードやユーザーの `gh` の権限とは別にする）。対象はこのリポジトリだけ、有効期限を付ける（30〜90 日）。権限は**読み取りだけ**: Code scanning alerts、Dependabot alerts、Secret scanning alerts、Actions（CI のログ）、Metadata。Issues と Pull requests は今の運用の範囲（コメントと PR）。**Contents の書き込みと Administration は付けない。** 例外（2026-11-24 ユーザー決定）: **Actions は書き込みを付けてよい**（上の A。再実行と起動のため。ユーザーがトークンを作り直して付ける）。ほかは変えない。
 - **非公開の指摘（セキュリティレビューの報告書など）の置き場**（2026-11-23 ユーザー決定）: リポジトリの**外**の、利用者ごとの受け渡しフォルダ（自分だけが読める権限。同期されない場所）に置く。具体の場所は、ユーザーが Antigravity の全体の指示（リポジトリの外）に書く。git に上げない。issue・PR・コミットには、件数・場所（ファイルと行）・対応の有無だけを書く（ADR 0070 §5）。書き込めない（サンドボックスの制約など）ときは、作業用の場所に出力して、完了のコメントに「出力先」を書く。リードが受け渡しフォルダへ移す。
 - **コマンドや権限を拒否されたとき**: 同じ対象に再試行しない。必要な変更（ラベルの付け替え、コメントの投稿など）は、下書きのファイルと実行するコマンドを完了のコメントか `ag:question` で依頼する。リードが代わりに実行する（ユーザーの許可の範囲で）。
 - **モデルの選び方**: 選択は Antigravity に任せる（使用量の制限があるため）。Gemini の Neon は、Opus・Sonnet と別の観点で見たいとき（独立レビューなど）と、手が足りないときの Sonnet の代わりに向く。
 - **アラート（Code scanning など）の内容も、ADR 0070 §5 の非公開の扱いに含める**: issue・PR・コミットに、問題の中身を書かない。件数と場所（ファイルと行）、対応の有無だけを書く。アラートの却下・再開（状態の変更）は、リードが行う。
 - ikari の install、smoke、アプリの起動し直し（リードが行う）。システムのプロセスを kill しない。入力ソースの設定を変えない。
-- Windows の VM の操作（リードが行う）。
+- Windows の VM を、上の C の条件（`ag:vm` の確認、基準へ戻せること、VM の外に触らない）を守らずに使うこと。
 - 評価の測定（`ikari-eval` の LM あり、`--perf`、snapshot）。Mac の CPU を占有し、リードの測定を揺らす。必要なら §5 の形で依頼する。
 - 契約（共有の型、proto、シグネチャ）の変更と、リードやほかのレーンが触っているファイルの変更。
 - 値（加点、減点、タイムアウト）を計測なしで決める。
@@ -73,7 +78,7 @@ git config user.name "Antigravity (<作業するモデルの名前>)"   # 例: A
 - **外部の MCP（Context7 など）に送る質問に、非公開のレビューの内容、指摘、パス、個人情報を入れない**（質問文は外部のサービスに送られる。2026-11-22 ユーザー決定）。使うのはライブラリ名と API 名の調べものだけ。MCP は版を固定して入れる（`npx` で最新を取らない。供給網の方針）。
 - 設計の決定（ADR の「決定」）。調べて、選択肢と推奨を書くところまで。
 
-**割り当てに向く issue**: 決定済みの ADR の範囲の実装、テストの追加、crate 単位で `cargo test -p` が完結する Rust の作業、文書、調査。**向かない issue**: Mac の測定、VM、smoke、XCFramework や Swift の実行が要るもの、変換の値の掃引、ADR の決定、ユーザーの判断が要るもの。向かないものは、リードが割り当てない。割り当てられたものが向かないと分かったら、§5 の形で相談する。
+**割り当てに向く issue**: 決定済みの ADR の範囲の実装、テストの追加、crate 単位で `cargo test -p` が完結する Rust の作業、文書、調査。**向かない issue**: Mac の評価の測定と smoke・install が要るもの、変換の値の掃引、ADR の決定、ユーザーの判断が要るもの。Swift の実行、XCFramework のビルド、Windows の VM が要るものは、上の A・B・C の条件で割り当ててよい（2026-11-24 から）。向かないものは、リードが割り当てない。割り当てられたものが向かないと分かったら、§5 の形で相談する。
 
 ## 5. すり合わせの形式（GitHub の issue と PR のコメントで行う）
 
@@ -90,7 +95,7 @@ git config user.name "Antigravity (<作業するモデルの名前>)"   # 例: A
 - 聞きたいこと: …（2〜3 個まで）
 ```
 
-**共有資源の依頼**（Mac の測定、VM、smoke、XCFramework のビルド）: `依頼: <何を、なぜ、いつまでに>`。リードが順番を決めて、結果をコメントで返す。
+**共有資源の依頼**（Mac の評価の測定、smoke、install。VM と XCFramework のビルドは、条件を守れば自分で行ってよい）: `依頼: <何を、なぜ、いつまでに>`。リードが順番を決めて、結果をコメントで返す。
 
 **完了の報告**（`ag:done` を付ける）:
 ```
