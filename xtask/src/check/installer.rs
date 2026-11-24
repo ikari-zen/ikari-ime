@@ -1,14 +1,18 @@
-//! Windows のインストーラ（`windows/installer/ikari.iss`）の静的な検査（ADR 0067 §3・§4、0068 §6.2、0070 §4、0073 §4）。
+//! Windows のインストーラ（`windows/installer/ikari.iss`）の静的な検査（ADR 0067 §3・§4、0068 §6.2、0070 §4、0073 §4、0080 §6・§7.3・§7.4・§11）。
 //! Inno Setup は Mac で動かせないので、守ることを文字列と設定で確かめる。実際の動き（ACL、登録、規則、自動起動、
-//! 止める側、エラー報告の除外）は、実機の手順書（`docs/windows-real-device-check.md` の項目 47〜）で確かめる。
+//! 止める側、エラー報告の除外、同梱のデータ、通常版とオフライン版）は、実機の手順書（`docs/windows-real-device-check.md` の項目 47〜）で確かめる。
 //!
 //! 見ること:
 //!   - Inno Setup の下限の版（6.6.0）を、コンパイルのときに要求していること
-//!   - `[Setup]` の安全に関わる値（管理者、固定のインストール先、使用中のアプリを閉じない、ログを出さない、64 ビット）
+//!   - `/DEdition=normal|offline` の分岐（既定 `normal`、`offline` の出力名の `-offline`、不正な値を `#error` で断ること。ADR 0080 §7.3・§7.4）
+//!   - `[Setup]` の安全に関わる値（管理者、固定のインストール先、使用中のアプリを閉じない、ログを出さない、64 ビット、版の接尾辞つきの出力名）
 //!   - 利用者ごとの場所・利用者が書ける一時の場所・シェル・PowerShell に触れていないこと
 //!   - 外のプログラムの起動が 1 か所（`RunTrusted`）で、相手が system32 の道具か helper だけであること
 //!   - DLL の登録に `regserver` の印、置き換えに `restartreplace` の印を使っていないこと
 //!   - `[Files]` の置き先が、インストール先か作業用のフォルダだけで、インストール先の項目が検査（Check）を通ること
+//!   - `ikari-data.exe` が `[Files]` の `#if Edition == "normal"` の中にだけあり、`[Code]`（ファイアウォールの規則など）に無いこと
+//!   - 同梱のデータ（`{app}\data\dict\`、`{app}\data\models\`、`{app}\data\NOTICE.txt`、`{app}\data\licenses\`）と
+//!     `{app}\THIRD_PARTY_NOTICES.md` が、`xtask/src/scan/macos.rs` と `ikari_resource::ZENZ_SMALL_FILE_NAME` の表と過不足なく一致すること
 //!   - インストールと削除の手順の順番（ADR 0067 §3.2）。インストールの手順は、失敗したら後を打ち切ること
 //!   - 置く前の準備（検査 → エンジンの停止 → 前の版の LM の部品の掃除）の順番と、準備が作業用のフォルダに
 //!     道具を置いたあとに始まること（Inno は、ファイルを置く前の大きさの見積もりでも Check を呼ぶ）
@@ -19,14 +23,33 @@
 
 use std::path::Path;
 
+use ikari_resource::ZENZ_SMALL_FILE_NAME;
+
 use crate::data::run::{Failure, log};
 
 const ISS: &str = "windows/installer/ikari.iss";
 const HELPER_LIB: &str = "windows/installer/helper/src/lib.rs";
 const HELPER_STOP: &str = "windows/installer/helper/src/stop.rs";
+const SCAN_MACOS: &str = "xtask/src/scan/macos.rs";
 
 /// Inno Setup の下限（一時の場所の名前を CSPRNG で作る、SYSTEM のときの SystemTemp。2026-11 の調査）
 const MIN_INNO_GUARD: &str = "#if Ver < EncodeVer(6, 6, 0)";
+
+/// `/DEdition=normal|offline` の分岐（ADR 0080 §7.3、§7.4）。先頭（`[Setup]` より前）にこの並びで書かれていること
+const EDITION_GUARD: &[&str] = &[
+    "#ifndef Edition",
+    "#define Edition \"normal\"",
+    "#endif",
+    "#if Edition == \"normal\"",
+    "#define EditionSuffix \"\"",
+    "#elif Edition == \"offline\"",
+    "#define EditionSuffix \"-offline\"",
+    "#else",
+    "#error /DEdition は normal か offline です",
+    "#endif",
+];
+/// `[Files]` の中で許す `#if`（通常版だけの項目。ADR 0080 §7.3）
+const EDITION_NORMAL_IF: &str = "#if Edition == \"normal\"";
 
 /// `[Setup]` に必要な値（キーは大文字小文字を区別しない、値は区別する）
 const REQUIRED_SETUP: &[(&str, &str)] = &[
@@ -41,6 +64,10 @@ const REQUIRED_SETUP: &[(&str, &str)] = &[
     ("ArchitecturesInstallIn64BitMode", "x64compatible"),
     // 検査に落ちた場所を指す削除の入口を作らない（置いたあとの検査の結果を返す関数）
     ("CreateUninstallRegKey", "UninstallEntryAllowed"),
+    (
+        "OutputBaseFilename",
+        "ikari-ime-{#AppVersion}-windows-x64-setup{#EditionSuffix}",
+    ),
 ];
 /// `[Setup]` に書いてはいけないキー（利用者ごとの導入への切り替え）
 const FORBIDDEN_SETUP: &[&str] = &["PrivilegesRequiredOverridesAllowed"];
@@ -128,11 +155,14 @@ const EXIT_CODES: &[(&str, &str)] = &[
 ];
 
 pub fn lint(root: &Path) -> Result<(), Failure> {
-    log("Windows のインストーラの静的な検査（windows/installer/ikari.iss。ADR 0067 §3・§4）");
+    log(
+        "Windows のインストーラの静的な検査（windows/installer/ikari.iss。ADR 0067 §3・§4、0080 §6・§7.3）",
+    );
     let iss = read(root, ISS)?;
     let lib = read(root, HELPER_LIB)?;
     let stop = read(root, HELPER_STOP)?;
-    let problems = problems(&iss, &lib, &stop);
+    let scan_macos = read(root, SCAN_MACOS)?;
+    let problems = problems(&iss, &lib, &stop, &scan_macos);
     if problems.is_empty() {
         Ok(())
     } else {
@@ -268,7 +298,7 @@ fn nested_brace_comment_lines(iss: &str) -> Vec<usize> {
     found
 }
 
-fn problems(iss: &str, helper_lib: &str, helper_stop: &str) -> Vec<String> {
+fn problems(iss: &str, helper_lib: &str, helper_stop: &str, scan_macos: &str) -> Vec<String> {
     let mut found = Vec::new();
     let lines = lines(iss);
 
@@ -282,6 +312,21 @@ fn problems(iss: &str, helper_lib: &str, helper_stop: &str) -> Vec<String> {
         found.push(format!(
             "Inno Setup の下限の検査（`{MIN_INNO_GUARD}` と #error）がありません"
         ));
+    }
+
+    let header: Vec<&str> = lines
+        .iter()
+        .filter(|l| l.section.is_empty())
+        .map(|l| l.text)
+        .collect();
+    if !header
+        .windows(EDITION_GUARD.len())
+        .any(|w| w == EDITION_GUARD)
+    {
+        found.push(
+            "/DEdition=normal|offline の検査と EditionSuffix の定義がありません（ADR 0080 §7.3）"
+                .into(),
+        );
     }
 
     // [Setup]
@@ -322,56 +367,18 @@ fn problems(iss: &str, helper_lib: &str, helper_stop: &str) -> Vec<String> {
     }
 
     // [Files]
-    for line in lines.iter().filter(|l| l.section == "files") {
-        let params = parameters(line.text);
-        let flags = params
-            .iter()
-            .find(|(k, _)| k == "flags")
-            .map(|(_, v)| v.to_ascii_lowercase())
-            .unwrap_or_default();
-        for (flag, why) in FORBIDDEN_FILE_FLAGS {
-            if flags.split_whitespace().any(|f| f == *flag) {
-                found.push(format!(
-                    "[Files] の印 {flag} を使わない（{why}）: {}",
-                    line.text
-                ));
-            }
-        }
-        let dest = params
-            .iter()
-            .find(|(k, _)| k == "destdir")
-            .map(|(_, v)| v.as_str())
-            .unwrap_or("");
-        if !ALLOWED_DEST.iter().any(|d| dest.starts_with(d)) {
+    check_files(&lines, scan_macos, &mut found);
+    for text in lines
+        .iter()
+        .filter(|l| l.section != "files")
+        .map(|l| l.text)
+        .chain(code.lines())
+    {
+        if text.to_ascii_lowercase().contains(STOP_DATA_EXE) {
             found.push(format!(
-                "[Files] の置き先は {} だけ: {}",
-                ALLOWED_DEST.join(" か "),
-                line.text
+                "`{STOP_DATA_EXE}` は [Files] の通常版の項目のほかに書かない（ファイアウォールの規則もかけない。ADR 0076、0080 §7.3）: {}",
+                text.trim()
             ));
-        }
-        if dest.starts_with("{code:SetupWorkDir}")
-            && !params
-                .iter()
-                .any(|(k, v)| k == "afterinstall" && v == WORK_HELPER_PLACED)
-        {
-            found.push(format!(
-                "[Files] の作業用のフォルダの項目は AfterInstall: {WORK_HELPER_PLACED} を付ける（準備はそのあと）: {}",
-                line.text
-            ));
-        }
-        if dest.starts_with("{app}") {
-            let check = params
-                .iter()
-                .find(|(k, _)| k == "check")
-                .map(|(_, v)| v.as_str())
-                .unwrap_or("");
-            if !APP_CHECKS.contains(&check) {
-                found.push(format!(
-                    "[Files] のインストール先の項目は Check: {} を通す: {}",
-                    APP_CHECKS.join(" か "),
-                    line.text
-                ));
-            }
         }
     }
 
@@ -528,6 +535,270 @@ fn parameters(text: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+fn param<'a>(params: &'a [(String, String)], key: &str) -> &'a str {
+    params
+        .iter()
+        .find(|(k, _)| k == key)
+        .map(|(_, v)| v.as_str())
+        .unwrap_or("")
+}
+
+/// `[Files]` に入れる同梱データ（`{app}\data\`）の 1 項目（ADR 0080 §3.1、§4、§6、§11）
+struct DataEntry {
+    source: String,
+    dest: &'static str,
+    optional: bool,
+    recurse: bool,
+}
+
+/// `xtask/src/scan/macos.rs` と `ikari_resource` の表から、同梱データの期待の一覧を作る（OS ごとに一覧を重ねて持たない）
+fn expected_data_files(scan_macos: &str, found: &mut Vec<String>) -> Vec<DataEntry> {
+    let dict_required = const_list(scan_macos, "DICT_REQUIRED");
+    let dict_optional = const_list(scan_macos, "DICT_OPTIONAL");
+    if dict_required.is_empty() || dict_optional.is_empty() {
+        found.push(format!(
+            "{SCAN_MACOS} の DICT_REQUIRED と DICT_OPTIONAL を読めません"
+        ));
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for name in dict_required {
+        out.push(DataEntry {
+            source: format!(r"{{#StageDir}}\data\dict\{name}"),
+            dest: r"{app}\data\dict",
+            optional: false,
+            recurse: false,
+        });
+    }
+    for name in dict_optional {
+        out.push(DataEntry {
+            source: format!(r"{{#StageDir}}\data\dict\{name}"),
+            dest: r"{app}\data\dict",
+            optional: true,
+            recurse: false,
+        });
+    }
+    out.push(DataEntry {
+        source: format!(r"{{#StageDir}}\data\models\{ZENZ_SMALL_FILE_NAME}"),
+        dest: r"{app}\data\models",
+        optional: false,
+        recurse: false,
+    });
+    out.push(DataEntry {
+        source: r"{#StageDir}\data\NOTICE.txt".into(),
+        dest: r"{app}\data",
+        optional: false,
+        recurse: false,
+    });
+    out.push(DataEntry {
+        source: r"{#StageDir}\data\licenses\*".into(),
+        dest: r"{app}\data\licenses",
+        optional: false,
+        recurse: true,
+    });
+    out
+}
+
+fn check_files(lines: &[Line<'_>], scan_macos: &str, found: &mut Vec<String>) {
+    let expected_data = expected_data_files(scan_macos, found);
+    let mut file_guard: Option<&str> = None;
+    let mut data_exe_count = 0usize;
+    let mut third_party_notices_count = 0usize;
+    let mut seen_data_sources: Vec<String> = Vec::new();
+
+    for line in lines.iter().filter(|l| l.section == "files") {
+        if line.text.starts_with('#') {
+            if line.text == EDITION_NORMAL_IF && file_guard.is_none() {
+                file_guard = Some(EDITION_NORMAL_IF);
+            } else if line.text == "#endif" && file_guard.is_some() {
+                file_guard = None;
+            } else {
+                found.push(format!(
+                    "[Files] の条件分岐は `{EDITION_NORMAL_IF}` … `#endif` だけ: {}",
+                    line.text
+                ));
+            }
+            continue;
+        }
+        let params = parameters(line.text);
+        let source = param(&params, "source");
+        let dest = param(&params, "destdir");
+        let check = param(&params, "check");
+        let flags = param(&params, "flags").to_ascii_lowercase();
+        let flag_list: Vec<&str> = flags.split_whitespace().collect();
+
+        for (flag, why) in FORBIDDEN_FILE_FLAGS {
+            if flag_list.contains(flag) {
+                found.push(format!(
+                    "[Files] の印 {flag} を使わない（{why}）: {}",
+                    line.text
+                ));
+            }
+        }
+        if !ALLOWED_DEST.iter().any(|d| dest.starts_with(d)) {
+            found.push(format!(
+                "[Files] の置き先は {} だけ: {}",
+                ALLOWED_DEST.join(" か "),
+                line.text
+            ));
+        }
+        if dest.starts_with("{code:SetupWorkDir}")
+            && !params
+                .iter()
+                .any(|(k, v)| k == "afterinstall" && v == WORK_HELPER_PLACED)
+        {
+            found.push(format!(
+                "[Files] の作業用のフォルダの項目は AfterInstall: {WORK_HELPER_PLACED} を付ける（準備はそのあと）: {}",
+                line.text
+            ));
+        }
+        if dest.starts_with("{app}") && !APP_CHECKS.contains(&check) {
+            found.push(format!(
+                "[Files] のインストール先の項目は Check: {} を通す: {}",
+                APP_CHECKS.join(" か "),
+                line.text
+            ));
+        }
+
+        let is_data_exe = source.eq_ignore_ascii_case(&format!(r"{{#StageDir}}\{STOP_DATA_EXE}"))
+            || line.text.to_ascii_lowercase().contains(STOP_DATA_EXE);
+        if is_data_exe {
+            data_exe_count += 1;
+            if file_guard != Some(EDITION_NORMAL_IF) {
+                found.push(format!(
+                    "[Files] の {STOP_DATA_EXE} は `{EDITION_NORMAL_IF}` の中にだけ置く（オフライン版には入れない。ADR 0080 §7.3）: {}",
+                    line.text
+                ));
+            }
+            if source != format!(r"{{#StageDir}}\{STOP_DATA_EXE}") || dest != "{app}" {
+                found.push(format!(
+                    "[Files] の {STOP_DATA_EXE} は Source: \"{{#StageDir}}\\{STOP_DATA_EXE}\"; DestDir: \"{{app}}\": {}",
+                    line.text
+                ));
+            }
+            if flag_list.contains(&"skipifsourcedoesntexist") {
+                found.push(format!(
+                    "[Files] の {STOP_DATA_EXE} に skipifsourcedoesntexist を付けない（通常版では必須）: {}",
+                    line.text
+                ));
+            }
+        } else if file_guard.is_some() {
+            found.push(format!(
+                "[Files] の `{EDITION_NORMAL_IF}` の中に置くのは {STOP_DATA_EXE} だけ（同梱のデータなどは両方の版に入れる。ADR 0080 §7.3）: {}",
+                line.text
+            ));
+        }
+
+        if source.eq_ignore_ascii_case(r"{#StageDir}\THIRD_PARTY_NOTICES.md") {
+            third_party_notices_count += 1;
+            if dest != "{app}" {
+                found.push(format!(
+                    "[Files] の THIRD_PARTY_NOTICES.md の DestDir は {{app}}（今は {dest}）"
+                ));
+            }
+            if flag_list.contains(&"skipifsourcedoesntexist") {
+                found.push(
+                    "[Files] の THIRD_PARTY_NOTICES.md に skipifsourcedoesntexist を付けない（必須。ADR 0080 §4）"
+                        .into(),
+                );
+            }
+        }
+
+        let is_bundled_data = source.starts_with(r"{#StageDir}\data\")
+            || source == r"{#StageDir}\data"
+            || dest == r"{app}\data"
+            || dest.starts_with(r"{app}\data\");
+        if is_bundled_data {
+            if check != "AppDirReady" {
+                found.push(format!(
+                    "[Files] の同梱データの項目は Check: AppDirReady を通す: {}",
+                    line.text
+                ));
+            }
+            seen_data_sources.push(source.to_string());
+            match expected_data.iter().find(|e| e.source == source) {
+                None => found.push(format!(
+                    "[Files] の同梱データに表にない項目があります（一覧は {SCAN_MACOS} と resource/src/models.rs）: {}",
+                    line.text
+                )),
+                Some(expected) => {
+                    if dest != expected.dest {
+                        found.push(format!(
+                            "[Files] の {} の DestDir は {}（今は {dest}）",
+                            expected.source, expected.dest
+                        ));
+                    }
+                    let has_opt = flag_list.contains(&"skipifsourcedoesntexist");
+                    if has_opt != expected.optional {
+                        if expected.optional {
+                            found.push(format!(
+                                "[Files] の {} は任意の辞書なので skipifsourcedoesntexist を付ける",
+                                expected.source
+                            ));
+                        } else {
+                            found.push(format!(
+                                "[Files] の {} は必須なので skipifsourcedoesntexist を付けない",
+                                expected.source
+                            ));
+                        }
+                    }
+                    let has_recurse = flag_list.contains(&"recursesubdirs");
+                    if has_recurse != expected.recurse {
+                        if expected.recurse {
+                            found.push(format!(
+                                "[Files] の {} には recursesubdirs を付ける",
+                                expected.source
+                            ));
+                        } else {
+                            found.push(format!(
+                                "[Files] の {} に recursesubdirs を付けない",
+                                expected.source
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if file_guard.is_some() {
+        found.push(format!(
+            "[Files] の `{EDITION_NORMAL_IF}` が `#endif` で閉じられていません"
+        ));
+    }
+    if data_exe_count != 1 {
+        found.push(format!(
+            "[Files] に通常版の `{STOP_DATA_EXE}` の項目がちょうど 1 つ要ります（今は {data_exe_count}）"
+        ));
+    }
+    if third_party_notices_count == 0 {
+        found.push(
+            "[Files] に `{#StageDir}\\THIRD_PARTY_NOTICES.md`（DestDir: \"{app}\"）がありません（ADR 0080 §4）"
+                .into(),
+        );
+    } else if third_party_notices_count > 1 {
+        found
+            .push("[Files] に `{#StageDir}\\THIRD_PARTY_NOTICES.md` の項目が重複しています".into());
+    }
+    for expected in &expected_data {
+        let count = seen_data_sources
+            .iter()
+            .filter(|s| s.as_str() == expected.source)
+            .count();
+        if count == 0 {
+            found.push(format!(
+                "[Files] に同梱データの項目 {}（DestDir: \"{}\"）がありません（ADR 0080 §6）",
+                expected.source, expected.dest
+            ));
+        } else if count > 1 {
+            found.push(format!(
+                "[Files] に同梱データの項目 {} が重複しています",
+                expected.source
+            ));
+        }
+    }
+}
+
 /// `procedure Name;` か `function Name: …;` から `end;`（行頭）までの本文
 fn procedure_body(code: &str, name: &str) -> Option<String> {
     let (start, head_len) = [format!("procedure {name};"), format!("function {name}:")]
@@ -640,6 +911,7 @@ mod tests {
             &repo_file(ISS),
             &repo_file(HELPER_LIB),
             &repo_file(HELPER_STOP),
+            &repo_file(SCAN_MACOS),
         );
         assert!(problems.is_empty(), "{problems:#?}");
     }
@@ -651,6 +923,7 @@ mod tests {
             &iss.replacen(replace, by, 1),
             &repo_file(HELPER_LIB),
             &repo_file(HELPER_STOP),
+            &repo_file(SCAN_MACOS),
         )
     }
 
@@ -937,7 +1210,14 @@ mod tests {
     #[test]
     fn a_stop_list_without_the_data_child_or_a_blocked_data_child_is_reported() {
         let real = repo_file(HELPER_STOP);
-        let run = |stop: &str| problems(&repo_file(ISS), &repo_file(HELPER_LIB), stop);
+        let run = |stop: &str| {
+            problems(
+                &repo_file(ISS),
+                &repo_file(HELPER_LIB),
+                stop,
+                &repo_file(SCAN_MACOS),
+            )
+        };
         let without_data = real.replacen("    \"ikari-data.exe\",\n", "", 1);
         assert_ne!(without_data, real);
         assert!(has(&run(&without_data), "STOP_CHILD_EXES"));
@@ -947,6 +1227,122 @@ mod tests {
             1,
         );
         assert!(has(&run(&blocked_data), "BlockedExe の並び"));
+    }
+
+    #[test]
+    fn edition_guard_and_offline_exclusion_of_data_child() {
+        assert!(has(
+            &with(
+                "#define EditionSuffix \"-offline\"",
+                "#define EditionSuffix \"\""
+            ),
+            "EditionSuffix"
+        ));
+        assert!(has(
+            &with(
+                "OutputBaseFilename=ikari-ime-{#AppVersion}-windows-x64-setup{#EditionSuffix}",
+                "OutputBaseFilename=ikari-ime-{#AppVersion}-windows-x64-setup"
+            ),
+            "OutputBaseFilename"
+        ));
+        // ikari-data.exe を #if Edition == "normal" の外に出すと落ちる
+        assert!(has(
+            &with(
+                "#if Edition == \"normal\"\n; 取得の子（ADR 0076。設定画面の核がインストール先の直下のこれを起動する。通常版だけ。ADR 0080 §7.3）。\n; 送信ブロックの規則はかけない（ADR 0076、0071 §3.1）\nSource: \"{#StageDir}\\ikari-data.exe\"; DestDir: \"{app}\"; Check: AppDirReady; Flags: ignoreversion\n#endif",
+                "Source: \"{#StageDir}\\ikari-data.exe\"; DestDir: \"{app}\"; Check: AppDirReady; Flags: ignoreversion"
+            ),
+            "#if Edition == \"normal\""
+        ));
+        // 通常版から ikari-data.exe を消すと落ちる
+        assert!(has(
+            &with(
+                "Source: \"{#StageDir}\\ikari-data.exe\"; DestDir: \"{app}\"; Check: AppDirReady; Flags: ignoreversion\n",
+                ""
+            ),
+            "通常版の `ikari-data.exe`"
+        ));
+        // #if Edition == "normal" の中に他の項目（同梱データなど）を入れると落ちる
+        assert!(has(
+            &with(
+                "Source: \"{#StageDir}\\ikari-data.exe\"; DestDir: \"{app}\"; Check: AppDirReady; Flags: ignoreversion\n#endif",
+                "Source: \"{#StageDir}\\ikari-data.exe\"; DestDir: \"{app}\"; Check: AppDirReady; Flags: ignoreversion\nSource: \"{#StageDir}\\LICENSE\"; DestDir: \"{app}\"; Check: AppDirReady; Flags: ignoreversion\n#endif"
+            ),
+            "`#if Edition == \"normal\"` の中に置くのは ikari-data.exe だけ"
+        ));
+        // [Code] に ikari-data.exe を書くと落ちる
+        assert!(has(
+            &with(
+                "    3: Result := 'settings\\ikari-settings.exe';",
+                "    3: Result := 'settings\\ikari-settings.exe';\n    4: Result := 'ikari-data.exe';"
+            ),
+            "`ikari-data.exe` は [Files] の通常版の項目のほかに書かない"
+        ));
+    }
+
+    #[test]
+    fn bundled_data_and_notices_follow_the_shared_table() {
+        // 必須の辞書・モデル・NOTICE.txt・licenses\*・THIRD_PARTY_NOTICES.md を消すと落ちる
+        for required in [
+            r#"Source: "{#StageDir}\data\dict\grammar.bin"; DestDir: "{app}\data\dict"; Check: AppDirReady; Flags: ignoreversion"#,
+            r#"Source: "{#StageDir}\data\dict\system.dict"; DestDir: "{app}\data\dict"; Check: AppDirReady; Flags: ignoreversion"#,
+            r#"Source: "{#StageDir}\data\dict\vectors.bin"; DestDir: "{app}\data\dict"; Check: AppDirReady; Flags: ignoreversion"#,
+            r#"Source: "{#StageDir}\data\models\zenz-v3.2-small-Q5_K_M.gguf"; DestDir: "{app}\data\models"; Check: AppDirReady; Flags: ignoreversion"#,
+            r#"Source: "{#StageDir}\data\NOTICE.txt"; DestDir: "{app}\data"; Check: AppDirReady; Flags: ignoreversion"#,
+            r#"Source: "{#StageDir}\data\licenses\*"; DestDir: "{app}\data\licenses"; Check: AppDirReady; Flags: ignoreversion recursesubdirs"#,
+            r#"Source: "{#StageDir}\THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion"#,
+        ] {
+            assert!(has(&with(required, ""), "がありません"), "{required}");
+        }
+        // 必須の項目に skipifsourcedoesntexist を付けると落ちる
+        for required in [
+            r#"Source: "{#StageDir}\data\dict\system.dict"; DestDir: "{app}\data\dict"; Check: AppDirReady; Flags: ignoreversion"#,
+            r#"Source: "{#StageDir}\data\models\zenz-v3.2-small-Q5_K_M.gguf"; DestDir: "{app}\data\models"; Check: AppDirReady; Flags: ignoreversion"#,
+            r#"Source: "{#StageDir}\data\NOTICE.txt"; DestDir: "{app}\data"; Check: AppDirReady; Flags: ignoreversion"#,
+            r#"Source: "{#StageDir}\THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion"#,
+        ] {
+            let opt = format!("{required} skipifsourcedoesntexist");
+            assert!(
+                has(&with(required, &opt), "skipifsourcedoesntexist を付けない"),
+                "{required}"
+            );
+        }
+        // 任意の辞書から skipifsourcedoesntexist を外すと落ちる
+        assert!(has(
+            &with(
+                r#"Source: "{#StageDir}\data\dict\emoji.tsv"; DestDir: "{app}\data\dict"; Check: AppDirReady; Flags: ignoreversion skipifsourcedoesntexist"#,
+                r#"Source: "{#StageDir}\data\dict\emoji.tsv"; DestDir: "{app}\data\dict"; Check: AppDirReady; Flags: ignoreversion"#
+            ),
+            "任意の辞書なので skipifsourcedoesntexist を付ける"
+        ));
+        // ワイルドカードや表にない項目を data\ に足すと落ちる
+        assert!(has(
+            &with(
+                r#"Source: "{#StageDir}\data\NOTICE.txt"; DestDir: "{app}\data"; Check: AppDirReady; Flags: ignoreversion"#,
+                "Source: \"{#StageDir}\\data\\NOTICE.txt\"; DestDir: \"{app}\\data\"; Check: AppDirReady; Flags: ignoreversion\nSource: \"{#StageDir}\\data\\models\\*.gguf\"; DestDir: \"{app}\\data\\models\"; Check: AppDirReady; Flags: ignoreversion"
+            ),
+            "表にない項目があります"
+        ));
+        // data\ の項目を版ごとのフォルダにすると落ちる（ADR 0080 §6）
+        assert!(has(
+            &with(
+                r#"Source: "{#StageDir}\data\dict\system.dict"; DestDir: "{app}\data\dict""#,
+                r#"Source: "{#StageDir}\data\dict\system.dict"; DestDir: "{app}\data\dict\{#AppVersion}""#
+            ),
+            r"DestDir は {app}\data\dict"
+        ));
+        // xtask/src/scan/macos.rs の表が変わったら食い違いで落ちる
+        let changed_table = repo_file(SCAN_MACOS).replacen(
+            "pub const DICT_REQUIRED: &[&str] = &[",
+            "pub const DICT_REQUIRED: &[&str] = &[\"extra.bin\", ",
+            1,
+        );
+        let found = problems(
+            &repo_file(ISS),
+            &repo_file(HELPER_LIB),
+            &repo_file(HELPER_STOP),
+            &changed_table,
+        );
+        assert!(has(&found, r"{#StageDir}\data\dict\extra.bin"));
     }
 
     #[test]
