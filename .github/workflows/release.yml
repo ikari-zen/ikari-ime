@@ -14,6 +14,7 @@
 #   - cargo build --locked。ツールチェーンは rust-toolchain.toml の版。ビルド機のパスは --remap-path-prefix で成果物に残さない。
 #
 # 試しのビルド（workflow_dispatch）: タグを打たずに、ビルドの job だけを流す（辞書、Windows、macOS の 2 版。証明と下書きの Release は作らない）。
+#   Windows は 0.x のタグでは流さない（配るのは macOS だけ。1.0.0 から。verify-tag の include_windows）が、試しのビルドでは流す。
 #   成果物は artifact（release-windows、release-macos-normal、release-macos-offline、7 日）に残る。Windows のインストーラの版は
 #   DRY_RUN_VERSION（0.0.0）。macOS の dmg の名前の版は Cargo.toml の版（build.sh が決める）。
 #   dispatch はリポジトリに書ける者だけが起こせる。ビルドの job の権限はタグのときと同じ（contents: read）。
@@ -50,6 +51,8 @@ jobs:
       contents: read
     outputs:
       version: ${{ steps.version.outputs.version }}
+      # タグのビルドで Windows を配る物に含めるか（タグの主版が 1 以上のときだけ true）。試しのビルドは false（Windows は流すが配らない）
+      include_windows: ${{ steps.version.outputs.include_windows }}
     steps:
       # actions/checkout v7（コミットの SHA で固定）。履歴が要る（main に入っているかを調べる）
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -100,7 +103,15 @@ jobs:
               exit 1
             fi
           fi
+          # 0.x の間は macOS だけを配る（#99。Windows は 1.0.0）。未完成の Windows の物を、公開の attestation（永久に残る）と
+          # SHA256SUMS に入れない。1.0.0 向けの切り替え: レーン 5（#584）が済んだら、ここの条件（主版 >= 1）で Windows が入る
+          include_windows=false
+          if [ "$EVENT" = "push" ] && [ "${version%%.*}" -ge 1 ]; then
+            include_windows=true
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "include_windows=$include_windows" >> "$GITHUB_OUTPUT"
+          echo "include windows in the release: $include_windows"
           echo "installer version: $version"
 
   # 供給網と製品の静的な検査（ADR 0069 §4.1）。ビルドの前に、未通過のコミットのリリースを止める。
@@ -213,6 +224,8 @@ jobs:
   # （から開発用のビルドとキャッシュを除いたもの）と windows/installer/README.md
   build-windows:
     needs: [verify-tag, source-checks]
+    # タグ（v0.x）のときは流さない（macOS だけを配る。上の include_windows）。試しのビルドでは流す
+    if: github.event_name != 'push' || needs.verify-tag.outputs.include_windows == 'true'
     runs-on: windows-latest
     timeout-minutes: 120
     permissions:
@@ -523,11 +536,16 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # SHA256SUMS を作り、成果物の証明（attestation）を付ける。権限が要るのはこの job だけ（id-token、attestations）
+  # SHA256SUMS を作り、成果物の証明（attestation）を付ける。権限が要るのはこの job だけ（id-token、attestations）。
+  # 対象は macOS の 2 版。Windows は、タグの主版が 1 以上のときだけ（verify-tag の include_windows。0.x の間は流さず含めない）。
+  # build-windows がスキップされても動けるよう !failure() を使い、必要な build の成功は条件で明示する
   provenance:
-    needs: [build-windows, build-macos]
+    needs: [verify-tag, build-windows, build-macos]
     # 証明と下書きの Release は、タグのビルドにだけ作る（試しのビルドでは作らない）
-    if: github.event_name == 'push'
+    if: >-
+      github.event_name == 'push' && !failure() && !cancelled()
+      && needs.build-macos.result == 'success'
+      && (needs.verify-tag.outputs.include_windows != 'true' || needs.build-windows.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -535,22 +553,35 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      # actions/download-artifact v8.0.2（コミットの SHA で固定）
+      # actions/download-artifact v8.0.2（コミットの SHA で固定）。pattern の一括ではなく、必要な名前を明示して取る
+      # （artifact の名前の衝突や、ほかの job の成果物の混入を避ける）
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          pattern: release-*
+          name: release-macos-normal
           path: dist
-          merge-multiple: true
-      # macOS の 2 つの dmg（通常版とオフライン版）と、Windows のインストーラ（通常版だけ。オフライン版はレーン 5 のあと）
-      - name: 取り込んだ成果物が期待の 3 ファイルだけであることを確かめる
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: release-macos-offline
+          path: dist
+      # Windows は 1.0 以降のタグだけ（レーン 5、#584 のあと。Windows の通常版・オフライン版が揃ってから）
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        if: needs.verify-tag.outputs.include_windows == 'true'
+        with:
+          name: release-windows
+          path: dist
+      - name: 取り込んだ成果物が期待のファイルだけであることを確かめる
         working-directory: dist
         env:
           TAG: ${{ github.ref_name }}
+          INCLUDE_WINDOWS: ${{ needs.verify-tag.outputs.include_windows }}
         run: |
           set -euo pipefail
-          expected="$(printf '%s\n' "ikari-ime-${TAG#v}-windows-x64-setup.exe" \
-            "ikari-${TAG#v}-macos-arm64-adhoc.dmg" "ikari-${TAG#v}-macos-arm64-adhoc-offline.dmg" | sort)"
-          actual="$(ls -A | sort)"
+          files=("ikari-${TAG#v}-macos-arm64-adhoc.dmg" "ikari-${TAG#v}-macos-arm64-adhoc-offline.dmg")
+          if [ "$INCLUDE_WINDOWS" = "true" ]; then
+            files+=("ikari-ime-${TAG#v}-windows-x64-setup.exe")
+          fi
+          expected="$(printf '%s\n' "${files[@]}" | LC_ALL=C sort)"
+          actual="$(ls -A | LC_ALL=C sort)"
           if [ "$actual" != "$expected" ]; then
             printf 'unexpected release files:\n%s\nexpected:\n%s\n' "$actual" "$expected" >&2
             exit 1
@@ -566,16 +597,17 @@ jobs:
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
         with:
           subject-checksums: dist/SHA256SUMS
+      # 名前は release-* に重ねない（上の取り込みと、build の成果物の名前と区別する）
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: release-all
+          name: draft-release-assets
           path: dist
           if-no-files-found: error
           retention-days: 7
 
   # 下書きの Release を作る。公開はしない（ユーザーが、中身を見て、鍵の署名を足してから公開する）
   draft-release:
-    needs: provenance
+    needs: [verify-tag, provenance]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -583,13 +615,44 @@ jobs:
       contents: write
     env:
       TAG: ${{ github.ref_name }}
+      INCLUDE_WINDOWS: ${{ needs.verify-tag.outputs.include_windows }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          name: release-all
+          name: draft-release-assets
           path: dist
+      # contents: write を持つ job なので、上げる前に、取り込んだ物を自分で検査する: 期待のファイルだけ（通常のファイル）で、
+      # SHA256SUMS の行も同じ名前だけ、中身が SHA256SUMS と一致すること
+      - name: 取り込んだ物を SHA256SUMS と照らす
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          files=("ikari-${TAG#v}-macos-arm64-adhoc.dmg" "ikari-${TAG#v}-macos-arm64-adhoc-offline.dmg")
+          if [ "$INCLUDE_WINDOWS" = "true" ]; then
+            files+=("ikari-ime-${TAG#v}-windows-x64-setup.exe")
+          fi
+          others="$(find . -mindepth 1 ! -type f)"
+          test -z "$others" || { printf 'not a regular file:\n%s\n' "$others" >&2; exit 1; }
+          expected="$(printf '%s\n' "${files[@]}" SHA256SUMS | LC_ALL=C sort)"
+          actual="$(ls -A | LC_ALL=C sort)"
+          test "$actual" = "$expected" || { printf 'unexpected files:\n%s\nexpected:\n%s\n' "$actual" "$expected" >&2; exit 1; }
+          listed="$(sed 's/^[0-9a-f]\{64\}  //' SHA256SUMS | LC_ALL=C sort)"
+          want="$(printf '%s\n' "${files[@]}" | LC_ALL=C sort)"
+          test "$listed" = "$want" || { printf 'SHA256SUMS lists:\n%s\nexpected:\n%s\n' "$listed" "$want" >&2; exit 1; }
+          sha256sum -c --strict SHA256SUMS
+      # 同じタグの Release（公開済みも下書きも）があれば、作らずに止める（再実行で下書きが重複しない。公開済みを上書きしない）。
+      # 下書きは同じタグで複数作れてしまうので、ここで見る。公開した Release は変えられない設定なので、直すときは
+      # 作者が既存の下書きを消してから、この job だけでなく新しい run でやり直す
+      - name: 同じタグの Release が無いことを確かめる
+        run: |
+          set -euo pipefail
+          found="$(gh release list --limit 1000 --json tagName,isDraft --jq '.[] | select(.tagName == env.TAG) | "\(.tagName) draft=\(.isDraft)"')"
+          if [ -n "$found" ]; then
+            printf 'a release for %s already exists (%s). Not creating another; the author must delete it first.\n' "$TAG" "$found" >&2
+            exit 1
+          fi
       - name: 下書きの Release を作る（--draft。公開しない）
         run: |
           set -euo pipefail
@@ -598,4 +661,5 @@ jobs:
           2. 手元で SHA256SUMS に作者の鍵で署名し（minisign）、SHA256SUMS.minisig をこの下書きに足す（ADR 0069 §3・§5）。
           3. 確かめ方（gh attestation verify、sha256）を README のとおりに試す。
           4. 公開する（公開した Release は変えられない設定にしてある）。"
-          gh release create "$TAG" dist/* --draft --verify-tag --title "$TAG" --notes "$notes"
+          assets=(dist/SHA256SUMS dist/ikari-*)
+          gh release create "$TAG" "${assets[@]}" --draft --verify-tag --title "$TAG" --notes "$notes"
