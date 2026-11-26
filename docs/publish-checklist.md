@@ -62,7 +62,7 @@
 
 - [x] [LICENSE](../LICENSE)（Apache License 2.0）と [NOTICE](../NOTICE) が、リポジトリの直下にあること。
 - [x] [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) の、辞書、モデル、地名のデータの条件が、取得元の今の表示と合っていること（zenz は Hugging Face の表示を、公開の直前にもう一度見る）。（2026-11-11 に確認。zenz: Hugging Face の表示は CC BY-SA 4.0。SudachiDict と chiVe: GitHub の表示は Apache-2.0。ABR: デジタル庁の利用規約（最終更新 2026-05-29）は PDL1.0 で、出典と加工の明記が要る。いずれも記載と一致。日本郵便の郵便番号データの再配布の可否は、取得元に記載がなく、これまでどおり「確かめていない」。ikari-ime は表を配らない）
-- [ ] 取得して使うモデル（zenz）の更新を確かめること。Hugging Face の API でコミット履歴とファイルの sha256 を見て、`scripts/lib.sh` に固定した sha256 と合っていること（`curl -s https://huggingface.co/api/models/Miwa-Keita/zenz-v3.2-small-gguf/commits/main`、`…/zenz-v3.2-small-gguf?blobs=true` の `lfs.sha256`）。ファイルが変わっていたら、ADR 0058 の手順（新しい sha256 を評価で確かめてから表を更新）に従う。README だけの更新は影響なし（2026-11-16 に確認: 最新の更新 2026-11-07 は README のみ。モデルのファイルは 2026-05-06 のまま、sha256 先頭 29c223d4c233…）。新しい版（zenz-v3.2 より新しいもの、xsmall など）の有無も、作者の一覧（`https://huggingface.co/api/models?author=Miwa-Keita`）で見る（#440）。
+- [x] 取得して使うモデル（zenz）の更新を確かめること。Hugging Face の API でコミット履歴とファイルの sha256 を見て、固定した sha256（`resource/src/models.rs` の `ZENZ_SMALL_SHA256` と `xtask/src/data/fetch.rs` の `SHA_ZENZ_SMALL`）と合っていること（`curl -s https://huggingface.co/api/models/Miwa-Keita/zenz-v3.2-small-gguf/commits/main`、`…/zenz-v3.2-small-gguf?blobs=true` の `lfs.sha256`）。ファイルが変わっていたら、ADR 0058 の手順（新しい sha256 を評価で確かめてから表を更新）に従う。README だけの更新は影響なし（2026-11-16 に確認: 最新の更新 2026-11-07 は README のみ。モデルのファイルは 2026-05-06 のまま、sha256 先頭 29c223d4c233…）。新しい版（zenz-v3.2 より新しいもの、xsmall など）の有無も、作者の一覧（`https://huggingface.co/api/models?author=Miwa-Keita`）で見る（#440）。（2026-11-26 に確認: 最新のコミットは 2026-11-07 の README のみ。モデルのファイルは 2026-05-06 のまま、sha256 先頭 29c223d4c233。v3.2 より新しい版はない。xsmall はある）
 - [x] 辞書の元データ、モデルのファイル、ビルド済みの辞書を、リポジトリに**含めていない**こと（`git ls-files data` が空。大きなファイルがないことを `git ls-files -z | xargs -0 du -ch | tail -1` で見る）。
 
 ### 1.4 公開する形
@@ -156,7 +156,7 @@
 タグを打つ直前の `main` 先頭コミットに対して行う。
 
 - [ ] `Cargo.toml` の `[workspace.package] version` が `0.1.0`（タグの `v` を除いた値）と一致していること（`verify-tag` が一致を検査するのは**タグの push のときだけ**。試しのビルドでは検査しないので、ここで見る）。
-- [ ] §1.1 と同じ観点で、直前の差分・履歴・新規 Issue / PR に個人情報、ホームのパス、秘密情報、非公開レビューの詳細（ADR 0070 §5）が混ざっていないことを走査したこと（`.gitleaks.local.toml` の走査は作者の手元のみ）。
+- [ ] §1.1 と同じ観点で、直前の差分・履歴・新規 Issue / PR に個人情報、ホームのパス、秘密情報、非公開レビューの詳細（ADR 0070 §5）が混ざっていないことを走査したこと（`.gitleaks.local.toml` の走査は作者の手元のみ）。（注: 2026-11-26 の事前の走査では、公開規則の範囲で該当なし。`.gitleaks.local.toml` の走査と、タグの直前の最終の走査は未実施）
 - [ ] リード（または作者）の手元で、対象コミットに対してフルの `scripts/check.sh` が `CHECK_EXIT=0` で通っていること。
 - [ ] `cargo xtask licenses --check` が通ること。
 - [ ] 同梱する他社部品・モデル・辞書の元データの版とライセンスを確認し、更新の有無をリリースノートに書く準備ができたこと（ADR 0070 §6、ADR 0080 §8 の 3）。
@@ -315,7 +315,7 @@
   minisign -Vm SHA256SUMS -p <公開鍵ファイル>
   ```
 
-- [ ] 通常版の設定画面の「新しい版を確認」が `v0.1.0` を正しく認識できることを確かめる（**未確認**）。
+- 通常版の設定画面の「新しい版を確認」の確認は、0.1.0 では対象外（macOS の設定アプリに、このボタンがまだ無い。2026-11-26 ユーザー決定）。ボタンを足す版で確かめる。
 - [ ] 署名・検証に使った一時作業ディレクトリを消す。
 
 ---
