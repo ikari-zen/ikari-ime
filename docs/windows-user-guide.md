@@ -18,15 +18,15 @@
 | 必要な権限 | **管理者権限**（インストーラの実行・更新・アンインストールに必要です） |
 | インストール先 | `C:\Program Files\ikari-ime`（**固定**。変更できません） |
 | 利用者のデータの場所 | `%LOCALAPPDATA%\ikari-ime`（利用者ごと。辞書、モデル、学習、ユーザー辞書、設定、ログ） |
-| 対象アプリ（1.0.0） | ふつうの権限で動くデスクトップアプリ（後述の制限を参照） |
+| 対象アプリ（0.2.0） | ふつうの権限で動くデスクトップアプリ（後述の制限を参照） |
 
 ### プロセスの種類による制限（素通し）
 
-ikari-ime（1.0.0）は、権限の境界を守るため（[ADR 0067](adr/0067-windows-install-layout-and-launch-chain.md) §5）、入力先のプロセスの種類によって次のように動きます（実機での通し確認は [windows-real-device-check.md](windows-real-device-check.md) の項目 42 で **（未確認）**）。
+ikari-ime（0.2.0）は、権限の境界を守るため（[ADR 0067](adr/0067-windows-install-layout-and-launch-chain.md) §5）、入力先のプロセスの種類によって次のように動きます（実機での通し確認は [windows-real-device-check.md](windows-real-device-check.md) の項目 42 で **（未確認）**）。
 
 - **ふつうのデスクトップアプリ**（整合性レベルが「中」で、AppContainer でないもの）: 通常どおり日本語変換が使えます。
 - **高い権限のアプリ**（「管理者として実行」したアプリ、サービス、サインイン画面や UAC の画面）: **素通し**になります（**（未確認）**）。エンジンにつながず、設定やログも読み書きせず、打鍵をそのままアプリに渡します（変換はできません）。
-- **ストアのアプリ（AppContainer）・低い整合性のプロセス**: 1.0.0 では**素通し**になります（**（未確認）**）。
+- **ストアのアプリ（AppContainer）・低い整合性のプロセス**: 0.2.0 では**素通し**になります（**（未確認）**）。
 
 ---
 
@@ -36,7 +36,7 @@ ikari-ime（1.0.0）は、権限の境界を守るため（[ADR 0067](adr/0067-w
 
 1. **公式の配布元は GitHub Releases だけです**（[ADR 0069](adr/0069-distribution-authenticity.md) §3.1）。
    - 配布ページ: `https://github.com/ikari-zen/ikari-ime/releases`
-   - インストーラのファイル名: `ikari-ime-<版>-windows-x64-setup.exe`（例: `ikari-ime-1.0.0-windows-x64-setup.exe`）
+   - インストーラのファイル名: `ikari-ime-<版>-windows-x64-setup.exe`（例: `ikari-ime-0.2.0-windows-x64-setup.exe`）
    - Windows 版の配布はインストーラ（Inno Setup による exe）のみで、zip 配布はありません。プレリリース（`-rc` 等）の配布はなく、数字のみの正式版（`MAJOR.MINOR.PATCH`）で配布されます（`.github/workflows/release.yml`。CI でのインストーラ作成は `workflow_dispatch` で確認中）。
    - ミラーサイトや第三者のパッケージ集積所にあるものは、作者が [README](../README.md) に明記するまで公式ではありません。
 2. **本物かどうかの確認（任意）**（[ADR 0069](adr/0069-distribution-authenticity.md) §3.2・§3.4。リリース手順と実機での確認は **（未確認）**）:
@@ -252,7 +252,7 @@ ikari-ime のデータとログは、すべて利用者の `%LOCALAPPDATA%\ikari
 ikari-ime は、変換エンジン（`ikari-engine-host.exe`）につながらないときや辞書が開けないときでも、入力を止めないために TIP 単体で「かな候補（ひらがな・カタカナ）」を出す仕組みになっています（#329、[ADR 0062](adr/0062-windows-candidate-window.md) §5.4）。次を順に確かめてください。
 
 1. **入力しているアプリの種類を確かめる**:
-   - 「管理者として実行」したアプリや、Microsoft Store のアプリ（AppContainer）では、1.0.0 は安全のため**素通し**（変換しない）になります（[ADR 0067](adr/0067-windows-install-layout-and-launch-chain.md) §5）（**（未確認）**: 項目 42）。メモ帳などのふつうのデスクトップアプリで変換できるかを確かめてください。
+   - 「管理者として実行」したアプリや、Microsoft Store のアプリ（AppContainer）では、0.2.0 は安全のため**素通し**（変換しない）になります（[ADR 0067](adr/0067-windows-install-layout-and-launch-chain.md) §5）（**（未確認）**: 項目 42）。メモ帳などのふつうのデスクトップアプリで変換できるかを確かめてください。
 2. **更新の直後かどうかを確かめる**:
    - ikari-ime を更新した直後で、通信規約の版（`schema_version`）が上がった場合は、更新前から開いていたアプリではサインアウトするまでかな候補のみになります（[ADR 0063](adr/0063-windows-tip-dll-update.md) §3.6）。一度サインアウトしてサインインし直してください。
 3. **エンジンが動いているかと、ログを確かめる**:
