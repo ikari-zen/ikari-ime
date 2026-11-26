@@ -1,6 +1,6 @@
 # 変更履歴
 
-このファイルは、利用者に見える変更を記録します。形式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に、番号は [セマンティック バージョニング](https://semver.org/lang/ja/) に従います（0.1.0 から。Windows 版は 0.2.0 から配り、このソフト専用の独自の AI モデルを組み込めた時点で 1.0.0）。
+このファイルは、利用者に見える変更を記録します。形式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に、番号は [セマンティック バージョニング](https://semver.org/lang/ja/) に従います（0.1.0 から。Windows 版は 0.2.0 から配り、このソフト専用の独自の AI モデルを macOS 版に組み込めた時点で 1.0.0）。
 
 ## [未リリース]
 
