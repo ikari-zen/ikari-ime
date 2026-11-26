@@ -107,7 +107,9 @@
 
 ## 4. ビルド済みの配布（0.1.0 タグ打ちから公開までの手順書・下書き）
 
-設計は [security-design.md](security-design.md)（[ADR 0069](adr/0069-distribution-authenticity.md)、[ADR 0070](adr/0070-update-and-vulnerability-response.md)、[ADR 0076](adr/0076-ikari-data-contract.md) §18.2、[ADR 0080](adr/0080-bundle-model-and-dictionary.md) §9）。0.1.0 は macOS 版（Apple Silicon、通常版・オフライン版の 2 種、未署名）から配布を始め、Windows 版の配布は 1.0.0 の予定（#99、[CHANGELOG.md](../CHANGELOG.md)）。Windows 版の公開前に追加で要る項目は §4.9 に分ける。
+設計は [security-design.md](security-design.md)（[ADR 0069](adr/0069-distribution-authenticity.md)、[ADR 0070](adr/0070-update-and-vulnerability-response.md)、[ADR 0076](adr/0076-ikari-data-contract.md) §18.2、[ADR 0080](adr/0080-bundle-model-and-dictionary.md) §9）。0.1.x は macOS 版（Apple Silicon、通常版・オフライン版の 2 種、未署名）だけを配り、Windows 版の同梱は 0.2.0 からの予定（#99、[CHANGELOG.md](../CHANGELOG.md)）。1.0.0 は独自の AI モデルを組み込めた時点。Windows 版の公開前に追加で要る項目は §4.9 に分ける。
+
+以下の workflow の動きは、`.github/workflows/release.yml` を読んで合わせたもの（食い違ったら workflow が正しい。この節を直す）。
 
 この節は 0.1.0 の初回公開に向けた**下書き**であり、タグからの本番 workflow の実走や実機確認が済んでいない項目には**未確認**と記す。
 
@@ -115,8 +117,8 @@
 
 | 区分 | 操作の例 |
 | --- | --- |
-| **作者のみ（AI エージェントは実行しない）** | タグの作成・push（`git tag` / `git push`）、作者の minisign 秘密鍵の作成・保管・`SHA256SUMS` への署名、下書き Release への署名添付と公開（`--draft=false --latest` / Web UI）、GitHub のアカウント（2FA）・リポジトリ設定・Ruleset の変更、`.gitleaks.local.toml` を使った走査、公開可否の最終判断 |
-| **AI エージェント可（準備・確認の補助）** | 公開規則での事前走査・`scripts/check.sh` などの検査準備、ドキュメント（README・SECURITY.md・CHANGELOG.md・リリースノート案）の下書き、workflow の実行ログ・下書き資産一覧の読み取り確認、公開後の読み取り確認（`gh release view` 等。利用可能な権限の範囲に限る） |
+| **作者のみ（AI エージェントは実行しない）** | タグの作成・push（`git tag` / `git push`）、作者の minisign 秘密鍵の作成・保管・`SHA256SUMS` への署名、下書き Release の削除、下書き Release への署名添付と公開（`--draft=false --latest` / Web UI）、GitHub のアカウント（2FA）・リポジトリ設定・Ruleset の変更、`.gitleaks.local.toml` を使った走査、公開可否の最終判断 |
+| **AI エージェント可（準備・確認の補助）** | 公開規則での事前走査・`scripts/check.sh` などの検査準備、試しのビルド（`workflow_dispatch`）の起動（リードが起動してよい。§4.2）、ドキュメント（README・SECURITY.md・CHANGELOG.md・リリースノート案）の下書き、workflow の実行ログ・下書き資産一覧の読み取り確認、公開後の読み取り確認（`gh release view` 等。利用可能な権限の範囲に限る） |
 
 ---
 
@@ -139,7 +141,7 @@
 
 #### workflow・文書・ライセンスの整備（下書きは AI エージェント可、確定・反映はリード／作者）
 
-- [ ] `.github/workflows/release.yml` が 0.1.0 の配布範囲（macOS 通常版・オフライン版の 2 版）と整合し、タグからの公開経路のレビュー（#657）で挙がった修正が `main` に反映されていること。**未確認**。
+- [ ] `.github/workflows/release.yml` が 0.1.0 の配布範囲（macOS 通常版・オフライン版の 2 版）と整合し、タグからの公開経路のレビュー（#657）で挙がった修正が `main` に反映されていること。（#661 と #664 で、対象を macOS の 2 版にする分岐、成果物の明示した取り込み、`SHA256SUMS` の照合、下書きの重複防止、Windows を含める版を 0.2.0 以降にする変更は入った。本番のタグでの動きと、残りの指摘の扱いは**未確認**。）
 - [ ] [security-design.md](security-design.md) §5.2 の「版を出す前」の検査のうち macOS 0.1.0 に該当するものが済んでいること（製品のビルドであること、Smoke 無し、App Sandbox と `network.*` entitlement の検査、オフライン版に通信の部品と取得の印が無いこと、他社の部品の版、3 つの証拠）。**未確認**。
 - [ ] 配布物に含める依存と同梱データのライセンス表示を確かめたこと（`cargo xtask licenses --check`、[THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)、および同梱データのそばの `NOTICE.txt`・`licenses/`。元ファイルは [dist-notices/NOTICE.txt](dist-notices/NOTICE.txt)）。
 - [ ] [README.md](../README.md) の冒頭（「ビルド済みのアプリは、まだ配っていません」）と [SECURITY.md](../SECURITY.md) の「配布」の節を配布開始に合わせて書き直したこと。README には、配布元が Releases だけであること、sha256 の比べ方、証明と署名の確かめ方、実機で確かめた OS の警告の案内（守りを切る手順は書かない）、Watch の案内を書く。
@@ -153,12 +155,22 @@
 
 タグを打つ直前の `main` 先頭コミットに対して行う。
 
-- [ ] `Cargo.toml` の `[workspace.package] version` が `0.1.0`（タグの `v` を除いた値）と一致していること（`verify-tag` が一致を検査する）。
+- [ ] `Cargo.toml` の `[workspace.package] version` が `0.1.0`（タグの `v` を除いた値）と一致していること（`verify-tag` が一致を検査するのは**タグの push のときだけ**。試しのビルドでは検査しないので、ここで見る）。
 - [ ] §1.1 と同じ観点で、直前の差分・履歴・新規 Issue / PR に個人情報、ホームのパス、秘密情報、非公開レビューの詳細（ADR 0070 §5）が混ざっていないことを走査したこと（`.gitleaks.local.toml` の走査は作者の手元のみ）。
 - [ ] リード（または作者）の手元で、対象コミットに対してフルの `scripts/check.sh` が `CHECK_EXIT=0` で通っていること。
 - [ ] `cargo xtask licenses --check` が通ること。
 - [ ] 同梱する他社部品・モデル・辞書の元データの版とライセンスを確認し、更新の有無をリリースノートに書く準備ができたこと（ADR 0070 §6、ADR 0080 §8 の 3）。
-- [ ] タグを打つ前に、対象コミット（`main`）で `.github/workflows/release.yml` の試しのビルド（`workflow_dispatch`。証明と下書きは作らない）を流し、`verify-tag`・`source-checks`・`build-dict`・`build-macos`（normal / offline）がすべて緑であることを確かめたこと。
+- [ ] タグを打つ前に、対象コミット（`main` の先頭）で `.github/workflows/release.yml` の試しのビルド（`workflow_dispatch`）を流し、`verify-tag`・`source-checks`・`build-dict`・`build-macos (normal)`・`build-macos (offline, -offline)` がすべて緑であることを確かめたこと。
+  - **起動する人**: リードが起動してよい（作者が起動してもよい）。タグも Release も作らない。
+
+    ```sh
+    gh workflow run release.yml -R ikari-zen/ikari-ime --ref main
+    ```
+
+  - 試しのビルドでは `provenance` と `draft-release` はスキップされる。`verify-tag` のタグの検査（形、`main` に入っていること、`Cargo.toml` の版との一致）も流れない。
+  - `build-windows` も流れる（版は `0.0.0`）。0.1.x のタグでは流れず配らないので、上の条件には入れていない。
+  - 成果物は artifact `release-macos-normal`・`release-macos-offline`（と `release-windows`）に 7 日残る。
+  - 記録: #661 の後の `main`（`8d6568a`）の試しのビルド（run `45304091723`）は全 job が成功した。#664 の後の `main` では**未確認**。
 
 ---
 
@@ -166,8 +178,8 @@
 
 配る物は、GitHub のランナーでタグから作ったものだけとする（作者や利用者の機械で作ったものは配らない。ADR 0069 §4.1）。
 
-- [ ] 対象コミットが `origin/main` の最新であることを確認する。
-- [ ] **作者が**手元で `v0.1.0` のタグを打ち、`origin` へ push する（`protect tags` により Admin のみ作成でき、push 後の付け替え・削除はできない）。
+- [ ] 対象コミットが `origin/main` の最新で、§4.2 で検査し試しのビルドを流したコミットと同じであることを確認する。
+- [ ] **作者が**手元で `v0.1.0` のタグを打ち、`origin` へ push する。`protect tags` は作成・付け替え・削除を禁じる（バイパスは Admin のロールだけ。§4.1）。**push したタグは、バイパスを使って付け替えたり削除したりせず、再利用もしない**（失敗したときは §4.4）。
 
   ```sh
   git fetch origin main
@@ -183,10 +195,29 @@
 
 `v0.1.0` の push で `.github/workflows/release.yml` が起動する。
 
-- [ ] GitHub Actions の `Release` workflow がタグ `v0.1.0` で起動し、全 job（`verify-tag` → `source-checks` → `build-dict` → ビルド job → `provenance` → `draft-release`）が成功したことを確認する。
-  - **未確認**: `provenance` と `draft-release` は試しのビルド（`workflow_dispatch`）ではスキップされるため、タグ push での実走（所要時間・artifact 転送・`actions/attest-build-provenance` の出力・`gh release create --draft --verify-tag` の動作）は初回の実走まで**未確認**。
-  - 注意: 公開リポジトリでは、`provenance` が成功した時点で GitHub の公開 attestation 台帳に証明が記録される（下書き公開前でも記録される）。
-- [ ] 途中で失敗した場合は、原因を特定し、重複した下書き Release が残っていないか確認してから対処する（公開前の下書きは削除できる）。
+| job | 0.1.x のタグでの動き |
+| --- | --- |
+| `verify-tag` | タグの形（プレリリースは止める）、`main` に入っていること、`Cargo.toml` の版との一致を検査。`include_windows` は `false`（0.2.0 以上で `true`） |
+| `source-checks` | `cargo deny` と静的な検査 |
+| `build-dict` | 同梱の辞書とモデル（artifact `bundle-data`） |
+| `build-macos (normal)`・`build-macos (offline, -offline)` | dmg（artifact `release-macos-normal`・`release-macos-offline`） |
+| `build-windows` | **スキップされる**（正常） |
+| `provenance` | macOS の dmg 2 つだけを取り込み、`SHA256SUMS` を作り、2 つの dmg に証明を付ける（artifact `draft-release-assets`） |
+| `draft-release` | `SHA256SUMS` と照合し、同じタグの Release（下書き・公開済み）があれば止まり、無ければ下書きを作る |
+
+- [ ] GitHub Actions の `Release` workflow がタグ `v0.1.0` で起動し、`build-windows` を除く全 job が成功したことを確認する。
+  - **未確認（本番のタグでしか確かめられない）**: `build-windows` がスキップされても `provenance` が動くこと、`actions/attest-build-provenance` が macOS の 2 つを載せた `SHA256SUMS` で通ること、`draft-release` の同じタグの Release の確認と `gh release create --draft --verify-tag` の動き、artifact の受け渡しと所要時間。
+  - 注意: 公開リポジトリでは、`provenance` の証明の手順が通った時点で、下書きの公開前でも GitHub の公開の attestation の台帳に記録される。あとで失敗しても、記録は取り消せない前提で扱う。
+
+#### 失敗したとき（復旧の手順は**すべて未実走**）
+
+- [ ] 原因を特定する。
+- **方針: 失敗した版のタグは再利用しない。** `v0.1.0` を付け替え・削除せず、次の版（`v0.1.1` など）にする（次の版の番号と、出し直すかは作者が決める）。
+  - 次の版では、`Cargo.toml` の版と [CHANGELOG.md](../CHANGELOG.md) を PR で上げて `main` に入れ、§4.2 からやり直す。以降の `0.1.0` は読み替える。
+  - 「新しい run」は、次の版のタグの push で作る。`workflow_dispatch` で起こした run は `provenance` と `draft-release` がスキップされるので、代わりにならない。
+- **`draft-release` が資産のアップロードの途中で失敗した場合**: 下書きが残ることがある。そのまま再実行すると「同じタグの Release がある」で止まる（意図した動き）。**作者が**残った下書きを削除し、新しい run（次の版のタグ）で作り直す。
+- **`provenance` の再実行**: `provenance` だけを「失敗した job を再実行」（Re-run failed jobs）すると、前の試行の `draft-release-assets` と名前が衝突して、artifact のアップロードが失敗するおそれがある。再実行ではなく、新しい run にする。
+- どの場合も、公開前の下書きが残っていないかを Releases の画面で確かめる（下書きは作者が削除できる）。
 
 ---
 
@@ -194,20 +225,23 @@
 
 `draft-release` が作るのは**下書き（draft）**であり、まだ公開されていない。
 
-- [ ] GitHub の Releases 画面で `v0.1.0` が **Draft** 状態であることを確認する。
-- [ ] 下書きに添付された資産が、期待どおりのファイル（0.1.0 の macOS 通常版・オフライン版の dmg と `SHA256SUMS`）だけであり、余計なファイルや不足が無いことを確認する。
+- [ ] GitHub の Releases の画面で `v0.1.0`（題名もタグ名）が **Draft** の状態で、1 つだけあることを確認する。
+- [ ] 下書きに添付された資産が、次の 3 つだけであることを確認する（Windows のインストーラは無い。GitHub が自動で付ける Source code の zip と tar.gz は資産に数えない）。
+  - `ikari-0.1.0-macos-arm64-adhoc.dmg`（通常版）
+  - `ikari-0.1.0-macos-arm64-adhoc-offline.dmg`（オフライン版）
+  - `SHA256SUMS`（上の dmg 2 つの行だけ）
 - [ ] 一時作業ディレクトリを作り、下書き Release の全資産をダウンロードして次を確かめる（作業後に一時ディレクトリは消す）。
 
   ```sh
-  # 作業用の一時ディレクトリで実行
-  gh release download v0.1.0
+  # 作業用の一時ディレクトリで実行（リポジトリの外なので -R を付ける）
+  gh release download v0.1.0 -R ikari-zen/ikari-ime
   shasum -a 256 -c SHA256SUMS
   gh attestation verify ikari-0.1.0-macos-arm64-adhoc.dmg -R ikari-zen/ikari-ime
   gh attestation verify ikari-0.1.0-macos-arm64-adhoc-offline.dmg -R ikari-zen/ikari-ime
   ```
 
-  （注: ファイル名は確定名に合わせる。下書き段階での `gh release download` と `gh attestation verify` の実動作は**未確認**。）
-- [ ] 下書きのリリースノート本文（workflow が入れた仮の案内文）を、**本来のリリースノート**へ書き換える。次を必ず含める:
+  （注: 証明の対象は dmg で、`SHA256SUMS` 自体ではない。下書きの段階での `gh release download` と `gh attestation verify` の実際の動きは**未確認**。）
+- [ ] 下書きのリリースノートの本文（workflow が入れた仮の案内文）を、**本来のリリースノート**へ書き換える。次を必ず含める:
   - 変更の概要（[CHANGELOG.md](../CHANGELOG.md) と整合）
   - 同梱した辞書・モデルの一覧（名前、元データの版、モデルの版、ライセンス、出典、前の版から元データを上げたか。ADR 0080 §4 の 4・§8 の 3）
   - 3 つの証拠の確かめ方への案内（[README.md](../README.md)・[antivirus-false-positive.md](antivirus-false-positive.md)）
@@ -231,7 +265,7 @@
   minisign -Vm SHA256SUMS -p <公開鍵ファイル>
   ```
 
-- [ ] **公開前の下書き Release に** `SHA256SUMS.minisig` を添付する（Web UI の下書き編集画面、または `gh release upload v0.1.0 SHA256SUMS.minisig`）。
+- [ ] **公開前の下書き Release に** `SHA256SUMS.minisig` を添付する（Web UI の下書き編集画面、または `gh release upload v0.1.0 SHA256SUMS.minisig -R ikari-zen/ikari-ime`）。
   - **重要（immutable releases）**: 一度公開すると資産を追加・変更・削除できない。必ず公開前に `SHA256SUMS.minisig` が下書きに付いていることを目視確認する。
 
 ---
@@ -239,7 +273,7 @@
 ### 4.7 下書き Release の公開（作者のみ。AI エージェントは実行しない）
 
 - [ ] 公開前の最終確認（作者）:
-  1. 下書きの資産に、配布する dmg、`SHA256SUMS`、`SHA256SUMS.minisig` がすべて揃っていること。
+  1. 下書きの資産が、dmg 2 つ（通常版・オフライン版）、`SHA256SUMS`、`SHA256SUMS.minisig` の 4 つであること。
   2. リリースノート本文が仮の案内文のまま残っておらず、同梱データ一覧を含む本来の文面になっていること。
   3. 公開後は immutable releases により資産とタグを変更・削除できないことを了解していること。
 - [ ] **作者が**下書き Release を **`Latest` を明示して**公開する（ADR 0076 §18.2）。
@@ -247,10 +281,11 @@
   - CLI を使う場合:
 
     ```sh
-    gh release edit v0.1.0 --draft=false --latest
+    gh release edit v0.1.0 -R ikari-zen/ikari-ime --draft=false --latest
     ```
 
-  - 注意: 下書き作成時（`gh release create --draft`）には `Latest` に設定できないため、公開時に必ず明示する。またデータ用 Release（`webwords-*`、`abr-mirror-*` 等）は常に `--latest=false` で作り、アプリの `Latest` を上書きしない（2026-11-24 時点では `abr-mirror-20261025` が `Latest` になっていたため、0.1.0 公開時の上書きと公開後確認を必ず行う）。
+  - 注意: workflow の `gh release create` は `--latest` を指定していない。下書きの段階で `Latest` に設定できるかは**未確認**なので、公開の操作で必ず明示し、公開のあとに §4.8 で確かめる。
+  - データ用の Release（`webwords-*`、`abr-mirror-*` など）は `Latest` にしない運用（ADR 0076 §18.2。作るときは `--latest=false`）。2026-11-26 の `gh release list` では `abr-mirror-20261025` が `Latest` になっている（公開済みのアプリの版がまだ無いため）。
 
 ---
 
@@ -260,12 +295,13 @@
 - [ ] 「最新の Release」が `v0.1.0`（`v<数>.<数>.<数>`）であることを確かめる（ADR 0076 §18.2）。
 
   ```sh
-  gh release view --json tagName
+  gh release view -R ikari-zen/ikari-ime --json tagName   # タグを指定しないと、Latest の Release が出る
   ```
 
 - [ ] 公開済み Release から資産を別の一時ディレクトリへ取り直し、利用者の手順どおり 3 つの証拠すべてが通ることを確かめる（実走**未確認**）。
 
   ```sh
+  gh release download v0.1.0 -R ikari-zen/ikari-ime
   shasum -a 256 -c SHA256SUMS
   gh attestation verify <ダウンロードした dmg> -R ikari-zen/ikari-ime
   minisign -Vm SHA256SUMS -p <公開鍵ファイル>
@@ -276,10 +312,12 @@
 
 ---
 
-### 4.9 将来の 1.0.0（Windows 版を含む配布）の公開前に追加で要る項目
+### 4.9 0.2.0（Windows 版を含む配布）の公開前に追加で要る項目
 
-以下は Windows 版を配布する 1.0.0 向けの項目（macOS のみの 0.1.0 公開前には不要）。
+以下は Windows 版を配り始める 0.2.0 向けの項目（macOS だけの 0.1.x の公開前には不要）。§4.1〜§4.8 の資産の一覧とコマンドも、0.2.0 の前に Windows の分を足して直す。
 
+- [ ] 0.2.0 のタグを打つ**前**に、Windows の同梱（#584）と成果物（#585）が済んでいること。今の `release.yml` は、タグの版が 0.2.0 以上なら `include_windows` が `true` になり、`build-windows` の出力（`ikari-ime-<版>-windows-x64-setup.exe`。今は通常版だけで、辞書・モデル・VC++ 再頒布パッケージを含まない）を配る物に入れる。
+- [ ] Windows のオフライン版を足すときは、`provenance` の取り込みと期待するファイルの一覧、`draft-release` の期待するファイルの一覧（`files`）の両方を揃えて直すこと（レーン 5 の担当）。
 - [ ] Windows の実機確認（[windows-real-device-check.md](windows-real-device-check.md) の該当項目）と、タグの前にリリースの workflow の試しのビルド（`workflow_dispatch`）で作った Windows インストーラの VM 確認（同 項目 47〜55）が済んでいること。
 - [x] インストーラの失敗時の手動の復旧手順（[windows-user-guide.md](windows-user-guide.md) の「インストールに失敗したとき」）が書かれ、VM で確かめられていること（実機確認の項目 79〜81。2026-11-23 に確認。画面の表示などの未確認は項目に書いた）。
 - [ ] インストーラの失敗時の自動の巻き戻しを作るか、ADR で決めたこと（#646）。
