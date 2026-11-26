@@ -10,6 +10,8 @@ const FAKE_TRACE_DIR_ENV: &str = "IKARI_LM_HOST_FAKE_TRACE_DIR";
 const FAKE_TRACE_CHILD_ENV: &str = "IKARI_LM_HOST_FAKE_TRACE_CHILD";
 const INFERENCE_STARTED: &str = "inference-started";
 const INFERENCE_COMPLETED: &str = "inference-completed";
+const INFERENCE_CANCELLED: &str = "inference-cancelled";
+const INFERENCE_HOLD: &str = "inference-hold";
 /// 偽の子の台本: LM が効くと `BOOSTED`（瀕死）が 1 位になる。辞書だけなら `BASE_TOP`（品詞）
 const SCRIPT: &str = "nll.瀕死=0\nnll.品詞=20\n";
 
@@ -61,7 +63,7 @@ impl HostEngine {
         std::fs::create_dir_all(&user).unwrap();
         let paths = StackPaths {
             dict_dir: fixture_dict_dir().to_path_buf(),
-            user_dir: Some(user),
+            user_dir: Some(user.clone()),
             vectors: None,
             lm_model: Some(script.clone()),
             lm_host: Some(fake_host()),
@@ -77,7 +79,7 @@ impl HostEngine {
         let engine = Engine::from_parts(EngineParts {
             stack,
             rebuild: None,
-            data_dir: None,
+            data_dir: Some(user),
             lm_requested: true,
             lm_budget: budget,
             convert_wait: ikari_testtime::ms(2000),
@@ -171,6 +173,12 @@ impl HostEngine {
         let reply = self.convert();
         surfaces(&reply)[0].to_owned()
     }
+
+    fn log(&self) -> String {
+        self.e().inner.log.flush_for_test();
+        std::fs::read_to_string(self.dir.join("user").join("logs").join("engine.log"))
+            .unwrap_or_default()
+    }
 }
 
 impl Drop for HostEngine {
@@ -226,13 +234,9 @@ fn a_single_crash_is_followed_by_a_restart_without_restarting_the_engine() {
     assert_eq!(h.e().inner.lm_state(), LmState::LmReady);
 }
 
-/// 偽の子の採点 1 回の時間（ms）。#429 の再現用。打鍵の間隔より長い推論（遅い機械）に見立てる
-const SLOW_INFER_MS: u64 = 300;
-/// 偽の子の採点 1 回を分ける区切り（decode に見立てる。ADR 0074 §4 の段階 1 は区切りの間で止める）
-const SLOW_INFER_STEPS: u64 = 4;
-
 /// #429: 最後の読みの先行計算が来たら、走っている古い先行計算の印が立ち（ADR 0074 §5）、子の推論は次の区切りで止まる。
-/// 最新の変換が返るまでに、最新の推論だけが完了し、古い推論は未完了であることを確かめる
+/// 最新の変換が返るまでに、最新の推論だけが完了し、古い推論は未完了（取り消し）であることを確かめる。
+/// 時間（`SLOW_INFER_MS`）に頼らず、一時ディレクトリの合図のファイル（`inference-hold`）で偽の子を止めて進める（#296）。
 #[test]
 fn a_running_stale_inference_does_not_delay_the_newest_reading() {
     if std::env::var_os(FAKE_TRACE_CHILD_ENV).is_some() {
@@ -275,27 +279,44 @@ fn a_running_stale_inference_does_not_delay_the_newest_reading() {
 }
 
 fn run_stale_inference_check(trace_dir: &Path) {
-    let h = HostEngine::with_script(&format!(
-        "{SCRIPT}delay_ms={SLOW_INFER_MS}\ndelay_steps={SLOW_INFER_STEPS}\n"
-    ));
+    let h = HostEngine::new();
     let warmup_started = Instant::now();
     loop {
-        if h.top() == BOOSTED {
-            break;
+        let warming = h.e().inner.warming.load(Ordering::Acquire);
+        let busy =
+            lock_mutex(&h.e().inner.cache).any_computing() || h.e().inner.queue.pending() > 0;
+        if !warming && !busy && h.top() == BOOSTED {
+            let started = HostEngine::inference_count(trace_dir, INFERENCE_STARTED);
+            let completed = HostEngine::inference_count(trace_dir, INFERENCE_COMPLETED);
+            let cancelled = HostEngine::inference_count(trace_dir, INFERENCE_CANCELLED);
+            // 取り消した推論は completed に数えないので、終わった数は completed + cancelled
+            if !h.e().inner.warming.load(Ordering::Acquire) && started == completed + cancelled {
+                break;
+            }
         }
         let elapsed = warmup_started.elapsed();
         assert!(
             elapsed < Duration::from_secs(60),
-            "LM warm-up stalled: started={} completed={} baseline=0 elapsed={elapsed:?}",
+            "LM warm-up stalled: started={} completed={} warming={warming} elapsed={elapsed:?}\nlog:\n{}",
             HostEngine::inference_count(trace_dir, INFERENCE_STARTED),
             HostEngine::inference_count(trace_dir, INFERENCE_COMPLETED),
+            h.log(),
         );
         std::thread::sleep(Duration::from_millis(2));
     }
     let baseline_started = HostEngine::inference_count(trace_dir, INFERENCE_STARTED);
     let baseline_completed = HostEngine::inference_count(trace_dir, INFERENCE_COMPLETED);
+    let baseline_cancelled = HostEngine::inference_count(trace_dir, INFERENCE_CANCELLED);
+    assert_eq!(
+        baseline_started,
+        baseline_completed + baseline_cancelled,
+        "warm-up left an in-flight inference: started={baseline_started} completed={baseline_completed} cancelled={baseline_cancelled}\nlog:\n{}",
+        h.log(),
+    );
 
-    // 古い読み（文脈）の先行計算。偽ホストが推論を始めた状態を待つ
+    // 古い読み（文脈）の先行計算。合図のファイルを置いて偽ホストの推論を途中で止め、推論が始まった状態を待つ
+    let hold_path = trace_dir.join(INFERENCE_HOLD);
+    std::fs::write(&hold_path, b"1").unwrap();
     let (old_rev, old_context) = h.next_context();
     h.prefetch(old_rev, &old_context);
     let old_started_at = Instant::now();
@@ -308,25 +329,48 @@ fn run_stale_inference_check(trace_dir: &Path) {
         let elapsed = old_started_at.elapsed();
         assert!(
             elapsed < Duration::from_secs(60),
-            "stale inference did not start: started={started} completed={completed} baseline_started={baseline_started} baseline_completed={baseline_completed} elapsed={elapsed:?}"
+            "stale inference did not start: started={started} completed={completed} baseline_started={baseline_started} baseline_completed={baseline_completed} elapsed={elapsed:?}\nlog:\n{}",
+            h.log(),
         );
         std::thread::sleep(Duration::from_millis(2));
     }
 
-    // 最後の読みの先行計算と、すぐの Space（計算中の先行計算を待つ）
+    // 最後の読みの先行計算で古い推論に取消の印を立て、偽ホストが古い推論を取り消したのを確かめてから合図を外して Convert する
     let (rev, context) = h.next_context();
     h.prefetch(rev, &context);
+    let cancel_started_at = Instant::now();
+    loop {
+        let cancelled = HostEngine::inference_count(trace_dir, INFERENCE_CANCELLED);
+        if cancelled > baseline_cancelled {
+            break;
+        }
+        let elapsed = cancel_started_at.elapsed();
+        assert!(
+            elapsed < Duration::from_secs(60),
+            "stale inference was not cancelled: started={} completed={} cancelled={cancelled} baseline_started={baseline_started} baseline_completed={baseline_completed} elapsed={elapsed:?}\nlog:\n{}",
+            HostEngine::inference_count(trace_dir, INFERENCE_STARTED),
+            HostEngine::inference_count(trace_dir, INFERENCE_COMPLETED),
+            h.log(),
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    std::fs::remove_file(&hold_path).unwrap();
+
     let reply = h.convert_now(rev, context);
     let elapsed = old_started_at.elapsed();
     let started = HostEngine::inference_count(trace_dir, INFERENCE_STARTED);
     let completed = HostEngine::inference_count(trace_dir, INFERENCE_COMPLETED);
+    let cancelled = HostEngine::inference_count(trace_dir, INFERENCE_CANCELLED);
     assert!(
         reply.lm_applied,
-        "newest reading did not use LM: started={started} completed={completed} baseline_started={baseline_started} baseline_completed={baseline_completed} elapsed={elapsed:?}"
+        "newest reading did not use LM: started={started} completed={completed} cancelled={cancelled} baseline_started={baseline_started} baseline_completed={baseline_completed} elapsed={elapsed:?} report={:?}\nlog:\n{}",
+        reply.lm_report,
+        h.log(),
     );
     assert_eq!(
         completed,
         baseline_completed + 1,
-        "stale inference completed before the newest reply: started={started} completed={completed} baseline_started={baseline_started} baseline_completed={baseline_completed} elapsed={elapsed:?}"
+        "stale inference completed before the newest reply: started={started} completed={completed} cancelled={cancelled} baseline_started={baseline_started} baseline_completed={baseline_completed} elapsed={elapsed:?}\nlog:\n{}",
+        h.log(),
     );
 }

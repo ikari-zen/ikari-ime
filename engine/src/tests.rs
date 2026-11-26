@@ -27,6 +27,46 @@ const BOOSTED: &str = "瀕死";
 
 const BASE_TOP: &str = "品詞";
 
+/// `prefetch_in_flight` や `hold_while` で、先行計算のワーカーとテストのスレッドを合流させる状態（#296）。
+#[derive(Default)]
+struct RankSync {
+    /// 次の `rank` でワーカーの開始を待つか
+    armed: bool,
+    /// ワーカーが `rank` に入ったか
+    entered: bool,
+    /// `hold_while` の間だけ `rank` の入り口で止めるか
+    held: bool,
+    /// `Convert` がキャッシュのエントリを引くまで `sleep(delay)` の開始を待つ対象
+    wait_for_convert: Option<ConvertWatch>,
+}
+
+/// ワーカーが `Convert` の到着を見張る対象（#296）。
+struct ConvertWatch {
+    entry: std::sync::Weak<CacheEntry>,
+    inner: std::sync::Weak<Inner>,
+    /// 見張りを始めたときの `next_conversion`（`Convert` が返ると進む）
+    conv_before: u64,
+    /// 見張りを始めたときのエントリの強い参照の数（キャッシュとワーカーの分）。
+    /// `Convert` がキャッシュからエントリを引くと 1 増える。数を決め打ちせず、この差で到着を知る
+    refs_before: usize,
+}
+
+/// ワーカーとテストのスレッドが互いを待つ上限。相手が panic しても固まらず、時間切れで先に進む
+fn rank_sync_limit() -> Duration {
+    ikari_testtime::scaled(Duration::from_secs(5))
+}
+
+/// `hold_while` の `held` を、`f` が panic しても必ず戻す（ワーカーを入り口に置き去りにしない）
+struct HoldGuard<'a>(&'a (Mutex<RankSync>, Condvar));
+
+impl Drop for HoldGuard<'_> {
+    fn drop(&mut self) {
+        let (lock, cv) = self.0;
+        lock.lock().unwrap_or_else(|e| e.into_inner()).held = false;
+        cv.notify_all();
+    }
+}
+
 /// 「瀕死」を最上位にするモックの LM。ZenzRanker と同じく、締め切りまでしか待たない。
 struct MockLm {
     delay: Duration,
@@ -40,6 +80,7 @@ struct MockLm {
     last_context: Mutex<Option<String>>,
     /// 最後の `rank` が受けた、左文脈のうち履歴から足した字数（ADR 0049）
     last_carried: Mutex<Option<usize>>,
+    sync: (Mutex<RankSync>, Condvar),
 }
 
 impl MockLm {
@@ -54,7 +95,18 @@ impl MockLm {
             warm_thread: Mutex::new(None),
             last_context: Mutex::new(None),
             last_carried: Mutex::new(None),
+            sync: (Mutex::new(RankSync::default()), Condvar::new()),
         })
+    }
+
+    /// `f` を実行している間、`rank` に入ったワーカーを入り口で止める（複数の `Prefetch` を確実に溜めるテスト用）。
+    fn hold_while(&self, f: impl FnOnce()) {
+        {
+            let (lock, _) = &self.sync;
+            lock.lock().unwrap().held = true;
+        }
+        let _release = HoldGuard(&self.sync);
+        f();
     }
 }
 
@@ -63,9 +115,53 @@ impl Ranker for MockLm {
         self.calls.fetch_add(1, Ordering::Relaxed);
         *self.last_context.lock().unwrap() = Some(input.context.left_text.clone());
         *self.last_carried.lock().unwrap() = Some(input.context.left_carried_chars);
-        let now = Instant::now();
+        let wait_target = {
+            let (lock, cv) = &self.sync;
+            let mut sync = lock.lock().unwrap();
+            while sync.held {
+                sync = cv.wait(sync).unwrap();
+            }
+            if sync.armed {
+                sync.armed = false;
+                sync.entered = true;
+                cv.notify_all();
+                let limit = rank_sync_limit();
+                let started = Instant::now();
+                while sync.wait_for_convert.is_none() {
+                    let left = limit.saturating_sub(started.elapsed());
+                    if left.is_zero() {
+                        // テストのスレッドが来ない（panic など）。待たずに計算を続ける
+                        break;
+                    }
+                    sync = cv.wait_timeout(sync, left).unwrap().0;
+                }
+                sync.wait_for_convert.take()
+            } else {
+                None
+            }
+        };
+        let entered_at = Instant::now();
+        if let Some(watch) = wait_target {
+            let limit = rank_sync_limit();
+            let wait_started = Instant::now();
+            while watch.entry.strong_count() <= watch.refs_before
+                && watch.inner.upgrade().is_some_and(|inner| {
+                    inner.next_conversion.load(Ordering::Acquire) == watch.conv_before
+                        && !inner.is_stopped()
+                })
+                && wait_started.elapsed() < limit
+            {
+                std::thread::yield_now();
+                std::thread::sleep(Duration::from_micros(200));
+            }
+            // Convert はキャッシュのロックの中でエントリを引く。ロックを手放して is_computing / wait_ready に進むまで待つ
+            if let Some(inner) = watch.inner.upgrade() {
+                drop(lock_mutex(&inner.cache));
+                std::thread::yield_now();
+            }
+        }
         match input.deadline {
-            Some(deadline) if now + self.delay <= deadline => {
+            Some(deadline) if entered_at + self.delay <= deadline => {
                 lm_trace::record_call(LmDevice::Cpu);
                 std::thread::sleep(self.delay);
                 lm_trace::record_reply(self.delay, self.delay);
@@ -282,6 +378,50 @@ fn prefetch(e: &Engine, session: u64, reading: &str, rev: u64) {
     assert!(matches!(r, envelope::Body::Ack(_)), "{r:?}");
 }
 
+/// 先行計算を頼み、ワーカーが `MockLm::rank` に入ったことを確かめてから戻る（#296）。
+/// ワーカーは、テスト側が次に呼ぶ `Convert` がキャッシュのエントリを引いた瞬間から `delay` の待機を始める。
+fn prefetch_in_flight(e: &Engine, mock: &Arc<MockLm>, session: u64, reading: &str, rev: u64) {
+    {
+        let (lock, _) = &mock.sync;
+        let mut sync = lock.lock().unwrap();
+        sync.armed = true;
+        sync.entered = false;
+        sync.wait_for_convert = None;
+    }
+    let conv_before = e.inner.next_conversion.load(Ordering::Acquire);
+    prefetch(e, session, reading, rev);
+    let entry = {
+        let cache = lock_mutex(&e.inner.cache);
+        let entry = cache
+            .latest(sk(session), reading)
+            .expect("prefetched cache entry must exist");
+        Arc::downgrade(&entry)
+    };
+    let (lock, cv) = &mock.sync;
+    let mut sync = lock.lock().unwrap();
+    let limit = rank_sync_limit();
+    let started = Instant::now();
+    while !sync.entered {
+        let left = limit.saturating_sub(started.elapsed());
+        assert!(
+            !left.is_zero(),
+            "prefetch worker did not enter MockLm::rank in time: {}",
+            ikari_testtime::report(started.elapsed(), format_args!("< {limit:?}"))
+        );
+        sync = cv.wait_timeout(sync, left).unwrap().0;
+    }
+    // ワーカーは rank の中で見張りの対象を待っている。テストのスレッドはエントリの強い参照を持っていないので、
+    // ここでの数がキャッシュとワーカーの分になる
+    let refs_before = entry.strong_count();
+    sync.wait_for_convert = Some(ConvertWatch {
+        entry,
+        inner: Arc::downgrade(&e.inner),
+        conv_before,
+        refs_before,
+    });
+    cv.notify_all();
+}
+
 fn convert_req(session: u64, reading: &str, rev: u64, page_size: u32) -> envelope::Body {
     envelope::Body::Convert(pb::Convert {
         session_id: session,
@@ -314,7 +454,7 @@ fn page(e: &Engine, conversion_id: u64, index: u32) -> envelope::Body {
 }
 
 fn wait_until(mut cond: impl FnMut() -> bool) {
-    let limit = Duration::from_secs(5);
+    let limit = ikari_testtime::scaled(Duration::from_secs(5));
     let started = Instant::now();
     while !cond() {
         assert!(

@@ -15,14 +15,22 @@
 //!   比べる（#296）。dev-dependencies だけを変えると cargo は staticlib を作り直さない（cargo は manifest の変更を時刻ではなく
 //!   ハッシュで見る）ので、staticlib の時刻と比べると、build.sh を流しても古いままになる。build.sh を流したあとなら、
 //!   cargo が必要な作り直しを済ませているので、Cargo.toml はそれより古ければよい。
+//!   さらに、ブランチの切り替えなどで更新時刻だけが新しく中身が同じとき（`Cargo.toml` は staticlib に影響する非 dev 部分）に
+//!   誤検知しないよう、前回この検査に通ったときのソースの SHA-256 ダイジェストを `.built` に書いておき、内容が同じなら
+//!   古くないと判定する（#296）。ダイジェストを使うのは、`.built` と staticlib の更新時刻が書いたときのままのときだけ
+//!   （`build.sh` が作り直したら捨てる）。ダイジェストは「更新時刻で新しいと分かったソース」の中身だけを書く
+//!   （中身を読んでから時刻を見る。読んだあとで書き換えられたら時刻で古いと分かる）。git の履歴からは補わない
+//!   （未コミットの編集から作ったあと元に戻すと、コミットと一致して古いのに通る道があるため）。
 //!
 //! XCFramework がなければ、swift test の前に作り方を案内して失敗する（#165。スタブのまま通すと、スタブの設定の検証が
 //! Rust の本物とずれて別のテストが落ち、原因が分かりにくい）。Swift を触らない作業は `--docs-only` か `--no-swift`。
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::data::run::{Failure, capture, cargo, log};
+use crate::data::sha256::{sha256_file, sha256_hex};
 
 const FRAMEWORKS_DIR: &str = "macos/Frameworks";
 const BUILD_SCRIPT: &str = "macos/scripts/build.sh --signing team --release";
@@ -68,6 +76,8 @@ pub fn verify(root: &Path) -> Result<(), Failure> {
     log("XCFramework の鮮度（macos/Frameworks）");
     let mut metadata: Option<Vec<Package>> = None;
     let mut stale = Vec::new();
+    let stamp = BuiltStamp::load(root);
+    let mut verified = Verified::default();
     for spec in &SPECS {
         let framework = root
             .join(FRAMEWORKS_DIR)
@@ -85,16 +95,18 @@ pub fn verify(root: &Path) -> Result<(), Failure> {
             ));
         };
         let sources = source_files(root, packages, spec.package);
-        let checked_at = std::fs::metadata(root.join(FRAMEWORKS_DIR).join(BUILT_MARK))
-            .and_then(|m| m.modified())
-            .ok();
-        if let Some(reason) =
-            stale_reason(&framework, &root.join(spec.header), &sources, checked_at)?
-        {
+        if let Some(reason) = stale_reason(
+            &framework,
+            &root.join(spec.header),
+            &sources,
+            &stamp,
+            &mut verified,
+        )? {
             stale.push(format!("{}.{XCFRAMEWORK_EXT}: {reason}", spec.name));
         }
     }
     if stale.is_empty() {
+        stamp.save(root, &verified);
         return Ok(());
     }
     Err(Failure::new(format!(
@@ -103,13 +115,324 @@ pub fn verify(root: &Path) -> Result<(), Failure> {
     )))
 }
 
+/// `.built` の 1 行目。`.built` の更新時刻（ミリ秒）。`build.sh` の `touch` で変われば、書いたダイジェストは使わない
+const BUILT_AT_PREFIX: &str = "# built_at=";
+/// `.built` の staticlib の行。`<更新時刻のミリ秒>\t<ルートからのパス>`。staticlib が作り直されていたら、ダイジェストは使わない
+const LIB_PREFIX: &str = "# lib=";
+
+/// `macos/Frameworks/.built` の情報（`build.sh` が最後に作り終えた時刻と、前回の検査に通ったときの内容ダイジェスト）。
+#[derive(Clone, Debug, Default)]
+struct BuiltStamp {
+    checked_at: Option<SystemTime>,
+    /// ダイジェストを書いたときの staticlib の更新時刻（ミリ秒）
+    libs: HashMap<PathBuf, u128>,
+    hashes: HashMap<PathBuf, String>,
+}
+
+/// この回の検査で新しいと確かめた staticlib とソースのダイジェスト（検査がすべて通ったときだけ `.built` に書く）
+#[derive(Debug, Default)]
+struct Verified {
+    libs: HashMap<PathBuf, u128>,
+    hashes: HashMap<PathBuf, String>,
+    /// 同じソースを 2 回読んで中身が違った（検査の途中で書き換えられた）。書かない
+    conflicted: bool,
+}
+
+impl Verified {
+    fn add_hash(&mut self, path: &Path, digest: String) {
+        match self.hashes.get(path) {
+            Some(existing) if *existing != digest => self.conflicted = true,
+            Some(_) => {}
+            None => {
+                self.hashes.insert(path.to_path_buf(), digest);
+            }
+        }
+    }
+}
+
+impl BuiltStamp {
+    fn from_checked_at(checked_at: Option<SystemTime>) -> Self {
+        Self {
+            checked_at,
+            ..Self::default()
+        }
+    }
+
+    /// テスト用: `sources` の今の中身を、`lib` に対して記録したものとして作る
+    #[cfg(test)]
+    fn record(
+        lib: &Path,
+        sources: &[PathBuf],
+        checked_at: Option<SystemTime>,
+    ) -> Result<Self, Failure> {
+        let mut hashes = HashMap::new();
+        for path in sources {
+            hashes.insert(path.clone(), source_digest(path)?);
+        }
+        let mut libs = HashMap::new();
+        if let Some(ms) = modified(lib).ok().and_then(unix_millis) {
+            libs.insert(lib.to_path_buf(), ms);
+        }
+        Ok(Self {
+            checked_at,
+            libs,
+            hashes,
+        })
+    }
+
+    /// `lib` に対して、記録したダイジェストを使ってよいか（staticlib が書いたときのまま）
+    fn trusts(&self, lib: &Path, lib_time: SystemTime) -> bool {
+        unix_millis(lib_time).is_some_and(|ms| self.libs.get(lib) == Some(&ms))
+    }
+
+    fn load(root: &Path) -> Self {
+        let path = root.join(FRAMEWORKS_DIR).join(BUILT_MARK);
+        let checked_at = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+        let Some(at) = checked_at else {
+            return Self::default();
+        };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return Self::from_checked_at(checked_at);
+        };
+        let mut lines = text.lines();
+        // 1 行目が今の `.built` の時刻と一致しなければ（`touch` の直後、手で書いたもの、形式が違う）、ダイジェストは使わない
+        let recorded_at = lines
+            .next()
+            .and_then(|first| first.strip_prefix(BUILT_AT_PREFIX))
+            .and_then(|ms| ms.trim().parse::<u128>().ok());
+        if recorded_at.is_none() || recorded_at != unix_millis(at) {
+            return Self::from_checked_at(checked_at);
+        }
+        let mut libs = HashMap::new();
+        let mut hashes = HashMap::new();
+        for line in lines {
+            if let Some(rest) = line.strip_prefix(LIB_PREFIX) {
+                if let Some((ms, rel)) = rest.split_once('\t')
+                    && let Ok(ms) = ms.parse::<u128>()
+                    && !rel.is_empty()
+                {
+                    libs.insert(root.join(rel), ms);
+                }
+            } else if let Some((hash, rel)) = line.split_once('\t')
+                && !hash.is_empty()
+                && !rel.is_empty()
+            {
+                hashes.insert(root.join(rel), hash.to_owned());
+            }
+        }
+        Self {
+            checked_at,
+            libs,
+            hashes,
+        }
+    }
+
+    /// 検査に通ったときの staticlib の時刻とソースのダイジェストを `.built` に書く。`.built` の更新時刻（ビルド完了時刻）は保つ。
+    /// 書けなければ何もしない（次の検査は更新時刻だけで判定する。古い側に倒れるだけ）。
+    fn save(&self, root: &Path, verified: &Verified) {
+        let path = root.join(FRAMEWORKS_DIR).join(BUILT_MARK);
+        if verified.conflicted || !path.is_file() {
+            return;
+        }
+        let Some(at) = self.checked_at else {
+            return;
+        };
+        let Some(ms) = unix_millis(at) else {
+            return;
+        };
+        let rel_of = |p: &Path| {
+            p.strip_prefix(root)
+                .ok()
+                .map(|rel| rel.to_string_lossy().replace('\\', "/"))
+        };
+        let mut libs: Vec<(String, u128)> = verified
+            .libs
+            .iter()
+            .filter_map(|(p, t)| Some((rel_of(p)?, *t)))
+            .collect();
+        libs.sort();
+        let mut entries: Vec<(String, &str)> = verified
+            .hashes
+            .iter()
+            .filter_map(|(p, d)| Some((rel_of(p)?, d.as_str())))
+            .collect();
+        entries.sort();
+        let mut content = format!("{BUILT_AT_PREFIX}{ms}\n");
+        for (rel, t) in libs {
+            content.push_str(&format!("{LIB_PREFIX}{t}\t{rel}\n"));
+        }
+        for (rel, digest) in entries {
+            content.push_str(&format!("{digest}\t{rel}\n"));
+        }
+        // 書いてから時刻を戻す間に失敗すると、`.built` の時刻が進んで Cargo.toml の基準が新しくなる。
+        // 別のファイルに書いて時刻を合わせてから置き換え、途中で失敗したら元の `.built` に触らない
+        let tmp = path.with_extension("tmp");
+        let written = std::fs::write(&tmp, &content).is_ok()
+            && std::fs::File::options()
+                .write(true)
+                .open(&tmp)
+                .and_then(|file| file.set_modified(at))
+                .is_ok()
+            && std::fs::rename(&tmp, &path).is_ok();
+        if !written {
+            let _ = std::fs::remove_file(&tmp);
+        }
+    }
+}
+
+fn unix_millis(time: SystemTime) -> Option<u128> {
+    time.duration_since(UNIX_EPOCH).ok().map(|d| d.as_millis())
+}
+
+/// ソースファイルの SHA-256 ダイジェスト。`Cargo.toml` は staticlib に影響しない `[dev-dependencies]` 等を除いて計算する。
+fn source_digest(path: &Path) -> Result<String, Failure> {
+    if path.file_name().is_some_and(|n| n == MANIFEST) {
+        let bytes = std::fs::read(path)
+            .map_err(|e| Failure::new(format!("{} を読めません: {e}", path.display())))?;
+        return Ok(source_digest_bytes(path, &bytes));
+    }
+    sha256_file(path).map_err(|e| Failure::new(format!("{} を読めません: {e}", path.display())))
+}
+
+fn source_digest_bytes(path: &Path, bytes: &[u8]) -> String {
+    if path.file_name().is_some_and(|n| n == MANIFEST)
+        && let Ok(text) = std::str::from_utf8(bytes)
+    {
+        return sha256_hex(manifest_lib_content(text).as_bytes());
+    }
+    sha256_hex(bytes)
+}
+
+/// `Cargo.toml` のうち、staticlib（`--lib`）のビルドに影響する部分だけを正規化して取り出す（#296）。
+/// `[dev-dependencies]`（`[target.*.dev-dependencies]` を含む）、`[[test]]`、`[[bench]]`、`[[example]]`、
+/// コメント、空行は staticlib に入らないので除く。
+fn manifest_lib_content(text: &str) -> String {
+    // 複数行の文字列は行ごとの読み取りで見分けられない。そのまま全体を比べる（少しでも変われば古い側に倒す）
+    if text.contains("\"\"\"") || text.contains("'''") {
+        return text.to_owned();
+    }
+    let mut out = String::new();
+    let mut skip_section = false;
+    let mut bracket_depth: usize = 0;
+    for raw_line in text.lines() {
+        let line = strip_toml_comment(raw_line).trim();
+        if line.is_empty() {
+            continue;
+        }
+        if bracket_depth == 0
+            && let Some(header) = parse_section_header(line)
+        {
+            skip_section = is_non_lib_section(header);
+        }
+        bracket_depth = update_bracket_depth(bracket_depth, line);
+        if !skip_section {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out
+}
+
+/// 文字列リテラルの外の `#` 以降（TOML のコメント）を除く。
+fn strip_toml_comment(line: &str) -> &str {
+    let mut in_double = false;
+    let mut in_single = false;
+    let mut escaped = false;
+    for (idx, c) in line.char_indices() {
+        if in_double {
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == '"' {
+                in_double = false;
+            }
+        } else if in_single {
+            if c == '\'' {
+                in_single = false;
+            }
+        } else {
+            match c {
+                '"' => in_double = true,
+                '\'' => in_single = true,
+                '#' => return &line[..idx],
+                _ => {}
+            }
+        }
+    }
+    line
+}
+
+fn update_bracket_depth(mut depth: usize, line: &str) -> usize {
+    let mut in_double = false;
+    let mut in_single = false;
+    let mut escaped = false;
+    for c in line.chars() {
+        if in_double {
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == '"' {
+                in_double = false;
+            }
+        } else if in_single {
+            if c == '\'' {
+                in_single = false;
+            }
+        } else {
+            match c {
+                '"' => in_double = true,
+                '\'' => in_single = true,
+                '[' => depth = depth.saturating_add(1),
+                ']' => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+        }
+    }
+    depth
+}
+
+fn parse_section_header(line: &str) -> Option<&str> {
+    if line.starts_with("[[") && line.ends_with("]]") && line.len() >= 4 {
+        return Some(line);
+    }
+    if line.starts_with('[') && line.ends_with(']') && line.len() >= 2 {
+        return Some(&line[1..line.len() - 1]);
+    }
+    None
+}
+
+fn is_non_lib_section(header: &str) -> bool {
+    if let Some(array_table) = header
+        .strip_prefix("[[")
+        .and_then(|h| h.strip_suffix("]]"))
+        .map(str::trim)
+    {
+        return matches!(array_table, "test" | "bench" | "example")
+            || array_table.starts_with("test.")
+            || array_table.starts_with("bench.")
+            || array_table.starts_with("example.");
+    }
+    let table = header.trim();
+    table == "dev-dependencies"
+        || table == "dev_dependencies"
+        || table.ends_with(".dev-dependencies")
+        || table.ends_with(".dev_dependencies")
+        || table.starts_with("dev-dependencies.")
+        || table.starts_with("dev_dependencies.")
+}
+
 /// 古い理由（新しければ None）。`header` は Rust 側のヘッダ、`sources` は staticlib の元になるソースのファイル。
-/// `checked_at` は `build.sh` が XCFramework を作り終えた時刻（印が無ければ None）。`Cargo.toml` はこれと staticlib の新しいほうと比べる。
+/// `stamp` は `build.sh` が XCFramework を作り終えた時刻と、前回の検査に通ったときの内容ダイジェスト（印が無ければ空）。
+/// ダイジェストが記録されていて staticlib がそのときのままなら、更新時刻が新しくても内容（`Cargo.toml` は非 dev 部分）が
+/// 同じソースは古くない。新しいと確かめたものは `verified` に足す。
 fn stale_reason(
     framework: &Path,
     header: &Path,
     sources: &[PathBuf],
-    checked_at: Option<SystemTime>,
+    stamp: &BuiltStamp,
+    verified: &mut Verified,
 ) -> Result<Option<String>, Failure> {
     let header_name = header.file_name().unwrap_or_default();
     let packaged_header = find_file(framework, &|path| path.file_name() == Some(header_name));
@@ -138,24 +461,55 @@ fn stale_reason(
         return Ok(Some("中に staticlib（.a）がありません".to_owned()));
     };
     let lib_time = modified(&lib)?;
-    let manifest_floor = checked_at.map_or(lib_time, |checked| checked.max(lib_time));
-    let newest = sources
-        .iter()
-        .filter_map(|path| {
-            let floor = if path.file_name().is_some_and(|n| n == MANIFEST) {
-                manifest_floor
-            } else {
-                lib_time
-            };
-            let time = modified(path).ok()?;
-            (time > floor).then_some((path, time))
-        })
-        .max_by_key(|(_, time)| *time);
+    let manifest_floor = stamp
+        .checked_at
+        .map_or(lib_time, |checked| checked.max(lib_time));
+    let trusted = stamp.trusts(&lib, lib_time);
+    let mut newest: Option<(&PathBuf, SystemTime)> = None;
+    let mut fresh = Vec::new();
+    for path in sources {
+        let recorded = stamp.hashes.get(path).filter(|_| trusted);
+        // 中身を先に読み、時刻はそのあとで見る（読んだあとで書き換えられたら、時刻で古いと分かる）
+        let digest = match source_digest(path) {
+            Ok(digest) => digest,
+            // 消えたソース。前回は在ったなら staticlib はそれを含んでいる（古い）。記録が無ければ、これまでどおり見ない
+            Err(_) if !path.exists() => {
+                if recorded.is_some() {
+                    return Ok(Some(format!("ソースが消えた（{}）", path.display())));
+                }
+                continue;
+            }
+            Err(e) => return Err(e),
+        };
+        if recorded == Some(&digest) {
+            fresh.push((path, digest));
+            continue;
+        }
+        let floor = if path.file_name().is_some_and(|n| n == MANIFEST) {
+            manifest_floor
+        } else {
+            lib_time
+        };
+        let time = modified(path)?;
+        if recorded.is_some() || time > floor {
+            if newest.is_none_or(|(_, best)| time >= best) {
+                newest = Some((path, time));
+            }
+        } else {
+            fresh.push((path, digest));
+        }
+    }
     if let Some((path, _)) = newest {
         return Ok(Some(format!(
             "staticlib より新しいソースがある（{}）",
             path.display()
         )));
+    }
+    if let Some(ms) = unix_millis(lib_time) {
+        verified.libs.insert(lib, ms);
+        for (path, digest) in fresh {
+            verified.add_hash(path, digest);
+        }
     }
     Ok(None)
 }
@@ -392,9 +746,23 @@ mod tests {
                 .set_modified(time)
                 .unwrap();
         }
+        fn lib(&self) -> PathBuf {
+            self.framework().join("macos-arm64/libx.a")
+        }
+        fn check(&self, sources: &[PathBuf], stamp: &BuiltStamp) -> Option<String> {
+            self.check_into(sources, stamp, &mut Verified::default())
+        }
+        fn check_into(
+            &self,
+            sources: &[PathBuf],
+            stamp: &BuiltStamp,
+            verified: &mut Verified,
+        ) -> Option<String> {
+            stale_reason(&self.framework(), &self.header(), sources, stamp, verified).unwrap()
+        }
         fn reason(&self) -> Option<String> {
             std::fs::create_dir_all(self.header().parent().unwrap()).unwrap();
-            stale_reason(&self.framework(), &self.header(), &[self.source()], None).unwrap()
+            self.check(&[self.source()], &BuiltStamp::default())
         }
     }
 
@@ -436,9 +804,8 @@ mod tests {
         std::fs::write(&manifest, "").unwrap();
         fx.set_time(&manifest, 10);
         let at = |secs: u64| SystemTime::now() + Duration::from_secs(secs);
-        let run = |sources: &[PathBuf], checked| {
-            stale_reason(&fx.framework(), &fx.header(), sources, checked).unwrap()
-        };
+        let run =
+            |sources: &[PathBuf], checked| fx.check(sources, &BuiltStamp::from_checked_at(checked));
         let sources = [manifest.clone()];
         assert!(run(&sources, None).unwrap().contains("Cargo.toml"));
         assert!(run(&sources, Some(at(5))).unwrap().contains("Cargo.toml"));
@@ -446,6 +813,238 @@ mod tests {
         fx.set_time(&fx.source(), 30);
         let both = [manifest, fx.source()];
         assert!(run(&both, Some(at(40))).unwrap().contains("lib.rs"));
+    }
+
+    /// ブランチの切り替えなどでソースの更新時刻だけが新しくなっても、記録されたダイジェストと内容が同じなら古くない（#296）。
+    /// 中身が変わっていれば、これまでどおり古いと判定する。
+    #[test]
+    fn identical_source_with_newer_mtime_passes_when_digest_is_recorded() {
+        let fx = Fixture::new();
+        let sources = [fx.source()];
+        let stamp = BuiltStamp::record(&fx.lib(), &sources, Some(SystemTime::now())).unwrap();
+        // 更新時刻だけを未来にする（中身は同じ）
+        fx.set_time(&fx.source(), 100);
+        assert_eq!(fx.check(&sources, &stamp), None);
+        // 中身を変えると古い
+        std::fs::write(fx.source(), "fn main() { let _ = 1; }").unwrap();
+        fx.set_time(&fx.source(), 100);
+        let reason = fx.check(&sources, &stamp).unwrap();
+        assert!(reason.contains("lib.rs"), "{reason}");
+        // 記録と違う中身は、更新時刻が staticlib より古くても古い（記録があれば中身が優先）
+        fx.set_time(&fx.source(), -100);
+        let reason = fx.check(&sources, &stamp).unwrap();
+        assert!(reason.contains("lib.rs"), "{reason}");
+    }
+
+    /// staticlib が記録のあとで作り直されていたら（`.built` を触らずに `build.sh` が途中で止まったなど）、
+    /// 記録したダイジェストは使わず更新時刻で判定する（#296。偽陰性を作らない）
+    #[test]
+    fn recorded_digests_are_ignored_when_the_staticlib_changed() {
+        let fx = Fixture::new();
+        let sources = [fx.source()];
+        let stamp = BuiltStamp::record(&fx.lib(), &sources, Some(SystemTime::now())).unwrap();
+        fx.set_time(&fx.source(), 100);
+        assert_eq!(fx.check(&sources, &stamp), None);
+        // staticlib の時刻が変わった（中身は記録と同じでも、記録は別のビルドのもの）
+        fx.set_time(&fx.lib(), 50);
+        let reason = fx.check(&sources, &stamp).unwrap();
+        assert!(reason.contains("lib.rs"), "{reason}");
+    }
+
+    /// 記録にあったソースが消えたら古い。記録がなければ、これまでどおり見ない（dep-info に残った消えたファイル）
+    #[test]
+    fn a_recorded_source_that_disappeared_is_stale() {
+        let fx = Fixture::new();
+        let gone = fx.dir.path().join("src/gone.rs");
+        std::fs::write(&gone, "fn gone() {}").unwrap();
+        fx.set_time(&gone, -100);
+        let sources = [fx.source(), gone.clone()];
+        let stamp = BuiltStamp::record(&fx.lib(), &sources, Some(SystemTime::now())).unwrap();
+        std::fs::remove_file(&gone).unwrap();
+        let reason = fx.check(&sources, &stamp).unwrap();
+        assert!(reason.contains("gone.rs"), "{reason}");
+        assert_eq!(fx.check(&sources, &BuiltStamp::default()), None);
+    }
+
+    /// 未コミットの編集 X から作り、元の Y に戻した: Y の更新時刻は staticlib より新しいので、記録が無ければ古い
+    /// （git の履歴で補わない。補うと Y がコミットと一致して通ってしまう。リードのレビューの指摘 1）
+    #[test]
+    fn reverting_an_uncommitted_edit_after_the_build_is_stale() {
+        let fx = Fixture::new();
+        // Y（元の中身）は Fixture のソース。X に書き換えてから作った
+        std::fs::write(fx.source(), "fn main() { /* X */ }").unwrap();
+        fx.set_time(&fx.source(), -10);
+        let sources = [fx.source()];
+        let mut verified = Verified::default();
+        assert_eq!(
+            fx.check_into(&sources, &BuiltStamp::default(), &mut verified),
+            None
+        );
+        // Y に戻す（時刻は今より新しい）
+        std::fs::write(fx.source(), "fn main() {}").unwrap();
+        fx.set_time(&fx.source(), 10);
+        // 記録が無い
+        assert!(fx.check(&sources, &BuiltStamp::default()).is_some());
+        // 検査に通ったときの記録（X）があっても、Y とは違うので古い
+        let stamp = BuiltStamp {
+            checked_at: Some(SystemTime::now()),
+            libs: verified.libs,
+            hashes: verified.hashes,
+        };
+        assert!(fx.check(&sources, &stamp).is_some());
+    }
+
+    /// `Cargo.toml` の `dev-dependencies` やテスト・ベンチ・コメントだけが変わって更新時刻が新しくなっても、
+    /// staticlib に影響する部分が変わっていなければ古くない（#296）。通常の `dependencies` や `features` の変更は検知する。
+    #[test]
+    fn dev_dependencies_only_change_in_manifest_does_not_trigger_stale() {
+        let fx = Fixture::new();
+        let manifest = fx.dir.path().join("Cargo.toml");
+        std::fs::write(
+            &manifest,
+            r#"[package]
+name = "demo"
+version = "0.1.0"
+
+[dependencies]
+ikari-core = { path = "../core" }
+
+[dev-dependencies]
+ikari-testtime = { path = "../testtime" }
+"#,
+        )
+        .unwrap();
+        fx.set_time(&manifest, -50);
+        let sources = [manifest.clone(), fx.source()];
+        let stamp = BuiltStamp::record(&fx.lib(), &sources, Some(SystemTime::now())).unwrap();
+
+        // dev-dependencies、target.*.dev-dependencies、[[test]]、[[bench]]、コメントだけを追加して更新時刻を未来にする
+        std::fs::write(
+            &manifest,
+            r#"# comment added
+[package]
+name = "demo"
+version = "0.1.0"
+
+[dependencies]
+ikari-core = { path = "../core" } # inline comment
+
+[dev-dependencies]
+ikari-testtime = { path = "../testtime" }
+tempfile = "3"
+
+[target.'cfg(windows)'.dev-dependencies]
+windows-sys = "0.59"
+
+[[test]]
+name = "integration"
+
+[[bench]]
+name = "perf"
+"#,
+        )
+        .unwrap();
+        fx.set_time(&manifest, 100);
+        assert_eq!(fx.check(&sources, &stamp), None);
+
+        // 本番の dependencies が変われば古いと検知する
+        std::fs::write(
+            &manifest,
+            r#"[package]
+name = "demo"
+version = "0.1.0"
+
+[dependencies]
+ikari-core = { path = "../core" }
+serde = "1"
+
+[dev-dependencies]
+tempfile = "3"
+"#,
+        )
+        .unwrap();
+        fx.set_time(&manifest, 100);
+        let reason = fx.check(&sources, &stamp).unwrap();
+        assert!(reason.contains("Cargo.toml"), "{reason}");
+    }
+
+    /// 複数行の文字列がある `Cargo.toml` は、行ごとに読み分けず、全体を比べる（古い側に倒す）
+    #[test]
+    fn manifest_with_multiline_strings_is_compared_as_a_whole() {
+        let text = "[package]\ndescription = \"\"\"\n[dev-dependencies]\n\"\"\"\nname = \"a\"\n";
+        assert_eq!(manifest_lib_content(text), text);
+    }
+
+    /// 検査に通ったら、staticlib の時刻とダイジェストを `.built` に書き、`.built` の更新時刻は保つ。
+    /// `build.sh` が `touch .built` で時刻を進めたら、書いたダイジェストは捨てる。1 行目の無い `.built` も使わない。
+    #[test]
+    fn built_stamp_save_preserves_mtime_and_touch_invalidates_old_hashes() {
+        let fx = Fixture::new();
+        let root = fx.dir.path();
+        let frameworks = root.join(FRAMEWORKS_DIR);
+        std::fs::create_dir_all(&frameworks).unwrap();
+        let built = frameworks.join(BUILT_MARK);
+        std::fs::write(&built, "").unwrap();
+        let build_time = SystemTime::now() - Duration::from_secs(60);
+        let set_built_time = |time: SystemTime| {
+            File::options()
+                .write(true)
+                .open(&built)
+                .unwrap()
+                .set_modified(time)
+                .unwrap();
+        };
+        set_built_time(build_time);
+
+        let sources = [fx.source()];
+        let initial = BuiltStamp::load(root);
+        assert!(initial.hashes.is_empty());
+        let mut verified = Verified::default();
+        assert_eq!(fx.check_into(&sources, &initial, &mut verified), None);
+        initial.save(root, &verified);
+        assert!(!built.with_extension("tmp").exists());
+
+        let loaded = BuiltStamp::load(root);
+        assert_eq!(
+            unix_millis(loaded.checked_at.unwrap()),
+            unix_millis(build_time)
+        );
+        assert_eq!(
+            loaded.hashes.get(&fx.source()).map(String::as_str),
+            Some(source_digest(&fx.source()).unwrap().as_str())
+        );
+        assert!(loaded.trusts(&fx.lib(), modified(&fx.lib()).unwrap()));
+        // 記録のおかげで、更新時刻だけが進んだソースは古くない
+        fx.set_time(&fx.source(), 100);
+        assert_eq!(fx.check(&sources, &loaded), None);
+
+        // build.sh が `touch .built` で時刻を更新したら、古いダイジェストは使わない
+        set_built_time(SystemTime::now());
+        let after_touch = BuiltStamp::load(root);
+        assert!(after_touch.hashes.is_empty());
+        assert!(fx.check(&sources, &after_touch).is_some());
+
+        // 1 行目（時刻）の無い `.built` のダイジェストは使わない
+        let digest = source_digest(&fx.source()).unwrap();
+        std::fs::write(&built, format!("{digest}\tsrc/lib.rs\n")).unwrap();
+        assert!(BuiltStamp::load(root).hashes.is_empty());
+    }
+
+    /// 同じソースを 2 回読んで中身が違ったら（検査の途中で書き換えられた）、`.built` に書かない
+    #[test]
+    fn conflicting_digests_are_not_saved() {
+        let fx = Fixture::new();
+        let root = fx.dir.path();
+        let frameworks = root.join(FRAMEWORKS_DIR);
+        std::fs::create_dir_all(&frameworks).unwrap();
+        let built = frameworks.join(BUILT_MARK);
+        std::fs::write(&built, "").unwrap();
+        let mut verified = Verified::default();
+        verified.add_hash(&fx.source(), "a".to_owned());
+        verified.add_hash(&fx.source(), "b".to_owned());
+        assert!(verified.conflicted);
+        BuiltStamp::load(root).save(root, &verified);
+        assert_eq!(std::fs::read_to_string(&built).unwrap(), "");
     }
 
     #[test]
