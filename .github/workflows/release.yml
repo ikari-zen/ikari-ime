@@ -14,7 +14,7 @@
 #   - cargo build --locked。ツールチェーンは rust-toolchain.toml の版。ビルド機のパスは --remap-path-prefix で成果物に残さない。
 #
 # 試しのビルド（workflow_dispatch）: タグを打たずに、ビルドの job だけを流す（辞書、Windows、macOS の 2 版。証明と下書きの Release は作らない）。
-#   Windows は 0.x のタグでは流さない（配るのは macOS だけ。1.0.0 から。verify-tag の include_windows）が、試しのビルドでは流す。
+#   Windows は 0.1.x のタグでは流さない（配るのは macOS だけ。0.2.0 から含める。verify-tag の include_windows）が、試しのビルドでは流す。
 #   成果物は artifact（release-windows、release-macos-normal、release-macos-offline、7 日）に残る。Windows のインストーラの版は
 #   DRY_RUN_VERSION（0.0.0）。macOS の dmg の名前の版は Cargo.toml の版（build.sh が決める）。
 #   dispatch はリポジトリに書ける者だけが起こせる。ビルドの job の権限はタグのときと同じ（contents: read）。
@@ -51,7 +51,7 @@ jobs:
       contents: read
     outputs:
       version: ${{ steps.version.outputs.version }}
-      # タグのビルドで Windows を配る物に含めるか（タグの主版が 1 以上のときだけ true）。試しのビルドは false（Windows は流すが配らない）
+      # タグのビルドで Windows を配る物に含めるか（タグの版が 0.2.0 以上のときだけ true）。試しのビルドは false（Windows は流すが配らない）
       include_windows: ${{ steps.version.outputs.include_windows }}
     steps:
       # actions/checkout v7（コミットの SHA で固定）。履歴が要る（main に入っているかを調べる）
@@ -103,10 +103,13 @@ jobs:
               exit 1
             fi
           fi
-          # 0.x の間は macOS だけを配る（#99。Windows は 1.0.0）。未完成の Windows の物を、公開の attestation（永久に残る）と
-          # SHA256SUMS に入れない。1.0.0 向けの切り替え: レーン 5（#584）が済んだら、ここの条件（主版 >= 1）で Windows が入る
+          # 0.1.x は macOS だけを配り、Windows は 0.2.0 から（#99。2026-11-25）。未完成の Windows の物を、公開の attestation
+          # （永久に残る）と SHA256SUMS に入れない。0.2.0 のタグの前に、同梱（#584）と Windows の成果物（#585）を済ませる
           include_windows=false
-          if [ "$EVENT" = "push" ] && [ "${version%%.*}" -ge 1 ]; then
+          major="${version%%.*}"
+          rest="${version#*.}"
+          minor="${rest%%.*}"
+          if [ "$EVENT" = "push" ] && { [ "$major" -ge 1 ] || [ "$minor" -ge 2 ]; }; then
             include_windows=true
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -224,7 +227,7 @@ jobs:
   # （から開発用のビルドとキャッシュを除いたもの）と windows/installer/README.md
   build-windows:
     needs: [verify-tag, source-checks]
-    # タグ（v0.x）のときは流さない（macOS だけを配る。上の include_windows）。試しのビルドでは流す
+    # タグ（v0.1.x）のときは流さない（macOS だけを配る。上の include_windows）。試しのビルドでは流す
     if: github.event_name != 'push' || needs.verify-tag.outputs.include_windows == 'true'
     runs-on: windows-latest
     timeout-minutes: 120
@@ -537,7 +540,7 @@ jobs:
           retention-days: 7
 
   # SHA256SUMS を作り、成果物の証明（attestation）を付ける。権限が要るのはこの job だけ（id-token、attestations）。
-  # 対象は macOS の 2 版。Windows は、タグの主版が 1 以上のときだけ（verify-tag の include_windows。0.x の間は流さず含めない）。
+  # 対象は macOS の 2 版。Windows は、タグの版が 0.2.0 以上のときだけ（verify-tag の include_windows。0.1.x では流さず含めない）。
   # build-windows がスキップされても動けるよう !failure() を使い、必要な build の成功は条件で明示する
   provenance:
     needs: [verify-tag, build-windows, build-macos]
@@ -563,7 +566,7 @@ jobs:
         with:
           name: release-macos-offline
           path: dist
-      # Windows は 1.0 以降のタグだけ（レーン 5、#584 のあと。Windows の通常版・オフライン版が揃ってから）
+      # Windows は 0.2.0 以降のタグだけ（レーン 5、#584 のあと。Windows の通常版・オフライン版が揃ってから）
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         if: needs.verify-tag.outputs.include_windows == 'true'
         with:
