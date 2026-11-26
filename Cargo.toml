@@ -25,7 +25,7 @@ fst = "0.4.7"
 memmap2 = "0.9"
 clap = { version = "4.6", features = ["derive"] }
 tempfile = "3"
-jiff = "0.2"
+jiff = "1.0"
 # gzip（既定の miniz_oxide。純 Rust）。engine.log の回した世代に使う（ADR 0034 §3.2）
 flate2 = "1"
 # webwords classify（行ごとの正規表現、規則表の正規表現。ADR 0055）
