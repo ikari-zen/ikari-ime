@@ -6,6 +6,9 @@
 //!   （`Hide{0}` は世代を問わないが、持ち主の接続からのときだけ効く）
 //! - 持ち主の接続が切れたら隠す
 //! - 知らない欄と知らない命令は黙って無視し、窓の状態を変えない（版の違い。ADR 0063）
+//! - 同じ送り手の送り口（`Hello` の `pid` と `link_id`）から、新しい接続が来たら、古い接続の命令は捨てる
+//!   （持ち主なら隠す）。読み手が止まって切れた古い接続の溜まりが、あとで届いて、新しい接続の窓を上書きしたり
+//!   隠したりしないため（#495）
 //! - 壊れた命令（proto として読めない）を送った接続は、その後の命令をすべて捨てる（切ったのと同じに扱う。
 //!   持ち主なら隠す）。片道なので返事はしない
 //! - 受けたものは `limits` で描ける形にしてから使う（ADR 0068 §5）
@@ -51,6 +54,10 @@ struct Conn {
     last_seq: u64,
     /// 壊れた命令を送った（これからの命令を捨てる）
     poisoned: bool,
+    /// `Hello` の `pid` と `link_id`（`link_id` が 0、まだ `Hello` が来ていないときは `None`）
+    link: Option<(u32, u64)>,
+    /// 同じ送り口の新しい接続が来た（これからの命令を捨てる）
+    superseded: bool,
 }
 
 /// 見えている窓の中身。
@@ -105,7 +112,7 @@ impl CandidateState {
     /// 1 つの枠の本体（`CandidateCommand`）を受けた。
     pub fn received(&mut self, conn: ConnId, bytes: &[u8]) -> Outcome {
         let state = self.conns.entry(conn).or_default();
-        if state.poisoned {
+        if state.poisoned || state.superseded {
             return Outcome::default();
         }
         let Ok(command) = CandidateCommand::decode(bytes) else {
@@ -123,20 +130,59 @@ impl CandidateState {
         state.last_seq = command.seq;
         match command.op {
             Some(candidate_command::Op::Hello(hello)) => {
-                if hello.schema_version != CANDIDATE_SCHEMA_VERSION {
+                let mut out = if hello.schema_version != CANDIDATE_SCHEMA_VERSION {
                     Outcome::note(Note::SchemaMismatch {
                         conn,
                         theirs: hello.schema_version,
                     })
                 } else {
                     Outcome::default()
+                };
+                if hello.link_id != 0 {
+                    let hidden = self.supersede_older(conn, (hello.pid, hello.link_id));
+                    if hidden.render.is_some() {
+                        out.render = hidden.render;
+                    }
                 }
+                out
             }
             Some(candidate_command::Op::Show(show)) => self.show(conn, show),
             Some(candidate_command::Op::Update(update)) => self.update(conn, update),
             Some(candidate_command::Op::Hide(hide)) => self.hide(conn, hide),
             None => Outcome::note(Note::UnknownOp { conn }),
         }
+    }
+
+    /// `conn` が `link` の送り口の接続だと分かった。同じ送り口の、より古い接続（番号が小さい）の命令は捨て、
+    /// 持ち主なら隠す。`conn` より新しい接続がすでにあれば、`conn` 自身が古い側になる。
+    fn supersede_older(&mut self, conn: ConnId, link: (u32, u64)) -> Outcome {
+        if let Some(state) = self.conns.get_mut(&conn) {
+            state.link = Some(link);
+        }
+        let newest = self
+            .conns
+            .iter()
+            .filter(|(_, c)| c.link == Some(link))
+            .map(|(id, _)| *id)
+            .max()
+            .unwrap_or(conn);
+        let older: Vec<ConnId> = self
+            .conns
+            .iter()
+            .filter(|(id, c)| c.link == Some(link) && **id < newest && !c.superseded)
+            .map(|(id, _)| *id)
+            .collect();
+        let mut out = Outcome::default();
+        for id in older {
+            if let Some(state) = self.conns.get_mut(&id) {
+                state.superseded = true;
+            }
+            let hidden = self.drop_owner(id);
+            if hidden.render.is_some() {
+                out = hidden;
+            }
+        }
+        out
     }
 
     fn show(&mut self, conn: ConnId, show: Show) -> Outcome {
@@ -444,6 +490,7 @@ mod tests {
         let hello = candidate_command::Op::Hello(Hello {
             schema_version: CANDIDATE_SCHEMA_VERSION + 1,
             pid: 42,
+            link_id: 0,
         });
         let out = s.received(A, &bytes(3, hello));
         assert_eq!(
@@ -490,5 +537,87 @@ mod tests {
         let r = s.received(A, &bytes(1, op)).render.unwrap();
         assert_eq!(r.side, PanelSide::Below as i32);
         assert_eq!(r.display_order, vec![0, 1, 2]);
+    }
+
+    fn hello(link_id: u64) -> candidate_command::Op {
+        candidate_command::Op::Hello(Hello {
+            schema_version: CANDIDATE_SCHEMA_VERSION,
+            pid: 42,
+            link_id,
+        })
+    }
+
+    /// #495: 読み手が止まって切れた古い接続（A）の溜まりが、新しい接続（B）の Show のあとに届いても、
+    /// 窓を上書きしたり、A が切れたときに隠したりしない。
+    #[test]
+    fn stale_backlog_of_a_replaced_connection_does_not_override_or_hide_the_new_window() {
+        let mut s = setup();
+        s.received(A, &bytes(1, hello(7)));
+        s.received(A, &bytes(2, show(1, PanelSide::Below)));
+        // つなぎ直した新しい接続が先に処理される
+        s.received(B, &bytes(1, hello(7)));
+        let out = s.received(B, &bytes(2, show(1, PanelSide::Above)));
+        assert_eq!(visible(&out), Some(true));
+        // A の溜まりがあとで届く（捨てる）
+        let out = s.received(A, &bytes(3, show(2, PanelSide::Below)));
+        assert_eq!(out, Outcome::default());
+        let out = s.received(A, &bytes(4, update(2, 1)));
+        assert_eq!(out, Outcome::default());
+        // A が切れても、B の窓は残る
+        assert!(s.disconnected(A).render.is_none());
+        let r = s.render_state();
+        assert!(r.visible);
+        assert_eq!(r.side, PanelSide::Above as i32);
+    }
+
+    /// 古い接続の命令が先に届いて窓を出していても、新しい接続の Hello で隠れ、新しい Show が出す。
+    #[test]
+    fn a_newer_hello_hides_the_older_connections_window() {
+        let mut s = setup();
+        s.received(A, &bytes(1, hello(7)));
+        s.received(A, &bytes(2, show(1, PanelSide::Below)));
+        let out = s.received(B, &bytes(1, hello(7)));
+        assert_eq!(visible(&out), Some(false));
+        let out = s.received(B, &bytes(2, show(1, PanelSide::Below)));
+        assert_eq!(visible(&out), Some(true));
+    }
+
+    /// 新しい接続の Hello が先に届いたあとで、古い接続の Hello が届いても、古い側が捨てられる。
+    #[test]
+    fn an_older_hello_arriving_late_is_the_one_discarded() {
+        let mut s = setup();
+        s.received(B, &bytes(1, hello(7)));
+        s.received(A, &bytes(1, hello(7)));
+        assert_eq!(
+            s.received(A, &bytes(2, show(1, PanelSide::Below))),
+            Outcome::default()
+        );
+        assert_eq!(
+            visible(&s.received(B, &bytes(2, show(1, PanelSide::Below)))),
+            Some(true)
+        );
+    }
+
+    /// 別の送り口（同じアプリの別のスレッド、別のアプリ）や、番号なしの送り手は、互いに捨てない。
+    #[test]
+    fn different_links_and_unnumbered_senders_do_not_supersede_each_other() {
+        let mut s = setup();
+        s.received(A, &bytes(1, hello(7)));
+        s.received(B, &bytes(1, hello(8)));
+        assert_eq!(
+            visible(&s.received(A, &bytes(2, show(1, PanelSide::Below)))),
+            Some(true)
+        );
+        assert_eq!(
+            visible(&s.received(B, &bytes(2, show(1, PanelSide::Below)))),
+            Some(true)
+        );
+        let mut s = setup();
+        s.received(A, &bytes(1, hello(0)));
+        s.received(B, &bytes(1, hello(0)));
+        assert_eq!(
+            visible(&s.received(A, &bytes(2, show(1, PanelSide::Below)))),
+            Some(true)
+        );
     }
 }

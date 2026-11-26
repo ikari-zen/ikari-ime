@@ -15,6 +15,7 @@
 //!   （キーの処理を、接続の試行 1 回と書きの締め切りより長く止めない。決定 3 の (b)）。
 //! - 相手の確認（S4。ADR 0068 §5）は、接続の手段（`CandidateConnector`。Windows は `com::connector`）が、送る前に行う。
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use ikari_candidate::command::{
@@ -28,6 +29,11 @@ use ikari_shell_core::panel_pb::{panel_to_pb, rect_to_pb, side_to_pb};
 use prost::Message;
 
 use crate::transport::{BACKOFF_INITIAL, BACKOFF_MAX, Backoff};
+
+/// 送り口の番号の最初の値（0 は `Hello` で「付けていない」の意味なので使わない）
+const FIRST_LINK_ID: u64 = 1;
+/// 次の送り口の番号（プロセスの中で一意。受け手は pid と合わせて同じ送り口を見分ける）
+static NEXT_LINK_ID: AtomicU64 = AtomicU64::new(FIRST_LINK_ID);
 
 /// COM の層が取った、画面の上の位置の材料（すべて物理の画面座標。左上が原点、y は下向き）。
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -152,6 +158,8 @@ pub struct CandidateSender<P: CandidatePost> {
     post: P,
     /// 送り手（このアプリ）のプロセスの番号。`Hello` に入れる（ログ用）
     pid: u32,
+    /// 送り口の番号（つなぎ直しても同じ。`Hello` に入れる。受け手が、古い接続の溜まりを捨てるため。#495）
+    link_id: u64,
     hello_sent: bool,
     last_seq: u64,
     /// この接続で最後に送った `Show` の世代（0 はまだ送っていない）
@@ -159,14 +167,15 @@ pub struct CandidateSender<P: CandidatePost> {
 }
 
 impl<P: CandidatePost> CandidateSender<P> {
-    pub fn new(post: P) -> Self {
-        Self::with_pid(post, std::process::id())
+    pub fn new(post: P, link_id: u64) -> Self {
+        Self::with_pid(post, std::process::id(), link_id)
     }
 
-    pub fn with_pid(post: P, pid: u32) -> Self {
+    pub fn with_pid(post: P, pid: u32, link_id: u64) -> Self {
         Self {
             post,
             pid,
+            link_id,
             hello_sent: false,
             last_seq: 0,
             generation: 0,
@@ -192,6 +201,7 @@ impl<P: CandidatePost> CandidateSender<P> {
                 op: Some(candidate_command::Op::Hello(Hello {
                     schema_version: CANDIDATE_SCHEMA_VERSION,
                     pid: self.pid,
+                    link_id: self.link_id,
                 })),
             })?;
             self.hello_sent = true;
@@ -221,6 +231,8 @@ pub struct CandidateLink<C: CandidateConnector> {
     connector: C,
     sender: Option<CandidateSender<C::Post>>,
     backoff: Backoff,
+    /// この送り口の番号（プロセスの中で一意。0 は使わない。つなぎ直しても変えない）
+    link_id: u64,
 }
 
 impl<C: CandidateConnector> CandidateLink<C> {
@@ -229,6 +241,7 @@ impl<C: CandidateConnector> CandidateLink<C> {
             connector,
             sender: None,
             backoff: Backoff::new(BACKOFF_INITIAL, BACKOFF_MAX),
+            link_id: NEXT_LINK_ID.fetch_add(1, Ordering::Relaxed),
         }
     }
 
@@ -258,7 +271,7 @@ impl<C: CandidateConnector> CandidateLink<C> {
             match self.connector.open() {
                 Some(post) => {
                     self.backoff.succeeded();
-                    self.sender = Some(CandidateSender::new(post));
+                    self.sender = Some(CandidateSender::new(post, self.link_id));
                 }
                 None => {
                     self.backoff.failed(now);
@@ -419,7 +432,7 @@ mod tests {
     #[test]
     fn sender_sends_hello_first_and_stamps_seq_and_generation() {
         let rec = Recorder::default();
-        let mut sender = CandidateSender::with_pid(rec.clone(), 42);
+        let mut sender = CandidateSender::with_pid(rec.clone(), 42, 9);
         let g = geometry(100.0, 1.0);
         for plan in [
             plan_hide(),
@@ -438,6 +451,7 @@ mod tests {
             .map(|c| match c.op.as_ref().unwrap() {
                 candidate_command::Op::Hello(h) => {
                     assert_eq!(h.pid, 42);
+                    assert_eq!(h.link_id, 9);
                     assert_eq!(h.schema_version, CANDIDATE_SCHEMA_VERSION);
                     ("hello", 0)
                 }
@@ -495,6 +509,8 @@ mod tests {
         link.send(&show, t0).unwrap();
         assert_eq!(connector.opened.get(), 1);
         assert!(link.is_connected());
+        let first_link_id = hello_link_id(&connector);
+        assert_ne!(first_link_id, 0);
 
         // 書きが失敗した: 接続を捨てる。すぐには試さない
         connector.current.borrow().as_ref().unwrap().fail.set(true);
@@ -517,6 +533,20 @@ mod tests {
             .clone();
         assert!(matches!(sent[0].op, Some(candidate_command::Op::Hello(_))));
         assert_eq!(sent[0].seq, 1);
+        // つなぎ直しても、送り口の番号は同じ（受け手が古い接続を捨てる手がかり。#495）
+        assert_eq!(hello_link_id(&connector), first_link_id);
+        // 別の送り口は別の番号
+        let other = CandidateLink::new(&connector);
+        assert_ne!(other.link_id, link.link_id);
+    }
+
+    fn hello_link_id(connector: &FakeConnector) -> u64 {
+        let current = connector.current.borrow();
+        let sent = current.as_ref().unwrap().sent.borrow();
+        match sent[0].op.as_ref().unwrap() {
+            candidate_command::Op::Hello(h) => h.link_id,
+            _ => panic!("first command is not a hello"),
+        }
     }
 
     #[test]

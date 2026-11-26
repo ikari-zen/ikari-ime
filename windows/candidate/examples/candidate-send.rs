@@ -219,6 +219,7 @@ mod windows_main {
             candidate_command::Op::Hello(Hello {
                 schema_version: CANDIDATE_SCHEMA_VERSION,
                 pid: std::process::id(),
+                link_id: 0,
             }),
         )?;
         let mode = args.get(5).map(String::as_str);
