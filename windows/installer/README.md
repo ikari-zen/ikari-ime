@@ -1,8 +1,8 @@
 # Windows のインストーラ（骨組み）
 
 Inno Setup のスクリプト（`ikari.iss`）と、インストーラが管理者で呼ぶ道具（`helper/`、Rust の `ikari-setup-helper`）。
-設計は [security-design.md](../../docs/security-design.md) §8.4、[ADR 0067](../../docs/adr/0067-windows-install-layout-and-launch-chain.md) §3・§4、[ADR 0068](../../docs/adr/0068-ipc-endpoints.md) §6.2、[ADR 0070](../../docs/adr/0070-update-and-vulnerability-response.md) §4、[ADR 0063](../../docs/adr/0063-windows-tip-dll-update.md)、[ADR 0073](../../docs/adr/0073-secret-input-and-user-data.md) §4。
-実機の確認は [windows-real-device-check.md](../../docs/windows-real-device-check.md) の項目 47〜55、75〜78。項目 75〜78 は 2026-11-23 に VM で流した（結果は文書の項目に書いてある。項目 76 に不具合が 1 件ある）。
+設計は [security-design.md](../../docs/security-design.md) §8.4、[ADR 0067](../../docs/adr/0067-windows-install-layout-and-launch-chain.md) §3・§4、[ADR 0068](../../docs/adr/0068-ipc-endpoints.md) §6.2、[ADR 0070](../../docs/adr/0070-update-and-vulnerability-response.md) §4、[ADR 0063](../../docs/adr/0063-windows-tip-dll-update.md)、[ADR 0073](../../docs/adr/0073-secret-input-and-user-data.md) §4、[ADR 0080](../../docs/adr/0080-bundle-model-and-dictionary.md) §6・§7.3。
+実機の確認は [windows-real-device-check.md](../../docs/windows-real-device-check.md) の項目 47〜55、75〜82。項目 75〜81 は 2026-11-23、項目 82 は 2026-11-24 に VM で流した（結果は文書の項目に書いてある）。
 
 ## 作り方（Windows で）
 
@@ -10,8 +10,8 @@ Inno Setup のスクリプト（`ikari.iss`）と、インストーラが管理�
 
 配る物は、タグからリリースの workflow（[release.yml](../../.github/workflows/release.yml) の `build-windows`）が作る。手順はそれと同じ:
 
-1. 製品のビルド（`dev-knobs` なし）を作る。エンジン（`hide-console`）、TIP、候補窓と設定画面の核、helper（`cargo build --release -p ikari-setup-helper`）、取得の子（`-p ikari-data`。別の cargo の呼び出しで）と、LM の子（`-p ikari-lm --bin ikari-lm-host --features vulkan`）。
-2. 配置の形（ADR 0067 §3.1）に並べたフォルダ（以下 `<stage>`）を作る:
+1. 製品のビルド（`dev-knobs` なし）を作る。エンジン（`hide-console`）、TIP、候補窓と設定画面の核（通常版は `ikari-settings-core/online`、オフライン版は `online` なし。ADR 0080 §7.1）、helper（`cargo build --release -p ikari-setup-helper`）、通常版は取得の子（`-p ikari-data`。別の cargo の呼び出しで）と、LM の子（`-p ikari-lm --bin ikari-lm-host --features vulkan`）。
+2. 配置の形（ADR 0067 §3.1、ADR 0080 §3.1・§4・§6）に並べたフォルダ（以下 `<stage>`）を作る:
 
    ```
    <stage>\ikari-engine-host.exe
@@ -20,7 +20,10 @@ Inno Setup のスクリプト（`ikari.iss`）と、インストーラが管理�
    <stage>\settings\…（設定画面。dotnet publish の自己完結）
    <stage>\tip\ikari_tip.dll、tip\resources\keymap\*.tsv
    <stage>\ikari-setup-helper.exe
-   <stage>\ikari-data.exe（取得の子。送信ブロックの規則はかけない）
+   <stage>\ikari-data.exe（取得の子。通常版だけ。送信ブロックの規則はかけない）
+   <stage>\data\dict\grammar.bin、system.dict、vectors.bin（必須）、emoji.tsv、postal.tsv、BUILD_INFO（あれば）
+   <stage>\data\models\zenz-v3.2-small-Q5_K_M.gguf
+   <stage>\data\NOTICE.txt、data\licenses\…（元は docs\dist-notices\）
    <stage>\LICENSE、NOTICE、THIRD_PARTY_NOTICES.md、THIRD_PARTY_LICENSES_RUST.md（元は THIRD_PARTY_LICENSES_RUST_WINDOWS.md。cargo xtask licenses が作る）
    ```
 
@@ -29,11 +32,12 @@ Inno Setup のスクリプト（`ikari.iss`）と、インストーラが管理�
 
    ```powershell
    $sha = (Get-FileHash <stage>\tip\ikari_tip.dll -Algorithm SHA256).Hash
-   ISCC /DAppVersion=0.1.0 /DStageDir=<stage> /DTipSha256=$sha windows\installer\ikari.iss
+   ISCC /DAppVersion=0.1.0 /DStageDir=<stage> /DTipSha256=$sha [/DEdition=normal|offline] windows\installer\ikari.iss
    ```
 
+   版は `/DEdition=normal`（既定）か `/DEdition=offline`（ADR 0080 §7.3）。`offline` は `ikari-data.exe` を入れず（通常版の上に入れたときに残る `ikari-data.exe` は、置く前の準備で消し、消せなければ失敗にする）、出力の名前に `-offline` が付く（`ikari-ime-<版>-windows-x64-setup-offline.exe`）。同梱のデータ（`data\`）は両方の版で同じ物を入れる。
    セキュリティの修正を含む版は `/DSecurityUpdate=1` を足す（最後の案内が変わる。ADR 0070 §4 の 1。リリースの workflow には、まだ渡す口が無い）。
-   出力は `windows\installer\out\ikari-ime-<版>-windows-x64-setup.exe`（workflow は `/O` で別の場所に出す）。
+   出力は `windows\installer\out\ikari-ime-<版>-windows-x64-setup.exe`（オフライン版は `-setup-offline.exe`。workflow は `/O` で別の場所に出す）。
 
 タグを打たずに試すときは、リリースの workflow を `workflow_dispatch` で流す（Windows のビルドだけ。証明と Release は作らない。版は 0.0.0）。
 
@@ -41,12 +45,12 @@ Inno Setup のスクリプト（`ikari.iss`）と、インストーラが管理�
 
 インストール: 管理者か確かめる → インストール先が `C:\Program Files\ikari-ime` か確かめる → 作業用のフォルダ
 （`C:\Program Files\ikari-ime.setup`。毎回作り直す）に helper を置く → 既にあるインストール先の検査 →
-動いているエンジンを止める（すべてのセッション）→ ファイルを置く（TIP は `tip\<版>\`）→ 最後の検査 →
+動いているエンジンを止める（すべてのセッション）→ ファイルを置く（同梱のデータ `data\` を含む。TIP は `tip\<版>\`、通常版は `ikari-data.exe` も）→ 最後の検査 →
 `regsvr32` で登録 → ファイアウォールの送信ブロックの規則 → HKLM の Run → エラー報告の除外 → 古い版の `tip\` を消す。
 
-削除: Run → 規則 → エラー報告の除外を戻す → 登録の解除 → エンジンを止める → ファイル（使用中は再起動で）。
+削除: Run → 規則 → エラー報告の除外を戻す → 登録の解除 → エンジンを止める → ファイル（`data\` もインストール先の一部として消える。使用中は再起動で）。
 LM の子と取得の子（`ikari-data transfer`）の檻（AppContainer）のプロファイルは利用者ごとにあり、helper の `cage-profile-delete` で消せるのは、削除を動かした利用者の分だけ（ほかの利用者の分は、空のプロファイルとして残る。ADR 0072 §12.8 の 3、ADR 0078 §3.2 の 1）。
-利用者のデータ（各利用者の `%LOCALAPPDATA%\ikari-ime`）には触れない。
+利用者のデータ（各利用者の `%LOCALAPPDATA%\ikari-ime`。取り込んだ辞書やモデルを含む）には触れない。
 
 インストーラは、利用者ごとのもの（HKCU、利用者のフォルダ、入力方式の一覧）に触れない。入力方式の追加は、最後の画面で案内する。
 
@@ -57,6 +61,8 @@ LM の子と取得の子（`ikari-data transfer`）の檻（AppContainer）の�
 - Inno の一時の場所（利用者の TEMP の下）に、ikari のファイルを展開しない（`ExtractTemporaryFile`、`{tmp}` を使わない）。道具は Program Files の下の作業用のフォルダに、`[Files]` で直接置く。
 - 外のプログラムの起動は `RunTrusted` の 1 か所だけ。相手は system32 の道具（`regsvr32`、`netsh`）と helper だけで、絶対パス。
 - `[Files]` の `regserver`、`restartreplace` の印を使わない。インストール先の項目は、検査の Check を通る。
+- 同梱のデータ（`data\dict\`、`data\models\`、`data\NOTICE.txt`、`data\licenses\`）と `THIRD_PARTY_NOTICES.md` の項目が、`xtask` と `ikari-resource` の表と過不足なく一致する（ADR 0080 §6、§11）。
+- `/DEdition=normal|offline` の分岐で、`ikari-data.exe` が `normal` の中にだけあり（`[Code]` に書けるのは、`offline` が残った取得の子を消す `RemoveDataChild` だけ）、出力名に `{#EditionSuffix}`（`-offline`）が付く（ADR 0080 §7.3、§7.4）。
 - 使用中のファイルを持つアプリを閉じさせない（`CloseApplications=no`）。ログを出さない（利用者の TEMP に書かれるため）。
 
 ## 統合のときの作業（済）

@@ -305,6 +305,21 @@ mod tests {
     }
 
     #[test]
+    fn bundled_data_in_the_stage_passes() {
+        let dir = good_stage();
+        for relative in [
+            "data/dict/system.dict",
+            "data/dict/BUILD_INFO",
+            "data/models/model.gguf",
+            "data/NOTICE.txt",
+            "data/licenses/APACHE-2.0.txt",
+        ] {
+            write(dir.path(), relative, b"data");
+        }
+        assert_eq!(problems(dir.path()), Vec::<String>::new());
+    }
+
+    #[test]
     fn a_missing_stage_is_an_error() {
         let dir = tempfile::tempdir().unwrap();
         assert!(check_stage(&dir.path().join("none")).is_err());
