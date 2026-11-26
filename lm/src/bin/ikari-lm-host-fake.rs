@@ -144,10 +144,6 @@ impl LmScorer for FakeScorer {
                 }
                 thread::sleep(Duration::from_millis(ms / steps));
             }
-            if cancel.is_cancelled() {
-                self.record_inference(INFERENCE_CANCELLED);
-                return Err(LmError::Cancelled);
-            }
         }
         if self.script.is("fail_infer", "1") {
             return Err(LmError::Inference("fake failure".to_owned()));

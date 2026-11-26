@@ -288,7 +288,9 @@ fn run_stale_inference_check(trace_dir: &Path) {
         if !warming && !busy && h.top() == BOOSTED {
             let started = HostEngine::inference_count(trace_dir, INFERENCE_STARTED);
             let completed = HostEngine::inference_count(trace_dir, INFERENCE_COMPLETED);
-            if !h.e().inner.warming.load(Ordering::Acquire) && started == completed {
+            let cancelled = HostEngine::inference_count(trace_dir, INFERENCE_CANCELLED);
+            // 取り消した推論は completed に数えないので、終わった数は completed + cancelled
+            if !h.e().inner.warming.load(Ordering::Acquire) && started == completed + cancelled {
                 break;
             }
         }
@@ -307,8 +309,8 @@ fn run_stale_inference_check(trace_dir: &Path) {
     let baseline_cancelled = HostEngine::inference_count(trace_dir, INFERENCE_CANCELLED);
     assert_eq!(
         baseline_started,
-        baseline_completed,
-        "warm-up left an in-flight inference: started={baseline_started} completed={baseline_completed}\nlog:\n{}",
+        baseline_completed + baseline_cancelled,
+        "warm-up left an in-flight inference: started={baseline_started} completed={baseline_completed} cancelled={baseline_cancelled}\nlog:\n{}",
         h.log(),
     );
 
