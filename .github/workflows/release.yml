@@ -20,12 +20,11 @@
 #   dispatch はリポジトリに書ける者だけが起こせる。ビルドの job の権限はタグのときと同じ（contents: read）。
 #
 # 同梱のデータ（ADR 0080 §9）: build-dict の job が、元データとモデルを固定の sha256 で照らして取り（cargo xtask data fetch）、
-#   辞書を作り（cargo xtask dict）、1 つの成果物（bundle-data）にする。macOS の job は、それを受けて同梱する（版の間で同じバイト列）。
+#   辞書を作り（cargo xtask dict）、1 つの成果物（bundle-data）にする。macOS と Windows の job は、それを受けて同梱する（版と OS の間で同じバイト列）。
 #   元データの取得先が落ちていると、版を出せない（ADR 0080 §9 の 3）。ABR だけは、配信元が GitHub のランナーに 403 を返すので、リポジトリの Release の写しから取る。
 #
 # 未完了（この workflow の中身が、まだ仮の部分）:
-#   - Windows の通常版・オフライン版のインストーラへの同梱のデータ（ADR 0080 §6・§7.3。レーン 5、#584 のあと）。今の Windows の
-#     インストーラは、通常版だけで、辞書とモデルを入れていない。
+#   - Windows のオフライン版の成果物（ADR 0080 §7.3。#585）。今の Windows のインストーラは、通常版（辞書とモデルを同梱）だけ。
 #   - Windows の VC++ の再頒布パッケージ（LM の子が使う。ADR 0067 §4.5 の (a)）は、まだ同梱しない（インストーラの側が未実装）。
 #   - 版の付け方: Windows のインストーラの版は数字だけ（VersionInfoVersion と tip\<版>\）。プレリリースのタグ（v1.2.3-rc.1）は、
 #     付け方が決まるまで verify-tag で止める。セキュリティの修正の印（ikari.iss の SecurityUpdate）は、まだ渡す口が無い。
@@ -226,7 +225,7 @@ jobs:
   # 配置の形（ADR 0067 §3.1）のフォルダを作り、検査して、Inno Setup でインストーラにする。手順の元は ci.yml の windows-artifact
   # （から開発用のビルドとキャッシュを除いたもの）と windows/installer/README.md
   build-windows:
-    needs: [verify-tag, source-checks]
+    needs: [verify-tag, source-checks, build-dict]
     # タグ（v0.1.x）のときは流さない（macOS だけを配る。上の include_windows）。試しのビルドでは流す
     if: github.event_name != 'push' || needs.verify-tag.outputs.include_windows == 'true'
     runs-on: windows-latest
@@ -259,6 +258,23 @@ jobs:
         run: |
           rustc --version
           cargo --version
+      # 同梱のデータ（build-dict の成果物。macOS と同じ物）。照らし方は build-macos と同じ。vcvars64 が PATH を
+      # 書き出す前に行う（bash の find と sort に、Windows の同じ名前の道具が当たらないように）
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: bundle-data
+          path: ${{ runner.temp }}/bundle
+      - name: 同梱のデータを一覧で照らす
+        shell: bash
+        working-directory: ${{ runner.temp }}/bundle/data
+        run: |
+          set -euo pipefail
+          others="$(find . ! -type d ! -type f)"
+          test -z "$others" || { printf 'not a regular file:\n%s\n' "$others" >&2; exit 1; }
+          listed="$(sed 's/^[0-9a-f]\{64\} [ *]//' ../data.sha256 | LC_ALL=C sort)"
+          present="$(find . -type f | LC_ALL=C sort)"
+          test "$listed" = "$present" || { printf 'files differ from data.sha256:\n%s\n---\n%s\n' "$listed" "$present" >&2; exit 1; }
+          sha256sum -c --strict ../data.sha256
       # RUSTFLAGS を設定すると .cargo/config.toml の rustflags（crt-static）は無視されるので、ここにも同じ指定を足す（xtask check が両方を見る）。
       # target は workspace の外（CARGO_TARGET_DIR）なので、それも外す
       - name: ビルド機のパスを成果物に残さない設定
@@ -383,6 +399,15 @@ jobs:
             Pop-Location
             if ($code -ne 0) { exit $code }
           }
+          # 同梱のデータ（ADR 0080 §3.1・§6）。辞書は bundle-data の build\dict、モデルは raw\zenz、表示は docs\dist-notices
+          # （macos/scripts/lib-data.sh と同じ元）。入れるファイルの名前と必須かどうかは ikari.iss の [Files] が決める
+          # （xtask が表と照らす。必須が欠けると ISCC が止まる）。通常版だけを作る（オフライン版の成果物は #585）
+          $bundle = Join-Path $env:RUNNER_TEMP 'bundle\data'
+          New-Item -ItemType Directory -Force "$stage\data\dict", "$stage\data\models" | Out-Null
+          Copy-Item "$bundle\build\dict\*" "$stage\data\dict"
+          Copy-Item "$bundle\raw\zenz\*.gguf" "$stage\data\models"
+          Copy-Item docs\dist-notices\NOTICE.txt "$stage\data"
+          Copy-Item docs\dist-notices\licenses "$stage\data\licenses" -Recurse
           Copy-Item LICENSE, NOTICE, THIRD_PARTY_NOTICES.md $stage
           # Windows の依存の一覧（cargo xtask licenses が作る）は、配置では THIRD_PARTY_LICENSES_RUST.md の名前で置く
           Copy-Item THIRD_PARTY_LICENSES_RUST_WINDOWS.md (Join-Path $stage 'THIRD_PARTY_LICENSES_RUST.md')
