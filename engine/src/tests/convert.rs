@@ -16,9 +16,10 @@ fn prefetch_then_convert_hits_the_cache() {
         "the LM result computed ahead is used"
     );
     assert!(r.lm_applied);
+    let limit_micros = ikari_testtime::ms(5).as_micros() as u32;
     assert!(
-        r.engine_micros < 5_000,
-        "engine_micros={} expected=< 5000 {}={}",
+        r.engine_micros < limit_micros,
+        "engine_micros={} expected=< {limit_micros} {}={}",
         r.engine_micros,
         ikari_testtime::TIME_SCALE_ENV,
         ikari_testtime::scale()
@@ -49,14 +50,19 @@ fn different_context_rev_misses_the_cache() {
 #[test]
 fn convert_waits_for_a_running_prefetch_until_the_budget() {
     // 15ms で終わる計算は、30ms の待ち時間の内に間に合う
-    let (e, _mock) = engine(15);
+    let (e, mock) = engine(15);
     begin(&e, 1, false);
-    prefetch(&e, 1, READING, 0);
+    prefetch_in_flight(&e, &mock, 1, READING, 0);
     let started = Instant::now();
     let r = convert(&e, 1, READING, 0);
-    assert_eq!(surfaces(&r)[0], BOOSTED);
-    assert!(r.lm_applied);
     let waited = started.elapsed();
+    assert_eq!(surfaces(&r)[0], BOOSTED);
+    assert!(
+        r.lm_applied,
+        "report={:?} {}",
+        r.lm_report,
+        ikari_testtime::report(waited, format_args!("< {:?}", test_wait()))
+    );
     let limit = ikari_testtime::ms(200);
     assert!(
         waited < limit,
@@ -68,9 +74,9 @@ fn convert_waits_for_a_running_prefetch_until_the_budget() {
 #[test]
 fn convert_falls_back_without_the_lm_when_the_prefetch_is_too_slow() {
     // 200ms かかる計算は、30ms の待ち時間に間に合わない
-    let (e, _mock) = engine(200);
+    let (e, mock) = engine(200);
     begin(&e, 1, false);
-    prefetch(&e, 1, READING, 0);
+    prefetch_in_flight(&e, &mock, 1, READING, 0);
     let started = Instant::now();
     let r = convert(&e, 1, READING, 0);
     let waited = started.elapsed();
@@ -93,10 +99,12 @@ fn convert_falls_back_without_the_lm_when_the_prefetch_is_too_slow() {
 fn only_the_latest_prefetch_per_session_is_computed() {
     let (e, mock) = engine(30);
     begin(&e, 1, false);
-    for (i, reading) in ["ひ", "ひん", "ひんし"].iter().enumerate() {
-        prefetch(&e, 1, reading, i as u64);
-    }
-    wait_until(|| !lock_mutex(&e.inner.cache).any_computing());
+    mock.hold_while(|| {
+        for (i, reading) in ["ひ", "ひん", "ひんし"].iter().enumerate() {
+            prefetch(&e, 1, reading, i as u64);
+        }
+    });
+    wait_until(|| !lock_mutex(&e.inner.cache).any_computing() && e.inner.queue.pending() == 0);
     // 先頭の依頼はワーカーが取る前に置き換えられるか、取られても 1 件だけ
     assert!(
         mock.calls.load(Ordering::Relaxed) <= 2,
@@ -220,6 +228,15 @@ fn secure_sessions_are_not_prefetched_learned_or_remembered() {
 
 /// ログを `data_dir/logs/engine.log` に書くエンジン
 fn logged_engine(delay_ms: u64, budget: LmBudget, tag: &str) -> (Engine, PathBuf) {
+    let (e, _mock, dir) = logged_engine_with_mock(delay_ms, budget, tag);
+    (e, dir)
+}
+
+fn logged_engine_with_mock(
+    delay_ms: u64,
+    budget: LmBudget,
+    tag: &str,
+) -> (Engine, Arc<MockLm>, PathBuf) {
     let dir = temp_dir(tag);
     let mock = MockLm::new(ikari_testtime::ms(delay_ms));
     let e = Engine::from_parts(EngineParts {
@@ -231,7 +248,7 @@ fn logged_engine(delay_ms: u64, budget: LmBudget, tag: &str) -> (Engine, PathBuf
         convert_wait: test_wait(),
         lock: None,
     });
-    (e, dir)
+    (e, mock, dir)
 }
 
 /// 書き込みのスレッドが書き終えるのを待ってから読む（ログは非同期。ADR 0034 §3.1）
@@ -307,22 +324,42 @@ fn convert_and_commit_lines_share_a_conversion_number() {
 
 #[test]
 fn convert_log_says_wait_hit_and_wait_miss() {
-    let (e, dir) = logged_engine(10, test_budget(), "log-wait-hit");
+    let (e, mock, dir) = logged_engine_with_mock(10, test_budget(), "log-wait-hit");
     begin(&e, 1, false);
-    prefetch(&e, 1, READING, 0);
+    prefetch_in_flight(&e, &mock, 1, READING, 0);
+    let started = Instant::now();
     let r = convert(&e, 1, READING, 0);
-    assert!(r.lm_applied);
+    let waited = started.elapsed();
+    let text = log_text(&e, &dir);
+    assert!(
+        r.lm_applied,
+        "{}\n{text}",
+        ikari_testtime::report(waited, format_args!("< {:?}", test_wait()))
+    );
     let line = last_convert_line(&e, &dir);
-    assert!(line.contains("cache=wait_hit lm_applied=1"), "{line}");
+    assert!(
+        line.contains("cache=wait_hit lm_applied=1"),
+        "{line}\n{text}"
+    );
     let _ = std::fs::remove_dir_all(dir);
 
-    let (e, dir) = logged_engine(200, test_budget(), "log-wait-miss");
+    let (e, mock, dir) = logged_engine_with_mock(200, test_budget(), "log-wait-miss");
     begin(&e, 1, false);
-    prefetch(&e, 1, READING, 0);
+    prefetch_in_flight(&e, &mock, 1, READING, 0);
+    let started = Instant::now();
     let r = convert(&e, 1, READING, 0);
-    assert!(!r.lm_applied);
+    let waited = started.elapsed();
+    let text = log_text(&e, &dir);
+    assert!(
+        !r.lm_applied,
+        "{}\n{text}",
+        ikari_testtime::report(waited, format_args!(">= {:?}", test_wait()))
+    );
     let line = last_convert_line(&e, &dir);
-    assert!(line.contains("cache=wait_miss lm_applied=0"), "{line}");
+    assert!(
+        line.contains("cache=wait_miss lm_applied=0"),
+        "{line}\n{text}"
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -575,24 +612,31 @@ fn convert_waits_up_to_30ms_from_the_space() {
         per_char: Duration::ZERO,
         max: ikari_testtime::ms(300),
     };
-    let (e, dir) = logged_engine(8, budget, "wait-30-hit");
+    let (e, mock, dir) = logged_engine_with_mock(8, budget, "wait-30-hit");
     begin(&e, 1, false);
-    prefetch(&e, 1, READING, 0);
+    prefetch_in_flight(&e, &mock, 1, READING, 0);
+    let started = Instant::now();
     let r = convert(&e, 1, READING, 0);
-    assert!(r.lm_applied, "an 8ms computation fits in 30ms from Space");
+    let waited = started.elapsed();
+    let text = log_text(&e, &dir);
+    assert!(
+        r.lm_applied,
+        "an 8ms computation fits in 30ms from Space: {}\n{text}",
+        ikari_testtime::report(waited, format_args!("< {:?}", test_wait()))
+    );
     assert_eq!(surfaces(&r)[0], BOOSTED);
     let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]
 fn convert_never_waits_more_than_30ms() {
-    let (e, dir) = logged_engine(200, test_budget(), "wait-30-miss");
+    let (e, mock, dir) = logged_engine_with_mock(200, test_budget(), "wait-30-miss");
     begin(&e, 1, false);
-    prefetch(&e, 1, READING, 0);
+    prefetch_in_flight(&e, &mock, 1, READING, 0);
     let started = Instant::now();
     let r = convert(&e, 1, READING, 0);
     let waited = started.elapsed();
-    assert!(!r.lm_applied);
+    assert!(!r.lm_applied, "{}", log_text(&e, &dir));
     assert_eq!(surfaces(&r)[0], BASE_TOP);
     assert!(
         waited >= test_wait(),
@@ -625,7 +669,7 @@ fn convert_uses_the_configured_wait() {
             lock: None,
         });
         begin(&e, 1, false);
-        prefetch(&e, 1, READING, 0);
+        prefetch_in_flight(&e, &mock, 1, READING, 0);
         let r = convert(&e, 1, READING, 0);
         let _ = std::fs::remove_dir_all(dir);
         r.lm_applied

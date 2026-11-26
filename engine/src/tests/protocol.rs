@@ -86,6 +86,16 @@ fn prefetch_retries_warm_up_after_postprocessing_panics() {
         std::thread::sleep(Duration::from_millis(2));
     }
     assert_eq!(mock.warm_ups.load(Ordering::Acquire), 1);
+    // `loaded` は warm_up の中で立つが、暖機のスレッドはそのあとも `is_loaded` とログの後処理を続け、
+    // 終わるまで `warming` を下ろさない。下りる前に次の Prefetch を送ると、`ensure_warm` は
+    // 「暖機中」として何もせず、2 回目の暖機（と panic）が起きないまま待ち続ける（#296。Windows の CI で揺れた）
+    while e.inner.warming.load(Ordering::Acquire) {
+        assert!(
+            Instant::now() < deadline,
+            "initial warm-up thread did not finish within 60 seconds"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
 
     mock.loaded.store(false, Ordering::Release);
     panic_handle
