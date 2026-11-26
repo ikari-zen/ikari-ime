@@ -118,7 +118,8 @@ english.UninstallDataKept=Learning data and settings (%LOCALAPPDATA%\ikari-ime f
 ; 1. 道具を、作業用のフォルダ（Program Files の下に、このインストーラが新しく作る）に置く。以後の検査と停止はこれで行う
 Source: "{#StageDir}\ikari-setup-helper.exe"; DestDir: "{code:SetupWorkDir}"; AfterInstall: WorkHelperPlaced; Flags: ignoreversion
 ; 2. インストール先。最初の項目の Check（AppDirReady）で、置き場所の検査、エンジンの停止、前の版の LM の部品の
-;    掃除を先に行う（ADR 0067 §3.2 の 2・3。[InstallDelete] は検査と停止より前に動くので使わない）
+;    掃除（オフライン版は、残っている取得の子の削除も）を先に行う（ADR 0067 §3.2 の 2・3。[InstallDelete] は
+;    検査と停止より前に動くので使わない）
 Source: "{#StageDir}\ikari-setup-helper.exe"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion
 Source: "{#StageDir}\ikari-engine-host.exe"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion
 Source: "{#StageDir}\ikari-lm-host.exe"; DestDir: "{app}"; Check: AppDirReady; Flags: ignoreversion
@@ -383,6 +384,20 @@ begin
   Result := StepOk(Result, 0, 'backends');
 end;
 
+{ オフライン版には通信の部品を置かない（ADR 0080 §7.3・§7.4）。Inno は新しいパッケージに無いファイルを消さないので、
+  通常版の上に入れたときに残る取得の子を、置く前に消す。消せなければ失敗にする。呼ぶのはオフライン版だけで、
+  検査とエンジンの停止のあと }
+function RemoveDataChild: Boolean;
+var
+  Path: String;
+begin
+  Path := ExpectedAppDir + '\ikari-data.exe';
+  Result := True;
+  if FileExists(Path) then
+    Result := DeleteFile(Path);
+  Result := StepOk(Result, 0, 'ikari-data.exe');
+end;
+
 function CheckAppDir(Helper: String): Boolean;
 var
   Code: Integer;
@@ -408,6 +423,10 @@ begin
       StopEngines(WorkHelper);
       { 消しきれなければ置かない（前の版の部品と混ざった状態で登録しない） }
       AppDirTrusted := RemoveStaleLmLibraries;
+#if Edition == "offline"
+      if AppDirTrusted then
+        AppDirTrusted := RemoveDataChild;
+#endif
     end
     else
       Fail(ExitUntrusted, FmtMessage(CustomMessage('Untrusted'), [ExpectedAppDir]));

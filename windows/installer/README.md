@@ -35,7 +35,7 @@ Inno Setup のスクリプト（`ikari.iss`）と、インストーラが管理�
    ISCC /DAppVersion=0.1.0 /DStageDir=<stage> /DTipSha256=$sha [/DEdition=normal|offline] windows\installer\ikari.iss
    ```
 
-   版は `/DEdition=normal`（既定）か `/DEdition=offline`（ADR 0080 §7.3）。`offline` は `ikari-data.exe` を入れず、出力の名前に `-offline` が付く（`ikari-ime-<版>-windows-x64-setup-offline.exe`）。同梱のデータ（`data\`）は両方の版で同じ物を入れる。
+   版は `/DEdition=normal`（既定）か `/DEdition=offline`（ADR 0080 §7.3）。`offline` は `ikari-data.exe` を入れず（通常版の上に入れたときに残る `ikari-data.exe` は、置く前の準備で消し、消せなければ失敗にする）、出力の名前に `-offline` が付く（`ikari-ime-<版>-windows-x64-setup-offline.exe`）。同梱のデータ（`data\`）は両方の版で同じ物を入れる。
    セキュリティの修正を含む版は `/DSecurityUpdate=1` を足す（最後の案内が変わる。ADR 0070 §4 の 1。リリースの workflow には、まだ渡す口が無い）。
    出力は `windows\installer\out\ikari-ime-<版>-windows-x64-setup.exe`（オフライン版は `-setup-offline.exe`。workflow は `/O` で別の場所に出す）。
 
@@ -62,7 +62,7 @@ LM の子と取得の子（`ikari-data transfer`）の檻（AppContainer）の�
 - 外のプログラムの起動は `RunTrusted` の 1 か所だけ。相手は system32 の道具（`regsvr32`、`netsh`）と helper だけで、絶対パス。
 - `[Files]` の `regserver`、`restartreplace` の印を使わない。インストール先の項目は、検査の Check を通る。
 - 同梱のデータ（`data\dict\`、`data\models\`、`data\NOTICE.txt`、`data\licenses\`）と `THIRD_PARTY_NOTICES.md` の項目が、`xtask` と `ikari-resource` の表と過不足なく一致する（ADR 0080 §6、§11）。
-- `/DEdition=normal|offline` の分岐で、`ikari-data.exe` が `normal` の中にだけあり、出力名に `{#EditionSuffix}`（`-offline`）が付く（ADR 0080 §7.3、§7.4）。
+- `/DEdition=normal|offline` の分岐で、`ikari-data.exe` が `normal` の中にだけあり（`[Code]` に書けるのは、`offline` が残った取得の子を消す `RemoveDataChild` だけ）、出力名に `{#EditionSuffix}`（`-offline`）が付く（ADR 0080 §7.3、§7.4）。
 - 使用中のファイルを持つアプリを閉じさせない（`CloseApplications=no`）。ログを出さない（利用者の TEMP に書かれるため）。
 
 ## 統合のときの作業（済）

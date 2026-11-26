@@ -10,7 +10,9 @@
 //!   - 外のプログラムの起動が 1 か所（`RunTrusted`）で、相手が system32 の道具か helper だけであること
 //!   - DLL の登録に `regserver` の印、置き換えに `restartreplace` の印を使っていないこと
 //!   - `[Files]` の置き先が、インストール先か作業用のフォルダだけで、インストール先の項目が検査（Check）を通ること
-//!   - `ikari-data.exe` が `[Files]` の `#if Edition == "normal"` の中にだけあり、`[Code]`（ファイアウォールの規則など）に無いこと
+//!   - `ikari-data.exe` が `[Files]` の `#if Edition == "normal"` の中にだけあり、`[Code]`（ファイアウォールの規則など）には、
+//!     オフライン版が残った取得の子を消す `RemoveDataChild` のほかに書かれていないこと
+//!   - オフライン版だけが、置く前の準備（検査とエンジンの停止と LM の部品の掃除のあと）で `RemoveDataChild` を呼び、消せなければ失敗にすること
 //!   - 同梱のデータ（`{app}\data\dict\`、`{app}\data\models\`、`{app}\data\NOTICE.txt`、`{app}\data\licenses\`）と
 //!     `{app}\THIRD_PARTY_NOTICES.md` が、`xtask/src/scan/macos.rs` と `ikari_resource::ZENZ_SMALL_FILE_NAME` の表と過不足なく一致すること
 //!   - インストールと削除の手順の順番（ADR 0067 §3.2）。インストールの手順は、失敗したら後を打ち切ること
@@ -132,6 +134,27 @@ const PREPARE_ORDER: (&str, &[&str]) = (
     "AppDirReady",
     &["CheckAppDir", "StopEngines", "RemoveStaleLmLibraries"],
 );
+/// 通常版の上にオフライン版を入れたときに残る取得の子を消す関数
+const REMOVE_DATA_FUNCTION: &str = "RemoveDataChild";
+/// `[Code]` で取得の子の名前を書いてよい 2 行（どちらも `RemoveDataChild` の中）
+const REMOVE_DATA_PATH_LINE: &str = r"Path := ExpectedAppDir + '\ikari-data.exe';";
+const REMOVE_DATA_STEP_LINE: &str = "Result := StepOk(Result, 0, 'ikari-data.exe');";
+/// `RemoveDataChild` の本文で、この順に続けて要る行（あれば消し、消せなければ失敗にする）
+const REMOVE_DATA_BODY: &[&str] = &[
+    REMOVE_DATA_PATH_LINE,
+    "Result := True;",
+    "if FileExists(Path) then",
+    "Result := DeleteFile(Path);",
+    REMOVE_DATA_STEP_LINE,
+];
+/// 準備の中で、オフライン版だけが取得の子を消す並び（LM の部品の掃除のすぐあと。失敗したら置かない）
+const REMOVE_DATA_CALL: &[&str] = &[
+    "AppDirTrusted := RemoveStaleLmLibraries;",
+    "#if Edition == \"offline\"",
+    "if AppDirTrusted then",
+    "AppDirTrusted := RemoveDataChild;",
+    "#endif",
+];
 /// 作業用のフォルダに道具を置いたときに呼ぶ手続き（`[Files]` の AfterInstall）と、準備の前に見る印
 const WORK_HELPER_PLACED: &str = "WorkHelperPlaced";
 const WORK_HELPER_GUARD: &str = "if not WorkHelperReady then";
@@ -368,12 +391,17 @@ fn problems(iss: &str, helper_lib: &str, helper_stop: &str, scan_macos: &str) ->
 
     // [Files]
     check_files(&lines, scan_macos, &mut found);
+    check_data_removal(&code, &mut found);
     for text in lines
         .iter()
         .filter(|l| l.section != "files")
         .map(|l| l.text)
         .chain(code.lines())
     {
+        // 削除の関数の 2 行（場所と回数は check_data_removal が見る）
+        if [REMOVE_DATA_PATH_LINE, REMOVE_DATA_STEP_LINE].contains(&text.trim()) {
+            continue;
+        }
         if text.to_ascii_lowercase().contains(STOP_DATA_EXE) {
             found.push(format!(
                 "`{STOP_DATA_EXE}` は [Files] の通常版の項目のほかに書かない（ファイアウォールの規則もかけない。ADR 0076、0080 §7.3）: {}",
@@ -493,6 +521,55 @@ fn problems(iss: &str, helper_lib: &str, helper_stop: &str, scan_macos: &str) ->
         }
     }
     found
+}
+
+/// 空でない行を、前後の空白を除いて順に
+fn trimmed_lines(text: &str) -> Vec<&str> {
+    text.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect()
+}
+
+/// `lines` の中に、`want` が続けて出てくるか
+fn has_run(lines: &[&str], want: &[&str]) -> bool {
+    lines.windows(want.len()).any(|w| w == want)
+}
+
+/// 通常版の上にオフライン版を入れたときの、取得の子の削除（ADR 0080 §7.3・§7.4）
+fn check_data_removal(code: &str, found: &mut Vec<String>) {
+    match procedure_body(code, REMOVE_DATA_FUNCTION) {
+        None => found.push(format!(
+            "function {REMOVE_DATA_FUNCTION} がありません（オフライン版は、残った {STOP_DATA_EXE} を消す）"
+        )),
+        Some(body) => {
+            let body = trimmed_lines(&body);
+            // 先頭の行のあとに `begin` があるので、2 行目から後ろは続けて見る
+            if !body.contains(&REMOVE_DATA_BODY[0]) || !has_run(&body, &REMOVE_DATA_BODY[1..]) {
+                found.push(format!(
+                    "{REMOVE_DATA_FUNCTION} は {STOP_DATA_EXE} を消し、消せなければ失敗にする（{}）",
+                    REMOVE_DATA_BODY.join(" ")
+                ));
+            }
+        }
+    }
+    // 見逃す 2 行は 1 回ずつ（削除の関数の外に同じ行を書き足せない）
+    for line in [REMOVE_DATA_PATH_LINE, REMOVE_DATA_STEP_LINE] {
+        let count = trimmed_lines(code).iter().filter(|l| **l == line).count();
+        if count > 1 {
+            found.push(format!(
+                "`{line}` は {REMOVE_DATA_FUNCTION} の中の 1 回だけ（今は {count}）"
+            ));
+        }
+    }
+    let prepare = procedure_body(code, PREPARE_ORDER.0).unwrap_or_default();
+    if !has_run(&trimmed_lines(&prepare), REMOVE_DATA_CALL) {
+        found.push(format!(
+            "{} は、オフライン版だけ、LM の部品の掃除のあとに {REMOVE_DATA_FUNCTION} を呼ぶ（{}）",
+            PREPARE_ORDER.0,
+            REMOVE_DATA_CALL.join(" ")
+        ));
+    }
 }
 
 /// ASCII の語の区切りで含むか
@@ -1276,6 +1353,52 @@ mod tests {
                 "    3: Result := 'settings\\ikari-settings.exe';\n    4: Result := 'ikari-data.exe';"
             ),
             "`ikari-data.exe` は [Files] の通常版の項目のほかに書かない"
+        ));
+    }
+
+    #[test]
+    fn the_offline_edition_removes_a_leftover_data_child() {
+        let call = "のあとに RemoveDataChild を呼ぶ";
+        // 呼び出しが無い
+        assert!(has(
+            &with("        AppDirTrusted := RemoveDataChild;\n", ""),
+            call
+        ));
+        // 分岐が無い（通常版でも消す形）、通常版の分岐
+        assert!(has(
+            &with("#if Edition == \"offline\"\n      if", "      if"),
+            call
+        ));
+        assert!(has(
+            &with(
+                "#if Edition == \"offline\"\n      if",
+                "#if Edition == \"normal\"\n      if"
+            ),
+            call
+        ));
+        // 消す処理が無い、失敗を返さない、関数が無い
+        assert!(has(
+            &with("    Result := DeleteFile(Path);\n", ""),
+            "消せなければ失敗にする"
+        ));
+        assert!(has(
+            &with("  Result := StepOk(Result, 0, 'ikari-data.exe');\n", ""),
+            "消せなければ失敗にする"
+        ));
+        assert!(has(
+            &with(
+                "function RemoveDataChild: Boolean;",
+                "function Other: Boolean;"
+            ),
+            "function RemoveDataChild がありません"
+        ));
+        // 削除の関数の外に同じ行を書き足す
+        assert!(has(
+            &with(
+                "procedure RemoveFirewallRules;\nvar\n",
+                "procedure Extra;\nbegin\n  Path := ExpectedAppDir + '\\ikari-data.exe';\nend;\n\nprocedure RemoveFirewallRules;\nvar\n"
+            ),
+            "の中の 1 回だけ"
         ));
     }
 
