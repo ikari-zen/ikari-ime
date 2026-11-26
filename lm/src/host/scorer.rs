@@ -28,7 +28,7 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, SyncSender};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -345,7 +345,7 @@ impl RecvError {
 struct Live {
     // 宣言順 = drop 順。先に子を回収すると、パイプが閉じて 2 つのスレッドが終わる
     proc: ChildProc,
-    to_child: SyncSender<Vec<u8>>,
+    to_child: Sender<Vec<u8>>,
     from_child: Receiver<Incoming>,
     /// 取り消しの合図で、待っている受け口を起こすための送り口。これを持つので、子の出力が閉じたことは
     /// 読み取りのスレッドが `Incoming::Closed` で知らせる
@@ -383,7 +383,10 @@ impl Live {
                 }
                 let _ = reply_tx.send(Incoming::Closed);
             });
-        let (to_child, frames) = mpsc::sync_channel::<Vec<u8>>(1);
+        // 送り口は数の上限を持たない（#296）。上限 1 だと、取り消しの `Cancel` を書き込みのスレッドが取り出す前に
+        // 次の `Score` を送ると満杯で失敗し、生きている子を「書けない」として kill していた。要求は 1 件ずつなので、
+        // 詰まった子（返事が来ない）は、取り消されない要求の締め切りで気づき、子を回収する（枠はそこで捨てる）
+        let (to_child, frames) = mpsc::channel::<Vec<u8>>();
         let writer = thread::Builder::new()
             .name(WRITER_THREAD_NAME.to_owned())
             .spawn(move || {
@@ -545,16 +548,17 @@ impl LmScorer for HostScorer {
         if frame.len() > MAX_FRAME_BYTES {
             return Err(LmError::Inference("lm host: request too large".to_owned()));
         }
-        if live.to_child.try_send(frame).is_err() {
+        // 送れないのは、書き込みのスレッドが終わったとき（子のパイプが閉じた）だけ
+        if live.to_child.send(frame).is_err() {
             return Err(self.fail("write"));
         }
         // 待ちの間だけ: 印が立ったら子に `Cancel` を送り、この受け口を起こす。どちらも詰まらない送り方にする
-        // （印を立てるのはエンジンの別のスレッド。送れなければ、子は最後まで推論し、その返事を読み捨てる）
+        // （印を立てるのはエンジンの別のスレッド。子が届く前に終わっていれば、その返事を読み捨てる）
         let hook = {
             let to_child = live.to_child.clone();
             let wake = live.wake.clone();
             cancel.on_cancel(move || {
-                let _ = to_child.try_send(Request::Cancel { id }.encode());
+                let _ = to_child.send(Request::Cancel { id }.encode());
                 let _ = wake.send(Incoming::Cancelled(id));
             })
         };
